@@ -339,7 +339,7 @@ impl NoteProcessor<Discovery, Unknown> {
         if let Some(note) = stored {
             repository.delete_note(note.id())?;
             // Invalidate the cached ListView (intentionally fire-and-forget)
-            drop(repository.invalidate_list_view(note.id()));
+            drop(repository.delete_list_view(note.id()));
             return Ok(NoteProcessReport {
                 note_id: Some(note.id()),
                 path: path.clone(),
@@ -504,7 +504,7 @@ impl NoteProcessor<Construction, New> {
         // Build and cache the ListView projection
         // Build and cache the ListView projection (intentionally
         // fire-and-forget)
-        drop(repository.cache_list_view(&ListView::from_note_items(
+        drop(repository.save_list_view(&ListView::from_note_items(
             saved_id,
             facts.list_items(),
         )));
@@ -542,7 +542,7 @@ impl NoteProcessor<Construction, Changed> {
 
         // Build and cache the ListView projection (intentionally
         // fire-and-forget)
-        drop(repository.cache_list_view(&ListView::from_note_items(
+        drop(repository.save_list_view(&ListView::from_note_items(
             saved_id,
             facts.list_items(),
         )));

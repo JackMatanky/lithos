@@ -140,7 +140,7 @@ impl WriteRepository for RedbRepository {
     }
 
     #[inline]
-    fn cache_list_view(
+    fn save_list_view(
         &self,
         view: &ListView,
     ) -> Result<(), NoteRepositoryError> {
@@ -158,7 +158,7 @@ impl WriteRepository for RedbRepository {
     }
 
     #[inline]
-    fn invalidate_list_view(
+    fn delete_list_view(
         &self,
         note_id: NoteId,
     ) -> Result<(), NoteRepositoryError> {
@@ -315,18 +315,18 @@ mod tests {
     }
 
     #[test]
-    fn invalidate_list_view_removes_cached_view() {
+    fn delete_list_view_removes_cached_view() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let store = Arc::new(Store::open(&db_path).unwrap());
         let repo = RedbRepository::new(store);
 
-        let note = create_test_note_with_path("invalidate-cache.md");
+        let note = create_test_note_with_path("delete-cache.md");
         let id = repo.save(&note).unwrap();
         let view = ListView::from_note_items(id, note.list_items());
-        repo.cache_list_view(&view).unwrap();
+        repo.save_list_view(&view).unwrap();
 
-        repo.invalidate_list_view(id).unwrap();
+        repo.delete_list_view(id).unwrap();
 
         let found = repo.find_list_view(id).unwrap();
         assert!(found.is_none());

@@ -266,7 +266,7 @@ mod tests {
         let id = repo.save(&note).unwrap();
         let view = ListView::from_note_items(id, note.list_items());
 
-        repo.cache_list_view(&view).unwrap();
+        repo.save_list_view(&view).unwrap();
 
         let found = repo.find_list_view(id).unwrap();
         assert!(found.is_some());

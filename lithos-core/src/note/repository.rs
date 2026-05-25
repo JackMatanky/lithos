@@ -110,24 +110,24 @@ pub trait WriteRepository {
     /// Returns `NoteRepositoryError::Storage` if the database operation fails.
     fn delete_many(&self, ids: &[NoteId]) -> Result<(), NoteRepositoryError>;
 
-    /// Cache list view for a note.
+    /// Save list view for a note.
     ///
     /// # Errors
     ///
     /// Returns `NoteRepositoryError::Storage` if the database operation fails.
-    fn cache_list_view(
+    fn save_list_view(
         &self,
         view: &ListView,
     ) -> Result<(), NoteRepositoryError>;
 
-    /// Invalidate cached list view for a note.
+    /// Delete cached list view for a note.
     ///
     /// Idempotent (no error if cache entry is missing).
     ///
     /// # Errors
     ///
     /// Returns `NoteRepositoryError::Storage` if the database operation fails.
-    fn invalidate_list_view(
+    fn delete_list_view(
         &self,
         note_id: NoteId,
     ) -> Result<(), NoteRepositoryError>;

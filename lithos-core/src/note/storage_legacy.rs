@@ -115,13 +115,13 @@ pub trait Repository: Send + Sync {
     ///
     /// # Errors
     /// Returns error if serialization or database write fails.
-    fn cache_list_view(&self, view: &ListView) -> Result<(), Self::Error>;
+    fn save_list_view(&self, view: &ListView) -> Result<(), Self::Error>;
 
     /// Removes a cached `ListView` from the database.
     ///
     /// # Errors
     /// Returns error if database access fails.
-    fn invalidate_list_view(&self, note_id: NoteId) -> Result<(), Self::Error>;
+    fn delete_list_view(&self, note_id: NoteId) -> Result<(), Self::Error>;
 
     /// Executes many write operations within a single transaction.
     ///
@@ -589,7 +589,7 @@ impl Repository for RedbRepository<'_> {
     }
 
     #[inline]
-    fn cache_list_view(&self, view: &ListView) -> Result<(), Self::Error> {
+    fn save_list_view(&self, view: &ListView) -> Result<(), Self::Error> {
         let id = Uuid::from(view.note_id());
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
@@ -598,7 +598,7 @@ impl Repository for RedbRepository<'_> {
     }
 
     #[inline]
-    fn invalidate_list_view(&self, note_id: NoteId) -> Result<(), Self::Error> {
+    fn delete_list_view(&self, note_id: NoteId) -> Result<(), Self::Error> {
         let id = Uuid::from(note_id);
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
