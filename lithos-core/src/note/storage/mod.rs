@@ -24,6 +24,8 @@
 //! [`Repository`]: crate::note::repository::Repository
 
 mod read;
+#[cfg(test)]
+pub(crate) mod testing;
 mod write;
 
 pub(crate) mod tables;
