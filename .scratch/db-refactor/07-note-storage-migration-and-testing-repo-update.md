@@ -1,10 +1,27 @@
 ---
 title: 07-note-storage-migration-and-testing-repo-update
 category: enhancement
-label: needs-triage
-status: open
+label: ready-for-agent
+status: split
 date_created: 2026-05-10
+date_split: 2026-05-25
 ---
+
+## Issue Split (2026-05-25)
+
+This issue has been split into three sub-issues for clearer dependency management:
+
+- **07a-note-context-storage-migration.md** — Note storage layer (✅ Complete)
+- **07b-vault-context-storage-migration.md** — Vault storage layer + Database→Store bridge (🔴 Open)
+- **07c-note-processor-and-tests-migration.md** — Migrate call sites (🔴 Blocked by 07b)
+
+The original scope was too broad — vault context needs full migration to provide the `Database` → `Store` bridge that note processor migration depends on.
+
+See the sub-issues for implementation details.
+
+---
+
+## Original Scope (Archived)
 
 ## Type
 
@@ -13,12 +30,15 @@ AFK
 ## Labels
 
 - needs-triage
+- split-into-07a-07b-07c
 
 ## What to build
 
 Migrate Note persistence to the new storage seam with `repository.rs`, `storage/read.rs`, `storage/write.rs`, and `storage/tables.rs`. Update Note `testing.rs` in-memory Repository Adapter to match the new Repository Interface and behavior.
 
 This slice is complete when Note read/write and batch behavior are preserved end-to-end in both redb-backed and in-memory test flows.
+
+**Note**: Discovered during implementation that vault processor migration was required first to provide the `Database` → `Store` bridge. Split into 07a/b/c to manage dependencies.
 
 ## Agent Brief (v1 - 2026-05-12)
 
