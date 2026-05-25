@@ -38,12 +38,29 @@ pub enum VaultRepositoryError {
     #[error("storage error: {0}")]
     Storage(#[from] DbError),
 
-    /// Domain constraint violation.
-    #[error("vault constraint violation: {message}")]
-    ConstraintViolation {
-        /// Human-readable constraint message.
-        message: Box<str>,
-    },
+    /// File requested by unique identifier was not found.
+    #[error("file not found: {0}")]
+    FileNotFound(super::model::FileId),
+
+    /// Directory requested by unique identifier was not found.
+    #[error("directory not found: {0}")]
+    DirNotFound(super::model::DirId),
+
+    /// Entry requested by vault path was not found.
+    #[error("path not found: {0}")]
+    PathNotFound(crate::fs::PathKey),
+
+    /// Persistence conflict where an entry already exists at the target path.
+    #[error("duplicate path: entry already exists at {0}")]
+    DuplicatePath(crate::fs::PathKey),
+}
+
+#[cfg(test)]
+impl From<crate::db::testing::InMemoryDbError> for VaultRepositoryError {
+    #[inline]
+    fn from(value: crate::db::testing::InMemoryDbError) -> Self {
+        Self::Storage(DbError::Open(value.to_string()))
+    }
 }
 
 /// Errors during vault file discovery and metadata extraction.

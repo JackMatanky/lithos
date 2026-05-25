@@ -9,11 +9,13 @@ use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     path::Path,
+    sync::Arc,
 };
 
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
     config::aggregate::Config,
+    db::Store,
     fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsReader,
         PathKey,
@@ -26,7 +28,8 @@ use crate::{
     },
     vault::{
         model::{DirId, DirView, FileId, FileView},
-        storage::{RedbRepository as VaultRepository, Repository as _},
+        repository::{ReadRepository as _, WriteRepository as _},
+        storage::RedbRepository as VaultRepository,
     },
 };
 
@@ -311,15 +314,15 @@ impl VaultProcessor<Discovery, Unknown> {
     /// Returns [`VaultProcessError`] if discovery, storage, or note processing
     /// fails.
     #[inline]
-    #[tracing::instrument(level = "info", skip(self, db, config))]
+    #[tracing::instrument(level = "info", skip(self, store, config))]
     pub fn process_full(
         self,
-        db: &crate::db::Database,
+        store: Arc<Store>,
         config: &Config,
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(db);
-        let note_repository = NoteRepository::new(db);
+        let repository = VaultRepository::new(Arc::clone(&store));
+        let note_repository = NoteRepository::new(store);
 
         let compared = self
             .discover(&source, ScanMode::Full)?
@@ -336,16 +339,16 @@ impl VaultProcessor<Discovery, Unknown> {
     /// Returns [`VaultProcessError`] if discovery, storage, or note processing
     /// fails.
     #[inline]
-    #[tracing::instrument(level = "info", skip(self, db, config, paths))]
+    #[tracing::instrument(level = "info", skip(self, store, config, paths))]
     pub fn process_partial(
         self,
-        db: &crate::db::Database,
+        store: Arc<Store>,
         config: &Config,
         paths: &[PathKey],
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(db);
-        let note_repository = NoteRepository::new(db);
+        let repository = VaultRepository::new(Arc::clone(&store));
+        let note_repository = NoteRepository::new(store);
 
         let compared = self
             .discover_partial(&source, paths)?
@@ -622,7 +625,7 @@ impl VaultProcessor<Comparison, Scanned> {
     #[inline]
     fn compare(
         self,
-        repository: &VaultRepository<'_>,
+        repository: &VaultRepository,
     ) -> Result<VaultProcessor<Routing, Compared>, VaultProcessError> {
         let mut report = VaultProcessReport {
             files_scanned: self.status.files.len(),
@@ -656,7 +659,7 @@ impl VaultProcessor<Comparison, Scanned> {
 
     fn compare_full(
         &self,
-        repository: &VaultRepository<'_>,
+        repository: &VaultRepository,
         report: &mut VaultProcessReport,
     ) -> Result<CompareOutcome, VaultProcessError> {
         let existing_file_paths = repository.list_file_paths()?;
@@ -706,7 +709,7 @@ impl VaultProcessor<Comparison, Scanned> {
 
     fn compare_partial(
         &self,
-        repository: &VaultRepository<'_>,
+        repository: &VaultRepository,
         report: &mut VaultProcessReport,
     ) -> Result<CompareOutcome, VaultProcessError> {
         let mut file_updates = Vec::new();
@@ -743,7 +746,7 @@ impl VaultProcessor<Routing, Compared> {
     #[inline]
     fn route(
         self,
-        note_repository: &NoteRepository<'_>,
+        note_repository: &NoteRepository,
         config: &Config,
         source: &FsReader,
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
@@ -781,8 +784,8 @@ impl VaultProcessor<Prune, Routed> {
     #[inline]
     fn prune(
         self,
-        repository: &VaultRepository<'_>,
-        note_repository: &NoteRepository<'_>,
+        repository: &VaultRepository,
+        note_repository: &NoteRepository,
     ) -> Result<VaultProcessor<Completed, Ready>, VaultProcessError> {
         let mut report = self.status.report;
         if self.status.mode != ScanMode::Full {

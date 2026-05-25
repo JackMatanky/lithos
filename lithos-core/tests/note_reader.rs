@@ -36,12 +36,11 @@ mod tests {
             task::StatusSymbol,
             vault::{VaultId, VaultRoot},
         },
-        db::Database,
+        db::Store,
         fs::PathKey,
         note::{
-            aggregate::Note,
-            storage::{RedbRepository, Repository as _},
-            tag::Tag as NoteTag,
+            aggregate::Note, repository::ReadRepository as _,
+            storage::RedbRepository as NoteRepository, tag::Tag as NoteTag,
         },
         vault::VaultProcessor,
     };
@@ -51,7 +50,7 @@ mod tests {
 
     struct Fixture {
         _dir: TempDir,
-        db: Arc<Database>,
+        store: Arc<Store>,
         note: Note,
         config: Config,
     }
@@ -80,9 +79,9 @@ mod tests {
 
         let config = test_config(dir.path().to_path_buf())?;
         let db_path = dir.path().join("notes.redb");
-        let db = Arc::new(Database::open(&db_path)?);
+        let store = Arc::new(Store::open(&db_path)?);
         let report =
-            VaultProcessor::new().process_full(db.as_ref(), &config)?;
+            VaultProcessor::new().process_full(Arc::clone(&store), &config)?;
         if report.markdown_routed() == 0 {
             return Err(std::io::Error::other(
                 "expected markdown routing to occur",
@@ -90,7 +89,7 @@ mod tests {
             .into());
         }
 
-        let repository = RedbRepository::new(db.as_ref());
+        let repository = NoteRepository::new(Arc::clone(&store));
         let notes = repository.list()?;
         let note = notes
             .first()
@@ -98,7 +97,7 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("expected stored note"))?;
         Ok(Fixture {
             _dir: dir,
-            db,
+            store,
             note,
             config,
         })
@@ -106,7 +105,7 @@ mod tests {
 
     fn build_environment(
         markdown: &str,
-    ) -> TestResult<(TempDir, Config, Arc<Database>)> {
+    ) -> TestResult<(TempDir, Config, Arc<Store>)> {
         let dir = TempDir::new()?;
         let note_path = Path::new("notes/note.md");
         let absolute_path = dir.path().join(note_path);
@@ -119,8 +118,8 @@ mod tests {
 
         let config = test_config(dir.path().to_path_buf())?;
         let db_path = dir.path().join("notes.redb");
-        let db = Arc::new(Database::open(&db_path)?);
-        Ok((dir, config, db))
+        let store = Arc::new(Store::open(&db_path)?);
+        Ok((dir, config, store))
     }
 
     fn sorted_tag_paths_from_note(note: &Note) -> Vec<Box<str>> {
@@ -145,7 +144,7 @@ mod tests {
             .name_for_symbol(StatusSymbol::try_new('x')?)
             .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
-        let repository = RedbRepository::new(fixture.db.as_ref());
+        let repository = NoteRepository::new(Arc::clone(&fixture.store));
         let mut tasks = Vec::new();
         let notes = repository.list()?;
         for note in notes {
@@ -298,14 +297,15 @@ mod tests {
 
     #[test]
     fn load_skips_unchanged_notes() {
-        let (dir, config, db) =
+        let (dir, config, store) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let processor = VaultProcessor::new();
-        let repository = RedbRepository::new(db.as_ref());
+        let repository = NoteRepository::new(Arc::clone(&store));
 
-        let first =
-            processor.process_full(db.as_ref(), &config).expect("first load");
+        let first = processor
+            .process_full(Arc::clone(&store), &config)
+            .expect("first load");
         assert_eq!(
             first.markdown_routed(),
             1,
@@ -315,7 +315,7 @@ mod tests {
         let _first_note = first_notes.pop().expect("expected stored note");
 
         let second = VaultProcessor::new()
-            .process_full(db.as_ref(), &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         assert_eq!(
             second.notes_created_or_updated(),
@@ -329,19 +329,20 @@ mod tests {
 
     #[test]
     fn load_removes_missing_notes() {
-        let (dir, config, db) =
+        let (dir, config, store) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let processor = VaultProcessor::new();
-        let repository = RedbRepository::new(db.as_ref());
+        let repository = NoteRepository::new(Arc::clone(&store));
 
-        let _report =
-            processor.process_full(db.as_ref(), &config).expect("first load");
+        let _report = processor
+            .process_full(Arc::clone(&store), &config)
+            .expect("first load");
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
         let _second_report = VaultProcessor::new()
-            .process_full(db.as_ref(), &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         let notes = repository.list().expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
@@ -349,19 +350,19 @@ mod tests {
 
     #[test]
     fn full_scan_reports_pruned_files_for_removed_notes() {
-        let (dir, config, db) =
+        let (dir, config, store) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
 
         let _first = VaultProcessor::new()
-            .process_full(db.as_ref(), &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("first load");
 
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
         let second = VaultProcessor::new()
-            .process_full(db.as_ref(), &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         assert_eq!(
             second.files_deleted(),
@@ -383,11 +384,11 @@ mod tests {
 
         let config = test_config(dir.path().to_path_buf()).expect("config");
         let db_path = dir.path().join("notes.redb");
-        let db = Arc::new(Database::open(&db_path).expect("open db"));
-        let repository = RedbRepository::new(db.as_ref());
+        let store = Arc::new(Store::open(&db_path).expect("open db"));
+        let repository = NoteRepository::new(Arc::clone(&store));
 
         let first = VaultProcessor::new()
-            .process_full(db.as_ref(), &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("first full scan");
         assert_eq!(
             first.markdown_routed(),
@@ -401,7 +402,7 @@ mod tests {
             PathKey::try_new("notes/keep.md").expect("partial vault path"),
         ];
         let partial = VaultProcessor::new()
-            .process_partial(db.as_ref(), &config, &partial_paths)
+            .process_partial(Arc::clone(&store), &config, &partial_paths)
             .expect("partial scan");
 
         assert_eq!(
