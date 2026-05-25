@@ -1,4 +1,28 @@
-//! `WriteRepository` implementation for Vault persistence.
+//! Write operations for vault files and directories.
+//!
+//! Implements the [`WriteRepository`] trait against redb storage. Each write
+//! method opens a single write transaction and operates on the required tables
+//! within that transaction.
+//!
+//! ## Upsert semantics
+//!
+//! Every `save_*` method is an upsert: it first removes any existing graph
+//! entries for the entity (primary record + all secondary indexes) via
+//! [`RedbRepository::remove_file_graph`] or
+//! [`RedbRepository::remove_dir_graph`], then inserts the new data. This
+//! ensures stale index entries from a previous path, basename, parent, or
+//! format are never orphaned.
+//!
+//! ## Delete contexts
+//!
+//! The module provides [`FileDeleteContext`] and [`DirDeleteContext`], which
+//! load the index metadata needed to cleanly remove an entity from all
+//! secondary indexes. The path lookup inside each context iterates the
+//! entire path-to-ID table (O(N) scan) to find the matching entry — this
+//! is correct but not optimal for batch operations.
+//!
+//! The trait defines per-method documentation; this file contains the
+//! concrete [`redb`] access patterns for each operation.
 
 use redb::ReadableTable as _;
 
@@ -295,6 +319,10 @@ impl RedbRepository {
     }
 }
 
+/// Index metadata needed to remove a file from all secondary indexes.
+///
+/// Collected by [`FileDeleteContext::load`] before the primary record is
+/// deleted, so that each index-mutation call has the key values it needs.
 #[derive(Debug, Default)]
 struct FileDeleteContext {
     path: Option<String>,
@@ -304,6 +332,12 @@ struct FileDeleteContext {
 }
 
 impl FileDeleteContext {
+    /// Loads the index metadata for a given file.
+    ///
+    /// Reads the primary record to extract basename, parent ID, and format.
+    /// Then scans the entire path-to-ID table (O(N)) to find the matching
+    /// path — this is correct but scales linearly with the number of paths
+    /// in the vault.
     fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
         let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
         let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
@@ -344,12 +378,20 @@ impl FileDeleteContext {
     }
 }
 
+/// Index metadata needed to remove a directory from secondary indexes.
+///
+/// Collected by [`DirDeleteContext::load`] before the primary record is
+/// deleted so the path index can be cleaned.
 #[derive(Debug, Default)]
 struct DirDeleteContext {
     path: Option<String>,
 }
 
 impl DirDeleteContext {
+    /// Loads the path for a given directory.
+    ///
+    /// Scans the entire directory path-to-ID table (O(N)) to find the
+    /// matching entry — correct but not optimal for batch operations.
     fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
         let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
 
