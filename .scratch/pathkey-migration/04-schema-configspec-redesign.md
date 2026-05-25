@@ -2,9 +2,9 @@
 title: "Issue 04: Redesign SchemaConfigSpec around config semantics"
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-25
-date_completed: null
+date_completed: 2026-05-25
 ---
 
 # Issue 04: Redesign SchemaConfigSpec around config semantics
@@ -68,13 +68,13 @@ impl SchemaConfigSpec {
 - `Config::to_schema_spec()` should pass `metadata.root()` as `DirPath` into `SchemaConfigSpec` (extracting from `VaultRoot` at the config seam).
 
 **Acceptance criteria:**
-- [ ] `SchemaConfigSpec` stores `DirPath`, `RelativeDirPath`, and `RelativeFilePath`.
-- [ ] `VaultRoot` is migrated from a raw `PathBuf` wrapper to a thin newtype over `DirPath`.
-- [ ] Derived methods materialize execution paths using the `DirPath::append_*` generic seam.
-- [ ] Derived methods expose repository boundary keys (`PathKey`).
-- [ ] Construction does not require the schema directory or property bank file to exist on disk.
-- [ ] `Config::to_schema_spec()` uses no `expect()` or panics for path assembly.
-- [ ] `SchemaConfigSpec` introduces no new dependency on `config::vault` types.
+- [x] `SchemaConfigSpec` stores `DirPath`, `RelativeDirPath`, and `RelativeFilePath`.
+- [x] `VaultRoot` is migrated from a raw `PathBuf` wrapper to a thin newtype over `DirPath`.
+- [x] Derived methods materialize execution paths using the `DirPath::append_*` generic seam.
+- [x] Derived methods expose repository boundary keys (`PathKey`).
+- [x] Construction does not require the schema directory or property bank file to exist on disk.
+- [x] `Config::to_schema_spec()` uses no `expect()` or panics for path assembly.
+- [x] `SchemaConfigSpec` introduces no new dependency on `config::vault` types.
 
 **Out of scope:**
 - Schema repository hard cuts (done in Slice 05).
@@ -111,6 +111,43 @@ Run date: 2026-05-25.
 
 ## TDD & Implementation Plan
 
+## Implementation notes and current status (2026-05-25)
+
+Completed with follow-up dependency on Issue `config-spec-errors/01` (`.scratch/config-spec-errors/01-projection-error-boundary.md`).
+
+### Landed changes
+
+- `SchemaConfigSpec` now stores declarative config semantics with `DirPath` root and relative declarations in `lithos-core/src/config/paths.rs`.
+- Field names were finalized as `directory` and `property_bank` (instead of `schema_directory` and `property_bank_file`) to align with existing config language while preserving the same type semantics.
+- Fallible derived methods were added:
+  - `schema_directory_path() -> Result<DirPath, PathError>`
+  - `property_bank_file_path() -> Result<FilePath, PathError>`
+  - `schema_directory_key() -> Result<PathKey, PathError>`
+  - `property_bank_key() -> Result<PathKey, PathError>`
+- `VaultRoot` migrated to a thin newtype over `DirPath` in `lithos-core/src/config/vault.rs`.
+- `Config::to_schema_spec()` now returns `Result<SchemaConfigSpec, ConfigError>` and no longer uses panic-based assembly.
+- `SchemaBuilder::load_all` was updated to handle fallible `to_schema_spec()`.
+
+### Tests added/updated
+
+- `schema_config_spec_constructor_accepts_declarative_nonexistent_targets`
+- `schema_directory_path_returns_dirpath_when_root_and_relative_dir_are_valid`
+- `property_bank_file_path_returns_filepath_when_root_and_relative_file_are_valid`
+- `schema_directory_key_returns_pathkey_when_root_scoped_dir_is_valid`
+- `property_bank_key_returns_pathkey_when_root_scoped_file_is_valid`
+- `to_schema_spec_returns_result_without_panicking`
+
+### Verification notes
+
+- Hooks passed on commit for formatting, clippy, and tests.
+- Additional doctest fixes were applied for `config::vault::Metadata` examples to avoid filesystem-dependent execution failures.
+
+### Remaining follow-up (moved to dedicated stream)
+
+- Cross-context projection errors are still adapted with string-based mapping at the schema builder seam.
+- Follow-up issue created: `.scratch/config-spec-errors/01-projection-error-boundary.md`.
+- That follow-up introduces a shared projection error enum in `lithos-core/src/config/error.rs` so downstream contexts can import a narrow error contract instead of full `ConfigError`.
+
 ### 1. Planning & Design
 **Deep Modules / Testability:**
 - `SchemaConfigSpec` strictly stores declarative semantics. Execution paths and persistence boundaries are derived lazily.
@@ -128,43 +165,43 @@ Run date: 2026-05-25.
 - **RED:** Write `to_schema_spec_returns_error_instead_of_panicking_when_projection_fails` and `schema_config_spec_constructor_accepts_declarative_nonexistent_targets`.
 - **GREEN:** Change `SchemaConfigSpec` fields. Remove any `expect()` or `fs::metadata` checks from `Config::to_schema_spec()`. Return `Result<SchemaConfigSpec, ConfigError>` and map path errors explicitly.
 **Checklist:**
-- [ ] Test describes behavior, not implementation
-- [ ] Test uses public interface only
-- [ ] Test would survive internal refactor
-- [ ] Code is minimal for this test
-- [ ] No speculative features added
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
 
 ### 3. Incremental Loop: Deriving Execution Paths
 **Behavior:** System derives operational file/dir paths using the append seam on demand.
 - **RED:** Write `schema_directory_path_returns_dirpath_when_root_and_relative_dir_are_valid` and `property_bank_file_path_returns_filepath_when_root_and_relative_file_are_valid`.
 - **GREEN:** Implement `schema_directory_path` and `property_bank_file_path` using `append_dir` and `append_file`.
 **Checklist:**
-- [ ] Test describes behavior, not implementation
-- [ ] Test uses public interface only
-- [ ] Test would survive internal refactor
-- [ ] Code is minimal for this test
-- [ ] No speculative features added
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
 
 ### 4. Incremental Loop: Deriving Persistence Keys
 **Behavior:** System derives persistence boundary keys (`PathKey`) using root-scoping on demand.
 - **RED:** Write `property_bank_key_returns_pathkey_when_root_scoped_file_is_valid` and `schema_directory_key_returns_pathkey_when_root_scoped_dir_is_valid`.
 - **GREEN:** Implement `schema_directory_key` and `property_bank_key` utilizing `.as_key(root)`.
 **Checklist:**
-- [ ] Test describes behavior, not implementation
-- [ ] Test uses public interface only
-- [ ] Test would survive internal refactor
-- [ ] Code is minimal for this test
-- [ ] No speculative features added
+- [x] Test describes behavior, not implementation
+- [x] Test uses public interface only
+- [x] Test would survive internal refactor
+- [x] Code is minimal for this test
+- [x] No speculative features added
 
 ### 5. Refactor
-- [ ] Ensure all `expect()` calls in `to_schema_spec()` are converted to `Result` handling with `?` (Rust Best Practice: Error Handling).
-- [ ] Ensure `VaultRoot` is a thin newtype over `DirPath`.
-- [ ] Ensure `SchemaConfigSpec` remains decoupled from `VaultRoot` by storing root as `DirPath`.
+- [x] Ensure all `expect()` calls in `to_schema_spec()` are converted to `Result` handling with `?` (Rust Best Practice: Error Handling).
+- [x] Ensure `VaultRoot` is a thin newtype over `DirPath`.
+- [x] Ensure `SchemaConfigSpec` remains decoupled from `VaultRoot` by storing root as `DirPath`.
 
 ### 6. Caller adaptation and regression checks
-- [ ] Update `SchemaBuilder::load_all` to handle `Config::to_schema_spec() -> Result<_, _>` without introducing panic paths.
-- [ ] Add/adjust tests to verify schema loading surfaces config-spec construction failures as typed errors.
-- [ ] Re-run existing schema loader integration tests that exercise property bank and discovery flows.
+- [x] Update `SchemaBuilder::load_all` to handle `Config::to_schema_spec() -> Result<_, _>` without introducing panic paths.
+- [ ] Add/adjust tests to verify schema loading surfaces config-spec construction failures as typed errors. (Moved to `.scratch/config-spec-errors/01-projection-error-boundary.md`)
+- [x] Re-run existing schema loader integration tests that exercise property bank and discovery flows.
 
 ## Test naming and quality gates (project standards)
 
