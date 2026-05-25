@@ -1,4 +1,13 @@
-//! `ReadRepository` implementation for Vault persistence.
+//! Read-only repository operations for vault files and directories.
+//!
+//! Implements the [`ReadRepository`] trait against redb storage. Each method
+//! opens a read transaction and uses
+//! [`ReadTransaction::try_open_table`](redb::ReadTransaction::try_open_table)
+//! to handle uninitialized tables gracefully, returning `Ok(None)` or an
+//! empty vector when tables do not yet exist.
+//!
+//! The trait defines per-method documentation; this file contains the
+//! concrete [`redb`] access patterns for each operation.
 
 use redb::ReadableTable as _;
 
@@ -323,6 +332,10 @@ impl ReadRepository for RedbRepository {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for vault read operations.
+    //!
+    //! Each test opens an isolated temp database, seeds state via low-level
+    //! store access, and asserts [`ReadRepository`] behavior.
     use std::sync::Arc;
 
     use crate::{
