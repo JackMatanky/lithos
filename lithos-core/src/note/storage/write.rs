@@ -238,146 +238,178 @@ mod tests {
         },
     };
 
-    fn create_test_note_with_path(path: &str) -> Note {
-        Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+    mod fixtures {
+        use super::*;
+
+        pub(super) fn create_note(path: &str) -> Note {
+            Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+        }
+
+        pub(super) fn repo() -> (tempfile::TempDir, RedbRepository) {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            let repo = RedbRepository::new(store);
+            (temp_dir, repo)
+        }
     }
 
-    #[test]
-    fn save_many_persists_all_notes_and_path_index() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+    mod save {
+        use super::*;
 
-        let note1 = create_test_note_with_path("batch-a.md");
-        let note2 = create_test_note_with_path("batch-b.md");
+        #[test]
+        fn persists_note_and_path_index() {
+            let (_tmp, repo) = fixtures::repo();
+            let note = fixtures::create_note("save-me.md");
 
-        let ids = repo.save_many(&[note1.clone(), note2.clone()]).unwrap();
+            let id = repo.save(&note).unwrap();
 
-        assert_eq!(ids.len(), 2);
-        let first = ids.first().copied().expect("first id must exist");
-        let second = ids.get(1).copied().expect("second id must exist");
+            assert_eq!(id, note.id(), "Saved id should match note id");
+            let by_id = repo.find_by_id(id).unwrap();
+            assert!(by_id.is_some(), "Saved note should be findable by id");
+            let by_path = repo.find_by_path(note.path()).unwrap();
+            assert!(by_path.is_some(), "Saved note should be findable by path");
+        }
 
-        let by_id_1 = repo.find_by_id(first).unwrap();
-        let by_id_2 = repo.find_by_id(second).unwrap();
-        let by_path_1 = repo.find_by_path(note1.path()).unwrap();
-        let by_path_2 = repo.find_by_path(note2.path()).unwrap();
+        #[test]
+        fn persists_batch_of_notes() {
+            let (_tmp, repo) = fixtures::repo();
+            let note1 = fixtures::create_note("batch-a.md");
+            let note2 = fixtures::create_note("batch-b.md");
 
-        assert!(by_id_1.is_some());
-        assert!(by_id_2.is_some());
-        assert!(by_path_1.is_some());
-        assert!(by_path_2.is_some());
+            let ids = repo.save_many(&[note1.clone(), note2.clone()]).unwrap();
+
+            assert_eq!(ids.len(), 2, "Should return two ids");
+            let first = ids.first().copied().expect("First id must exist");
+            let second = ids.get(1).copied().expect("Second id must exist");
+
+            let by_id_1 = repo.find_by_id(first).unwrap();
+            let by_id_2 = repo.find_by_id(second).unwrap();
+            let by_path_1 = repo.find_by_path(note1.path()).unwrap();
+            let by_path_2 = repo.find_by_path(note2.path()).unwrap();
+
+            assert!(by_id_1.is_some(), "First note should be findable by id");
+            assert!(by_id_2.is_some(), "Second note should be findable by id");
+            assert!(
+                by_path_1.is_some(),
+                "First note should be findable by path"
+            );
+            assert!(
+                by_path_2.is_some(),
+                "Second note should be findable by path"
+            );
+        }
+
+        #[test]
+        fn rejects_duplicate_path() {
+            let (_tmp, repo) = fixtures::repo();
+            let note1 = fixtures::create_note("dup.md");
+            let note2 = fixtures::create_note("dup.md");
+
+            let _ = repo.save(&note1).unwrap();
+            let result = repo.save(&note2);
+
+            assert!(
+                matches!(result, Err(NoteRepositoryError::DuplicatePath(_))),
+                "Should reject duplicate path: {result:?}"
+            );
+        }
+
+        #[test]
+        fn updates_existing_note_with_same_path() {
+            let (_tmp, repo) = fixtures::repo();
+            let original = fixtures::create_note("stable.md");
+
+            let id = repo.save(&original).unwrap();
+            let updated = original.clone().with_id(id);
+            let id2 = repo.save(&updated).unwrap();
+
+            assert_eq!(id, id2, "Update should return original id");
+        }
     }
 
-    #[test]
-    fn save_rejects_duplicate_path_for_different_note_id() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+    mod delete {
+        use super::*;
 
-        let note1 = create_test_note_with_path("dup.md");
-        let note2 = create_test_note_with_path("dup.md");
+        #[test]
+        fn removes_note_completely() {
+            let (_tmp, repo) = fixtures::repo();
+            let note = fixtures::create_note("delete-one.md");
+            let path = note.path().clone();
+            let id = repo.save(&note).unwrap();
 
-        let _ = repo.save(&note1).unwrap();
-        let result = repo.save(&note2);
+            repo.delete(id).unwrap();
 
-        assert!(matches!(result, Err(NoteRepositoryError::DuplicatePath(_))));
+            let by_id = repo.find_by_id(id).unwrap();
+            let by_path = repo.find_by_path(&path).unwrap();
+            assert!(by_id.is_none(), "Note should be gone after delete");
+            assert!(by_path.is_none(), "Path should be gone after delete");
+        }
+
+        #[test]
+        fn is_idempotent_for_missing_id() {
+            let (_tmp, repo) = fixtures::repo();
+            let missing = NoteId::new();
+
+            repo.delete(missing).unwrap();
+            repo.delete(missing).unwrap();
+        }
+
+        #[test]
+        fn batch_removes_all_notes() {
+            let (_tmp, repo) = fixtures::repo();
+            let note1 = fixtures::create_note("delete-many-a.md");
+            let note2 = fixtures::create_note("delete-many-b.md");
+            let path1 = note1.path().clone();
+            let path2 = note2.path().clone();
+            let id1 = repo.save(&note1).unwrap();
+            let id2 = repo.save(&note2).unwrap();
+
+            repo.delete_many(&[id1, id2]).unwrap();
+
+            let by_id_1 = repo.find_by_id(id1).unwrap();
+            let by_id_2 = repo.find_by_id(id2).unwrap();
+            let by_path_1 = repo.find_by_path(&path1).unwrap();
+            let by_path_2 = repo.find_by_path(&path2).unwrap();
+
+            assert!(by_id_1.is_none(), "First note should be removed");
+            assert!(by_id_2.is_none(), "Second note should be removed");
+            assert!(by_path_1.is_none(), "First path should be removed");
+            assert!(by_path_2.is_none(), "Second path should be removed");
+        }
     }
 
-    #[test]
-    fn save_allows_updating_existing_note_same_id_same_path() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+    mod caching {
+        use super::*;
 
-        let original = create_test_note_with_path("stable.md");
-        let id = repo.save(&original).unwrap();
-        let updated = original.clone().with_id(id);
+        #[test]
+        fn persists_list_view() {
+            let (_tmp, repo) = fixtures::repo();
+            let note = fixtures::create_note("cache-save.md");
+            let id = repo.save(&note).unwrap();
+            let view = ListView::from_note_items(id, note.list_items());
 
-        let id2 = repo.save(&updated).unwrap();
+            repo.save_list_view(&view).unwrap();
 
-        assert_eq!(id, id2);
-        let found = repo.find_by_id(id).unwrap();
-        assert!(found.is_some());
-    }
+            let found = repo.find_list_view(id).unwrap();
+            assert!(found.is_some(), "Saved list view should be findable");
+        }
 
-    #[test]
-    fn delete_removes_note_and_path_mapping() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+        #[test]
+        fn removes_cached_list_view() {
+            let (_tmp, repo) = fixtures::repo();
+            let note = fixtures::create_note("cache-delete.md");
+            let id = repo.save(&note).unwrap();
+            let view = ListView::from_note_items(id, note.list_items());
+            repo.save_list_view(&view).unwrap();
 
-        let note = create_test_note_with_path("delete-one.md");
-        let path = note.path().clone();
-        let id = repo.save(&note).unwrap();
+            repo.delete_list_view(id).unwrap();
 
-        repo.delete(id).unwrap();
-
-        let by_id = repo.find_by_id(id).unwrap();
-        let by_path = repo.find_by_path(&path).unwrap();
-
-        assert!(by_id.is_none());
-        assert!(by_path.is_none());
-    }
-
-    #[test]
-    fn delete_is_idempotent_for_missing_id() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let missing = NoteId::new();
-
-        repo.delete(missing).unwrap();
-        repo.delete(missing).unwrap();
-    }
-
-    #[test]
-    fn delete_many_removes_all_notes_and_path_mappings() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note1 = create_test_note_with_path("delete-many-a.md");
-        let note2 = create_test_note_with_path("delete-many-b.md");
-        let path1 = note1.path().clone();
-        let path2 = note2.path().clone();
-        let id1 = repo.save(&note1).unwrap();
-        let id2 = repo.save(&note2).unwrap();
-
-        repo.delete_many(&[id1, id2]).unwrap();
-
-        let by_id_1 = repo.find_by_id(id1).unwrap();
-        let by_id_2 = repo.find_by_id(id2).unwrap();
-        let by_path_1 = repo.find_by_path(&path1).unwrap();
-        let by_path_2 = repo.find_by_path(&path2).unwrap();
-
-        assert!(by_id_1.is_none());
-        assert!(by_id_2.is_none());
-        assert!(by_path_1.is_none());
-        assert!(by_path_2.is_none());
-    }
-
-    #[test]
-    fn delete_list_view_removes_cached_view() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note = create_test_note_with_path("delete-cache.md");
-        let id = repo.save(&note).unwrap();
-        let view = ListView::from_note_items(id, note.list_items());
-        repo.save_list_view(&view).unwrap();
-
-        repo.delete_list_view(id).unwrap();
-
-        let found = repo.find_list_view(id).unwrap();
-        assert!(found.is_none());
+            let found = repo.find_list_view(id).unwrap();
+            assert!(
+                found.is_none(),
+                "List view should be removed after delete"
+            );
+        }
     }
 }
