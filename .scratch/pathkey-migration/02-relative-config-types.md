@@ -170,6 +170,24 @@ GREEN:
 - Ensure both wrappers derive exactly required traits (`Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Archive`, `Serialize`, `Deserialize`).
 - Verify no `PathBuf`/`Path` storage and no conversion/materialization methods are introduced.
 
+### 4.1 Non-duplication guardrail (`fs::path` alignment)
+
+Review and reuse existing validation building blocks where semantics match:
+- `PathValidationContext` and component analysis in `fs::path` already cover:
+  - absolute detection
+  - `.` component detection
+  - `..` component detection
+  - platform prefix detection
+
+Important semantic difference to preserve:
+- `PathKey::try_new` currently normalizes backslashes/duplicate separators/trailing slash.
+- This issue requires passive config wrappers to reject non-normalized input rather than silently normalize it.
+
+Implementation guidance:
+- Reuse shared component-analysis logic (or extract a small shared internal helper) for overlap invariants.
+- Implement wrapper-specific strict normalization checks (`\\`, duplicate `/`, trailing separator policy) as explicit validation failures.
+- Do not route wrapper construction through `PathKey::try_new` unless acceptance criteria are updated to allow normalization.
+
 ### 5. Anti-regression checks
 
 Behavioral checks:
