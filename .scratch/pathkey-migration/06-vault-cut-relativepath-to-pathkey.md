@@ -59,11 +59,11 @@ Vault repository and storage interfaces are strictly updated to `PathKey`. Calle
 - **RED:** Modify `find_vault_file_by_path` tests to construct and pass `&PathKey`.
 - **GREEN:** Update vault repository traits and storage table definitions to enforce `PathKey`.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Refactor
 - [ ] Review borrowing and ensure table definitions do not gratuitously allocate Strings.

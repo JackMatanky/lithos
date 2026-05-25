@@ -85,22 +85,22 @@ impl DirPath {
 - **RED:** Write `test_dirpath_append_file` where a `DirPath` and `RelativeFilePath` are joined.
 - **GREEN:** Define `FileFragment` trait, implement it for `RelativeFilePath`, and implement `DirPath::append_file<T: FileFragment>`.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Append Dir
 **Behavior:** System safely joins a directory path and a relative dir fragment into a valid execution dir path.
 - **RED:** Write `test_dirpath_append_dir` joining a `DirPath` and `RelativeDirPath`.
 - **GREEN:** Define `DirFragment` trait, implement it for `RelativeDirPath`, and implement `DirPath::append_dir<T: DirFragment>`.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 4. Refactor
 - [ ] Verify static dispatch is used (`<T: FileFragment>`) over `dyn` trait objects (Rust Best Practice: Generics and Dispatch).

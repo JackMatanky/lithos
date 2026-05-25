@@ -78,22 +78,22 @@ pub struct RelativeFilePath(Box<str>);
 - **RED:** Write `test_valid_relative_dir` asserting `RelativeDirPath::try_new("config/dir")` succeeds.
 - **GREEN:** Implement `RelativeDirPath(Box<str>)` with minimal validation (UTF-8, no leading `/`, no `.`/`..`).
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Invariant Rejection
 **Behavior:** Configuration loader rejects absolute or traversal paths.
 - **RED:** Write `test_reject_absolute` (`/config`) and `test_reject_traversal` (`../config`).
 - **GREEN:** Expand validation logic.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 4. Refactor
 - [ ] Verify *no* conversion methods (`to_path`, etc.) are implemented (Rust Best Practice: Type State Pattern).

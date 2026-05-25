@@ -59,19 +59,19 @@ Begin staged `RelativePath` retirement by deprecating remaining approved uses an
 - **RED:** Add `#[deprecated]` to `RelativePath`. Build the project and verify warnings appear.
 - **GREEN:** Apply `#[expect(deprecated)]` explicitly to the legacy modules whitelisted in the audit (Rust Best Practice: Linting).
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Architecture Boundary Tests
 **Behavior:** Architecture tests explicitly fail if `RelativePath` exists within schema, vault, or note boundaries.
 - **RED:** Write a test in `path_migration_architecture.rs` scanning the AST of `src/schema/repository.rs` for `RelativePath`.
 - **GREEN:** Run tests. They should pass if the previous slices were completed cleanly, locking the boundary.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added

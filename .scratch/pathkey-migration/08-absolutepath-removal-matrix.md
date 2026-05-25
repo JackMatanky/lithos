@@ -64,22 +64,22 @@ Remove `AbsolutePath` from production flows, replacing with `DirPath`/`FilePath`
 - **RED:** Call a strictly required boundary check with an invalid path. Assert it returns a mapped error.
 - **GREEN:** Replace `AbsolutePath` with `DirPath`/`FilePath`. Return `Result` instead of panic.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Tracing/Downgrade
 **Behavior:** Optional feature failures emit structured downgrade traces instead of failing.
 - **RED:** Using `tracing-test`, assert an optional resolution failure emits a `tracing::warn!` or `tracing::trace!` event with the appropriate `decision` context.
 - **GREEN:** Implement structured `tracing` fields for downgraded `AbsolutePath` checks.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 4. Refactor
 - [ ] Document all downgraded checks with `//` comments explaining *why* the severity was chosen (Rust Best Practice: Comments explain why).

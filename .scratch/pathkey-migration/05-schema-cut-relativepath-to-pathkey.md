@@ -73,22 +73,22 @@ Replace all `&RelativePath` parameters with `&PathKey` in:
 - **RED:** Modify `find_raw_schema_view_by_path` test to pass a `PathKey` instead of `RelativePath`.
 - **GREEN:** Update repository traits and storage/Redb implementations to accept `&PathKey`.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Discovery Boundary Conversion
 **Behavior:** Discovery engine converts scanned filesystem paths into canonical keys before querying the repository.
 - **RED:** Write a test verifying `DiscoveryEngine::separate_property_bank` correctly resolves the key.
 - **GREEN:** Replace manual `strip_prefix` chains in `DiscoveryEngine` and `Builder` with `.as_key(root)?`.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 4. Refactor
 - [ ] Batch read operations (`find_raw_schema_views_by_paths`) must take `&[PathKey]` instead of `Vec`s (Rust Best Practice: Borrowing).

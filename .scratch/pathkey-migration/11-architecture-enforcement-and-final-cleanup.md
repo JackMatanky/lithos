@@ -58,19 +58,19 @@ The migration concludes. The architecture permanently enforces rigid path taxono
 - **RED:** Delete `pub type NormalizedPath = PathKey;`. Codebase fails to compile.
 - **GREEN:** Resolve any lingering references.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
 
 ### 3. Incremental Loop: Final Architecture Gate
 **Behavior:** Architecture tests enforce a zero-tolerance policy on `RelativePath`.
 - **RED:** Write architecture test asserting `RelativePath` does not exist anywhere in `lithos-core` outside of explicitly allowed legacy tests.
 - **GREEN:** Ensure the test suite passes, and remove any `#[expect(deprecated)]` tags.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added

@@ -54,8 +54,8 @@ A comprehensive audit maps every single remaining `RelativePath` reference to it
 - **RED:** Write a CI script/test that searches the codebase for `RelativePath` and fails if unmapped usages exist.
 - **GREEN:** Generate `.scratch/pathkey-migration/relativepath-usage-inventory.md` mapping every finding to its target type.
 **Checklist:**
-- [x] Test describes behavior, not implementation
-- [x] Test uses public interface only
-- [x] Test would survive internal refactor
-- [x] Code is minimal for this test
-- [x] No speculative features added
+- [ ] Test describes behavior, not implementation
+- [ ] Test uses public interface only
+- [ ] Test would survive internal refactor
+- [ ] Code is minimal for this test
+- [ ] No speculative features added
