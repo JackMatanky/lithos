@@ -64,37 +64,121 @@ pub struct RelativeFilePath(Box<str>);
 
 ## TDD & Implementation Plan
 
-### 1. Planning & Design
-**Deep Modules / Testability:**
-- `RelativeDirPath` and `RelativeFilePath` encode the "unresolved, relative config state" using the Type State Pattern.
-- They must expose *zero* conversion or materialization methods.
+### 1. Scope Lock (before RED)
 
-**Behaviors to Test (Prioritized):**
-1. Configuration loader accepts valid relative paths as declarative wrappers.
-2. Configuration loader rejects absolute or traversal paths.
+Target behavior only:
+- Introduce two passive config wrappers: `RelativeDirPath` and `RelativeFilePath`.
+- Enforce constructor-time validation for relative, normalized, non-traversing values.
+- Expose accessor only (`as_str`) and no materialization/conversion API.
 
-### 2. Tracer Bullet: Valid Declaration
-**Behavior:** Configuration loader accepts valid relative paths as declarative wrappers.
-- **RED:** Write `test_valid_relative_dir` asserting `RelativeDirPath::try_new("config/dir")` succeeds.
-- **GREEN:** Implement `RelativeDirPath(Box<str>)` with minimal validation (UTF-8, no leading `/`, no `.`/`..`).
-**Checklist:**
-- [ ] Test describes behavior, not implementation
-- [ ] Test uses public interface only
-- [ ] Test would survive internal refactor
-- [ ] Code is minimal for this test
-- [ ] No speculative features added
+Out of scope for this issue:
+- Any conversion to `DirPath`, `FilePath`, or `PathKey`.
+- Any `SchemaConfigSpec` wiring changes (covered by later slice).
 
-### 3. Incremental Loop: Invariant Rejection
-**Behavior:** Configuration loader rejects absolute or traversal paths.
-- **RED:** Write `test_reject_absolute` (`/config`) and `test_reject_traversal` (`../config`).
-- **GREEN:** Expand validation logic.
-**Checklist:**
-- [ ] Test describes behavior, not implementation
-- [ ] Test uses public interface only
-- [ ] Test would survive internal refactor
-- [ ] Code is minimal for this test
-- [ ] No speculative features added
+### 2. Test placement and naming contract
 
-### 4. Refactor
-- [ ] Verify *no* conversion methods (`to_path`, etc.) are implemented (Rust Best Practice: Type State Pattern).
-- [ ] Ensure `Box<str>` is used instead of `PathBuf` for optimal memory layout.
+Follow `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`:
+- Keep tests in the same Rust module as implementation (`#[cfg(test)] mod tests`).
+- Use Structure A with focused submodules because this issue has multiple units/behaviors.
+- Prefer canonical module names:
+  - `constructor` for creation + happy path
+  - `validation` for rejection/acceptance rules
+  - `accessors` for `as_str()` behavior
+- Use verb-first snake_case test names (`returns_*`, `rejects_*`, `accepts_*`).
+
+### 3. Vertical tracer-bullet loops (no horizontal slicing)
+
+#### Loop 1: First accepted path for `RelativeDirPath`
+Behavior:
+- Construction succeeds for a valid relative directory declaration.
+
+RED:
+- Add `constructor::returns_ok_when_relative_dir_path_is_valid` using public constructor (`try_new` or `TryFrom<&str>`) and asserting success.
+
+GREEN:
+- Implement minimal `RelativeDirPath(Box<str>)` and constructor path that passes this test only.
+
+#### Loop 2: First accepted path for `RelativeFilePath`
+Behavior:
+- Construction succeeds for a valid relative file declaration.
+
+RED:
+- Add `constructor::returns_ok_when_relative_file_path_is_valid`.
+
+GREEN:
+- Implement minimal `RelativeFilePath(Box<str>)` constructor path.
+
+#### Loop 3: Absolute path rejection
+Behavior:
+- Absolute forms are rejected.
+
+RED:
+- Add `validation::rejects_path_when_absolute` (table-driven or split tests per type).
+- Include Unix-style absolute (`/schemas`) and platform-prefixed forms.
+
+GREEN:
+- Add constructor validation branch for absolute/prefixed detection.
+
+#### Loop 4: Traversal/dot-component rejection
+Behavior:
+- `.` and `..` components are rejected.
+
+RED:
+- Add:
+  - `validation::rejects_path_when_contains_current_dir_component`
+  - `validation::rejects_path_when_contains_parent_dir_component`
+
+GREEN:
+- Add component-level validation logic; keep messages deterministic for diagnostics.
+
+#### Loop 5: Separator normalization enforcement
+Behavior:
+- Paths with duplicate separators or backslashes are rejected.
+
+RED:
+- Add:
+  - `validation::rejects_path_when_contains_duplicate_forward_separators`
+  - `validation::rejects_path_when_contains_backslashes`
+
+GREEN:
+- Add normalization guards (forward slash only, no duplicate separators).
+
+#### Loop 6: Empty and whitespace edge cases
+Behavior:
+- Empty declarations are rejected.
+
+RED:
+- Add `validation::rejects_path_when_empty`.
+
+GREEN:
+- Ensure constructor rejects empty input before further parsing.
+
+#### Loop 7: Accessor contract
+Behavior:
+- `as_str()` returns original validated representation without allocation or mutation.
+
+RED:
+- Add `accessors::returns_original_string_when_value_is_valid`.
+
+GREEN:
+- Implement `as_str(&self) -> &str` only.
+
+### 4. Refactor pass (after GREEN across loops)
+
+- Remove duplication across validators while keeping behavior unchanged.
+- Keep internals string/borrow-first and avoid unnecessary clones.
+- Ensure both wrappers derive exactly required traits (`Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Archive`, `Serialize`, `Deserialize`).
+- Verify no `PathBuf`/`Path` storage and no conversion/materialization methods are introduced.
+
+### 5. Anti-regression checks
+
+Behavioral checks:
+- [ ] Both wrappers are `Box<str>` newtypes.
+- [ ] Valid examples pass for both types.
+- [ ] Absolute, traversal, empty, duplicate-separator, and backslash cases fail.
+- [ ] Public API surface remains passive (constructor + `as_str` only).
+
+Execution checks:
+- [ ] Run focused unit tests during loops.
+- [ ] Run `mise run test:unit` before completion.
+- [ ] Run full `mise run test` if surrounding modules changed beyond local unit scope.
