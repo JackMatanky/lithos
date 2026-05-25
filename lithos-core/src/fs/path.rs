@@ -870,11 +870,6 @@ struct PathNormalizationContext {
     flags: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PathValidationContext {
-    flags: u8,
-}
-
 impl PathNormalizationContext {
     const HAS_BACKSLASH: u8 = 1 << 0;
     const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
@@ -901,6 +896,11 @@ impl PathNormalizationContext {
     fn has_trailing_separator(self) -> bool {
         self.flags & Self::HAS_TRAILING_SEPARATOR != 0
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PathValidationContext {
+    flags: u8,
 }
 
 impl PathValidationContext {
