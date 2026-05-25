@@ -578,3 +578,687 @@ Per project standards in `AGENTS.md`:
 ---
 
 **Status**: 🟡 Awaiting user approval
+
+---
+
+## 🚀 TDD Plan: O(1) Reverse Path Index (Post-Migration Enhancement)
+
+**Prerequisite**: Complete Phase 1-9 above first. This is an **optimization** applied after the core migration.
+
+### Problem Statement
+
+**Current O(N) bottleneck** in `FileDeleteContext::load` and `DirDeleteContext::load`:
+
+```rust
+// vault/storage/write.rs (current implementation)
+fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
+    // ... load from primary table (O(1)) ...
+
+    // ❌ O(N) SCAN: Iterate EVERY path in the vault
+    let path = path_table
+        .iter()?  // Scans entire FILE_ID_BY_PATH table
+        .find(|res| {
+            res.as_ref()
+                .map(|(_, id)| id.value() == file_id)
+                .unwrap_or(false)
+        })
+        .transpose()?
+        .map(|(path, _)| path.value());
+
+    Ok(Self { path, basename, parent_id, format })
+}
+```
+
+**Why O(N)**:
+- `FILE_ID_BY_PATH` indexed by **Path** (key), not **FileId** (value)
+- Finding path for a FileId requires linear scan of all entries
+- With 10,000 files: **10,000 comparisons per delete**
+- Batch delete 100 files: **1,000,000 comparisons** (O(N×M))
+
+### Solution: Bidirectional Path Index
+
+Add reverse lookup tables:
+- `PATH_BY_FILE_ID: UuidTable<FileId, String>`
+- `PATH_BY_DIR_ID: UuidTable<DirId, String>`
+
+**After optimization**:
+```rust
+fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
+    // ✅ O(1) LOOKUP: Direct hash table access
+    let reverse_path_table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+    let path = reverse_path_table.get(&file_id)?.map(|g| g.value().to_owned());
+
+    Ok(Self { path, /* ... */ })
+}
+```
+
+**Complexity improvement**:
+- Single delete: O(N) → O(1)
+- Batch delete M files: O(N×M) → O(M)
+- Example (100 deletes in 10k vault): ~1,000,000 comparisons → ~100 lookups
+
+---
+
+### Phase 10: Add Reverse Path Index Tables 🔴
+
+**Goal**: Add infrastructure without changing behavior.
+
+#### Cycle 56: Define `PATH_BY_FILE_ID` Table
+**Test**: `vault/storage/tables.rs`
+```rust
+#[test]
+fn path_by_file_id_table_exists() {
+    let (_tempdir, store) = Store::open_temp().unwrap();
+
+    let result = store.write(|tx| {
+        tx.try_open_table(PATH_BY_FILE_ID.definition())
+    });
+
+    assert!(result.is_ok(), "PATH_BY_FILE_ID table should be accessible");
+}
+```
+
+**Implementation**:
+```rust
+// vault/storage/tables.rs
+pub(crate) const PATH_BY_FILE_ID: UuidTable<FileId, String> =
+    UuidTable::new("path_by_file_id");
+```
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 57: Define `PATH_BY_DIR_ID` Table
+**Test**:
+```rust
+#[test]
+fn path_by_dir_id_table_exists() {
+    let (_tempdir, store) = Store::open_temp().unwrap();
+    let result = store.write(|tx| {
+        tx.try_open_table(PATH_BY_DIR_ID.definition())
+    });
+    assert!(result.is_ok());
+}
+```
+
+**Implementation**:
+```rust
+pub(crate) const PATH_BY_DIR_ID: UuidTable<DirId, String> =
+    UuidTable::new("path_by_dir_id");
+```
+
+**Verify**: Test passes
+
+---
+
+### Phase 11: Populate Reverse Index on Write 🔴
+
+**Goal**: Insert reverse index entries during `save_*` operations.
+
+#### Cycle 58: `save_file_view` Creates Reverse Index (Tracer Bullet)
+**Test**: `vault/storage/write.rs` → `mod upsert`
+```rust
+#[test]
+fn file_creates_reverse_path_index() {
+    // Arrange
+    let (_temp, repo) = temp_vault();
+    let file = sample_file(None, "test.md", FileFormat::Markdown);
+    let path = NormalizedPath::try_new("notes/test.md").unwrap();
+
+    // Act
+    repo.save_file_view(&path, &file).unwrap();
+
+    // Assert: Reverse index contains the path
+    let recovered_path = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        table.get(&file.id())?.map(|g| g.value().to_owned()).transpose()
+    }).unwrap();
+
+    assert_eq!(
+        recovered_path,
+        Some(path.as_str().to_owned()),
+        "Reverse index should map FileId → path"
+    );
+}
+```
+
+**Implementation**: Update `save_file_view` in `storage/write.rs`
+```rust
+impl WriteRepository for RedbRepository {
+    fn save_file_view(&self, path: &NormalizedPath, file: &FileView) -> ... {
+        self.store.write(|tx| {
+            Self::remove_file_graph(tx, file.id())?;
+
+            // Open all tables (existing 5 + new reverse index)
+            let mut file_table = tx.try_open_table(FILE_VIEWS.definition())?;
+            let mut path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+            let mut reverse_path_table =
+                tx.try_open_table(PATH_BY_FILE_ID.definition())?;  // NEW
+            let mut by_basename = tx.try_open_multimap(FILE_IDS_BY_BASENAME)?;
+            let mut by_parent = tx.try_open_multimap(FILE_IDS_BY_PARENT.definition())?;
+            let mut by_format = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
+
+            // Insert to all 6 locations atomically
+            file_table.insert(&file.id(), file_bytes.as_ref())?;
+            path_table.insert(path.as_str().to_owned(), &file.id())?;
+            reverse_path_table.insert(&file.id(), path.as_str().to_owned())?;  // NEW
+            by_basename.insert(basename.as_str(), &file.id())?;
+            if let Some(parent_id) = file.parent_id() {
+                by_parent.insert(&parent_id, &file.id())?;
+            }
+            by_format.insert(file.format().as_str(), &file.id())?;
+            Ok(())
+        })
+    }
+}
+```
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 59: `save_dir_view` Creates Reverse Index
+**Test**:
+```rust
+#[test]
+fn dir_creates_reverse_path_index() {
+    let (_temp, repo) = temp_vault();
+    let dir = sample_dir("notes");
+    let path = NormalizedPath::try_new("notes").unwrap();
+
+    repo.save_dir_view(&path, &dir).unwrap();
+
+    let recovered_path = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_DIR_ID.definition())?;
+        table.get(&dir.id())?.map(|g| g.value().to_owned()).transpose()
+    }).unwrap();
+
+    assert_eq!(recovered_path, Some(path.as_str().to_owned()));
+}
+```
+
+**Implementation**: Update `save_dir_view` similarly
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 60: Overwrite Updates Reverse Index
+**Test**: Ensure saving same ID with different path updates reverse index
+```rust
+#[test]
+fn file_overwrite_updates_reverse_index() {
+    // Arrange
+    let (_temp, repo) = temp_vault();
+    let id = FileId::new();
+    let first = FileView::new(
+        id, None,
+        FileName::new("old.md".into()),
+        FileFormat::Markdown,
+        FileMetadata::new(FsTimes::new(None, None), 128, false),
+        [1u8; 32],
+    );
+    let second = FileView::new(
+        id, None,
+        FileName::new("new.md".into()),
+        FileFormat::Markdown,
+        FileMetadata::new(FsTimes::new(None, None), 256, false),
+        [2u8; 32],
+    );
+    let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
+    let new_path = NormalizedPath::try_new("notes/new.md").unwrap();
+
+    // Act: Save twice with same ID, different paths
+    repo.save_file_view(&old_path, &first).unwrap();
+    repo.save_file_view(&new_path, &second).unwrap();
+
+    // Assert: Reverse index has new path only
+    let recovered_path = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        table.get(&id)?.map(|g| g.value().to_owned()).transpose()
+    }).unwrap();
+
+    assert_eq!(
+        recovered_path,
+        Some(new_path.as_str().to_owned()),
+        "Reverse index should contain updated path"
+    );
+}
+```
+
+**Implementation**: Existing `remove_file_graph` call before insert handles this (if updated in Cycle 61-62)
+
+**Verify**: Test passes
+
+---
+
+### Phase 12: Use Reverse Index in Delete (O(1) Optimization) 🔴
+
+**Goal**: Replace O(N) scan with O(1) reverse index lookup.
+
+#### Cycle 61: `FileDeleteContext::load` Uses Reverse Index
+**Test**: `vault/storage/write.rs` → `mod delete`
+```rust
+#[test]
+fn file_delete_removes_reverse_index_entry() {
+    // Arrange
+    let (_temp, repo) = temp_vault();
+    let file = sample_file(None, "delete.md", FileFormat::Markdown);
+    let path = NormalizedPath::try_new("notes/delete.md").unwrap();
+    repo.save_file_view(&path, &file).unwrap();
+
+    // Act: Delete the file
+    repo.delete_file_view(file.id()).unwrap();
+
+    // Assert: Reverse index entry is cleaned
+    let recovered_path = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        table.get(&file.id())?.map(|g| g.value().to_owned()).transpose()
+    }).unwrap();
+
+    assert!(
+        recovered_path.is_none(),
+        "Reverse index should be cleaned on delete"
+    );
+}
+```
+
+**Implementation**: Update `FileDeleteContext::load`
+```rust
+impl FileDeleteContext {
+    fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
+        let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
+
+        // Load from primary table (unchanged)
+        let (basename, parent_id, format) = if let Some(file) = file_table
+            .get(&file_id)?
+            .map(|g| FileView::from_bytes(g.value()))
+            .transpose()?
+        {
+            (
+                Some(BaseName::try_from(file.name().clone())
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?),
+                file.parent_id(),
+                Some(file.format()),
+            )
+        } else {
+            (None, None, None)
+        };
+
+        // ✅ O(1) reverse index lookup (REPLACES O(N) SCAN)
+        let reverse_path_table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        let path = reverse_path_table
+            .get(&file_id)?
+            .map(|g| g.value().to_owned());
+
+        Ok(Self { path, basename, parent_id, format })
+    }
+}
+```
+
+**Also update** `remove_file_graph` to clean reverse index:
+```rust
+fn remove_file_graph(tx: &WriteTx, file_id: FileId) -> Result<(), DbError> {
+    let ctx = FileDeleteContext::load(tx, file_id)?;
+    Self::remove_file_path_index(tx, ctx.path.as_deref())?;
+    Self::remove_file_basename_index(tx, ctx.basename.as_ref(), file_id)?;
+    Self::remove_file_parent_index(tx, ctx.parent_id, file_id)?;
+    Self::remove_file_format_index(tx, ctx.format, file_id)?;
+
+    // NEW: Remove reverse index entry
+    let mut reverse_path_table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+    reverse_path_table.remove(&file_id)?;
+
+    Self::remove_file_primary(tx, file_id)
+}
+```
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 62: `DirDeleteContext::load` Uses Reverse Index
+**Test**:
+```rust
+#[test]
+fn dir_delete_removes_reverse_index_entry() {
+    let (_temp, repo) = temp_vault();
+    let dir = sample_dir("notes");
+    let path = NormalizedPath::try_new("notes").unwrap();
+    repo.save_dir_view(&path, &dir).unwrap();
+
+    repo.delete_dir_view(dir.id()).unwrap();
+
+    let recovered_path = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_DIR_ID.definition())?;
+        table.get(&dir.id())?.map(|g| g.value().to_owned()).transpose()
+    }).unwrap();
+
+    assert!(recovered_path.is_none());
+}
+```
+
+**Implementation**: Update `DirDeleteContext::load` and `remove_dir_graph` similarly
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 63: Batch Delete Cleans All Reverse Index Entries
+**Test**: Verify batch operations maintain reverse index consistency
+```rust
+#[test]
+fn batch_file_delete_removes_all_reverse_index_entries() {
+    // Arrange
+    let (_temp, repo) = temp_vault();
+    let a = sample_file(None, "a.md", FileFormat::Markdown);
+    let b = sample_file(None, "b.md", FileFormat::Markdown);
+    repo.save_file_view(&NormalizedPath::try_new("a.md").unwrap(), &a).unwrap();
+    repo.save_file_view(&NormalizedPath::try_new("b.md").unwrap(), &b).unwrap();
+
+    // Act: Batch delete
+    repo.delete_many_file_views(&[a.id(), b.id()]).unwrap();
+
+    // Assert: Both reverse index entries gone
+    let paths = repo.store.read(|tx| {
+        let table = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        Ok::<_, DbError>((
+            table.get(&a.id())?.is_some(),
+            table.get(&b.id())?.is_some()
+        ))
+    }).unwrap();
+
+    assert_eq!(
+        paths,
+        (false, false),
+        "All reverse index entries should be removed"
+    );
+}
+```
+
+**Implementation**: Existing `delete_many_file_views` calls `remove_file_graph` per ID, which now cleans reverse index
+
+**Verify**: Test passes
+
+---
+
+### Phase 13: Edge Cases 🔴
+
+**Goal**: Ensure robustness for missing/invalid data.
+
+#### Cycle 64: Delete Non-Existent File Is Idempotent
+**Test**:
+```rust
+#[test]
+fn delete_missing_file_is_idempotent() {
+    let (_temp, repo) = temp_vault();
+    let missing_id = FileId::new();
+
+    let result = repo.delete_file_view(missing_id);
+
+    assert!(
+        result.is_ok(),
+        "Delete of non-existent file should succeed"
+    );
+}
+```
+
+**Implementation**: `FileDeleteContext::load` returns `path: None` for missing entries, `remove()` on non-existent key is no-op
+
+**Verify**: Test passes
+
+---
+
+#### Cycle 65: Batch Delete With Mixed IDs Succeeds
+**Test**:
+```rust
+#[test]
+fn batch_delete_with_missing_ids_succeeds() {
+    let (_temp, repo) = temp_vault();
+    let file = sample_file(None, "exists.md", FileFormat::Markdown);
+    let path = NormalizedPath::try_new("exists.md").unwrap();
+    repo.save_file_view(&path, &file).unwrap();
+
+    let missing = FileId::new();
+
+    let result = repo.delete_many_file_views(&[file.id(), missing]);
+
+    assert!(
+        result.is_ok(),
+        "Batch delete with missing IDs should succeed"
+    );
+}
+```
+
+**Implementation**: Already handled by idempotent delete
+
+**Verify**: Test passes
+
+---
+
+### Phase 14: Performance Verification (Benchmark) 📊
+
+**Goal**: Prove O(1) characteristic via benchmarking.
+
+Per **rust-best-practices Chapter 3**: "Don't guess, measure."
+
+#### Cycle 66: Benchmark — Delete Time Independent of Vault Size
+**After all tests pass**, create `benches/vault_delete_performance.rs`:
+
+```rust
+use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use lithos_core::{
+    db::Store,
+    vault::{
+        model::{FileId, FileView},
+        repository::WriteRepository,
+        storage::RedbRepository,
+    },
+};
+use std::sync::Arc;
+
+fn setup_vault_with_n_files(n: usize) -> (tempfile::TempDir, RedbRepository, Vec<FileId>) {
+    let (tempdir, store) = Store::open_temp().unwrap();
+    let repo = RedbRepository::new(Arc::new(store));
+    let mut ids = Vec::new();
+
+    for i in 0..n {
+        let file = /* create test file */;
+        let path = NormalizedPath::try_new(&format!("file_{i}.md")).unwrap();
+        repo.save_file_view(&path, &file).unwrap();
+        ids.push(file.id());
+    }
+
+    (tempdir, repo, ids)
+}
+
+fn bench_delete_scaling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("delete_scaling");
+
+    // Test with vaults of different sizes
+    for vault_size in [1_000, 10_000, 100_000] {
+        let (_temp, repo, ids) = setup_vault_with_n_files(vault_size);
+        let target_id = ids[vault_size / 2]; // Middle file
+
+        group.bench_with_input(
+            BenchmarkId::new("single_delete", vault_size),
+            &vault_size,
+            |b, _| {
+                b.iter(|| {
+                    // Note: This will fail after first iteration (file deleted)
+                    // Use setup/teardown or measure FileDeleteContext::load directly
+                    repo.delete_file_view(black_box(target_id))
+                });
+            }
+        );
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_delete_scaling);
+criterion_main!(benches);
+```
+
+**Expected Results** (O(1) proof):
+```
+delete_scaling/single_delete/1000     time:   [12.5 µs 12.8 µs 13.1 µs]
+delete_scaling/single_delete/10000    time:   [12.7 µs 13.0 µs 13.3 µs]  ← Similar!
+delete_scaling/single_delete/100000   time:   [12.9 µs 13.2 µs 13.5 µs]  ← Still similar!
+```
+
+**Baseline (without reverse index)** would show linear growth:
+```
+delete_scaling/single_delete/1000     time:   [15 µs   ...]
+delete_scaling/single_delete/10000    time:   [150 µs  ...]  ← 10× slower
+delete_scaling/single_delete/100000   time:   [1500 µs ...]  ← 100× slower
+```
+
+**Acceptance**: Times remain **roughly constant** across vault sizes (proves O(1))
+
+**Run**: `cargo bench --bench vault_delete_performance`
+
+---
+
+### Phase 15: Documentation & Refactor 📝
+
+**Goal**: Update docs to reflect new design.
+
+#### Cycle 67: Update Module Doc
+**Implementation**: Update `vault/storage/write.rs` module doc:
+```rust
+//! Write operations for vault files and directories.
+//!
+//! ...existing content...
+//!
+//! ## Performance Optimization: Reverse Path Index
+//!
+//! The module maintains bidirectional path indexes:
+//! - `FILE_ID_BY_PATH`: Path → FileId (forward)
+//! - `PATH_BY_FILE_ID`: FileId → Path (reverse)
+//!
+//! The reverse index enables O(1) path lookup during delete operations.
+//! Previously, [`FileDeleteContext::load`] performed an O(N) scan of the
+//! path table. With the reverse index, deletion time is **independent of
+//! vault size**.
+//!
+//! **Trade-off**: Write operations maintain 2 path indexes (slightly higher
+//! write cost) in exchange for guaranteed O(1) delete performance.
+```
+
+**Verify**: `cargo doc --open`, review updated docs
+
+---
+
+#### Cycle 68: Update `FileDeleteContext::load` Doc
+**Implementation**: Add `# Performance` section
+```rust
+/// Loads the index metadata for a given file.
+///
+/// Reads the primary [`FileView`] record to extract basename, parent ID,
+/// and format. Performs an O(1) lookup in the reverse path index
+/// ([`PATH_BY_FILE_ID`]) to retrieve the path.
+///
+/// # Parameters
+///
+/// * `tx` — An open write transaction containing the vault tables.
+/// * `file_id` — The unique identifier of the file to look up.
+///
+/// # Returns
+///
+/// A [`FileDeleteContext`] with populated index fields. Fields for
+/// entries that do not exist in the database are `None`.
+///
+/// # Errors
+///
+/// Returns [`DbError`] if the table access fails or if a stored record
+/// cannot be deserialized.
+///
+/// # Performance
+///
+/// This method performs **O(1) lookups** via hash table access, regardless
+/// of vault size. Prior to the reverse index optimization, this method
+/// performed an O(N) scan of the forward path index.
+fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> { ... }
+```
+
+**Verify**: `cargo doc`, check doc comments render correctly
+
+---
+
+#### Cycle 69: Extract Helpers (Optional Refactor)
+**After all tests GREEN**, consider extracting common patterns:
+
+```rust
+impl RedbRepository {
+    /// Insert path into both forward and reverse indexes atomically.
+    fn insert_file_path_indexes(
+        tx: &WriteTx,
+        file_id: FileId,
+        path: &NormalizedPath,
+    ) -> Result<(), DbError> {
+        let mut forward = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+        let mut reverse = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        forward.insert(path.as_str().to_owned(), &file_id)?;
+        reverse.insert(&file_id, path.as_str().to_owned())?;
+        Ok(())
+    }
+
+    /// Remove path from both forward and reverse indexes atomically.
+    fn remove_file_path_indexes(
+        tx: &WriteTx,
+        file_id: FileId,
+        path: Option<&str>,
+    ) -> Result<(), DbError> {
+        if let Some(path) = path {
+            let mut forward = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+            forward.remove(path.to_owned())?;
+        }
+        let mut reverse = tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        reverse.remove(&file_id)?;
+        Ok(())
+    }
+}
+```
+
+**Trade-off**: Adds indirection but reduces duplication. Only refactor if `save_file_view` and `save_dir_view` have significant overlap.
+
+**Verify**: All tests still pass after refactor
+
+---
+
+## Summary: Reverse Index Optimization
+
+**Phases Added**: 6 (Phase 10-15)
+**Test Cycles Added**: 14 (Cycles 56-69)
+**Estimated Additional Effort**: 4-5 hours
+
+**Storage Impact**:
+- **Before**: 1 path index (Path → ID)
+- **After**: 2 path indexes (Path ↔ ID bidirectional)
+- **Cost**: ~2× path index storage (~100 bytes/file × 10k files = ~1MB)
+
+**Performance Impact**:
+- **Delete**: O(N) → O(1)
+- **Batch delete (M files)**: O(N×M) → O(M)
+- **Write**: Negligible overhead (one extra index insert per save)
+
+**Complexity Table**:
+
+| Operation                 | Before (Forward Only)    | After (Bidirectional) |
+| ------------------------- | ------------------------ | --------------------- |
+| **Single delete**             | O(N) — scan all paths    | O(1) — hash lookup    |
+| **Batch delete M files**      | O(N×M) — scan per file   | O(M) — one lookup/file   |
+| **Save file**                 | O(1)                     | O(1) (same)           |
+| **100 deletes in 10k vault** | ~1,000,000 comparisons   | ~100 lookups          |
+
+**Next Steps After Core Migration**:
+1. Complete Phases 1-9 (core migration)
+2. Verify all tests pass
+3. Proceed with Phases 10-15 (reverse index optimization)
+4. Run benchmark (Cycle 66) to prove O(1) characteristic
+
+---
+
+**Status**: 🟡 Awaiting user approval for core migration (Phases 1-9) before adding reverse index optimization (Phases 10-15)
