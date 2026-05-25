@@ -663,17 +663,12 @@ impl PathKey {
     /// Returns [`PathError`] when path validation fails.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let trimmed = Self::trim_input(path);
+        let trimmed = path.trim();
         let normalized = Self::normalize(trimmed);
 
-        Self::validate(normalized.as_ref())?;
+        RelativePathValidator::validate(normalized.as_ref())?;
 
         Ok(Self(normalized.into_owned().into_boxed_str()))
-    }
-
-    #[inline]
-    fn trim_input(path: &str) -> &str {
-        path.trim()
     }
 
     /// Converts an absolute or rooted filesystem path into a `PathKey` scoped
@@ -765,92 +760,6 @@ impl PathKey {
             path.pop();
         }
         path
-    }
-
-    fn reject_empty(path: &str) -> Result<(), super::PathError> {
-        if path.is_empty() {
-            return Err(super::PathError::Empty);
-        }
-        Ok(())
-    }
-
-    fn reject_absolute(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.is_absolute() {
-            return Err(super::PathError::NotRelative(PathBuf::from(path)));
-        }
-        Ok(())
-    }
-
-    fn reject_parent_traversal(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_parent_traversal() {
-            return Err(super::PathError::ParentTraversal(PathBuf::from(path)));
-        }
-        Ok(())
-    }
-
-    fn reject_current_dir_component(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_current_dir_component() {
-            return Err(super::PathError::CurrentDirComponent(PathBuf::from(
-                path,
-            )));
-        }
-        Ok(())
-    }
-
-    fn reject_platform_prefix(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_platform_prefix() {
-            return Err(super::PathError::PlatformPrefix(PathBuf::from(path)));
-        }
-        Ok(())
-    }
-
-    fn analyze_path_components_validation(path: &str) -> PathValidationContext {
-        let path_buf = PathBuf::from(path);
-        let mut context = PathValidationContext::new();
-
-        if path_buf.is_absolute() {
-            context.set(PathValidationContext::IS_ABSOLUTE);
-        }
-
-        for component in path_buf.components() {
-            match component {
-                Component::ParentDir => {
-                    context.set(PathValidationContext::HAS_PARENT_TRAVERSAL);
-                }
-                Component::CurDir => context
-                    .set(PathValidationContext::HAS_CURRENT_DIR_COMPONENT),
-                Component::Prefix(_) => {
-                    context.set(PathValidationContext::HAS_PLATFORM_PREFIX);
-                }
-                Component::RootDir | Component::Normal(_) => {}
-            }
-        }
-
-        context
-    }
-
-    fn validate(path: &str) -> Result<(), super::PathError> {
-        let ctx = Self::analyze_path_components_validation(path);
-
-        Self::reject_empty(path)?;
-        Self::reject_absolute(path, ctx)?;
-        Self::reject_parent_traversal(path, ctx)?;
-        Self::reject_current_dir_component(path, ctx)?;
-        Self::reject_platform_prefix(path, ctx)?;
-
-        Ok(())
     }
 
     /// Returns the normalized path string.
@@ -1525,6 +1434,12 @@ mod tests {
             #[test]
             fn rejects_current_dir_component() {
                 let path = PathKey::try_new("./notes/file.md");
+                assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
+            }
+
+            #[test]
+            fn rejects_embedded_current_dir_component() {
+                let path = PathKey::try_new("notes/./file.md");
                 assert!(matches!(path, Err(PathError::CurrentDirComponent(_))));
             }
 
