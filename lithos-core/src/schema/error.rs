@@ -896,13 +896,12 @@ impl From<crate::fs::error::ReadError> for SchemaIngestionError {
                 path,
                 source,
             }),
-            ReadError::NotInBase {
-                path,
-                base,
-            } => Self::File(SchemaFileError::NotInBasePath {
-                path,
-                base,
-            }),
+            ReadError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path,
+                    root,
+                },
+            ) => Self::File(SchemaFileError::NotInBasePath { path, base: root }),
         }
     }
 }
@@ -920,6 +919,12 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
                 path: std::path::PathBuf::from("unknown"),
                 source: std::io::Error::other(e.to_string()),
             }),
+            FsError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path,
+                    root,
+                },
+            ) => Self::File(SchemaFileError::NotInBasePath { path, base: root }),
         }
     }
 }

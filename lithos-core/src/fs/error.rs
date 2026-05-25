@@ -33,6 +33,10 @@ pub enum FsError {
     /// Path validation error (security checks).
     #[error(transparent)]
     Validation(#[from] PathValidationError),
+
+    /// Vault root boundary scope error.
+    #[error(transparent)]
+    RootScope(#[from] RootScopeError),
 }
 
 /// Errors related to path construction and name extraction.
@@ -90,6 +94,10 @@ pub enum PathError {
     /// Path has no stem (basename without extension).
     #[error("Path has no stem: {0}")]
     NoStem(PathBuf),
+
+    /// Path failed vault root boundary scoping.
+    #[error(transparent)]
+    RootScope(#[from] RootScopeError),
 }
 
 /// Errors related to file input access operations.
@@ -113,15 +121,9 @@ pub enum ReadError {
         source: std::io::Error,
     },
 
-    /// Path is not within the expected base directory (vault root boundary
-    /// violation).
-    #[error("Path {path} is not within base directory {base}")]
-    NotInBase {
-        /// The path that was outside the base.
-        path: PathBuf,
-        /// The expected base directory.
-        base: PathBuf,
-    },
+    /// Path failed vault root boundary scoping.
+    #[error(transparent)]
+    RootScope(#[from] RootScopeError),
 }
 
 /// Errors related to directory traversal operations.
@@ -161,6 +163,22 @@ pub enum ScanError {
     /// Path construction failed during scan.
     #[error(transparent)]
     Path(#[from] PathError),
+}
+
+/// Errors related to vault root boundary scope.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RootScopeError {
+    /// Path is outside the expected vault root boundary scope.
+    #[error(
+        "Path is outside vault root boundary scope. root={root}, path={path}"
+    )]
+    PathOutsideVaultRootBoundary {
+        /// The expected root directory.
+        root: PathBuf,
+        /// The path that failed boundary validation.
+        path: PathBuf,
+    },
 }
 
 /// Errors that can occur during structured file deserialization.
@@ -533,6 +551,22 @@ mod tests {
                     "Expected 'stem' in: {msg}"
                 );
             }
+
+            #[test]
+            fn formats_root_scope_with_path_and_root() {
+                let error = PathError::RootScope(
+                    RootScopeError::PathOutsideVaultRootBoundary {
+                        root: PathBuf::from("/vault/root"),
+                        path: PathBuf::from("/outside/file.md"),
+                    },
+                );
+                let msg = format!("{error}");
+                assert!(msg.contains("/vault/root"), "Expected root in: {msg}");
+                assert!(
+                    msg.contains("/outside/file.md"),
+                    "Expected path in: {msg}"
+                );
+            }
         }
     }
 
@@ -563,11 +597,13 @@ mod tests {
             }
 
             #[test]
-            fn formats_not_in_base_with_paths() {
-                let error = ReadError::NotInBase {
-                    path: PathBuf::from("/outside/vault"),
-                    base: PathBuf::from("/vault/root"),
-                };
+            fn formats_root_scope_with_paths() {
+                let error = ReadError::RootScope(
+                    RootScopeError::PathOutsideVaultRootBoundary {
+                        path: PathBuf::from("/outside/vault"),
+                        root: PathBuf::from("/vault/root"),
+                    },
+                );
                 let msg = format!("{error}");
                 assert!(
                     msg.contains("/outside/vault"),

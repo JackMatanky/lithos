@@ -253,12 +253,14 @@ impl From<crate::fs::ReadError> for ConfigIngestError {
                 path,
                 source,
             },
-            crate::fs::ReadError::NotInBase {
+            crate::fs::ReadError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path,
+                    root,
+                },
+            ) => Self::NotInBasePath {
                 path,
-                base,
-            } => Self::NotInBasePath {
-                path,
-                base,
+                base: root,
             },
         }
     }
@@ -275,6 +277,15 @@ impl From<crate::fs::FsError> for ConfigIngestError {
             crate::fs::FsError::Validation(e) => Self::Io {
                 path: PathBuf::from("unknown"),
                 source: std::io::Error::other(e.to_string()),
+            },
+            crate::fs::FsError::RootScope(
+                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+                    path,
+                    root,
+                },
+            ) => Self::NotInBasePath {
+                path,
+                base: root,
             },
         }
     }
