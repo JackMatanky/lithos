@@ -31,11 +31,10 @@ impl ReadRepository for RedbRepository {
                 else {
                     return Ok(None);
                 };
-                let Some(guard) = table.get(&id)? else {
-                    return Ok(None);
-                };
-                let file = FileView::from_bytes(guard.value())?;
-                Ok(Some(file))
+                table
+                    .get(&id)?
+                    .map(|g| FileView::from_bytes(g.value()))
+                    .transpose()
             })
             .map_err(VaultRepositoryError::from)
     }
@@ -51,11 +50,10 @@ impl ReadRepository for RedbRepository {
                 else {
                     return Ok(None);
                 };
-                let Some(guard) = table.get(&id)? else {
-                    return Ok(None);
-                };
-                let dir = DirView::from_bytes(guard.value())?;
-                Ok(Some(dir))
+                table
+                    .get(&id)?
+                    .map(|g| DirView::from_bytes(g.value()))
+                    .transpose()
             })
             .map_err(VaultRepositoryError::from)
     }
@@ -78,18 +76,13 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(id_guard) =
-                    path_table.get(path.as_str().to_owned())?
-                else {
-                    return Ok(None);
-                };
-                let id = id_guard.value();
-
-                let Some(file_guard) = file_table.get(&id)? else {
-                    return Ok(None);
-                };
-                let file = FileView::from_bytes(file_guard.value())?;
-                Ok(Some(file))
+                path_table
+                    .get(path.as_str().to_owned())?
+                    .map(|id| file_table.get(&id.value()))
+                    .transpose()?
+                    .flatten()
+                    .map(|g| FileView::from_bytes(g.value()))
+                    .transpose()
             })
             .map_err(VaultRepositoryError::from)
     }
@@ -112,18 +105,13 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(id_guard) =
-                    path_table.get(path.as_str().to_owned())?
-                else {
-                    return Ok(None);
-                };
-                let id = id_guard.value();
-
-                let Some(dir_guard) = dir_table.get(&id)? else {
-                    return Ok(None);
-                };
-                let dir = DirView::from_bytes(dir_guard.value())?;
-                Ok(Some(dir))
+                path_table
+                    .get(path.as_str().to_owned())?
+                    .map(|id| dir_table.get(&id.value()))
+                    .transpose()?
+                    .flatten()
+                    .map(|g| DirView::from_bytes(g.value()))
+                    .transpose()
             })
             .map_err(VaultRepositoryError::from)
     }
@@ -164,8 +152,7 @@ impl ReadRepository for RedbRepository {
 
                 let mut files = Vec::new();
                 for id_result in multimap.get(basename)? {
-                    let id = id_result?.value();
-                    if let Some(guard) = file_table.get(&id)? {
+                    if let Some(guard) = file_table.get(&id_result?.value())? {
                         files.push(FileView::from_bytes(guard.value())?);
                     }
                 }
@@ -195,8 +182,7 @@ impl ReadRepository for RedbRepository {
 
                 let mut files = Vec::new();
                 for id_result in multimap.get(&parent_id)? {
-                    let id = id_result?.value();
-                    if let Some(guard) = file_table.get(&id)? {
+                    if let Some(guard) = file_table.get(&id_result?.value())? {
                         files.push(FileView::from_bytes(guard.value())?);
                     }
                 }
@@ -227,8 +213,7 @@ impl ReadRepository for RedbRepository {
                 let format_key = format.as_str();
                 let mut files = Vec::new();
                 for id_result in multimap.get(format_key)? {
-                    let id = id_result?.value();
-                    if let Some(guard) = file_table.get(&id)? {
+                    if let Some(guard) = file_table.get(&id_result?.value())? {
                         files.push(FileView::from_bytes(guard.value())?);
                     }
                 }
@@ -256,8 +241,8 @@ impl ReadRepository for RedbRepository {
 
                 let mut files = Vec::new();
                 for result in table.iter()? {
-                    let (_id_guard, file_guard) = result?;
-                    files.push(FileView::from_bytes(file_guard.value())?);
+                    let (_, guard) = result?;
+                    files.push(FileView::from_bytes(guard.value())?);
                 }
 
                 Ok(files)
@@ -279,8 +264,8 @@ impl ReadRepository for RedbRepository {
 
                 let mut paths = Vec::new();
                 for result in table.iter()? {
-                    let (path_guard, _id_guard) = result?;
-                    let path = NormalizedPath::try_new(&path_guard.value())
+                    let (guard, _) = result?;
+                    let path = NormalizedPath::try_new(&guard.value())
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
                     paths.push(path);
                 }
@@ -301,8 +286,8 @@ impl ReadRepository for RedbRepository {
 
                 let mut dirs = Vec::new();
                 for result in table.iter()? {
-                    let (_id_guard, dir_guard) = result?;
-                    dirs.push(DirView::from_bytes(dir_guard.value())?);
+                    let (_, guard) = result?;
+                    dirs.push(DirView::from_bytes(guard.value())?);
                 }
 
                 Ok(dirs)
@@ -324,8 +309,8 @@ impl ReadRepository for RedbRepository {
 
                 let mut paths = Vec::new();
                 for result in table.iter()? {
-                    let (path_guard, _id_guard) = result?;
-                    let path = NormalizedPath::try_new(&path_guard.value())
+                    let (guard, _) = result?;
+                    let path = NormalizedPath::try_new(&guard.value())
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
                     paths.push(path);
                 }

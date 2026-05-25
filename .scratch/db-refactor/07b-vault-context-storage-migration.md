@@ -90,7 +90,7 @@ File: `lithos-core/src/vault/storage.rs` (~1300 lines)
 - [ ] `InMemoryRepository` in `testing.rs` with operation counters + failure injection
 - [ ] Vault error enum reduced to persistence-boundary variants
 - [ ] `vault/processor.rs` uses new repository
-- [ ] `Database` → `Store` bridge available (e.g., in `db/mod.rs` or as extension trait)
+- [x] ~~`Database` → `Store` bridge available~~ (CANCELLED: all code switched directly to `Arc<Store>` per architectural decision)
 - [ ] All vault tests pass (`mise run test`)
 - [ ] `storage_legacy.rs` renamed and marked for future removal
 

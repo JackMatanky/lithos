@@ -37,44 +37,59 @@ impl FileDeleteContext {
         let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
         let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
 
-        let mut ctx = Self::default();
+        let (basename, parent_id, format) = if let Some(file) = file_table
+            .get(&file_id)?
+            .map(|g| FileView::from_bytes(g.value()))
+            .transpose()?
+        {
+            (
+                Some(
+                    BaseName::try_from(file.name().clone())
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                ),
+                file.parent_id(),
+                Some(file.format()),
+            )
+        } else {
+            (None, None, None)
+        };
 
-        if let Some(guard) = file_table.get(&file_id)? {
-            let file = FileView::from_bytes(guard.value())?;
-            ctx.basename = Some(
-                BaseName::try_from(file.name().clone())
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?,
-            );
-            ctx.parent_id = file.parent_id();
-            ctx.format = Some(file.format());
-        }
+        let path = path_table
+            .iter()?
+            .find(|res| {
+                res.as_ref()
+                    .map(|(_, id)| id.value() == file_id)
+                    .unwrap_or(false)
+            })
+            .transpose()?
+            .map(|(path, _)| path.value());
 
-        for row in path_table.iter()? {
-            let (path, id) = row?;
-            if id.value() == file_id {
-                ctx.path = Some(path.value());
-                break;
-            }
-        }
-
-        Ok(ctx)
+        Ok(Self {
+            path,
+            basename,
+            parent_id,
+            format,
+        })
     }
 }
 
 impl DirDeleteContext {
     fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
         let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-        let mut ctx = Self::default();
 
-        for row in path_table.iter()? {
-            let (path, id) = row?;
-            if id.value() == dir_id {
-                ctx.path = Some(path.value());
-                break;
-            }
-        }
+        let path = path_table
+            .iter()?
+            .find(|res| {
+                res.as_ref()
+                    .map(|(_, id)| id.value() == dir_id)
+                    .unwrap_or(false)
+            })
+            .transpose()?
+            .map(|(path, _)| path.value());
 
-        Ok(ctx)
+        Ok(Self {
+            path,
+        })
     }
 }
 
