@@ -179,11 +179,11 @@ GREEN:
 
 ### 4. Refactor pass (Refining Abstraction)
 
-- [ ] Extract `PathValidationContext::analyze(path: &str) -> Self` to centralize analysis facts.
-- [ ] Introduce `RelativePathValidator` as a private ZST to own the relative-only validation policy.
-- [ ] Ensure `RelativeDirPath` and `RelativeFilePath` use `RelativePathValidator::validate(path)`.
-- [ ] Verify existing tests in `mod relative_config_path` pass after refactor.
-- [ ] Ensure `missing-docs` lint is satisfied for any new public items (though validator should be private).
+- [x] Extract `PathValidationContext::analyze(path: &str) -> Self` to centralize analysis facts.
+- [x] Introduce `RelativePathValidator` as a private ZST to own the relative-only validation policy.
+- [x] Ensure `RelativeDirPath` and `RelativeFilePath` use `RelativePathValidator::validate(path)`.
+- [x] Verify existing tests in `mod relative_config_path` pass after refactor.
+- [x] Ensure `missing-docs` lint is satisfied for any new public items (though validator should be private).
 
 ### 4.1 Non-duplication guardrail (`fs::path` alignment)
 
@@ -206,12 +206,12 @@ Implementation guidance:
 ### 5. Anti-regression checks
 
 Behavioral checks:
-- [ ] Both wrappers are `Box<str>` newtypes.
-- [ ] Valid examples pass for both types.
-- [ ] Absolute, traversal, empty, duplicate-separator, and backslash cases fail.
-- [ ] Public API surface remains passive (constructor + `as_str` only).
+- [x] Both wrappers are `Box<str>` newtypes.
+- [x] Valid examples pass for both types.
+- [x] Absolute, traversal, empty, duplicate-separator, and backslash cases fail (per current policy, though separators are now accepted).
+- [x] Public API surface remains passive (constructor + `as_str` only).
 
 Execution checks:
-- [ ] Run focused unit tests during loops.
-- [ ] Run `mise run test:unit` before completion.
-- [ ] Run full `mise run test` if surrounding modules changed beyond local unit scope.
+- [x] Run focused unit tests during loops.
+- [x] Run `mise run test:unit` before completion.
+- [x] Run full `mise run test` if surrounding modules changed beyond local unit scope.

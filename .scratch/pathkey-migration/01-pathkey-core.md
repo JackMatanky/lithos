@@ -174,26 +174,17 @@ pub type NormalizedPath = PathKey;
 
 ## Implementation Notes (2026-05-25)
 
-- `PathKey` normalization now uses a single orchestrator `normalize(path)` with decomposed internals:
+- **Unification**: `PathKey` validation is now unified with the `RelativePathValidator` infrastructure.
+- **Validation-First Pipeline**: `PathKey::try_new` was refactored to validate raw input *before* normalization. This ensures safety invariants (no `..`, no absolute paths) are enforced on the original string, preventing dangerous paths from being "cleaned" into a valid-looking state.
+- **Canonical Double-Check**: A second validation pass is performed on the normalized (canonical) form as a safety net.
+- **Logic Consolidation**:
+  - `RelativePathValidator` (ZST) owns the "Strict Relative" policy.
+  - `PathValidationContext::analyze` owns the path property analysis (absolute, traversal, etc.).
+- **Consistency**: `PathKey` now shares the same `split('/')` dot-component detection as config types, improving security against platform-specific separator tricks.
+- **Normalization Internals**:
   - `collect_normalization_context`
   - `apply_separator_canonicalization`
   - `apply_trailing_separator_policy`
-- Validation now uses SRP-style rejection methods with explicit sequencing in `validate(path)`:
-  - `reject_empty`
-  - `reject_absolute`
-  - `reject_parent_traversal`
-  - `reject_current_dir_component`
-  - `reject_platform_prefix`
-- Component analysis helper was renamed to `analyze_path_components_validation` for clarity.
-- Root-boundary semantics were unified under shared `RootScopeError` to avoid duplicate variants (`NotInBase` vs `OutsideRoot`).
-- Boundary conversion convenience methods were added:
-  - `FsPath::as_key(root)`
-  - `FilePath::as_key(root)`
-  - `DirPath::as_key(root)`
-- Deprecated alias retained for migration compatibility:
-  - `#[deprecated(note = "Use PathKey instead")]`
-  - `pub type NormalizedPath = PathKey;`
-- Verification executed during implementation:
-  - targeted `fs::path::tests::pathkey` and error-mapping tests
-  - full `cargo test`
-  - strict `cargo clippy --all-targets --all-features --locked -- -D warnings`
+- **Verification**:
+  - Added `rejects_messy_dangerous_path_early` to `mod pathkey::validation`.
+  - All 17 `pathkey` tests passing.
