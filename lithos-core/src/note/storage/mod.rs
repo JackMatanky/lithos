@@ -23,6 +23,9 @@
 //! [`WriteRepository`]: crate::note::repository::WriteRepository
 //! [`Repository`]: crate::note::repository::Repository
 
+mod read;
+mod write;
+
 pub(crate) mod tables;
 
 use std::sync::Arc;
@@ -54,7 +57,6 @@ pub struct RedbRepository {
     ///
     /// This field is `pub(crate)` to allow child modules (`read`, `write`)
     /// to access the store when implementing trait methods.
-    #[expect(dead_code, reason = "Will be used in read/write implementations")]
     pub(crate) store: Arc<Store>,
 }
 
