@@ -1,4 +1,36 @@
-//! `WriteRepository` implementation for Note persistence.
+//! Write operations for Note persistence.
+//!
+//! Implements the [`WriteRepository`] trait against redb storage. Each write
+//! method opens a single write transaction and operates on the `NOTES` and
+//! `NOTE_ID_BY_PATH` tables within that transaction.
+//!
+//! ## Path uniqueness
+//!
+//! The module enforces a unique-path constraint: no two notes may share the
+//! same path. Both [`save`](WriteRepository::save) and
+//! [`save_many`](WriteRepository::save_many) call
+//! [`assert_path_available`] before writing to check for conflicts. The
+//! check runs in a separate read transaction, creating a TOCTOU window — a
+//! concurrent writer could insert the same path between the check and the
+//! write. Under redb's single-writer serialization this is safe in practice,
+//! but callers should be aware of the theoretical contention window.
+//!
+//! ## Delete semantics
+//!
+//! Both [`delete`](WriteRepository::delete) and
+//! [`delete_many`](WriteRepository::delete_many) use `redb`'s
+//! `remove().map()` pattern to recover the note from the primary table
+//! **as part of the removal**, obtaining the path without a separate
+//! lookup. This avoids the O(N) scan found in the vault module's delete
+//! contexts.
+//!
+//! ## List view cache
+//!
+//! [`save_list_view`] and [`delete_list_view`] manage pre-computed
+//! [`ListView`] records used for efficient listing.
+//!
+//! The trait defines per-method documentation; this file contains the
+//! concrete [`redb`] access patterns for each operation.
 
 use super::{NOTES, RedbRepository};
 use crate::{
@@ -12,6 +44,23 @@ use crate::{
 };
 
 impl RedbRepository {
+    /// Checks that no other note occupies the given path.
+    ///
+    /// Performs a read-transaction lookup of the path-to-ID index. If an
+    /// entry exists with a different ID, returns
+    /// [`NoteRepositoryError::DuplicatePath`].
+    ///
+    /// # Parameters
+    ///
+    /// * `path` — The path to check for conflicts.
+    /// * `current_id` — The note ID to exclude from the conflict check (so that
+    ///   updating an existing note does not self-conflict).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::DuplicatePath`] if `path` is already
+    /// assigned to a different note. Returns
+    /// [`NoteRepositoryError::Storage`] if the database operation fails.
     fn assert_path_available(
         &self,
         path: &crate::note::paths::NotePath,
