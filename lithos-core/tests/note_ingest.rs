@@ -1,14 +1,17 @@
 //! Integration tests for markdown ingestion.
 
+use std::sync::Arc;
+
 use lithos_core::{
     config::{
         builder,
         vault::{VaultId, VaultRoot},
     },
-    db::Database,
+    db::Store,
     note::{
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
-        storage_legacy::{RedbRepository, Repository as _},
+        repository::ReadRepository as _,
+        storage::RedbRepository,
     },
 };
 
@@ -41,8 +44,8 @@ mod tests {
             .expect("write markdown");
 
         let db_path = root.join("notes.redb");
-        let db = Database::open(&db_path).expect("open db");
-        let repository = RedbRepository::new(&db);
+        let store = Arc::new(Store::open(&db_path).expect("open store"));
+        let repository = RedbRepository::new(Arc::clone(&store));
         let source = lithos_core::fs::FsReader::new(root.as_path());
 
         let note_path =

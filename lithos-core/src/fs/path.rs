@@ -686,6 +686,13 @@ impl NormalizedPath {
     }
 }
 
+impl std::fmt::Display for NormalizedPath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A validated vault-relative path.
 ///
 /// This type ensures that paths do not escape the vault root using `..`

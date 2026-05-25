@@ -26,14 +26,11 @@ use crate::{
     fs::FsReader,
     note::{
         aggregate::{Note, NoteId},
-        error::{
-            NoteError, NoteFileError, NoteIngestError, NoteProcessError,
-            NoteRepositoryError,
-        },
+        error::{NoteError, NoteFileError, NoteIngestError, NoteProcessError},
         parser::MarkdownParser,
         paths::NotePath,
         raw::RawNote,
-        storage_legacy::Repository,
+        repository::Repository,
         views::ListView,
     },
 };
@@ -294,7 +291,7 @@ impl NoteProcessor<Discovery, Unknown> {
     ///
     /// Returns [`NoteProcessError`] if ingestion or persistence fails.
     #[inline]
-    pub fn process_file<R: Repository<Error = NoteRepositoryError>>(
+    pub fn process_file<R: Repository>(
         self,
         repository: &R,
         config: &Config,
@@ -330,14 +327,14 @@ impl NoteProcessor<Discovery, Unknown> {
     ///
     /// Returns [`NoteProcessError`] if repository access fails.
     #[inline]
-    pub fn record_deleted<R: Repository<Error = NoteRepositoryError>>(
+    pub fn record_deleted<R: Repository>(
         self,
         repository: &R,
         path: &NotePath,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let stored = repository.find_by_path(path)?;
         if let Some(note) = stored {
-            repository.delete_note(note.id())?;
+            repository.delete(note.id())?;
             // Invalidate the cached ListView (intentionally fire-and-forget)
             drop(repository.delete_list_view(note.id()));
             return Ok(NoteProcessReport {
@@ -357,7 +354,7 @@ impl NoteProcessor<Discovery, Unknown> {
     }
 
     #[inline]
-    fn discover<R: Repository<Error = NoteRepositoryError>>(
+    fn discover<R: Repository>(
         repository: &R,
         info: NoteFileInfo,
     ) -> Result<ComparisonBranch, NoteProcessError> {
@@ -415,7 +412,7 @@ impl NoteProcessor<Comparison, Missing> {
     #[inline]
     fn load_content(
         self,
-        repository: &impl Repository<Error = NoteRepositoryError>,
+        repository: &impl Repository,
         source: &FsReader,
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
@@ -435,7 +432,7 @@ impl NoteProcessor<Analysis, Suspect> {
     #[inline]
     fn load_content(
         self,
-        repository: &impl Repository<Error = NoteRepositoryError>,
+        repository: &impl Repository,
         source: &FsReader,
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
@@ -481,7 +478,7 @@ impl NoteProcessor<Analysis, Suspect> {
 
 impl NoteProcessor<Construction, New> {
     #[inline]
-    fn persist<R: Repository<Error = NoteRepositoryError>>(
+    fn persist<R: Repository>(
         self,
         repository: &R,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
@@ -520,7 +517,7 @@ impl NoteProcessor<Construction, New> {
 
 impl NoteProcessor<Construction, Changed> {
     #[inline]
-    fn persist<R: Repository<Error = NoteRepositoryError>>(
+    fn persist<R: Repository>(
         self,
         repository: &R,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
@@ -582,7 +579,7 @@ impl NoteProcessor<Completed, Ready> {
 fn read_and_persist(
     info: NoteFileInfo,
     is_new: bool,
-    repository: &impl Repository<Error = NoteRepositoryError>,
+    repository: &impl Repository,
     source: &FsReader,
     task_spec: &crate::config::task::TaskConfigSpec,
     frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,

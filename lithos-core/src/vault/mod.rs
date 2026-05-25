@@ -23,18 +23,11 @@ pub mod processor;
 pub mod repository;
 /// Vault repository and redb adapter.
 pub mod storage;
-/// Legacy vault storage (to be removed after migration).
-pub mod storage_legacy;
 
 pub use error::{
     VaultFileError, VaultPathError, VaultProcessError, VaultRepositoryError,
 };
 pub use model::{DirId, DirView, FileId, FileView, FsEntryView};
 pub use processor::{ScanMode, VaultProcessReport, VaultProcessor};
-// Re-export table constants for legacy storage
-pub(crate) use storage::tables::{
-    DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-    FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
-};
-// Export legacy storage types until migration complete
-pub use storage_legacy::{RedbRepository, Repository};
+pub use repository::{ReadRepository, Repository, WriteRepository};
+pub use storage::RedbRepository;

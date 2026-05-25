@@ -53,11 +53,9 @@ pub mod processor;
 pub(crate) mod raw;
 /// Repository traits for Note persistence.
 pub mod repository;
+pub use repository::{ReadRepository, Repository, WriteRepository};
 /// New storage implementation (in progress).
 pub mod storage;
-/// Legacy storage implementation (to be removed).
-#[allow(dead_code, reason = "Legacy code still in use during migration")]
-pub mod storage_legacy;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
@@ -88,23 +86,3 @@ pub mod paths;
 pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
-
-/// Database table definitions for note storage.
-///
-/// `NOTES_BY_ID` stores serialized [`Note`][crate::note::aggregate::Note]
-/// values keyed by UUID v7 strings.
-pub(crate) const NOTES_BY_ID: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("notes_by_id");
-
-/// `NOTE_ID_BY_PATH` stores serialized
-/// [`NoteId`][crate::note::aggregate::NoteId] values keyed by vault-relative
-/// note paths.
-pub(crate) const NOTE_ID_BY_PATH: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("note_id_by_path");
-
-/// `LIST_VIEWS_BY_NOTE_ID` stores serialized
-/// [`ListView`][crate::note::views::ListView] projections keyed by note UUID
-/// strings. This is a rebuildable cache of query-optimized hierarchical list
-/// representations.
-pub(crate) const LIST_VIEWS_BY_NOTE_ID: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("list_views_by_note_id");

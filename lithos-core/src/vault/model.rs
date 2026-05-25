@@ -56,6 +56,13 @@ impl Default for FileId {
     }
 }
 
+impl std::fmt::Display for FileId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// UUID-based directory identifier for vault entries.
 #[derive(
     Debug,
@@ -100,6 +107,13 @@ impl Default for DirId {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Display for DirId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

@@ -26,6 +26,8 @@
 
 mod read;
 pub(crate) mod tables;
+#[cfg(test)]
+pub(crate) mod testing;
 mod write;
 
 use std::sync::Arc;

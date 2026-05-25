@@ -478,4 +478,102 @@ mod tests {
 
         assert!(repo.get_file_view(file.id()).unwrap().is_none());
     }
+
+    #[test]
+    fn save_file_view_overwrite_cleans_stale_indexes() {
+        let (_temp, store) = Store::open_temp().unwrap();
+        let repo = RedbRepository::new(Arc::new(store));
+
+        let id = FileId::new();
+        let first = FileView::new(
+            id,
+            None,
+            FileName::new("old.md".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 128, false),
+            [1u8; 32],
+        );
+        let second = FileView::new(
+            id,
+            None,
+            FileName::new("new.json".into()),
+            FileFormat::Json,
+            FileMetadata::new(FsTimes::new(None, None), 256, false),
+            [2u8; 32],
+        );
+
+        let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
+        let new_path = NormalizedPath::try_new("notes/new.json").unwrap();
+
+        repo.save_file_view(&old_path, &first).unwrap();
+        repo.save_file_view(&new_path, &second).unwrap();
+
+        assert!(repo.find_file_view_by_path(&old_path).unwrap().is_none());
+        assert!(repo.find_file_views_by_basename("old").unwrap().is_empty());
+        assert!(
+            repo.list_file_views_by_format(FileFormat::Markdown)
+                .unwrap()
+                .is_empty()
+        );
+
+        let current = repo.find_file_view_by_path(&new_path).unwrap().unwrap();
+        assert_eq!(current.id(), id);
+        assert_eq!(current.format(), FileFormat::Json);
+    }
+
+    #[test]
+    fn save_dir_view_overwrite_cleans_stale_path_index() {
+        let (_temp, store) = Store::open_temp().unwrap();
+        let repo = RedbRepository::new(Arc::new(store));
+
+        let id = DirId::new();
+        let dir = DirView::new(
+            id,
+            None,
+            DirName::new("notes".into()),
+            DirMetadata::new(FsTimes::new(None, None), false),
+        );
+        let old_path = NormalizedPath::try_new("old-notes").unwrap();
+        let new_path = NormalizedPath::try_new("new-notes").unwrap();
+
+        repo.save_dir_view(&old_path, &dir).unwrap();
+        repo.save_dir_view(&new_path, &dir).unwrap();
+
+        assert!(repo.find_dir_view_by_path(&old_path).unwrap().is_none());
+        let current = repo.find_dir_view_by_path(&new_path).unwrap().unwrap();
+        assert_eq!(current.id(), id);
+    }
+
+    #[test]
+    fn save_many_dir_views_persists_all_entries() {
+        let (_temp, store) = Store::open_temp().unwrap();
+        let repo = RedbRepository::new(Arc::new(store));
+
+        let a = sample_dir("notes");
+        let b = sample_dir("archive");
+        let entries = vec![
+            (NormalizedPath::try_new("notes").unwrap(), a.clone()),
+            (NormalizedPath::try_new("archive").unwrap(), b.clone()),
+        ];
+
+        repo.save_many_dir_views(&entries).unwrap();
+
+        assert!(repo.get_dir_view(a.id()).unwrap().is_some());
+        assert!(repo.get_dir_view(b.id()).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_many_dir_views_is_idempotent() {
+        let (_temp, store) = Store::open_temp().unwrap();
+        let repo = RedbRepository::new(Arc::new(store));
+
+        let dir = sample_dir("many");
+        let path = NormalizedPath::try_new("many").unwrap();
+        repo.save_dir_view(&path, &dir).unwrap();
+
+        repo.delete_many_dir_views(&[dir.id(), DirId::new()]).unwrap();
+
+        assert!(repo.get_dir_view(dir.id()).unwrap().is_none());
+        assert!(repo.find_dir_view_by_path(&path).unwrap().is_none());
+    }
 }
