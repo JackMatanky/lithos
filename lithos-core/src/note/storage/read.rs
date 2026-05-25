@@ -266,128 +266,171 @@ mod tests {
         },
     };
 
-    /// Creates a minimal test note for round-trip testing.
-    fn create_test_note() -> Note {
-        Note::new(NoteId::new(), NotePath::try_new("test.md").unwrap())
+    mod fixtures {
+        use super::*;
+
+        // Creates an isolated temp-db repo for a single test.
+        pub(super) fn repo() -> (tempfile::TempDir, RedbRepository) {
+            let temp_dir = tempfile::TempDir::new().unwrap();
+            let db_path = temp_dir.path().join("test.db");
+            let store = Arc::new(Store::open(&db_path).unwrap());
+            (temp_dir, RedbRepository::new(store))
+        }
+
+        pub(super) fn note() -> Note {
+            Note::new(NoteId::new(), NotePath::try_new("test.md").unwrap())
+        }
+
+        pub(super) fn note_with_path(path: &str) -> Note {
+            Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+        }
     }
 
-    fn create_test_note_with_path(path: &str) -> Note {
-        Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+    mod lookup {
+        use super::*;
+
+        #[test]
+        fn returns_none_when_note_missing() {
+            let (_temp, repo) = fixtures::repo();
+            let found = repo.find_by_id(NoteId::new()).unwrap();
+            assert!(found.is_none(), "Expected None for missing note id");
+        }
+
+        #[test]
+        fn returns_saved_note_when_id_exists() {
+            let (_temp, repo) = fixtures::repo();
+            let note = fixtures::note();
+            let id = repo.save(&note).unwrap();
+            let found = repo.find_by_id(id).unwrap();
+            let found = found.expect("Saved note should be found by id");
+            assert_eq!(found.id(), id, "Returned note id should match");
+        }
+
+        #[test]
+        fn returns_note_when_path_exists() {
+            let (_temp, repo) = fixtures::repo();
+            let note = fixtures::note();
+            let path = note.path().clone();
+            repo.save(&note).unwrap();
+            let found = repo.find_by_path(&path).unwrap();
+            let found = found.expect("Note should be found by saved path");
+            assert_eq!(found.path(), &path, "Returned note path should match");
+        }
+
+        #[test]
+        fn returns_none_when_path_does_not_exist() {
+            let (_temp, repo) = fixtures::repo();
+            let path = NotePath::try_new("nonexistent.md").unwrap();
+            let found = repo.find_by_path(&path).unwrap();
+            assert!(found.is_none(), "Expected None for unsaved path");
+        }
+
+        #[test]
+        fn skips_missing_ids_silently() {
+            let (_temp, repo) = fixtures::repo();
+            let saved = fixtures::note();
+            let saved_id = repo.save(&saved).unwrap();
+            let missing = NoteId::new();
+            let found = repo.find_many_by_id(&[saved_id, missing]).unwrap();
+            assert_eq!(
+                found.len(),
+                1,
+                "Should skip missing id and return only the saved note"
+            );
+            assert_eq!(
+                found.first().expect("First note must exist").id(),
+                saved_id,
+                "Returned note should match saved id"
+            );
+        }
+
+        #[test]
+        fn preserves_input_order_for_found_notes() {
+            let (_temp, repo) = fixtures::repo();
+            let note1 = fixtures::note_with_path("a.md");
+            let note2 = fixtures::note_with_path("b.md");
+            let id1 = repo.save(&note1).unwrap();
+            let id2 = repo.save(&note2).unwrap();
+            let found = repo.find_many_by_id(&[id2, id1]).unwrap();
+            assert_eq!(found.len(), 2, "Both saved notes should be returned");
+            assert_eq!(
+                found.first().expect("First result must exist").id(),
+                id2,
+                "First result should match first input id"
+            );
+            assert_eq!(
+                found.get(1).expect("Second result must exist").id(),
+                id1,
+                "Second result should match second input id"
+            );
+        }
+
+        #[test]
+        fn returns_empty_when_no_notes_table() {
+            let (_temp, repo) = fixtures::repo();
+            let found = repo.find_many_by_id(&[NoteId::new()]).unwrap();
+            assert!(
+                found.is_empty(),
+                "Expected empty vec when no NOTES table exists"
+            );
+        }
     }
 
-    #[test]
-    fn find_by_id_returns_none_when_note_missing() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+    mod list {
+        use super::*;
 
-        let missing_id = NoteId::new();
-        let found = repo.find_by_id(missing_id).unwrap();
+        #[test]
+        fn returns_all_saved_notes() {
+            let (_temp, repo) = fixtures::repo();
+            let note1 = fixtures::note_with_path("alpha.md");
+            let note2 = fixtures::note_with_path("beta.md");
+            let id1 = repo.save(&note1).unwrap();
+            let id2 = repo.save(&note2).unwrap();
+            let listed = repo.list().unwrap();
+            let ids: std::collections::HashSet<NoteId> =
+                listed.into_iter().map(|n| n.id()).collect();
+            assert!(ids.contains(&id1), "List should contain note alpha.md");
+            assert!(ids.contains(&id2), "List should contain note beta.md");
+        }
 
-        assert!(found.is_none());
+        #[test]
+        fn returns_empty_when_no_notes_table() {
+            let (_temp, repo) = fixtures::repo();
+            let listed = repo.list().unwrap();
+            assert!(
+                listed.is_empty(),
+                "Expected empty list for fresh database with no NOTES table"
+            );
+        }
     }
 
-    #[test]
-    fn save_and_find_by_id_roundtrip() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
+    mod caching {
+        use super::*;
 
-        let note = create_test_note();
-        let id = repo.save(&note).unwrap();
+        #[test]
+        fn returns_none_when_not_cached() {
+            let (_temp, repo) = fixtures::repo();
+            let found = repo.find_list_view(NoteId::new()).unwrap();
+            assert!(
+                found.is_none(),
+                "Expected None for note with no cached view"
+            );
+        }
 
-        let found = repo.find_by_id(id).unwrap();
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().id(), id);
-    }
-
-    #[test]
-    fn find_by_path_returns_some_when_path_exists() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note = create_test_note();
-        let path = note.path().clone();
-        let _id = repo.save(&note).unwrap();
-
-        let found = repo.find_by_path(&path).unwrap();
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().path(), &path);
-    }
-
-    #[test]
-    fn find_many_by_id_skips_missing_and_preserves_input_order() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note1 = create_test_note_with_path("one.md");
-        let note2 = create_test_note_with_path("two.md");
-        let id1 = repo.save(&note1).unwrap();
-        let id2 = repo.save(&note2).unwrap();
-        let missing = NoteId::new();
-
-        let found = repo.find_many_by_id(&[id2, missing, id1]).unwrap();
-
-        assert_eq!(found.len(), 2);
-        let first = found.first().expect("first note must exist");
-        let second = found.get(1).expect("second note must exist");
-        assert_eq!(first.id(), id2);
-        assert_eq!(second.id(), id1);
-    }
-
-    #[test]
-    fn list_returns_all_persisted_notes() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note1 = create_test_note_with_path("alpha.md");
-        let note2 = create_test_note_with_path("beta.md");
-        let id1 = repo.save(&note1).unwrap();
-        let id2 = repo.save(&note2).unwrap();
-
-        let listed_notes = repo.list().unwrap();
-        let ids: std::collections::HashSet<NoteId> =
-            listed_notes.into_iter().map(|n| n.id()).collect();
-
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&id1));
-        assert!(ids.contains(&id2));
-    }
-
-    #[test]
-    fn find_list_view_returns_none_when_not_cached() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let found = repo.find_list_view(NoteId::new()).unwrap();
-        assert!(found.is_none());
-    }
-
-    #[test]
-    fn cache_and_find_list_view_roundtrip() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let store = Arc::new(Store::open(&db_path).unwrap());
-        let repo = RedbRepository::new(store);
-
-        let note = create_test_note_with_path("list-view.md");
-        let id = repo.save(&note).unwrap();
-        let view = ListView::from_note_items(id, note.list_items());
-
-        repo.save_list_view(&view).unwrap();
-
-        let found = repo.find_list_view(id).unwrap();
-        assert!(found.is_some());
-        assert_eq!(found.expect("cached view must exist").note_id(), id);
+        #[test]
+        fn returns_cached_view_when_id_has_view() {
+            let (_temp, repo) = fixtures::repo();
+            let note = fixtures::note_with_path("list-view.md");
+            let id = repo.save(&note).unwrap();
+            let view = ListView::from_note_items(id, note.list_items());
+            repo.save_list_view(&view).unwrap();
+            let found = repo.find_list_view(id).unwrap();
+            let found = found.expect("Cached list view should be found");
+            assert_eq!(
+                found.note_id(),
+                id,
+                "Cached view should reference the correct note id"
+            );
+        }
     }
 }
