@@ -1,10 +1,10 @@
 ---
 title: "Issue 01: PathKey core type and normalization pipeline"
 category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
+label: "completed"
+status: "completed"
 date_created: "2026-05-25"
-date_completed: null
+date_completed: "2026-05-25"
 ---
 
 # Issue 01: PathKey core type and normalization pipeline
@@ -79,11 +79,16 @@ impl PathKey {
 pub fn as_key(&self, root: &DirPath) -> Result<PathKey, PathError>
 ```
 
-4. **Error Types (Add to PathError):**
+4. **Error Types (Final):**
 ```rust
+pub enum RootScopeError {
+    PathOutsideVaultRootBoundary { root: PathBuf, path: PathBuf },
+}
+
 pub enum PathError {
-    OutsideRoot { root: PathBuf, path: PathBuf },
-    InvalidUtf8 { path: PathBuf },
+    RootScope(#[from] RootScopeError),
+    InvalidUtf8(PathBuf),
+    // ...existing path invariants
 }
 ```
 
@@ -94,11 +99,11 @@ pub type NormalizedPath = PathKey;
 ```
 
 **Acceptance criteria:**
-- [ ] `PathKey` exists and implements the `trim -> normalize -> validate` pipeline utilizing "parse, don't validate", preserving leading `/`, and optimizing with `Cow` (zero-copy when canonical, single-allocation otherwise).
-- [ ] Normalization explicitly removes trailing separators (except root `/`) and deduplicates separators.
-- [ ] `from_rooted_path` and `as_key` methods are implemented and fallible.
-- [ ] `PathError::OutsideRoot` and `PathError::InvalidUtf8` are surfaced when converting from filesystem paths.
-- [ ] Comprehensive tests cover normalization rules, traversal rejection, UTF-8 validation, and outside-root cases.
+- [x] `PathKey` exists and implements the `trim -> normalize -> validate` pipeline utilizing "parse, don't validate", preserving leading `/`, and optimizing with `Cow` (zero-copy when canonical, single-allocation otherwise).
+- [x] Normalization explicitly removes trailing separators (except root `/`) and deduplicates separators.
+- [x] `from_rooted_path` and `as_key` methods are implemented and fallible.
+- [x] Root boundary and UTF-8 failures are surfaced when converting from filesystem paths (`RootScopeError::PathOutsideVaultRootBoundary`, `PathError::InvalidUtf8`).
+- [x] Comprehensive tests cover normalization rules, traversal rejection, UTF-8 validation, and outside-root cases.
 
 **Out of scope:**
 - Repository signature migration (handled in subsequent slices).
@@ -163,6 +168,32 @@ pub type NormalizedPath = PathKey;
 - [ ] No speculative features added
 
 ### 6. Refactor
-- [ ] Review borrowing and ownership: `try_new` takes `&str` instead of `String`.
-- [ ] Ensure `PathError` uses `thiserror`.
-- [ ] Add `///` doc comments for public APIs (Rust Best Practice: Documentation).
+- [x] Review borrowing and ownership: `try_new` takes `&str` instead of `String`.
+- [x] Ensure `PathError` uses `thiserror`.
+- [x] Add `///` doc comments for public APIs (Rust Best Practice: Documentation).
+
+## Implementation Notes (2026-05-25)
+
+- `PathKey` normalization now uses a single orchestrator `normalize(path)` with decomposed internals:
+  - `collect_normalization_context`
+  - `apply_separator_canonicalization`
+  - `apply_trailing_separator_policy`
+- Validation now uses SRP-style rejection methods with explicit sequencing in `validate(path)`:
+  - `reject_empty`
+  - `reject_absolute`
+  - `reject_parent_traversal`
+  - `reject_current_dir_component`
+  - `reject_platform_prefix`
+- Component analysis helper was renamed to `analyze_path_components_validation` for clarity.
+- Root-boundary semantics were unified under shared `RootScopeError` to avoid duplicate variants (`NotInBase` vs `OutsideRoot`).
+- Boundary conversion convenience methods were added:
+  - `FsPath::as_key(root)`
+  - `FilePath::as_key(root)`
+  - `DirPath::as_key(root)`
+- Deprecated alias retained for migration compatibility:
+  - `#[deprecated(note = "Use PathKey instead")]`
+  - `pub type NormalizedPath = PathKey;`
+- Verification executed during implementation:
+  - targeted `fs::path::tests::pathkey` and error-mapping tests
+  - full `cargo test`
+  - strict `cargo clippy --all-targets --all-features --locked -- -D warnings`
