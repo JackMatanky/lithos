@@ -109,6 +109,8 @@ pub type NormalizedPath = PathKey;
 **Deep Modules / Testability:**
 - `PathKey` should encapsulate all normalization logic. The public interface only exposes `try_new` and `from_rooted_path`.
 - Internally, use `Cow<'_, str>` to achieve zero-cost abstractions for already-canonical paths (Rust Best Practice: Performance).
+- **Test Structure:** We will use **Structure A** from `unit-naming.md` within `lithos-core/src/fs/path.rs`.
+- **Test Modules:** `constructor` (for `try_new`), `normalization` (for slashes/duplicates), `validation` (for invalid paths), and `conversions` (for `from_rooted_path` and `as_key`).
 
 **Behaviors to Test (Prioritized):**
 1. System accepts canonical paths without allocation.
@@ -118,7 +120,7 @@ pub type NormalizedPath = PathKey;
 
 ### 2. Tracer Bullet: Canonical Path Acceptance
 **Behavior:** System accepts canonical paths without allocation.
-- **RED:** Write test `test_accepts_canonical_path` asserting `PathKey::try_new("a/b")` succeeds.
+- **RED:** In `mod pathkey { mod constructor { ... } }`, write test `accepts_canonical_paths_without_allocation` asserting `PathKey::try_new("a/b")` succeeds.
 - **GREEN:** Implement `PathKey::try_new` pipeline (`trim` -> `normalize` -> `validate`). Use `Box<str>` for compact immutable ownership.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
@@ -129,7 +131,7 @@ pub type NormalizedPath = PathKey;
 
 ### 3. Incremental Loop: Normalization
 **Behavior:** System normalizes non-canonical paths (duplicate/trailing slashes).
-- **RED:** Write tests `test_normalizes_backslashes` (`a\\b` -> `a/b`), `test_normalizes_duplicates` (`a//b` -> `a/b`), `test_removes_trailing` (`a/b/` -> `a/b`).
+- **RED:** In `mod pathkey { mod normalization { ... } }`, write tests `normalizes_backslashes_to_forward_slashes` (`a\\b` -> `a/b`), `normalizes_duplicate_slashes` (`a//b` -> `a/b`), `removes_trailing_slashes` (`a/b/` -> `a/b`).
 - **GREEN:** Expand `normalize` to handle these. Ensure `Cow::Owned` is used only when modification is needed.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
@@ -140,8 +142,8 @@ pub type NormalizedPath = PathKey;
 
 ### 4. Incremental Loop: Invariant Rejection
 **Behavior:** System rejects invalid structures (empty, absolute, traversals).
-- **RED:** Write tests `test_rejects_empty`, `test_rejects_absolute` (`/a`), `test_rejects_traversal` (`a/../b`).
-- **GREEN:** Expand `validate` to return `PathError` variants using `thiserror` (Rust Best Practice: Error Handling).
+- **RED:** In `mod pathkey { mod validation { ... } }`, write tests `rejects_empty_paths`, `rejects_absolute_paths` (`/a`), `rejects_parent_traversals` (`a/../b`).
+- **GREEN:** Expand `validate` to return `PathError` variants using `thiserror` (Rust Best Practice: Error Handling). Add `OutsideRoot` to `PathError`.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
 - [ ] Test uses public interface only
@@ -151,7 +153,7 @@ pub type NormalizedPath = PathKey;
 
 ### 5. Incremental Loop: Root-Scoped Derivation
 **Behavior:** System derives valid root-scoped keys from absolute paths, rejecting outside-root paths.
-- **RED:** Write tests `test_from_rooted_path_valid` and `test_from_rooted_path_outside_root`.
+- **RED:** In `mod pathkey { mod conversions { ... } }`, write tests `returns_key_when_path_is_within_root` and `returns_error_when_path_is_outside_root`.
 - **GREEN:** Implement `from_rooted_path` using `strip_prefix`.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
