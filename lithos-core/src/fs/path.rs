@@ -265,17 +265,6 @@ impl FilePath {
         Ok(Self(path))
     }
 
-    /// Create a file path without checking filesystem existence.
-    ///
-    /// Intended for planned/configuration paths that may not exist yet.
-    // TODO(.scratch/pathkey-migration): Remove this escape hatch after
-    // SchemaConfigSpec pathkey migration defines explicit planned-path types.
-    #[inline]
-    #[must_use]
-    pub(crate) fn from_pathbuf_unchecked(path: PathBuf) -> Self {
-        Self(path)
-    }
-
     /// Return the inner path.
     #[inline]
     #[must_use]

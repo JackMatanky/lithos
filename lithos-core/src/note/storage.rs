@@ -635,12 +635,20 @@ mod tests {
     };
 
     fn test_config() -> Result<Config, String> {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| err.to_string())?
+            .as_millis();
+        let vault_root_path = std::env::temp_dir()
+            .join(format!("lithos-note-storage-test-{millis}"));
+        std::fs::create_dir_all(&vault_root_path)
+            .map_err(|err| err.to_string())?;
+
         crate::config::builder::build_from_layers(
             None,
             None,
             VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-                .map_err(|e| e.to_string())?,
+            VaultRoot::try_new(vault_root_path).map_err(|e| e.to_string())?,
             crate::config::aggregate::Version::initial(),
         )
         .map_err(|e| e.to_string())

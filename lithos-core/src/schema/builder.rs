@@ -10,7 +10,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         discovery::{DiscoveryEngine, PropertyBankDiscovery},
-        error::SchemaLoaderError,
+        error::{SchemaIngestionError, SchemaLoaderError},
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, Construction,
@@ -57,10 +57,21 @@ where
         };
 
         // 1. Single discovery call replaces discover_files() + discover_graph()
-        let discovery = DiscoveryEngine::run(
-            &self.config.to_schema_spec(),
-            &self.repository,
-        )?;
+        let schema_spec = self.config.to_schema_spec().map_err(|error| {
+            // TODO(.scratch/pathkey-migration/04-schema-configspec-redesign.
+            // md): Introduce a dedicated cross-context projection
+            // error instead of stringifying config-spec
+            // construction failures into FileSystem.
+            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                crate::schema::error::SchemaFileError::FileSystem {
+                    reason: format!(
+                        "failed to build schema config spec: {error}"
+                    )
+                    .into(),
+                },
+            ))
+        })?;
+        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)?;
 
         // 2. Load property bank if present
         let property_bank =
