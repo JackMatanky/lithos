@@ -2,8 +2,9 @@
 title: 15-vault-processor-integration
 category: enhancement
 label: ready-for-agent
-status: in-progress
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-25
 ---
 
 ## Type

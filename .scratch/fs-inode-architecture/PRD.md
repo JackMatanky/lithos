@@ -1,6 +1,6 @@
 # PRD: Filesystem Type Consolidation and Inode-Based Vault Architecture
 
-**Status**: ready-for-human
+**Status**: completed
 **Created**: 2026-05-09
 **Context**: Refactor fs/ and vault/ modules to eliminate duplication, establish clear separation of concerns, and implement inode-based file tracking with stable identity across renames.
 

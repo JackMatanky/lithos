@@ -2,8 +2,9 @@
 title: 13-vault-model-types
 category: enhancement
 label: ready-for-agent
-status: ready-for-agent
+status: completed
 date_created: 2026-05-11
+date_completed: 2026-05-25
 ---
 
 ## Type
