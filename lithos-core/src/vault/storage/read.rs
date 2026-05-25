@@ -335,12 +335,17 @@ mod tests {
     //! Tests for vault read operations.
     //!
     //! Each test opens an isolated temp database, seeds state via low-level
-    //! store access, and asserts [`ReadRepository`] behavior.
+    //! store access, and asserts [`ReadRepository`] behavior. Tests are
+    //! organised by capability following the Structure A convention.
     use std::sync::Arc;
 
+    use super::*;
     use crate::{
-        db::Store,
-        fs::{DirMetadata, FileFormat, FileMetadata, FileName, NormalizedPath},
+        db::{ArchivedEntity, Store},
+        fs::{
+            DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
+            NormalizedPath,
+        },
         vault::{
             model::{DirId, DirView, FileId, FileView},
             repository::ReadRepository,
@@ -348,421 +353,522 @@ mod tests {
         },
     };
 
-    #[test]
-    fn get_file_view_returns_none_for_missing_id() {
-        let (_tempdir, store) = Store::open_temp().unwrap();
+    /// Creates a temp database with a [`RedbRepository`] ready for testing.
+    fn temp_vault() -> (tempfile::TempDir, RedbRepository) {
+        let (tempdir, store) = Store::open_temp().unwrap();
         let repo = RedbRepository::new(Arc::new(store));
-        let result = repo.get_file_view(FileId::new());
-        assert!(result.unwrap().is_none());
+        (tempdir, repo)
     }
 
-    #[test]
-    fn get_file_view_returns_stored_view() {
-        use crate::{db::ArchivedEntity, fs::FsTimes};
-
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        // Create and save a file view
-        let file = FileView::new(
-            FileId::new(),
-            None, // no parent
-            FileName::new("test.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [0u8; 32], // content hash
-        );
-
-        // Serialize BEFORE opening transaction (minimize transaction duration)
-        let file_bytes = file.to_bytes().unwrap();
-
-        // Save using low-level store access (WriteRepository not implemented
-        // yet)
+    /// Seeds a [`FileView`] into the `FILE_VIEWS` table.
+    fn seed_file(repo: &RedbRepository, file: &FileView) {
+        let bytes = file.to_bytes().unwrap();
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(super::FILE_VIEWS.definition())?;
-                table.insert(&file.id(), file_bytes.as_ref())?;
+                table.insert(&file.id(), bytes.as_ref())?;
                 Ok::<_, crate::db::DbError>(())
             })
             .unwrap();
-
-        // Retrieve using ReadRepository
-        let retrieved = repo.get_file_view(file.id()).unwrap().unwrap();
-        assert_eq!(retrieved.id(), file.id());
-        assert_eq!(retrieved.name(), file.name());
     }
 
-    #[test]
-    fn get_dir_view_returns_none_for_missing_id() {
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let result = repo.get_dir_view(DirId::new());
-        assert!(result.unwrap().is_none());
-    }
-
-    #[test]
-    fn get_dir_view_returns_stored_view() {
-        use crate::{
-            db::ArchivedEntity,
-            fs::{DirName, FsTimes},
-        };
-
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let dir = DirView::new(
-            DirId::new(),
-            None,
-            DirName::new("test".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-
-        let dir_bytes = dir.to_bytes().unwrap();
-
+    /// Seeds a [`DirView`] into the `DIR_VIEWS` table.
+    fn seed_dir(repo: &RedbRepository, dir: &DirView) {
+        let bytes = dir.to_bytes().unwrap();
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(super::DIR_VIEWS.definition())?;
-                table.insert(&dir.id(), dir_bytes.as_ref())?;
+                table.insert(&dir.id(), bytes.as_ref())?;
                 Ok::<_, crate::db::DbError>(())
             })
             .unwrap();
-
-        let retrieved = repo.get_dir_view(dir.id()).unwrap().unwrap();
-        assert_eq!(retrieved.id(), dir.id());
-        assert_eq!(retrieved.name(), dir.name());
     }
 
-    #[test]
-    fn find_file_view_by_path_returns_none_for_missing_path() {
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-        let path = NormalizedPath::try_new("missing.md").unwrap();
-        let result = repo.find_file_view_by_path(&path);
-        assert!(result.unwrap().is_none());
+    /// Direct ID lookups for files and directories.
+    mod accessors {
+        use super::*;
+
+        #[test]
+        fn get_file_view_returns_none_when_id_missing() {
+            let (_tempdir, repo) = temp_vault();
+            let result = repo.get_file_view(FileId::new());
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_none());
+        }
+
+        #[test]
+        fn get_file_view_returns_view_when_id_exists() {
+            let (_tempdir, repo) = temp_vault();
+            let file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("test.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [0u8; 32],
+            );
+            seed_file(&repo, &file);
+
+            let result = repo.get_file_view(file.id());
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let retrieved = result.unwrap();
+            assert!(retrieved.is_some(), "Expected Some, got None");
+            let retrieved = retrieved.unwrap();
+            assert_eq!(retrieved.id(), file.id());
+            assert_eq!(retrieved.name(), file.name());
+        }
+
+        #[test]
+        fn get_dir_view_returns_none_when_id_missing() {
+            let (_tempdir, repo) = temp_vault();
+            let result = repo.get_dir_view(DirId::new());
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_none());
+        }
+
+        #[test]
+        fn get_dir_view_returns_view_when_id_exists() {
+            let (_tempdir, repo) = temp_vault();
+            let dir = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("test".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            seed_dir(&repo, &dir);
+
+            let result = repo.get_dir_view(dir.id());
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let retrieved = result.unwrap();
+            assert!(retrieved.is_some(), "Expected Some, got None");
+            let retrieved = retrieved.unwrap();
+            assert_eq!(retrieved.id(), dir.id());
+            assert_eq!(retrieved.name(), dir.name());
+        }
     }
 
-    #[test]
-    fn find_file_view_by_path_performs_cross_table_lookup() {
-        use crate::{db::ArchivedEntity, fs::FsTimes};
+    /// Path-based lookups and entry resolution.
+    mod lookup {
+        use super::*;
 
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+        #[test]
+        fn find_file_view_by_path_returns_none_when_path_missing() {
+            let (_tempdir, repo) = temp_vault();
+            let path = NormalizedPath::try_new("missing.md").unwrap();
+            let result = repo.find_file_view_by_path(&path);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_none());
+        }
 
-        let file = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("test.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [1u8; 32],
-        );
-        let path = NormalizedPath::try_new("notes/test.md").unwrap();
+        #[test]
+        fn find_file_view_by_path_returns_view_when_path_exists() {
+            let (_tempdir, repo) = temp_vault();
+            let file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("test.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [1u8; 32],
+            );
+            let path = NormalizedPath::try_new("notes/test.md").unwrap();
+            let file_bytes = file.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut path_table =
+                        tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
+                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    path_table.insert(path.as_str().to_owned(), &file.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        // Serialize outside transaction
-        let file_bytes = file.to_bytes().unwrap();
+            let result = repo.find_file_view_by_path(&path);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let retrieved = result.unwrap();
+            assert!(retrieved.is_some(), "Expected Some, got None");
+            assert_eq!(retrieved.unwrap().id(), file.id());
+        }
 
-        repo.store
-            .write(|tx| {
-                let mut file_table =
-                    tx.try_open_table(super::FILE_VIEWS.definition())?;
-                let mut path_table =
-                    tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                file_table.insert(&file.id(), file_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &file.id())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
+        #[test]
+        fn find_dir_view_by_path_returns_view_when_path_exists() {
+            let (_tempdir, repo) = temp_vault();
+            let dir = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("notes".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            let path = NormalizedPath::try_new("notes").unwrap();
+            let dir_bytes = dir.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut dir_table =
+                        tx.try_open_table(super::DIR_VIEWS.definition())?;
+                    let mut path_table =
+                        tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
+                    dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
+                    path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        let retrieved = repo.find_file_view_by_path(&path).unwrap().unwrap();
-        assert_eq!(retrieved.id(), file.id());
+            let result = repo.find_dir_view_by_path(&path);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let retrieved = result.unwrap();
+            assert!(retrieved.is_some(), "Expected Some, got None");
+            assert_eq!(retrieved.unwrap().id(), dir.id());
+        }
+
+        #[test]
+        fn get_entry_prefers_file_when_both_exist() {
+            let (_tempdir, repo) = temp_vault();
+            let file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("test".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [2u8; 32],
+            );
+            let dir = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("test".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            let path = NormalizedPath::try_new("test").unwrap();
+            let file_bytes = file.to_bytes().unwrap();
+            let dir_bytes = dir.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut file_path_table =
+                        tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
+                    let mut dir_table =
+                        tx.try_open_table(super::DIR_VIEWS.definition())?;
+                    let mut dir_path_table =
+                        tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
+                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    file_path_table
+                        .insert(path.as_str().to_owned(), &file.id())?;
+                    dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
+                    dir_path_table
+                        .insert(path.as_str().to_owned(), &dir.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
+
+            let result = repo.get_entry(&path);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let entry = result.unwrap();
+            assert!(entry.is_some(), "Expected Some, got None");
+            assert!(entry.unwrap().is_file());
+        }
+
+        #[test]
+        fn get_entry_returns_none_when_path_missing() {
+            let (_tempdir, repo) = temp_vault();
+            let path = NormalizedPath::try_new("missing").unwrap();
+            let result = repo.get_entry(&path);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_none());
+        }
     }
 
-    #[test]
-    fn find_dir_view_by_path_performs_cross_table_lookup() {
-        use crate::{
-            db::ArchivedEntity,
-            fs::{DirName, FsTimes},
-        };
+    /// Multimap index queries (basename, parent).
+    mod indexes {
+        use super::*;
 
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+        #[test]
+        fn find_file_views_by_basename_returns_matches() {
+            let (_tempdir, repo) = temp_vault();
+            let file1 = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("shared.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [3u8; 32],
+            );
+            let file2 = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("shared.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 256, false),
+                [4u8; 32],
+            );
+            let f1_bytes = file1.to_bytes().unwrap();
+            let f2_bytes = file2.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut basename_map =
+                        tx.try_open_multimap(super::FILE_IDS_BY_BASENAME)?;
+                    file_table.insert(&file1.id(), f1_bytes.as_ref())?;
+                    file_table.insert(&file2.id(), f2_bytes.as_ref())?;
+                    basename_map.insert("shared", &file1.id())?;
+                    basename_map.insert("shared", &file2.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        let dir = DirView::new(
-            DirId::new(),
-            None,
-            DirName::new("notes".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-        let path = NormalizedPath::try_new("notes").unwrap();
+            let result = repo.find_file_views_by_basename("shared");
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 2);
+        }
 
-        let dir_bytes = dir.to_bytes().unwrap();
+        #[test]
+        fn find_file_views_by_basename_returns_empty_when_no_match() {
+            let (_tempdir, repo) = temp_vault();
+            let result = repo.find_file_views_by_basename("absent");
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_empty());
+        }
 
-        repo.store
-            .write(|tx| {
-                let mut dir_table =
-                    tx.try_open_table(super::DIR_VIEWS.definition())?;
-                let mut path_table =
-                    tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
-                dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &dir.id())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
+        #[test]
+        fn find_file_views_by_parent_returns_children_when_parent_specified() {
+            let (_tempdir, repo) = temp_vault();
+            let parent_id = DirId::new();
+            let file = FileView::new(
+                FileId::new(),
+                Some(parent_id),
+                FileName::new("child.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [0u8; 32],
+            );
+            let file_bytes = file.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut parent_map = tx.try_open_multimap(
+                        super::FILE_IDS_BY_PARENT.definition(),
+                    )?;
+                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    parent_map.insert(&parent_id, &file.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        let retrieved = repo.find_dir_view_by_path(&path).unwrap().unwrap();
-        assert_eq!(retrieved.id(), dir.id());
+            let result = repo.find_file_views_by_parent(parent_id);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let children = result.unwrap();
+            assert_eq!(children.len(), 1);
+            assert_eq!(children.first().unwrap().id(), file.id());
+        }
     }
 
-    #[test]
-    fn get_entry_prefers_file_when_both_exist() {
-        use crate::{
-            db::ArchivedEntity,
-            fs::{DirName, FsTimes},
-        };
+    /// Predicate-driven format filtering.
+    mod filter {
+        use super::*;
 
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+        #[test]
+        fn list_markdown_file_views_filters_by_format() {
+            let (_tempdir, repo) = temp_vault();
+            let md_file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("note.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [5u8; 32],
+            );
+            let json_file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("note.json".into()),
+                FileFormat::Json,
+                FileMetadata::new(FsTimes::new(None, None), 64, false),
+                [6u8; 32],
+            );
+            let md_bytes = md_file.to_bytes().unwrap();
+            let json_bytes = json_file.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut format_map =
+                        tx.try_open_multimap(super::FILE_IDS_BY_FORMAT)?;
+                    file_table.insert(&md_file.id(), md_bytes.as_ref())?;
+                    file_table.insert(&json_file.id(), json_bytes.as_ref())?;
+                    format_map.insert("markdown", &md_file.id())?;
+                    format_map.insert("json", &json_file.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        let file = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("test".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [2u8; 32],
-        );
-        let dir = DirView::new(
-            DirId::new(),
-            None,
-            DirName::new("test".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-        let path = NormalizedPath::try_new("test").unwrap();
+            let result = repo.list_markdown_file_views();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let results = result.unwrap();
+            assert_eq!(results.len(), 1);
+            let first = results.first().unwrap();
+            assert_eq!(first.format(), FileFormat::Markdown);
+        }
 
-        let file_bytes = file.to_bytes().unwrap();
-        let dir_bytes = dir.to_bytes().unwrap();
+        #[test]
+        fn list_file_views_by_format_filters_by_format() {
+            let (_tempdir, repo) = temp_vault();
+            let md_file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("a.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [0u8; 32],
+            );
+            let json_file = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("b.json".into()),
+                FileFormat::Json,
+                FileMetadata::new(FsTimes::new(None, None), 64, false),
+                [0u8; 32],
+            );
+            let md_bytes = md_file.to_bytes().unwrap();
+            let json_bytes = json_file.to_bytes().unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut file_table =
+                        tx.try_open_table(super::FILE_VIEWS.definition())?;
+                    let mut format_map =
+                        tx.try_open_multimap(super::FILE_IDS_BY_FORMAT)?;
+                    file_table.insert(&md_file.id(), md_bytes.as_ref())?;
+                    file_table.insert(&json_file.id(), json_bytes.as_ref())?;
+                    format_map.insert("markdown", &md_file.id())?;
+                    format_map.insert("json", &json_file.id())?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        repo.store
-            .write(|tx| {
-                let mut file_table =
-                    tx.try_open_table(super::FILE_VIEWS.definition())?;
-                let mut file_path_table =
-                    tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                let mut dir_table =
-                    tx.try_open_table(super::DIR_VIEWS.definition())?;
-                let mut dir_path_table =
-                    tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
+            let result = repo.list_file_views_by_format(FileFormat::Json);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            let results = result.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first().unwrap().format(), FileFormat::Json);
+        }
 
-                file_table.insert(&file.id(), file_bytes.as_ref())?;
-                file_path_table.insert(path.as_str().to_owned(), &file.id())?;
-                dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                dir_path_table.insert(path.as_str().to_owned(), &dir.id())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
-
-        let entry = repo.get_entry(&path).unwrap().unwrap();
-        assert!(entry.is_file());
+        #[test]
+        fn list_file_views_by_format_returns_empty_when_no_match() {
+            let (_tempdir, repo) = temp_vault();
+            let result = repo.list_file_views_by_format(FileFormat::Image);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_empty());
+        }
     }
 
-    #[test]
-    fn find_file_views_by_basename_returns_all_matches() {
-        use crate::{db::ArchivedEntity, fs::FsTimes};
+    /// Full table scan operations.
+    mod list {
+        use super::*;
 
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+        #[test]
+        fn list_file_views_returns_empty_when_no_files() {
+            let (_tempdir, repo) = temp_vault();
+            let result = repo.list_file_views();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert!(result.unwrap().is_empty());
+        }
 
-        let file1 = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("shared.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [3u8; 32],
-        );
-        let file2 = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("shared.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 256, false),
-            [4u8; 32],
-        );
+        #[test]
+        fn list_file_views_returns_all_files() {
+            let (_tempdir, repo) = temp_vault();
+            let file1 = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("a.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [7u8; 32],
+            );
+            let file2 = FileView::new(
+                FileId::new(),
+                None,
+                FileName::new("b.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 256, false),
+                [8u8; 32],
+            );
+            seed_file(&repo, &file1);
+            seed_file(&repo, &file2);
 
-        let f1_bytes = file1.to_bytes().unwrap();
-        let f2_bytes = file2.to_bytes().unwrap();
+            let result = repo.list_file_views();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 2);
+        }
 
-        repo.store
-            .write(|tx| {
-                let mut file_table =
-                    tx.try_open_table(super::FILE_VIEWS.definition())?;
-                let mut basename_map =
-                    tx.try_open_multimap(super::FILE_IDS_BY_BASENAME)?;
+        #[test]
+        fn list_file_paths_returns_all_paths() {
+            let (_tempdir, repo) = temp_vault();
+            let id1 = FileId::new();
+            let id2 = FileId::new();
+            let path1 = NormalizedPath::try_new("a.md").unwrap();
+            let path2 = NormalizedPath::try_new("b.md").unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut table =
+                        tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
+                    table.insert(path1.as_str().to_owned(), &id1)?;
+                    table.insert(path2.as_str().to_owned(), &id2)?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-                file_table.insert(&file1.id(), f1_bytes.as_ref())?;
-                file_table.insert(&file2.id(), f2_bytes.as_ref())?;
-                basename_map.insert("shared", &file1.id())?;
-                basename_map.insert("shared", &file2.id())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
+            let result = repo.list_file_paths();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 2);
+        }
 
-        let results = repo.find_file_views_by_basename("shared").unwrap();
-        assert_eq!(results.len(), 2);
-    }
+        #[test]
+        fn list_dir_views_returns_all_dirs() {
+            let (_tempdir, repo) = temp_vault();
+            let dir1 = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("notes".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            let dir2 = DirView::new(
+                DirId::new(),
+                None,
+                DirName::new("archive".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+            );
+            seed_dir(&repo, &dir1);
+            seed_dir(&repo, &dir2);
 
-    #[test]
-    fn list_markdown_file_views_filters_by_format() {
-        use crate::{db::ArchivedEntity, fs::FsTimes};
+            let result = repo.list_dir_views();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 2);
+        }
 
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
+        #[test]
+        fn list_dir_paths_returns_all_paths() {
+            let (_tempdir, repo) = temp_vault();
+            let id1 = DirId::new();
+            let id2 = DirId::new();
+            let path1 = NormalizedPath::try_new("notes").unwrap();
+            let path2 = NormalizedPath::try_new("archive").unwrap();
+            repo.store
+                .write(|tx| {
+                    let mut table =
+                        tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
+                    table.insert(path1.as_str().to_owned(), &id1)?;
+                    table.insert(path2.as_str().to_owned(), &id2)?;
+                    Ok::<_, crate::db::DbError>(())
+                })
+                .unwrap();
 
-        let md_file = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("note.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [5u8; 32],
-        );
-        let txt_file = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("note.json".into()),
-            FileFormat::Json,
-            FileMetadata::new(FsTimes::new(None, None), 64, false),
-            [6u8; 32],
-        );
-
-        let md_bytes = md_file.to_bytes().unwrap();
-        let txt_bytes = txt_file.to_bytes().unwrap();
-
-        repo.store
-            .write(|tx| {
-                let mut file_table =
-                    tx.try_open_table(super::FILE_VIEWS.definition())?;
-                let mut format_map =
-                    tx.try_open_multimap(super::FILE_IDS_BY_FORMAT)?;
-
-                file_table.insert(&md_file.id(), md_bytes.as_ref())?;
-                file_table.insert(&txt_file.id(), txt_bytes.as_ref())?;
-                format_map.insert("markdown", &md_file.id())?;
-                format_map.insert("json", &txt_file.id())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
-
-        let results = repo.list_markdown_file_views().unwrap();
-        assert_eq!(results.len(), 1);
-        let first = results.first().unwrap();
-        assert_eq!(first.format(), FileFormat::Markdown);
-    }
-
-    #[test]
-    fn list_file_views_returns_all_files() {
-        use crate::{db::ArchivedEntity, fs::FsTimes};
-
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let file1 = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("a.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 128, false),
-            [7u8; 32],
-        );
-        let file2 = FileView::new(
-            FileId::new(),
-            None,
-            FileName::new("b.md".into()),
-            FileFormat::Markdown,
-            FileMetadata::new(FsTimes::new(None, None), 256, false),
-            [8u8; 32],
-        );
-
-        let f1_bytes = file1.to_bytes().unwrap();
-        let f2_bytes = file2.to_bytes().unwrap();
-
-        repo.store
-            .write(|tx| {
-                let mut table =
-                    tx.try_open_table(super::FILE_VIEWS.definition())?;
-                table.insert(&file1.id(), f1_bytes.as_ref())?;
-                table.insert(&file2.id(), f2_bytes.as_ref())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
-
-        let results = repo.list_file_views().unwrap();
-        assert_eq!(results.len(), 2);
-    }
-
-    #[test]
-    fn list_file_paths_returns_all_paths() {
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let id1 = FileId::new();
-        let id2 = FileId::new();
-        let path1 = NormalizedPath::try_new("a.md").unwrap();
-        let path2 = NormalizedPath::try_new("b.md").unwrap();
-
-        repo.store
-            .write(|tx| {
-                let mut table =
-                    tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                table.insert(path1.as_str().to_owned(), &id1)?;
-                table.insert(path2.as_str().to_owned(), &id2)?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
-
-        let results = repo.list_file_paths().unwrap();
-        assert_eq!(results.len(), 2);
-    }
-
-    #[test]
-    fn list_dir_views_returns_all_dirs() {
-        use crate::{
-            db::ArchivedEntity,
-            fs::{DirName, FsTimes},
-        };
-
-        let (_tempdir, store) = Store::open_temp().unwrap();
-        let repo = RedbRepository::new(Arc::new(store));
-
-        let dir1 = DirView::new(
-            DirId::new(),
-            None,
-            DirName::new("notes".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-        let dir2 = DirView::new(
-            DirId::new(),
-            None,
-            DirName::new("archive".into()),
-            DirMetadata::new(FsTimes::new(None, None), false),
-        );
-
-        let d1_bytes = dir1.to_bytes().unwrap();
-        let d2_bytes = dir2.to_bytes().unwrap();
-
-        repo.store
-            .write(|tx| {
-                let mut table =
-                    tx.try_open_table(super::DIR_VIEWS.definition())?;
-                table.insert(&dir1.id(), d1_bytes.as_ref())?;
-                table.insert(&dir2.id(), d2_bytes.as_ref())?;
-                Ok::<_, crate::db::DbError>(())
-            })
-            .unwrap();
-
-        let results = repo.list_dir_views().unwrap();
-        assert_eq!(results.len(), 2);
+            let result = repo.list_dir_paths();
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 2);
+        }
     }
 }
