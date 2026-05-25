@@ -337,9 +337,7 @@ impl<'db> RedbRepository<'db> {
             .get_owned::<NoteId>(NOTE_ID_BY_PATH, path.as_str())
             .map_err(NoteRepositoryError::Storage)?;
         if existing.is_some_and(|id| Some(id) != current_id) {
-            return Err(NoteRepositoryError::AlreadyExists {
-                path: path.clone(),
-            });
+            return Err(NoteRepositoryError::DuplicatePath(path.clone()));
         }
         Ok(())
     }
@@ -587,9 +585,7 @@ impl Repository for RedbRepository<'_> {
         self.db
             .get_owned::<ListView>(LIST_VIEWS_BY_NOTE_ID, id_str)
             .map_err(NoteRepositoryError::Storage)?
-            .ok_or(NoteRepositoryError::NotFound {
-                id: note_id,
-            })
+            .ok_or(NoteRepositoryError::NotFoundById(note_id))
     }
 
     #[inline]
@@ -670,16 +666,14 @@ mod tests {
         let db =
             Database::open(&db_path).map_err(NoteRepositoryError::Storage)?;
         let config = test_config().map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.into(),
-            }
+            NoteRepositoryError::Storage(DbError::Serialization(err))
         })?;
         let repo = RedbRepository::new(&db);
 
         let path = NotePath::try_new("notes/a.md").map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.to_string().into(),
-            }
+            NoteRepositoryError::Storage(DbError::Serialization(
+                err.to_string(),
+            ))
         })?;
         let raw = raw_note(path.clone());
         let frontmatter_spec = config.to_frontmatter_spec();
@@ -692,8 +686,10 @@ mod tests {
             &frontmatter_spec,
             &task_spec,
         ))
-        .map_err(|err| NoteRepositoryError::ConstraintViolation {
-            message: err.to_string().into(),
+        .map_err(|err| {
+            NoteRepositoryError::Storage(DbError::Serialization(
+                err.to_string(),
+            ))
         })?;
 
         let note_id = repo.save(&facts)?;
@@ -715,16 +711,14 @@ mod tests {
         let db =
             Database::open(&db_path).map_err(NoteRepositoryError::Storage)?;
         let config = test_config().map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.into(),
-            }
+            NoteRepositoryError::Storage(DbError::Serialization(err))
         })?;
         let repo = RedbRepository::new(&db);
 
         let path = NotePath::try_new("notes/a.md").map_err(|err| {
-            NoteRepositoryError::ConstraintViolation {
-                message: err.to_string().into(),
-            }
+            NoteRepositoryError::Storage(DbError::Serialization(
+                err.to_string(),
+            ))
         })?;
         let raw = raw_note(path.clone());
         let frontmatter_spec = config.to_frontmatter_spec();
@@ -737,8 +731,10 @@ mod tests {
             &frontmatter_spec,
             &task_spec,
         ))
-        .map_err(|err| NoteRepositoryError::ConstraintViolation {
-            message: err.to_string().into(),
+        .map_err(|err| {
+            NoteRepositoryError::Storage(DbError::Serialization(
+                err.to_string(),
+            ))
         })?;
         let note_id = repo.save(&facts)?;
 

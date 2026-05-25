@@ -432,70 +432,21 @@ pub enum NoteParseError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum NoteRepositoryError {
-    /// Note requested by unique identifier was not found.
-    #[error("note not found: {id}")]
-    NotFound {
-        /// The requested note ID.
-        id: NoteId,
-    },
-
-    /// Note requested by vault path was not found.
-    #[error("note not found at path: {path}")]
-    NotFoundByPath {
-        /// The requested note path.
-        path: NotePath,
-    },
-
-    /// Persistence conflict where a note already exists at the target path.
-    #[error("persistence conflict: note already exists at {path}")]
-    AlreadyExists {
-        /// The conflicting vault path.
-        path: NotePath,
-    },
-
-    /// Violation of a storage constraint (e.g., size limits or unique indexes).
-    #[error("storage constraint violation: {message}")]
-    ConstraintViolation {
-        /// Human-readable description of the violation.
-        message: Box<str>,
-    },
-
-    /// Stored binary data failed domain validation upon retrieval.
-    #[error("data corruption in note {id}: {reason}")]
-    Corruption {
-        /// The ID of the corrupt note.
-        id: NoteId,
-        /// Details of the validation failure.
-        reason: Box<str>,
-    },
-
-    /// Note path is already bound to a different stable ID in the database.
-    #[error("identity conflict: path '{path}' is already bound to ID {id}")]
-    IdentityConflict {
-        /// The existing note ID.
-        id: NoteId,
-        /// The vault path involved in the conflict.
-        path: NotePath,
-    },
-
-    /// Note contains too many entities (tags, tasks, etc.) for efficient
-    /// indexing.
-    #[error(
-        "resource limit exceeded: {context} has {current} items (limit: \
-         {limit})"
-    )]
-    ResourceLimitExceeded {
-        /// Current number of items observed.
-        current: usize,
-        /// Maximum allowed number of items.
-        limit: usize,
-        /// The specific domain context (e.g., "tasks").
-        context: &'static str,
-    },
-
     /// Low-level database infrastructure failure.
     #[error("storage error: {0}")]
     Storage(#[from] crate::db::DbError),
+
+    /// Note requested by unique identifier was not found.
+    #[error("note not found: {0}")]
+    NotFoundById(NoteId),
+
+    /// Note requested by vault path was not found.
+    #[error("note not found at path: {0}")]
+    NotFoundByPath(NotePath),
+
+    /// Persistence conflict where a note already exists at the target path.
+    #[error("duplicate path: note already exists at {0}")]
+    DuplicatePath(NotePath),
 }
 
 // --- Sub-Domain Logic Errors ---
@@ -939,20 +890,13 @@ mod tests {
         #[test]
         fn repository_error_formatting() {
             let id = NoteId::new();
-            let corruption_err = NoteRepositoryError::Corruption {
-                id,
-                reason: "invalid bytes".into(),
-            };
-            assert!(corruption_err.to_string().contains(&id.to_string()));
-            assert!(corruption_err.to_string().contains("invalid bytes"));
+            let not_found = NoteRepositoryError::NotFoundById(id);
+            assert!(not_found.to_string().contains(&id.to_string()));
 
-            let limit_err = NoteRepositoryError::ResourceLimitExceeded {
-                current: 100,
-                limit: 50,
-                context: "tasks",
-            };
-            assert!(limit_err.to_string().contains("tasks has 100 items"));
-            assert!(limit_err.to_string().contains("limit: 50"));
+            let path = NotePath::try_new("test.md").unwrap();
+            let duplicate_err =
+                NoteRepositoryError::DuplicatePath(path.clone());
+            assert!(duplicate_err.to_string().contains(path.as_str()));
         }
 
         #[rstest]

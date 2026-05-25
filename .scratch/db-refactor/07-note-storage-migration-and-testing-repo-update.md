@@ -155,38 +155,35 @@ pub const NOTE_ID_BY_PATH: PathTable<NoteId> = PathTable::new("note_id_by_path")
 
 ### Implementation Progress (2026-05-25)
 
-**Status**: 🟡 In Progress (Phase 1 complete, Phase 2 starting)
+**Status**: 🟡 In Progress (6/9 phases complete)
 
 **Completed**:
 - ✅ Phase 0: Design decisions approved (error enum, batch operations, table types)
-- ✅ Phase 1: Created `note/repository.rs` with segregated traits
-  - `ReadRepository`: `find_by_id`, `find_by_path`, `find_many_by_id`, `list`
-  - `WriteRepository`: `save`, `save_many`, `delete`, `delete_many`
-  - `Repository`: marker trait with blanket impl
-  - File compiles successfully, module exported from `note/mod.rs`
+- ✅ Phase 1: Module structure created (`note/storage/` + typed tables)
+- ✅ Phase 2: Repository traits created (`note/repository.rs`)
+- ✅ Phase 3: `RedbRepository` created in `storage/mod.rs` with `Arc<Store>`
+- ✅ Phase 4: `ReadRepository` implemented in `storage/read.rs`
+- ✅ Phase 5: `WriteRepository` implemented in `storage/write.rs`
+- ✅ Phase 7: `NoteRepositoryError` reduced to approved boundary variants
 
 **In Progress**:
-- 🟡 Phase 2: Create `note/storage/tables.rs` with typed table definitions
+- 🟡 Phase 6: In-memory adapter (`storage/testing.rs`)
 
 **Remaining**:
-- ⬜ Phase 3: Create `RedbRepository` struct in `storage/mod.rs`
-- ⬜ Phase 4: Implement `ReadRepository` in `storage/read.rs`
-- ⬜ Phase 5: Implement `WriteRepository` in `storage/write.rs`
-- ⬜ Phase 6: Create `InMemoryRepository` in `storage/testing.rs`
-- ⬜ Phase 7: Update `NoteRepositoryError` enum (remove redundant variants)
 - ⬜ Phase 8: Migrate existing integration tests
-- ⬜ Phase 9: Delete legacy `storage.rs`, cleanup
+- ⬜ Phase 9: Remove legacy `storage_legacy.rs` and cleanup
 
 **Files Created**:
-- `lithos-core/src/note/repository.rs` (53 lines, compiles ✅)
+- `lithos-core/src/note/repository.rs`
+- `lithos-core/src/note/storage/tables.rs`
+- `lithos-core/src/note/storage/read.rs`
+- `lithos-core/src/note/storage/write.rs`
 
 **Files Modified**:
-- `lithos-core/src/note/mod.rs` (added `pub mod repository;`)
-
-**Files Pending**:
-- `lithos-core/src/note/storage/tables.rs` (next up)
-- `lithos-core/src/note/storage/mod.rs` (RedbRepository struct)
-- `lithos-core/src/note/storage/read.rs` (ReadRepository impl)
+- `lithos-core/src/note/mod.rs`
+- `lithos-core/src/note/storage/mod.rs`
+- `lithos-core/src/note/error.rs`
+- `lithos-core/src/note/storage_legacy.rs`
 - `lithos-core/src/note/storage/write.rs` (WriteRepository impl)
 - `lithos-core/src/note/storage/testing.rs` (InMemoryRepository)
 
@@ -470,6 +467,7 @@ impl ReadRepository for RedbRepository {
 }
 ```
 - **Verify**: `cargo test note::storage::read::tests::find_by_id`
+- **Status**: ✅ Complete
 
 #### Cycle 8: Implement find_by_path
 - **Test**:
@@ -490,11 +488,12 @@ fn find_by_path_returns_some_when_path_exists() {
 ```
 - **Implementation**: Use `NOTE_ID_BY_PATH` index, then lookup by ID
 - **Verify**: Test passes
+- **Status**: ✅ Complete
 
 #### Cycle 9-11: Implement list, with_archived_by_id, with_archived_by_path
-- Follow same RED → GREEN pattern for each method
-- Tests verify behavior through public interface
-- Implementation uses `store.read(|tx| ...)` with typed tables
+- `list` and `find_many_by_id` implemented + tested (`note/storage/read.rs`)
+- `with_archived_*` deferred pending trait boundary decision for this migration slice
+- **Status**: ✅ Partial Complete (list/find_many done; archived methods deferred)
 
 #### Cycle 12: Implement find_list_view
 - **Test**:
@@ -512,6 +511,7 @@ fn find_list_view_returns_none_when_not_cached() {
 ```
 - **Implementation**: Lookup from `LIST_VIEWS_BY_NOTE_ID` table
 - **Verify**: Test passes
+- **Status**: ✅ Complete
 
 ### Phase 4: Implement Write Operations (Critical Path First)
 
@@ -607,6 +607,7 @@ fn save(&self, note: &Note) -> Result<NoteId, Self::Error> {
 }
 ```
 - **Verify**: All three tests pass
+- **Status**: ✅ Complete
 
 #### Cycle 14: Implement delete (atomic cleanup)
 - **Test**:
@@ -641,11 +642,13 @@ fn delete_is_idempotent() {
 ```
 - **Implementation**: Atomic delete from NOTES_BY_ID + NOTE_ID_BY_PATH
 - **Verify**: Tests pass
+- **Status**: ✅ Complete
 
 #### Cycle 15-16: Implement cache_list_view, invalidate_list_view
 - Follow RED → GREEN pattern
 - Use `LIST_VIEWS_BY_NOTE_ID` UuidTable
 - Test round-trip: cache → find → invalidate → find returns None
+- **Status**: ✅ Complete
 
 ### Phase 5: In-Memory Adapter (Test Double)
 
@@ -1177,24 +1180,27 @@ Per project standards in `AGENTS.md`:
 
 ## Progress Tracking
 
-**Overall Status**: 🟡 In Progress (2/9 phases complete)
+**Overall Status**: 🟡 In Progress (6/9 phases complete)
 
 **Completed Phases**:
 - ✅ Phase 0: Design decisions approved (2026-05-25)
-- ✅ Phase 1: Repository traits created (`note/repository.rs`)
+- ✅ Phase 1: Module structure + tables (`note/storage/`)
+- ✅ Phase 2: Repository traits (`note/repository.rs`)
+- ✅ Phase 3: RedbRepository struct (`note/storage/mod.rs`)
+- ✅ Phase 4: ReadRepository implementation (`note/storage/read.rs`)
+- ✅ Phase 5: WriteRepository implementation (`note/storage/write.rs`)
+- ✅ Phase 7: Repository error cleanup (`note/error.rs`)
 
 **Current Phase**:
-- 🟡 Phase 2: Create typed table definitions (`note/storage/tables.rs`)
+- 🟡 Phase 6: In-memory adapter (`note/storage/testing.rs`)
 
 **Estimated Effort**:
-- Phase 0-1: ✅ ~1 hour (design + traits) - COMPLETE
-- Phase 2-3: ⏳ ~1 hour (tables + RedbRepository struct) - IN PROGRESS
-- Phase 4-5: ⬜ ~4 hours (read/write implementations)
-- Phase 6-7: ⬜ ~3 hours (in-memory adapter + error handling)
-- Phase 8-9: ⬜ ~2 hours (cleanup + refactor)
+- Phase 0-5: ✅ ~6 hours (design + traits + redb read/write)
+- Phase 6-7: ⏳ ~3 hours (in-memory adapter + final error boundary polish)
+- Phase 8-9: ⬜ ~2 hours (integration migration + cleanup)
 - **Total**: ~11 hours (24 test cycles)
 
-**Last Updated**: 2026-05-25 (after Phase 1 completion)
+**Last Updated**: 2026-05-25 (after read/write + list-view cycles)
 
 ---
 

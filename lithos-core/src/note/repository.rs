@@ -6,6 +6,7 @@ use super::{
     aggregate::{Note, NoteId},
     error::NoteRepositoryError,
     paths::NotePath,
+    views::ListView,
 };
 
 /// Read-only repository operations for Note aggregates.
@@ -49,6 +50,18 @@ pub trait ReadRepository {
     ///
     /// Returns `NoteRepositoryError::Storage` if the database operation fails.
     fn list(&self) -> Result<Vec<Note>, NoteRepositoryError>;
+
+    /// Find cached list view for a note.
+    ///
+    /// Returns `Ok(None)` if no cached view exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NoteRepositoryError::Storage` if the database operation fails.
+    fn find_list_view(
+        &self,
+        note_id: NoteId,
+    ) -> Result<Option<ListView>, NoteRepositoryError>;
 }
 
 /// Write operations for Note persistence.
@@ -96,6 +109,28 @@ pub trait WriteRepository {
     ///
     /// Returns `NoteRepositoryError::Storage` if the database operation fails.
     fn delete_many(&self, ids: &[NoteId]) -> Result<(), NoteRepositoryError>;
+
+    /// Cache list view for a note.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NoteRepositoryError::Storage` if the database operation fails.
+    fn cache_list_view(
+        &self,
+        view: &ListView,
+    ) -> Result<(), NoteRepositoryError>;
+
+    /// Invalidate cached list view for a note.
+    ///
+    /// Idempotent (no error if cache entry is missing).
+    ///
+    /// # Errors
+    ///
+    /// Returns `NoteRepositoryError::Storage` if the database operation fails.
+    fn invalidate_list_view(
+        &self,
+        note_id: NoteId,
+    ) -> Result<(), NoteRepositoryError>;
 }
 
 /// Unified repository combining read and write capabilities.

@@ -10,6 +10,7 @@ use crate::{
         error::NoteRepositoryError,
         paths::NotePath,
         repository::ReadRepository,
+        views::ListView,
     },
 };
 
@@ -107,6 +108,29 @@ impl ReadRepository for RedbRepository {
             })
             .map_err(NoteRepositoryError::from)
     }
+
+    #[inline]
+    fn find_list_view(
+        &self,
+        note_id: NoteId,
+    ) -> Result<Option<ListView>, NoteRepositoryError> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(super::LIST_VIEWS.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(guard) = table.get(&note_id)? else {
+                    return Ok(None);
+                };
+
+                let view = ListView::from_bytes(guard.value())?;
+                Ok(Some(view))
+            })
+            .map_err(NoteRepositoryError::from)
+    }
 }
 
 #[cfg(test)]
@@ -120,6 +144,7 @@ mod tests {
             paths::NotePath,
             repository::{ReadRepository, WriteRepository},
             storage::RedbRepository,
+            views::ListView,
         },
     };
 
@@ -217,5 +242,34 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&id1));
         assert!(ids.contains(&id2));
+    }
+
+    #[test]
+    fn find_list_view_returns_none_when_not_cached() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = RedbRepository::new(store);
+
+        let found = repo.find_list_view(NoteId::new()).unwrap();
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn cache_and_find_list_view_roundtrip() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let store = Arc::new(Store::open(&db_path).unwrap());
+        let repo = RedbRepository::new(store);
+
+        let note = create_test_note_with_path("list-view.md");
+        let id = repo.save(&note).unwrap();
+        let view = ListView::from_note_items(id, note.list_items());
+
+        repo.cache_list_view(&view).unwrap();
+
+        let found = repo.find_list_view(id).unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.expect("cached view must exist").note_id(), id);
     }
 }
