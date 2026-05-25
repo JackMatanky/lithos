@@ -6,15 +6,15 @@
 //!
 //! # Table Inventory
 //!
-//! | Category   | Name                    | Key Type     | Value Type | Purpose |
-//! |------------|-------------------------|--------------|------------|---------|
-//! | Primary    | `FILE_VIEWS`            | [`FileId`]   | `&[u8]`    | O(1) file lookup by ID |
-//! | Primary    | `DIR_VIEWS`             | [`DirId`]    | `&[u8]`    | O(1) directory lookup by ID |
-//! | Path index | `FILE_ID_BY_PATH`       | `String`     | [`FileId`] | Path-to-ID resolution |
-//! | Path index | `DIR_ID_BY_PATH`        | `String`     | [`DirId`]  | Path-to-ID resolution |
-//! | Multimap   | `FILE_IDS_BY_BASENAME`  | `&str`       | [`FileId`] | Wikilink-style lookup |
-//! | Multimap   | `FILE_IDS_BY_PARENT`    | [`DirId`]    | [`FileId`] | Child listing queries |
-//! | Multimap   | `FILE_IDS_BY_FORMAT`    | `&str`       | [`FileId`] | Format filter queries |
+//! | Category   | Name                   | Key Type   | Value Type | Purpose                     |
+//! | ---------- | ---------------------- | ---------- | ---------- | --------------------------- |
+//! | Primary    | `FILE_VIEWS`           | [`FileId`] | `&[u8]`    | O(1) file lookup by ID      |
+//! | Primary    | `DIR_VIEWS`            | [`DirId`]  | `&[u8]`    | O(1) directory lookup by ID |
+//! | Path index | `FILE_ID_BY_PATH`      | `String`   | [`FileId`] | Path-to-ID resolution       |
+//! | Path index | `DIR_ID_BY_PATH`       | `String`   | [`DirId`]  | Path-to-ID resolution       |
+//! | Multimap   | `FILE_IDS_BY_BASENAME` | `&str`     | [`FileId`] | Wikilink-style lookup       |
+//! | Multimap   | `FILE_IDS_BY_PARENT`   | [`DirId`]  | [`FileId`] | Child listing queries       |
+//! | Multimap   | `FILE_IDS_BY_FORMAT`   | `&str`     | [`FileId`] | Format filter queries       |
 //!
 //! # Invariant
 //!

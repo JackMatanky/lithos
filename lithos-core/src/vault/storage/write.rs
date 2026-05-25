@@ -19,171 +19,6 @@ use crate::{
     },
 };
 
-#[derive(Debug, Default)]
-struct FileDeleteContext {
-    path: Option<String>,
-    basename: Option<BaseName>,
-    parent_id: Option<DirId>,
-    format: Option<crate::fs::FileFormat>,
-}
-
-#[derive(Debug, Default)]
-struct DirDeleteContext {
-    path: Option<String>,
-}
-
-impl FileDeleteContext {
-    fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
-        let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
-        let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
-
-        let (basename, parent_id, format) = if let Some(file) = file_table
-            .get(&file_id)?
-            .map(|g| FileView::from_bytes(g.value()))
-            .transpose()?
-        {
-            (
-                Some(
-                    BaseName::try_from(file.name().clone())
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                ),
-                file.parent_id(),
-                Some(file.format()),
-            )
-        } else {
-            (None, None, None)
-        };
-
-        let path = path_table
-            .iter()?
-            .find(|res| {
-                res.as_ref()
-                    .map(|(_, id)| id.value() == file_id)
-                    .unwrap_or(false)
-            })
-            .transpose()?
-            .map(|(path, _)| path.value());
-
-        Ok(Self {
-            path,
-            basename,
-            parent_id,
-            format,
-        })
-    }
-}
-
-impl DirDeleteContext {
-    fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
-        let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-
-        let path = path_table
-            .iter()?
-            .find(|res| {
-                res.as_ref()
-                    .map(|(_, id)| id.value() == dir_id)
-                    .unwrap_or(false)
-            })
-            .transpose()?
-            .map(|(path, _)| path.value());
-
-        Ok(Self {
-            path,
-        })
-    }
-}
-
-impl RedbRepository {
-    fn remove_file_path_index(
-        tx: &WriteTx,
-        path: Option<&str>,
-    ) -> Result<(), DbError> {
-        if let Some(path) = path {
-            let mut table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
-        }
-        Ok(())
-    }
-
-    fn remove_file_basename_index(
-        tx: &WriteTx,
-        basename: Option<&BaseName>,
-        file_id: FileId,
-    ) -> Result<(), DbError> {
-        if let Some(basename) = basename {
-            let mut table = tx.try_open_multimap(FILE_IDS_BY_BASENAME)?;
-            table.remove(basename.as_str(), &file_id)?;
-        }
-        Ok(())
-    }
-
-    fn remove_file_parent_index(
-        tx: &WriteTx,
-        parent_id: Option<DirId>,
-        file_id: FileId,
-    ) -> Result<(), DbError> {
-        if let Some(parent_id) = parent_id {
-            let mut table =
-                tx.try_open_multimap(FILE_IDS_BY_PARENT.definition())?;
-            table.remove(&parent_id, &file_id)?;
-        }
-        Ok(())
-    }
-
-    fn remove_file_format_index(
-        tx: &WriteTx,
-        format: Option<crate::fs::FileFormat>,
-        file_id: FileId,
-    ) -> Result<(), DbError> {
-        if let Some(format) = format {
-            let mut table = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
-            table.remove(format.as_str(), &file_id)?;
-        }
-        Ok(())
-    }
-
-    fn remove_file_primary(
-        tx: &WriteTx,
-        file_id: FileId,
-    ) -> Result<(), DbError> {
-        let mut table = tx.try_open_table(FILE_VIEWS.definition())?;
-        table.remove(&file_id)?;
-        Ok(())
-    }
-
-    fn remove_dir_path_index(
-        tx: &WriteTx,
-        path: Option<&str>,
-    ) -> Result<(), DbError> {
-        if let Some(path) = path {
-            let mut table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
-        }
-        Ok(())
-    }
-
-    fn remove_dir_primary(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
-        let mut table = tx.try_open_table(DIR_VIEWS.definition())?;
-        table.remove(&dir_id)?;
-        Ok(())
-    }
-
-    fn remove_file_graph(tx: &WriteTx, file_id: FileId) -> Result<(), DbError> {
-        let ctx = FileDeleteContext::load(tx, file_id)?;
-        Self::remove_file_path_index(tx, ctx.path.as_deref())?;
-        Self::remove_file_basename_index(tx, ctx.basename.as_ref(), file_id)?;
-        Self::remove_file_parent_index(tx, ctx.parent_id, file_id)?;
-        Self::remove_file_format_index(tx, ctx.format, file_id)?;
-        Self::remove_file_primary(tx, file_id)
-    }
-
-    fn remove_dir_graph(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
-        let ctx = DirDeleteContext::load(tx, dir_id)?;
-        Self::remove_dir_path_index(tx, ctx.path.as_deref())?;
-        Self::remove_dir_primary(tx, dir_id)
-    }
-}
-
 impl WriteRepository for RedbRepository {
     #[inline]
     fn save_file_view(
@@ -366,6 +201,171 @@ impl WriteRepository for RedbRepository {
                 Ok(())
             })
             .map_err(VaultRepositoryError::from)
+    }
+}
+
+impl RedbRepository {
+    fn remove_file_path_index(
+        tx: &WriteTx,
+        path: Option<&str>,
+    ) -> Result<(), DbError> {
+        if let Some(path) = path {
+            let mut table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+            table.remove(path.to_owned())?;
+        }
+        Ok(())
+    }
+
+    fn remove_file_basename_index(
+        tx: &WriteTx,
+        basename: Option<&BaseName>,
+        file_id: FileId,
+    ) -> Result<(), DbError> {
+        if let Some(basename) = basename {
+            let mut table = tx.try_open_multimap(FILE_IDS_BY_BASENAME)?;
+            table.remove(basename.as_str(), &file_id)?;
+        }
+        Ok(())
+    }
+
+    fn remove_file_parent_index(
+        tx: &WriteTx,
+        parent_id: Option<DirId>,
+        file_id: FileId,
+    ) -> Result<(), DbError> {
+        if let Some(parent_id) = parent_id {
+            let mut table =
+                tx.try_open_multimap(FILE_IDS_BY_PARENT.definition())?;
+            table.remove(&parent_id, &file_id)?;
+        }
+        Ok(())
+    }
+
+    fn remove_file_format_index(
+        tx: &WriteTx,
+        format: Option<crate::fs::FileFormat>,
+        file_id: FileId,
+    ) -> Result<(), DbError> {
+        if let Some(format) = format {
+            let mut table = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
+            table.remove(format.as_str(), &file_id)?;
+        }
+        Ok(())
+    }
+
+    fn remove_file_primary(
+        tx: &WriteTx,
+        file_id: FileId,
+    ) -> Result<(), DbError> {
+        let mut table = tx.try_open_table(FILE_VIEWS.definition())?;
+        table.remove(&file_id)?;
+        Ok(())
+    }
+
+    fn remove_dir_path_index(
+        tx: &WriteTx,
+        path: Option<&str>,
+    ) -> Result<(), DbError> {
+        if let Some(path) = path {
+            let mut table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
+            table.remove(path.to_owned())?;
+        }
+        Ok(())
+    }
+
+    fn remove_dir_primary(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
+        let mut table = tx.try_open_table(DIR_VIEWS.definition())?;
+        table.remove(&dir_id)?;
+        Ok(())
+    }
+
+    fn remove_file_graph(tx: &WriteTx, file_id: FileId) -> Result<(), DbError> {
+        let ctx = FileDeleteContext::load(tx, file_id)?;
+        Self::remove_file_path_index(tx, ctx.path.as_deref())?;
+        Self::remove_file_basename_index(tx, ctx.basename.as_ref(), file_id)?;
+        Self::remove_file_parent_index(tx, ctx.parent_id, file_id)?;
+        Self::remove_file_format_index(tx, ctx.format, file_id)?;
+        Self::remove_file_primary(tx, file_id)
+    }
+
+    fn remove_dir_graph(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
+        let ctx = DirDeleteContext::load(tx, dir_id)?;
+        Self::remove_dir_path_index(tx, ctx.path.as_deref())?;
+        Self::remove_dir_primary(tx, dir_id)
+    }
+}
+
+#[derive(Debug, Default)]
+struct FileDeleteContext {
+    path: Option<String>,
+    basename: Option<BaseName>,
+    parent_id: Option<DirId>,
+    format: Option<crate::fs::FileFormat>,
+}
+
+impl FileDeleteContext {
+    fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
+        let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
+        let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+
+        let (basename, parent_id, format) = if let Some(file) = file_table
+            .get(&file_id)?
+            .map(|g| FileView::from_bytes(g.value()))
+            .transpose()?
+        {
+            (
+                Some(
+                    BaseName::try_from(file.name().clone())
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                ),
+                file.parent_id(),
+                Some(file.format()),
+            )
+        } else {
+            (None, None, None)
+        };
+
+        let path = path_table
+            .iter()?
+            .find(|res| {
+                res.as_ref()
+                    .map(|(_, id)| id.value() == file_id)
+                    .unwrap_or(false)
+            })
+            .transpose()?
+            .map(|(path, _)| path.value());
+
+        Ok(Self {
+            path,
+            basename,
+            parent_id,
+            format,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct DirDeleteContext {
+    path: Option<String>,
+}
+
+impl DirDeleteContext {
+    fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
+        let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
+
+        let path = path_table
+            .iter()?
+            .find(|res| {
+                res.as_ref()
+                    .map(|(_, id)| id.value() == dir_id)
+                    .unwrap_or(false)
+            })
+            .transpose()?
+            .map(|(path, _)| path.value());
+
+        Ok(Self {
+            path,
+        })
     }
 }
 
