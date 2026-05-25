@@ -12,6 +12,8 @@
 //! | Primary    | `DIR_VIEWS`            | [`DirId`]  | `&[u8]`    | O(1) directory lookup by ID |
 //! | Path index | `FILE_ID_BY_PATH`      | `String`   | [`FileId`] | Path-to-ID resolution       |
 //! | Path index | `DIR_ID_BY_PATH`       | `String`   | [`DirId`]  | Path-to-ID resolution       |
+//! | Reverse    | `PATH_BY_FILE_ID`      | [`FileId`] | `String`   | O(1) delete path recovery   |
+//! | Reverse    | `PATH_BY_DIR_ID`       | [`DirId`]  | `String`   | O(1) delete path recovery   |
 //! | Multimap   | `FILE_IDS_BY_BASENAME` | `&str`     | [`FileId`] | Wikilink-style lookup       |
 //! | Multimap   | `FILE_IDS_BY_PARENT`   | [`DirId`]  | [`FileId`] | Child listing queries       |
 //! | Multimap   | `FILE_IDS_BY_FORMAT`   | `&str`     | [`FileId`] | Format filter queries       |
@@ -115,3 +117,68 @@ pub(crate) const FILE_IDS_BY_PARENT: UuidMultimap<DirId, FileId> =
 /// Value: `FileId`
 pub(crate) const FILE_IDS_BY_FORMAT: MultimapTableDefinition<&str, FileId> =
     MultimapTableDefinition::new("file_ids_by_format");
+
+/// Reverse index for O(1) file path recovery during delete operations.
+///
+/// Enables [`FileDeleteContext::load`] to avoid O(N) scan of `FILE_ID_BY_PATH`.
+/// Kept in sync with `FILE_ID_BY_PATH` within the same write transaction.
+///
+/// Before this optimization, deleting a file required iterating the entire
+/// `FILE_ID_BY_PATH` table to find the path for a given `FileId`. With this
+/// reverse index, delete operations achieve O(1) path lookup via direct hash
+/// table access.
+///
+/// Key: `FileId`
+/// Value: vault-relative path string
+///
+/// [`FileDeleteContext::load`]: super::write::FileDeleteContext::load
+pub(crate) const PATH_BY_FILE_ID: UuidTable<FileId, String> =
+    UuidTable::new("path_by_file_id");
+
+/// Reverse index for O(1) directory path recovery during delete operations.
+///
+/// Enables [`DirDeleteContext::load`] to avoid O(N) scan of `DIR_ID_BY_PATH`.
+/// Updated atomically with `DIR_ID_BY_PATH` within the same write transaction.
+///
+/// Key: `DirId`
+/// Value: vault-relative path string
+///
+/// [`DirDeleteContext::load`]: super::write::DirDeleteContext::load
+pub(crate) const PATH_BY_DIR_ID: UuidTable<DirId, String> =
+    UuidTable::new("path_by_dir_id");
+
+#[cfg(test)]
+mod path_by_file_id {
+    use super::*;
+    use crate::db::Store;
+
+    #[test]
+    fn can_open_table() {
+        let (_tempdir, store) = Store::open_temp().unwrap();
+
+        let result = store.write(|tx| {
+            tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+            Ok(())
+        });
+
+        assert!(result.is_ok(), "PATH_BY_FILE_ID table should be accessible");
+    }
+}
+
+#[cfg(test)]
+mod path_by_dir_id {
+    use super::*;
+    use crate::db::Store;
+
+    #[test]
+    fn can_open_table() {
+        let (_tempdir, store) = Store::open_temp().unwrap();
+
+        let result = store.write(|tx| {
+            tx.try_open_table(PATH_BY_DIR_ID.definition())?;
+            Ok(())
+        });
+
+        assert!(result.is_ok(), "PATH_BY_DIR_ID table should be accessible");
+    }
+}

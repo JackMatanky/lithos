@@ -13,13 +13,20 @@
 //! ensures stale index entries from a previous path, basename, parent, or
 //! format are never orphaned.
 //!
-//! ## Delete contexts
+//! ## Delete contexts & reverse path index
 //!
 //! The module provides [`FileDeleteContext`] and [`DirDeleteContext`], which
 //! load the index metadata needed to cleanly remove an entity from all
-//! secondary indexes. The path lookup inside each context iterates the
-//! entire path-to-ID table (O(N) scan) to find the matching entry — this
-//! is correct but not optimal for batch operations.
+//! secondary indexes.
+//!
+//! **Reverse index optimization**: Path recovery uses O(1) direct lookup via
+//! [`PATH_BY_FILE_ID`] and [`PATH_BY_DIR_ID`] tables instead of scanning the
+//! forward indexes. This eliminates the O(N) bottleneck in delete operations,
+//! reducing batch delete complexity from O(N×M) to O(M) where N = vault size
+//! and M = files deleted.
+//!
+//! [`PATH_BY_FILE_ID`]: super::tables::PATH_BY_FILE_ID
+//! [`PATH_BY_DIR_ID`]: super::tables::PATH_BY_DIR_ID
 //!
 //! The trait defines per-method documentation; this file contains the
 //! concrete [`redb`] access patterns for each operation.
@@ -30,7 +37,8 @@ use super::{
     RedbRepository,
     tables::{
         DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-        FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
+        FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS, PATH_BY_DIR_ID,
+        PATH_BY_FILE_ID,
     },
 };
 use crate::{
@@ -66,6 +74,8 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(FILE_VIEWS.definition())?;
                 let mut path_table =
                     tx.try_open_table(FILE_ID_BY_PATH.definition())?;
+                let mut reverse_path_table =
+                    tx.try_open_table(PATH_BY_FILE_ID.definition())?;
                 let mut by_basename =
                     tx.try_open_multimap(FILE_IDS_BY_BASENAME)?;
                 let mut by_parent =
@@ -74,6 +84,8 @@ impl WriteRepository for RedbRepository {
 
                 file_table.insert(&file.id(), file_bytes.as_ref())?;
                 path_table.insert(path.as_str().to_owned(), &file.id())?;
+                reverse_path_table
+                    .insert(&file.id(), path.as_str().to_owned())?;
                 by_basename.insert(basename.as_str(), &file.id())?;
                 if let Some(parent_id) = file.parent_id() {
                     by_parent.insert(&parent_id, &file.id())?;
@@ -100,8 +112,12 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(DIR_VIEWS.definition())?;
                 let mut path_table =
                     tx.try_open_table(DIR_ID_BY_PATH.definition())?;
+                let mut reverse_path_table =
+                    tx.try_open_table(PATH_BY_DIR_ID.definition())?;
                 dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
                 path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                reverse_path_table
+                    .insert(&dir.id(), path.as_str().to_owned())?;
                 Ok(())
             })
             .map_err(VaultRepositoryError::from)
@@ -309,12 +325,24 @@ impl RedbRepository {
         Self::remove_file_basename_index(tx, ctx.basename.as_ref(), file_id)?;
         Self::remove_file_parent_index(tx, ctx.parent_id, file_id)?;
         Self::remove_file_format_index(tx, ctx.format, file_id)?;
+
+        // Remove reverse index entry
+        let mut reverse_path_table =
+            tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        reverse_path_table.remove(&file_id)?;
+
         Self::remove_file_primary(tx, file_id)
     }
 
     fn remove_dir_graph(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
         let ctx = DirDeleteContext::load(tx, dir_id)?;
         Self::remove_dir_path_index(tx, ctx.path.as_deref())?;
+
+        // Remove reverse index entry
+        let mut reverse_path_table =
+            tx.try_open_table(PATH_BY_DIR_ID.definition())?;
+        reverse_path_table.remove(&dir_id)?;
+
         Self::remove_dir_primary(tx, dir_id)
     }
 }
@@ -335,9 +363,8 @@ impl FileDeleteContext {
     /// Loads the index metadata for a given file.
     ///
     /// Reads the primary [`FileView`] record to extract basename, parent ID,
-    /// and format. Then scans the entire path-to-ID table (O(N)) to find
-    /// the matching path — this is correct but scales linearly with the
-    /// number of paths in the vault.
+    /// and format. Path recovery uses O(1) reverse index lookup via
+    /// [`PATH_BY_FILE_ID`] instead of scanning the forward index.
     ///
     /// # Parameters
     ///
@@ -353,9 +380,18 @@ impl FileDeleteContext {
     ///
     /// Returns [`DbError`] if the table access fails or if a stored record
     /// cannot be deserialized.
+    ///
+    /// # Performance
+    ///
+    /// - **Path lookup**: O(1) via reverse index (previously O(N) forward scan)
+    /// - **Batch deletes**: O(M) total complexity for M files (previously
+    ///   O(N×M))
+    /// - **Example**: Deleting 100 files in a 10k vault: ~100 lookups vs ~1M
+    ///   comparisons
+    ///
+    /// [`PATH_BY_FILE_ID`]: super::tables::PATH_BY_FILE_ID
     fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
         let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
-        let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
 
         let (basename, parent_id, format) = if let Some(file) = file_table
             .get(&file_id)?
@@ -374,15 +410,10 @@ impl FileDeleteContext {
             (None, None, None)
         };
 
-        let path = path_table
-            .iter()?
-            .find(|res| {
-                res.as_ref()
-                    .map(|(_, id)| id.value() == file_id)
-                    .unwrap_or(false)
-            })
-            .transpose()?
-            .map(|(path, _)| path.value());
+        // O(1) reverse index lookup replaces O(N) forward scan
+        let reverse_path_table =
+            tx.try_open_table(PATH_BY_FILE_ID.definition())?;
+        let path = reverse_path_table.get(&file_id)?.map(|g| g.value().clone());
 
         Ok(Self {
             path,
@@ -405,8 +436,8 @@ struct DirDeleteContext {
 impl DirDeleteContext {
     /// Loads the path for a given directory.
     ///
-    /// Scans the entire directory path-to-ID table (O(N)) to find the
-    /// matching entry — correct but not optimal for batch operations.
+    /// Uses O(1) reverse index lookup via [`PATH_BY_DIR_ID`] to recover the
+    /// directory path.
     ///
     /// # Parameters
     ///
@@ -421,18 +452,17 @@ impl DirDeleteContext {
     /// # Errors
     ///
     /// Returns [`DbError`] if the table access fails.
+    ///
+    /// # Performance
+    ///
+    /// O(1) direct hash table lookup (previously O(N) forward scan).
+    ///
+    /// [`PATH_BY_DIR_ID`]: super::tables::PATH_BY_DIR_ID
     fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
-        let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-
-        let path = path_table
-            .iter()?
-            .find(|res| {
-                res.as_ref()
-                    .map(|(_, id)| id.value() == dir_id)
-                    .unwrap_or(false)
-            })
-            .transpose()?
-            .map(|(path, _)| path.value());
+        // O(1) reverse index lookup replaces O(N) forward scan
+        let reverse_path_table =
+            tx.try_open_table(PATH_BY_DIR_ID.definition())?;
+        let path = reverse_path_table.get(&dir_id)?.map(|g| g.value().clone());
 
         Ok(Self {
             path,
@@ -511,6 +541,119 @@ mod tests {
                 1
             );
             assert_eq!(repo.list_markdown_file_views().unwrap().len(), 1);
+        }
+
+        #[test]
+        fn file_creates_reverse_path_index() {
+            use crate::vault::storage::tables::PATH_BY_FILE_ID;
+
+            let (_temp, repo) = temp_vault();
+            let file = sample_file(None, "test.md", FileFormat::Markdown);
+            let path = NormalizedPath::try_new("notes/test.md").unwrap();
+
+            repo.save_file_view(&path, &file).unwrap();
+
+            // Assert: Reverse index contains the path
+            let recovered_path: Result<Option<String>, _> =
+                repo.store.read(|tx| {
+                    let Some(table) =
+                        tx.try_open_table(PATH_BY_FILE_ID.definition())?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(table.get(&file.id())?.map(|g| g.value().clone()))
+                });
+
+            assert!(
+                recovered_path.is_ok(),
+                "Failed to read reverse index: {:?}",
+                recovered_path.err()
+            );
+            assert_eq!(
+                recovered_path.unwrap(),
+                Some(path.as_str().to_owned()),
+                "Reverse index should map FileId → path"
+            );
+        }
+
+        #[test]
+        fn dir_creates_reverse_path_index() {
+            use crate::vault::storage::tables::PATH_BY_DIR_ID;
+
+            let (_temp, repo) = temp_vault();
+            let dir = sample_dir("notes");
+            let path = NormalizedPath::try_new("notes").unwrap();
+
+            repo.save_dir_view(&path, &dir).unwrap();
+
+            // Assert: Reverse index contains the path
+            let recovered_path: Result<Option<String>, _> =
+                repo.store.read(|tx| {
+                    let Some(table) =
+                        tx.try_open_table(PATH_BY_DIR_ID.definition())?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(table.get(&dir.id())?.map(|g| g.value().clone()))
+                });
+
+            assert!(
+                recovered_path.is_ok(),
+                "Failed to read reverse index: {:?}",
+                recovered_path.err()
+            );
+            assert_eq!(
+                recovered_path.unwrap(),
+                Some(path.as_str().to_owned()),
+                "Reverse index should map DirId → path"
+            );
+        }
+
+        #[test]
+        fn file_overwrite_updates_reverse_index() {
+            use crate::vault::storage::tables::PATH_BY_FILE_ID;
+
+            let (_temp, repo) = temp_vault();
+            let id = FileId::new();
+            let first = FileView::new(
+                id,
+                None,
+                FileName::new("old.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 128, false),
+                [1u8; 32],
+            );
+            let second = FileView::new(
+                id,
+                None,
+                FileName::new("new.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 256, false),
+                [2u8; 32],
+            );
+            let old_path = NormalizedPath::try_new("notes/old.md").unwrap();
+            let new_path = NormalizedPath::try_new("notes/new.md").unwrap();
+
+            // Act: Save twice with same ID, different paths
+            repo.save_file_view(&old_path, &first).unwrap();
+            repo.save_file_view(&new_path, &second).unwrap();
+
+            // Assert: Reverse index has new path only
+            let recovered_path: Result<Option<String>, _> =
+                repo.store.read(|tx| {
+                    let Some(table) =
+                        tx.try_open_table(PATH_BY_FILE_ID.definition())?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(table.get(&id)?.map(|g| g.value().clone()))
+                });
+
+            assert_eq!(
+                recovered_path.unwrap(),
+                Some(new_path.as_str().to_owned()),
+                "Reverse index should contain updated path"
+            );
         }
 
         #[test]
@@ -654,6 +797,64 @@ mod tests {
             assert!(repo.find_file_view_by_path(&path).unwrap().is_none());
             assert!(
                 repo.find_file_views_by_basename("delete").unwrap().is_empty()
+            );
+        }
+
+        #[test]
+        fn file_delete_removes_reverse_index_entry() {
+            use crate::vault::storage::tables::PATH_BY_FILE_ID;
+
+            let (_temp, repo) = temp_vault();
+            let file = sample_file(None, "delete.md", FileFormat::Markdown);
+            let path = NormalizedPath::try_new("notes/delete.md").unwrap();
+            repo.save_file_view(&path, &file).unwrap();
+
+            // Act: Delete the file
+            repo.delete_file_view(file.id()).unwrap();
+
+            // Assert: Reverse index entry is cleaned
+            let recovered_path: Result<Option<String>, _> =
+                repo.store.read(|tx| {
+                    let Some(table) =
+                        tx.try_open_table(PATH_BY_FILE_ID.definition())?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(table.get(&file.id())?.map(|g| g.value().clone()))
+                });
+
+            assert!(
+                recovered_path.unwrap().is_none(),
+                "Reverse index should be cleaned on delete"
+            );
+        }
+
+        #[test]
+        fn dir_delete_removes_reverse_index_entry() {
+            use crate::vault::storage::tables::PATH_BY_DIR_ID;
+
+            let (_temp, repo) = temp_vault();
+            let dir = sample_dir("notes");
+            let path = NormalizedPath::try_new("notes").unwrap();
+            repo.save_dir_view(&path, &dir).unwrap();
+
+            // Act: Delete the directory
+            repo.delete_dir_view(dir.id()).unwrap();
+
+            // Assert: Reverse index entry is cleaned
+            let recovered_path: Result<Option<String>, _> =
+                repo.store.read(|tx| {
+                    let Some(table) =
+                        tx.try_open_table(PATH_BY_DIR_ID.definition())?
+                    else {
+                        return Ok(None);
+                    };
+                    Ok(table.get(&dir.id())?.map(|g| g.value().clone()))
+                });
+
+            assert!(
+                recovered_path.unwrap().is_none(),
+                "Reverse index should be cleaned on delete"
             );
         }
 
