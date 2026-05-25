@@ -936,6 +936,135 @@ impl PathValidationContext {
     }
 }
 
+fn analyze_relative_path_components(path: &str) -> PathValidationContext {
+    let path_buf = PathBuf::from(path);
+    let mut context = PathValidationContext::new();
+
+    if path_buf.is_absolute() {
+        context.set(PathValidationContext::IS_ABSOLUTE);
+    }
+
+    for component in path_buf.components() {
+        match component {
+            Component::ParentDir => {
+                context.set(PathValidationContext::HAS_PARENT_TRAVERSAL);
+            }
+            Component::CurDir => {
+                context.set(PathValidationContext::HAS_CURRENT_DIR_COMPONENT);
+            }
+            Component::Prefix(_) => {
+                context.set(PathValidationContext::HAS_PLATFORM_PREFIX);
+            }
+            Component::RootDir | Component::Normal(_) => {}
+        }
+    }
+
+    if path.split('/').any(|segment| segment == ".") {
+        context.set(PathValidationContext::HAS_CURRENT_DIR_COMPONENT);
+    }
+
+    context
+}
+
+fn validate_passive_relative_path(
+    path: &str,
+) -> Result<&str, super::PathError> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err(super::PathError::Empty);
+    }
+
+    let component_ctx = analyze_relative_path_components(trimmed);
+    if component_ctx.is_absolute() {
+        return Err(super::PathError::NotRelative(PathBuf::from(trimmed)));
+    }
+    if component_ctx.has_parent_traversal() {
+        return Err(super::PathError::ParentTraversal(PathBuf::from(trimmed)));
+    }
+    if component_ctx.has_current_dir_component() {
+        return Err(super::PathError::CurrentDirComponent(PathBuf::from(
+            trimmed,
+        )));
+    }
+    if component_ctx.has_platform_prefix() {
+        return Err(super::PathError::PlatformPrefix(PathBuf::from(trimmed)));
+    }
+
+    Ok(trimmed)
+}
+
+/// Passive, strict relative directory declaration.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeDirPath(Box<str>);
+
+impl RelativeDirPath {
+    /// Creates a validated passive relative directory declaration.
+    ///
+    /// # Errors
+    /// Returns [`PathError`] when the value is empty, absolute, or contains
+    /// traversal components.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = validate_passive_relative_path(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeDirPath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+/// Passive, strict relative file declaration.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeFilePath(Box<str>);
+
+impl RelativeFilePath {
+    /// Creates a validated passive relative file declaration.
+    ///
+    /// # Errors
+    /// Returns [`PathError`] when the value is empty, absolute, or contains
+    /// traversal components.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = validate_passive_relative_path(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeFilePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
 /// A validated vault-relative path.
 ///
 /// This type ensures that paths do not escape the vault root using `..`
@@ -1488,6 +1617,99 @@ mod tests {
                     rkyv::deserialize::<PathKey, rkyv::rancor::Error>(archived)
                         .expect("deserialize");
                 assert_eq!(original, deserialized);
+            }
+        }
+    }
+
+    mod relative_config_path {
+        use super::*;
+
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn returns_ok_when_relative_dir_path_is_valid() {
+                let result = RelativeDirPath::try_new("schemas/cache");
+                assert!(result.is_ok(), "expected valid relative dir path");
+            }
+
+            #[test]
+            fn returns_ok_when_relative_file_path_is_valid() {
+                let result =
+                    RelativeFilePath::try_new("schemas/property_bank.json");
+                assert!(result.is_ok(), "expected valid relative file path");
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn rejects_path_when_absolute() {
+                let dir_result = RelativeDirPath::try_new("/schemas");
+                let file_result =
+                    RelativeFilePath::try_new("/schemas/bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn rejects_path_when_contains_current_dir_component() {
+                let dir_result = RelativeDirPath::try_new("schemas/./cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas/./property_bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn rejects_path_when_contains_parent_dir_component() {
+                let dir_result = RelativeDirPath::try_new("schemas/../cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas/../property_bank.json");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+
+            #[test]
+            fn accepts_path_when_contains_duplicate_forward_separators() {
+                let dir_result = RelativeDirPath::try_new("schemas//cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas//property_bank.json");
+                assert!(dir_result.is_ok());
+                assert!(file_result.is_ok());
+            }
+
+            #[test]
+            fn accepts_path_when_contains_backslashes() {
+                let dir_result = RelativeDirPath::try_new("schemas\\cache");
+                let file_result =
+                    RelativeFilePath::try_new("schemas\\property_bank.json");
+                assert!(dir_result.is_ok());
+                assert!(file_result.is_ok());
+            }
+
+            #[test]
+            fn rejects_path_when_empty() {
+                let dir_result = RelativeDirPath::try_new("  ");
+                let file_result = RelativeFilePath::try_new("");
+                assert!(dir_result.is_err());
+                assert!(file_result.is_err());
+            }
+        }
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_original_string_when_value_is_valid() {
+                let dir = RelativeDirPath::try_new("schemas/cache")
+                    .expect("valid dir path should construct");
+                let file =
+                    RelativeFilePath::try_new("schemas/property_bank.json")
+                        .expect("valid file path should construct");
+                assert_eq!(dir.as_str(), "schemas/cache");
+                assert_eq!(file.as_str(), "schemas/property_bank.json");
             }
         }
     }
