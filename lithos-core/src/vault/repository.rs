@@ -131,9 +131,7 @@ pub trait ReadRepository {
     /// # Errors
     ///
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
-    fn list_all_file_views(
-        &self,
-    ) -> Result<Vec<FileView>, VaultRepositoryError>;
+    fn list_file_views(&self) -> Result<Vec<FileView>, VaultRepositoryError>;
 
     /// List all file paths in the vault.
     ///
@@ -154,7 +152,7 @@ pub trait ReadRepository {
     /// # Errors
     ///
     /// Returns `VaultRepositoryError::Storage` if the database operation fails.
-    fn list_all_dir_views(&self) -> Result<Vec<DirView>, VaultRepositoryError>;
+    fn list_dir_views(&self) -> Result<Vec<DirView>, VaultRepositoryError>;
 
     /// List all directory paths in the vault.
     ///

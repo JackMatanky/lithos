@@ -70,6 +70,24 @@ impl FileFormat {
     pub fn is_structured(&self) -> bool {
         matches!(self, Self::Json | Self::Toml | Self::Yaml)
     }
+
+    /// Returns a stable lowercase storage key for this format.
+    #[inline]
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Toml => "toml",
+            Self::Yaml => "yaml",
+            Self::Markdown => "markdown",
+            Self::Image => "image",
+            Self::Pdf => "pdf",
+            Self::Document => "document",
+            Self::Archive => "archive",
+            Self::Binary => "binary",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 
 #[inline]

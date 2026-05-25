@@ -464,7 +464,7 @@ impl Repository for RedbRepository<'_> {
             Err(error) => return Err(storage_err(error)),
         };
         let mut out = Vec::new();
-        for id in idx.get(file_format_key(format)).map_err(storage_err)? {
+        for id in idx.get(format.as_str()).map_err(storage_err)? {
             let id = id.map_err(storage_err)?.value();
             if let Some(bytes) = views.get(id).map_err(storage_err)? {
                 out.push(
@@ -618,7 +618,7 @@ impl Repository for RedbRepository<'_> {
                 .open_multimap_table(FILE_IDS_BY_FORMAT)
                 .map_err(storage_err)?;
             table
-                .insert(file_format_key(file.format()), file.id())
+                .insert(file.format().as_str(), file.id())
                 .map_err(storage_err)?;
         }
         tx.commit().map_err(storage_err)?;
@@ -773,7 +773,7 @@ fn remove_stale_file_indexes(
                 .open_multimap_table(FILE_IDS_BY_FORMAT)
                 .map_err(storage_err)?;
             table
-                .remove(file_format_key(prior.format()), file_id)
+                .remove(prior.format().as_str(), file_id)
                 .map_err(storage_err)?;
         }
     }
@@ -830,22 +830,6 @@ fn remove_stale_dir_path_indexes(
     }
 
     Ok(())
-}
-
-#[inline]
-const fn file_format_key(format: FileFormat) -> &'static str {
-    match format {
-        FileFormat::Json => "json",
-        FileFormat::Toml => "toml",
-        FileFormat::Yaml => "yaml",
-        FileFormat::Markdown => "markdown",
-        FileFormat::Image => "image",
-        FileFormat::Pdf => "pdf",
-        FileFormat::Document => "document",
-        FileFormat::Archive => "archive",
-        FileFormat::Binary => "binary",
-        FileFormat::Unknown => "unknown",
-    }
 }
 
 #[cfg(test)]

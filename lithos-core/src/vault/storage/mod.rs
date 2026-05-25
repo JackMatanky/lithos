@@ -24,6 +24,7 @@
 //! [`WriteRepository`]: crate::vault::repository::WriteRepository
 //! [`Repository`]: crate::vault::repository::Repository
 
+mod read;
 pub(crate) mod tables;
 
 use std::sync::Arc;
@@ -72,10 +73,6 @@ use crate::db::Store;
 /// (requires `Arc<Store>`). Multiple repository instances can safely share
 /// the same `Store`.
 #[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "Will be used when read/write impls are added in Phase 4/5"
-)]
 pub struct RedbRepository {
     /// Shared database store handle.
     ///
