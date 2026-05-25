@@ -79,6 +79,36 @@ impl SchemaConfigSpec {
 **Out of scope:**
 - Schema repository hard cuts (done in Slice 05).
 
+## GitNexus impact analysis (pre-implementation)
+
+Run date: 2026-05-25.
+
+### Symbols analyzed
+- `Struct:lithos-core/src/config/vault.rs:VaultRoot`
+- `Struct:lithos-core/src/config/paths.rs:SchemaConfigSpec`
+- `Function:lithos-core/src/config/aggregate.rs:Config.to_schema_spec#0`
+- `Function:lithos-core/src/schema/builder.rs:load_all`
+
+### Findings
+- `Config::to_schema_spec` is the critical seam for this issue. It currently uses panic-based conversion (`expect`) and feeds schema discovery.
+- `SchemaBuilder::load_all` calls `self.config.to_schema_spec()` directly. Any signature/behavior change in `to_schema_spec` must be propagated to schema loading error flow.
+- Direct graph impact for struct nodes is low/noisy, but function-level call paths confirm this is an execution-path-sensitive change.
+- Existing direct callers detected for `to_schema_spec` include config tests and the schema ingestion path.
+
+### Risk assessment
+- **Overall:** MEDIUM (function-level blast radius is small, but path is operationally central to schema ingestion).
+- **Primary risk:** changing panic behavior to `Result` changes error semantics and requires caller updates.
+- **Secondary risk:** `VaultRoot(PathBuf) -> VaultRoot(DirPath)` can affect constructor and conversion surfaces.
+
+### Affected call sites to update
+- `lithos-core/src/config/aggregate.rs` (`to_schema_spec` definition and tests)
+- `lithos-core/src/schema/builder.rs` (`load_all` call site and error propagation)
+
+### Constraints to preserve
+- Keep `SchemaConfigSpec` in `config::paths` storing `DirPath` directly.
+- Do not introduce dependency from `config::paths` to `config::vault` types.
+- Keep filesystem existence checks out of `SchemaConfigSpec` construction.
+
 ## TDD & Implementation Plan
 
 ### 1. Planning & Design
@@ -95,8 +125,8 @@ impl SchemaConfigSpec {
 
 ### 2. Tracer Bullet: Pure Declarative Construction
 **Behavior:** System successfully loads configuration semantics without interacting with the filesystem.
-- **RED:** Write `test_schema_config_spec_new` with valid syntax but non-existent files. Assert no panics.
-- **GREEN:** Change `SchemaConfigSpec` fields. Remove any `expect()` or `fs::metadata` checks from `Config::to_schema_spec()`. Return `Result<SchemaConfigSpec, ConfigError>`.
+- **RED:** Write `to_schema_spec_returns_error_instead_of_panicking_when_projection_fails` and `schema_config_spec_constructor_accepts_declarative_nonexistent_targets`.
+- **GREEN:** Change `SchemaConfigSpec` fields. Remove any `expect()` or `fs::metadata` checks from `Config::to_schema_spec()`. Return `Result<SchemaConfigSpec, ConfigError>` and map path errors explicitly.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
 - [ ] Test uses public interface only
@@ -106,7 +136,7 @@ impl SchemaConfigSpec {
 
 ### 3. Incremental Loop: Deriving Execution Paths
 **Behavior:** System derives operational file/dir paths using the append seam on demand.
-- **RED:** Write `test_schema_directory_path` asserting correct join of root + relative config.
+- **RED:** Write `schema_directory_path_returns_dirpath_when_root_and_relative_dir_are_valid` and `property_bank_file_path_returns_filepath_when_root_and_relative_file_are_valid`.
 - **GREEN:** Implement `schema_directory_path` and `property_bank_file_path` using `append_dir` and `append_file`.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
@@ -117,7 +147,7 @@ impl SchemaConfigSpec {
 
 ### 4. Incremental Loop: Deriving Persistence Keys
 **Behavior:** System derives persistence boundary keys (`PathKey`) using root-scoping on demand.
-- **RED:** Write `test_property_bank_key` asserting correct `PathKey` representation.
+- **RED:** Write `property_bank_key_returns_pathkey_when_root_scoped_file_is_valid` and `schema_directory_key_returns_pathkey_when_root_scoped_dir_is_valid`.
 - **GREEN:** Implement `schema_directory_key` and `property_bank_key` utilizing `.as_key(root)`.
 **Checklist:**
 - [ ] Test describes behavior, not implementation
@@ -130,3 +160,20 @@ impl SchemaConfigSpec {
 - [ ] Ensure all `expect()` calls in `to_schema_spec()` are converted to `Result` handling with `?` (Rust Best Practice: Error Handling).
 - [ ] Ensure `VaultRoot` is a thin newtype over `DirPath`.
 - [ ] Ensure `SchemaConfigSpec` remains decoupled from `VaultRoot` by storing root as `DirPath`.
+
+### 6. Caller adaptation and regression checks
+- [ ] Update `SchemaBuilder::load_all` to handle `Config::to_schema_spec() -> Result<_, _>` without introducing panic paths.
+- [ ] Add/adjust tests to verify schema loading surfaces config-spec construction failures as typed errors.
+- [ ] Re-run existing schema loader integration tests that exercise property bank and discovery flows.
+
+## Test naming and quality gates (project standards)
+
+- Use canonical test modules (`constructor`, `validation`, `conversions`, `lookup`) as applicable.
+- Use verb-first, single-behavior names (for example `returns_error_when_*`, `returns_pathkey_when_*`).
+- Keep tests deterministic and avoid hidden assertions.
+- Prefer public-interface assertions over implementation details.
+- Run:
+  - `mise run test:unit`
+  - `mise run test`
+  - `mise run lint`
+  - `mise run fmt`
