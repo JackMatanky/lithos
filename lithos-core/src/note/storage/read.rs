@@ -1,4 +1,43 @@
-//! `ReadRepository` implementation for Note persistence.
+//! Read-only repository operations for Note persistence.
+//!
+//! This module implements the [`ReadRepository`] trait for the Note context,
+//! providing all read operations over the redb-backed storage layer.
+//!
+//! # Architecture
+//!
+//! - **Transaction Boundaries**: Each method manages its own read transaction
+//!   via the shared [`Store`](crate::db::Store).
+//! - **Zero-Copy Deserialization**: Uses rkyv for efficient deserialization
+//!   directly from database bytes without intermediate allocations.
+//! - **Graceful Degradation**: Returns `Ok(None)` or `Ok(Vec::new())` when
+//!   tables don't exist yet (fresh database state).
+//!
+//! # Indexes
+//!
+//! Read operations leverage the following indexes:
+//! - Primary table: [`NOTES`](super::NOTES) — note ID → full Note aggregate
+//! - Path index: [`NOTE_ID_BY_PATH`](super::NOTE_ID_BY_PATH) — path → note ID
+//! - View cache: [`LIST_VIEWS`](super::LIST_VIEWS) — note ID → `ListView`
+//!
+//! # Examples
+//!
+//! ```rust,ignore
+//! use lithos_core::note::{
+//!     repository::ReadRepository,
+//!     storage::RedbRepository,
+//! };
+//!
+//! let repo = RedbRepository::new(store);
+//!
+//! // Find by ID
+//! let note = repo.find_by_id(note_id)?;
+//!
+//! // Find by path (cross-table lookup)
+//! let note = repo.find_by_path(&NotePath::try_new("daily/2024-05-25.md")?)?;
+//!
+//! // List all notes
+//! let all_notes = repo.list()?;
+//! ```
 
 use redb::ReadableTable;
 
@@ -15,6 +54,18 @@ use crate::{
 };
 
 impl ReadRepository for RedbRepository {
+    /// Finds a note by its unique identifier.
+    ///
+    /// Returns `Ok(None)` if the note table doesn't exist or if no note with
+    /// the given ID exists in the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::Storage`] if the database operation fails
+    /// (e.g., I/O error, transaction conflict).
+    ///
+    /// Returns [`NoteRepositoryError::Deserialization`] if the stored bytes
+    /// cannot be deserialized into a valid [`Note`].
     #[inline]
     fn find_by_id(
         &self,
@@ -34,6 +85,22 @@ impl ReadRepository for RedbRepository {
             .map_err(NoteRepositoryError::from)
     }
 
+    /// Finds a note by its vault-relative path.
+    ///
+    /// Performs a cross-table lookup:
+    /// 1. Path index lookup: `path` → `note_id`
+    /// 2. Primary table lookup: `note_id` → `Note`
+    ///
+    /// Returns `Ok(None)` if the path index or note table doesn't exist, or if
+    /// no note exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::Storage`] if either database operation
+    /// fails.
+    ///
+    /// Returns [`NoteRepositoryError::Deserialization`] if the stored bytes
+    /// (note ID or note) cannot be deserialized.
     #[inline]
     fn find_by_path(
         &self,
@@ -67,6 +134,25 @@ impl ReadRepository for RedbRepository {
             .map_err(NoteRepositoryError::from)
     }
 
+    /// Finds multiple notes by their IDs in a single transaction.
+    ///
+    /// Missing notes are skipped silently. The returned vector preserves the
+    /// order of the input IDs (only found notes appear in the result).
+    ///
+    /// Returns an empty vector if the note table doesn't exist.
+    ///
+    /// # Performance
+    ///
+    /// Uses a single read transaction for all lookups. Prefer this over
+    /// multiple `find_by_id` calls when retrieving multiple notes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::Storage`] if any database operation
+    /// fails.
+    ///
+    /// Returns [`NoteRepositoryError::Deserialization`] if any stored bytes
+    /// cannot be deserialized into a valid [`Note`].
     #[inline]
     fn find_many_by_id(
         &self,
@@ -90,6 +176,23 @@ impl ReadRepository for RedbRepository {
             .map_err(NoteRepositoryError::from)
     }
 
+    /// Lists all notes in the database.
+    ///
+    /// Returns all persisted notes in an unordered collection. Returns an empty
+    /// vector if the note table doesn't exist yet (fresh database state).
+    ///
+    /// # Performance
+    ///
+    /// Performs a full table scan. For large vaults (1000+ notes), consider
+    /// using more specific queries if you need a subset of notes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::Storage`] if the database operation
+    /// fails.
+    ///
+    /// Returns [`NoteRepositoryError::Deserialization`] if any stored bytes
+    /// cannot be deserialized into a valid [`Note`].
     #[inline]
     fn list(&self) -> Result<Vec<Note>, NoteRepositoryError> {
         self.store
@@ -109,6 +212,21 @@ impl ReadRepository for RedbRepository {
             .map_err(NoteRepositoryError::from)
     }
 
+    /// Finds a cached list view projection for a note.
+    ///
+    /// List views are materialized projections of notes containing list items,
+    /// stored separately for query optimization. This is a rebuildable cache.
+    ///
+    /// Returns `Ok(None)` if the list view table doesn't exist or if no cached
+    /// view exists for the given note ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteRepositoryError::Storage`] if the database operation
+    /// fails.
+    ///
+    /// Returns [`NoteRepositoryError::Deserialization`] if the stored bytes
+    /// cannot be deserialized into a valid [`ListView`].
     #[inline]
     fn find_list_view(
         &self,
