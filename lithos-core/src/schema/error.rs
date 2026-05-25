@@ -14,7 +14,7 @@
 //! 5. **Validation/Resolution**: Domain-level validation, property resolution,
 //!    and inheritance checks ([`SchemaError`] umbrella).
 //! 6. **Persistence**: Storage integrity and lookup behavior
-//!    ([`SchemaRepositoryError`] and [`SchemaStorageError`]).
+//!    ([`SchemaRepositoryError`]).
 //! 7. **Orchestration**: Top-level coordination of the full pipeline
 //!    ([`SchemaLoaderError`]).
 //!
@@ -33,8 +33,7 @@
 //!  │    ├── PropertyRefError, PropertyBankError
 //!  │    └── SchemaInheritanceError, SchemaResolutionError
 //!  └── SchemaRepositoryError (Persistence Phase)
-//!       └── SchemaStorageError (Storage Layer)
-//!            └── DbError
+//!       └── DbError
 //! ```
 //!
 //! # Design Principles
@@ -139,10 +138,6 @@ pub enum SchemaIngestionError {
     #[error(transparent)]
     Syntax(#[from] SchemaSyntaxError),
 
-    /// Returned when storage access fails during ingestion.
-    #[error(transparent)]
-    Storage(#[from] SchemaStorageError),
-
     /// Returned when repository access fails during ingestion.
     #[error(transparent)]
     Repository(#[from] SchemaRepositoryError),
@@ -164,19 +159,36 @@ pub enum SchemaIngestionError {
 pub enum SchemaRepositoryError {
     /// Returned when the underlying storage layer fails.
     #[error(transparent)]
-    Storage(#[from] SchemaStorageError),
+    Storage(#[from] DbError),
 
     /// Returned when domain validation fails while saving or loading.
     #[error(transparent)]
     Domain(#[from] SchemaError),
 
-    /// Returned when an expected entity is missing.
-    #[error("not found: {0:?}")]
-    NotFound(crate::schema::identifier::SchemaId),
+    /// Returned when an expected entity is missing by ID.
+    #[error("schema not found: {0}")]
+    NotFoundById(crate::schema::identifier::SchemaId),
 
-    /// Returned when serialization/deserialization fails.
-    #[error("serialization error: {0}")]
-    Serialization(String),
+    /// Returned when an expected entity is missing by name.
+    #[error("schema name not found: {0}")]
+    NotFoundByName(crate::schema::identifier::SchemaName),
+
+    /// Returned when an expected entity is missing by path.
+    #[error("schema path not found: {0}")]
+    NotFoundByPath(crate::fs::RelativePath),
+
+    /// Returned when the property bank has not been initialized.
+    #[error(
+        "PropertyBank not found in database - initialize by loading schema \
+         files or creating properties"
+    )]
+    PropertyBankNotFound,
+
+    /// Returned when the version history is missing or empty for a view.
+    #[error(
+        "version history missing for {0} - cached view is corrupt or empty"
+    )]
+    EmptyVersionHistory(crate::fs::RelativePath),
 }
 
 /// High-level errors returned by schema loading operations.
@@ -353,43 +365,6 @@ pub enum SchemaSyntaxError {
     /// Returned when a property name is invalid.
     #[error(transparent)]
     PropertyName(#[from] PropertyNameError),
-}
-
-/// Storage-related errors for schema persistence.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaStorageError {
-    /// Returned when the database layer fails.
-    #[error("storage error: {0}")]
-    Storage(#[from] DbError),
-
-    /// Returned when an expected entity is missing.
-    #[error("not found: {name}")]
-    NotFound {
-        /// Name or identifier for the missing entity.
-        name: Box<str>,
-    },
-
-    /// Returned when storage corruption is detected.
-    #[error("data corruption: {reason}")]
-    Corruption {
-        /// Reason for corruption.
-        reason: Box<str>,
-    },
-
-    /// Returned when the property bank has not been initialized.
-    #[error(
-        "PropertyBank not found in database - initialize by loading schema \
-         files or creating properties"
-    )]
-    PropertyBankNotFound,
-
-    /// Returned when storage operations conflict.
-    #[error("conflict: {reason}")]
-    Conflict {
-        /// Reason for the conflict.
-        reason: Box<str>,
-    },
 }
 
 /// Schema name validation failures.
@@ -988,7 +963,6 @@ mod tests {
             assert_send_sync::<SchemaParseError>();
             assert_send_sync::<SchemaVersionError>();
             assert_send_sync::<SchemaSyntaxError>();
-            assert_send_sync::<SchemaStorageError>();
             assert_send_sync::<SchemaNameError>();
             assert_send_sync::<PropertyNameContext>();
             assert_send_sync::<PropertyNameError>();
@@ -1056,6 +1030,37 @@ mod tests {
         )]
         fn schema_error_display_contains_message(
             #[case] error: SchemaError,
+            #[case] expected_fragment: &str,
+        ) {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains(expected_fragment),
+                "Expected display to contain '{expected_fragment}', got: \
+                 {rendered}"
+            );
+        }
+
+        #[rstest]
+        #[case::not_found_by_id(
+            SchemaRepositoryError::NotFoundById(
+                crate::schema::identifier::SchemaId::new()
+            ),
+            "schema not found:"
+        )]
+        #[case::not_found_by_name(
+            SchemaRepositoryError::NotFoundByName(crate::schema::identifier::SchemaName::try_new("test").unwrap()),
+            "schema name not found: test"
+        )]
+        #[case::not_found_by_path(
+            SchemaRepositoryError::NotFoundByPath(crate::fs::RelativePath::try_from("test.json").unwrap()),
+            "schema path not found: test.json"
+        )]
+        #[case::empty_version_history(
+            SchemaRepositoryError::EmptyVersionHistory(crate::fs::RelativePath::try_from("test.json").unwrap()),
+            "version history missing for test.json"
+        )]
+        fn repository_error_display_contains_message(
+            #[case] error: SchemaRepositoryError,
             #[case] expected_fragment: &str,
         ) {
             let rendered = error.to_string();
@@ -1237,7 +1242,6 @@ mod tests {
                 | SchemaIngestionError::Parse(_)
                 | SchemaIngestionError::Version(_)
                 | SchemaIngestionError::Syntax(_)
-                | SchemaIngestionError::Storage(_)
                 | SchemaIngestionError::Repository(_)
                 | SchemaIngestionError::Schema {
                     ..
@@ -1259,18 +1263,15 @@ mod tests {
         #[test]
         fn db_error_converts_into_schema_repository_error() {
             let db_error = DbError::Serialization("test".into());
-            let repo_error: SchemaRepositoryError =
-                SchemaStorageError::from(db_error).into();
+            let repo_error: SchemaRepositoryError = db_error.into();
 
             assert!(
                 matches!(
                     repo_error,
-                    SchemaRepositoryError::Storage(
-                        SchemaStorageError::Storage(DbError::Serialization(_))
-                    )
+                    SchemaRepositoryError::Storage(DbError::Serialization(_))
                 ),
                 "Expected DbError::Serialization to convert into \
-                 SchemaRepositoryError::Storage(SchemaStorageError::Storage(_))"
+                 SchemaRepositoryError::Storage(_)"
             );
         }
     }

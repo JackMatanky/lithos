@@ -342,12 +342,12 @@ impl DiscoveryEngine {
 
         let graph = repo
             .get_topological_graph()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let property_bank_view = match property_bank_entry {
             Some(_) => repo
                 .get_raw_property_bank_view(property_bank_path)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?,
+                .map_err(SchemaLoaderError::Repository)?,
             None => None,
         };
 
@@ -356,7 +356,7 @@ impl DiscoveryEngine {
         } else {
             let schema_views = repo
                 .find_raw_schema_views_by_paths(&schema_paths)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+                .map_err(SchemaLoaderError::Repository)?;
             let schema_views = schema_paths
                 .iter()
                 .cloned()
@@ -366,7 +366,7 @@ impl DiscoveryEngine {
 
             let schema_ids = repo
                 .find_schema_ids_by_paths(&schema_paths)
-                .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+                .map_err(SchemaLoaderError::Repository)?;
             let schema_ids = schema_paths
                 .iter()
                 .cloned()
@@ -499,7 +499,7 @@ mod tests {
         fn find_schema_by_id(
             &self,
             id: SchemaId,
-        ) -> Result<Option<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Option<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_by_id(id)
         }
@@ -507,22 +507,24 @@ mod tests {
         fn find_many_schemas_by_id(
             &self,
             ids: &[SchemaId],
-        ) -> Result<Vec<Option<Schema>>, crate::schema::error::SchemaStorageError>
-        {
+        ) -> Result<
+            Vec<Option<Schema>>,
+            crate::schema::error::SchemaRepositoryError,
+        > {
             self.inner.find_many_schemas_by_id(ids)
         }
 
         fn find_schemas_by_ids(
             &self,
             ids: &[SchemaId],
-        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schemas_by_ids(ids)
         }
 
         fn list_schemas(
             &self,
-        ) -> Result<Vec<Schema>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Vec<Schema>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schemas()
         }
@@ -532,7 +534,7 @@ mod tests {
             property_names: &[PropertyName],
         ) -> Result<
             HashMap<SchemaId, Vec<PropertyName>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.find_schemas_using_properties(property_names)
         }
@@ -542,7 +544,7 @@ mod tests {
             id: SchemaId,
         ) -> Result<
             Option<RawSchemaView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_raw_schema_view(id)
         }
@@ -552,7 +554,7 @@ mod tests {
             path: &RelativePath,
         ) -> Result<
             Option<RawSchemaView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.find_raw_schema_view_by_path(path)
         }
@@ -562,7 +564,7 @@ mod tests {
             paths: &[RelativePath],
         ) -> Result<
             Vec<Option<RawSchemaView>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.raw_views_by_paths_calls.fetch_add(1, Ordering::Relaxed);
             self.inner.find_raw_schema_views_by_paths(paths)
@@ -572,7 +574,7 @@ mod tests {
             &self,
         ) -> Result<
             Option<PropertyBank>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_property_bank()
         }
@@ -581,7 +583,7 @@ mod tests {
             &self,
         ) -> Result<
             Option<InheritanceGraph<()>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_topological_graph()
         }
@@ -591,7 +593,7 @@ mod tests {
             path: &RelativePath,
         ) -> Result<
             Option<RawPropertyBankView>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.inner.get_raw_property_bank_view(path)
         }
@@ -599,7 +601,7 @@ mod tests {
         fn find_schema_id_by_name(
             &self,
             name: &SchemaName,
-        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_id_by_name(name)
         }
@@ -607,7 +609,7 @@ mod tests {
         fn find_schema_id_by_path(
             &self,
             path: &RelativePath,
-        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaStorageError>
+        ) -> Result<Option<SchemaId>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_id_by_path(path)
         }
@@ -617,7 +619,7 @@ mod tests {
             paths: &[RelativePath],
         ) -> Result<
             Vec<Option<SchemaId>>,
-            crate::schema::error::SchemaStorageError,
+            crate::schema::error::SchemaRepositoryError,
         > {
             self.ids_by_paths_calls.fetch_add(1, Ordering::Relaxed);
             self.inner.find_schema_ids_by_paths(paths)
@@ -625,21 +627,21 @@ mod tests {
 
         fn list_schema_name_id_pairs(
             &self,
-        ) -> Result<NameIdPairs, crate::schema::error::SchemaStorageError>
+        ) -> Result<NameIdPairs, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schema_name_id_pairs()
         }
 
         fn list_schema_path_id_pairs(
             &self,
-        ) -> Result<PathIdPairs, crate::schema::error::SchemaStorageError>
+        ) -> Result<PathIdPairs, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.list_schema_path_id_pairs()
         }
 
         fn get_schema_index(
             &self,
-        ) -> Result<SchemaIndex, crate::schema::error::SchemaStorageError>
+        ) -> Result<SchemaIndex, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.get_schema_index()
         }

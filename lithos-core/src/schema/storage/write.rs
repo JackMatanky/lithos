@@ -43,7 +43,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
-        error::SchemaStorageError,
+        error::SchemaRepositoryError,
         identifier::SchemaName,
         inheritance::InheritanceGraph,
         repository::WriteRepository,
@@ -61,10 +61,13 @@ use crate::{
 
 impl WriteRepository for RedbRepository {
     #[inline]
-    fn save_schema(&self, schema: &Schema) -> Result<(), SchemaStorageError> {
-        let bytes = schema.to_bytes().map_err(SchemaStorageError::from)?;
+    fn save_schema(
+        &self,
+        schema: &Schema,
+    ) -> Result<(), SchemaRepositoryError> {
+        let bytes = schema.to_bytes().map_err(SchemaRepositoryError::from)?;
         let id_bytes =
-            schema.id().to_bytes().map_err(SchemaStorageError::from)?;
+            schema.id().to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -78,14 +81,14 @@ impl WriteRepository for RedbRepository {
 
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn save_many_schemas(
         &self,
         schemas: &[Schema],
-    ) -> Result<(), SchemaStorageError> {
+    ) -> Result<(), SchemaRepositoryError> {
         self.store
             .write(|tx| {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
@@ -103,15 +106,15 @@ impl WriteRepository for RedbRepository {
                 }
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
-    ) -> Result<(), SchemaStorageError> {
-        let bytes = bank.to_bytes().map_err(SchemaStorageError::from)?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let bytes = bank.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -120,7 +123,7 @@ impl WriteRepository for RedbRepository {
                 table.insert(PROPERTY_BANK_KEY, bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
@@ -128,8 +131,8 @@ impl WriteRepository for RedbRepository {
         &self,
         path: &RelativePath,
         view: &RawPropertyBankView,
-    ) -> Result<(), SchemaStorageError> {
-        let bytes = view.to_bytes().map_err(SchemaStorageError::from)?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let bytes = view.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -138,7 +141,7 @@ impl WriteRepository for RedbRepository {
                 table.insert(path_key(path), bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
@@ -146,9 +149,10 @@ impl WriteRepository for RedbRepository {
         &self,
         id: crate::schema::identifier::SchemaId,
         view: &RawSchemaView,
-    ) -> Result<(), SchemaStorageError> {
-        let view_bytes = view.to_bytes().map_err(SchemaStorageError::from)?;
-        let id_bytes = id.to_bytes().map_err(SchemaStorageError::from)?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let view_bytes =
+            view.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let id_bytes = id.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -171,15 +175,15 @@ impl WriteRepository for RedbRepository {
                     .insert(path_key(view.path()), id_bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn save_topological_graph(
         &self,
         graph: &InheritanceGraph<()>,
-    ) -> Result<(), SchemaStorageError> {
-        let bytes = graph.to_bytes().map_err(SchemaStorageError::from)?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let bytes = graph.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -188,14 +192,14 @@ impl WriteRepository for RedbRepository {
                 table.insert(TOPOLOGICAL_GRAPH_KEY, bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 
     #[inline]
     fn delete_schema(
         &self,
         id: crate::schema::identifier::SchemaId,
-    ) -> Result<(), SchemaStorageError> {
+    ) -> Result<(), SchemaRepositoryError> {
         self.store
             .write(|tx| {
                 let ctx = load_delete_context(tx, id)?;
@@ -208,7 +212,7 @@ impl WriteRepository for RedbRepository {
                 remove_raw_schema_view(tx, id)?;
                 Ok(())
             })
-            .map_err(SchemaStorageError::from)
+            .map_err(SchemaRepositoryError::from)
     }
 }
 

@@ -101,7 +101,7 @@ use std::time::SystemTime;
 use super::HashRecord;
 use crate::{
     fs::metadata::{FileMetadata, FsTimes},
-    schema::error::SchemaStorageError,
+    schema::error::SchemaRepositoryError,
     support::hash::Blake3Hash,
 };
 
@@ -142,12 +142,12 @@ pub(crate) trait RawView: RawViewRead {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaStorageError`] when the current version is unavailable
-    /// or when replacement metadata cannot be constructed.
+    /// Returns [`SchemaRepositoryError`] when the current version is
+    /// unavailable or when replacement metadata cannot be constructed.
     fn update_content_hash(
         &mut self,
         content_hash: Blake3Hash,
-    ) -> Result<(), SchemaStorageError>;
+    ) -> Result<(), SchemaRepositoryError>;
 
     /// Updates complete file metadata for the current version, if present.
     #[inline]

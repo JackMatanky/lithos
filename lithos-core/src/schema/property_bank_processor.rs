@@ -116,7 +116,6 @@ use crate::{
         delta::{PropertyDelta, PropertyDeltaEngine},
         error::{
             SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-            SchemaStorageError,
         },
         property::PropertyName,
         raw::RawPropertyBank,
@@ -590,7 +589,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
                 self.status.view.file_path(),
                 &self.status.view,
             )
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition(Construction, Fresh))
     }
@@ -614,7 +613,6 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(SchemaRepositoryError::Storage)
             .map_err(SchemaLoaderError::Repository)?;
 
         repository
@@ -622,7 +620,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
                 self.status.view.file_path(),
                 &self.status.view,
             )
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition(Construction, Fresh))
     }
@@ -698,7 +696,7 @@ impl PropertyBankProcessor<Construction, New> {
     ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let property_hashes = self.status.raw.properties().compute_hashes();
         let raw_hash =
@@ -713,7 +711,7 @@ impl PropertyBankProcessor<Construction, New> {
 
         repository
             .save_raw_property_bank_view(path, &view)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+            .map_err(SchemaLoaderError::Repository)
     }
 }
 
@@ -737,10 +735,10 @@ impl PropertyBankProcessor<Construction, Changed> {
     {
         let mut bank = repository
             .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
+            .map_err(SchemaLoaderError::Repository)?
             .ok_or(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::Storage(
-                    SchemaStorageError::PropertyBankNotFound,
+                SchemaIngestionError::Repository(
+                    SchemaRepositoryError::PropertyBankNotFound,
                 ),
             ))?;
 
@@ -779,7 +777,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     ) -> Result<(), SchemaLoaderError> {
         repository
             .save_property_bank(bank)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?;
+            .map_err(SchemaLoaderError::Repository)?;
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
@@ -790,7 +788,7 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         repository
             .save_raw_property_bank_view(path, &view)
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))
+            .map_err(SchemaLoaderError::Repository)
     }
 }
 
@@ -814,9 +812,9 @@ impl PropertyBankProcessor<Construction, Fresh> {
         drop(self);
         let bank = repository
             .get_property_bank()
-            .map_err(|e| SchemaLoaderError::Repository(e.into()))?
-            .ok_or(SchemaIngestionError::Storage(
-                SchemaStorageError::PropertyBankNotFound,
+            .map_err(SchemaLoaderError::Repository)?
+            .ok_or(SchemaIngestionError::Repository(
+                SchemaRepositoryError::PropertyBankNotFound,
             ))?;
 
         Ok(Self::transition(Completed, FreshReady {

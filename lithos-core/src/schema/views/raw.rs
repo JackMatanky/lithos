@@ -13,7 +13,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::{
     fs::RelativePath,
     schema::{
-        error::{SchemaIngestionError, SchemaStorageError},
+        error::{SchemaIngestionError, SchemaRepositoryError},
         raw::{RawPropertyBank, RawSchema},
         views::{
             contracts::{RawView, RawViewRead, Version, VersionRead as _},
@@ -139,10 +139,10 @@ impl RawView for RawSchemaView {
     fn update_content_hash(
         &mut self,
         content_hash: Blake3Hash,
-    ) -> Result<(), SchemaStorageError> {
-        let current = self.current().ok_or(SchemaStorageError::NotFound {
-            name: "current schema version".into(),
-        })?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let current = self.current().ok_or(
+            SchemaRepositoryError::EmptyVersionHistory(self.path.clone()),
+        )?;
         let metadata = Version::metadata(current).clone();
         let hashes = HashRecord::new(
             content_hash,
@@ -303,10 +303,10 @@ impl RawView for RawPropertyBankView {
     fn update_content_hash(
         &mut self,
         content_hash: Blake3Hash,
-    ) -> Result<(), SchemaStorageError> {
-        let current = self.current().ok_or(SchemaStorageError::NotFound {
-            name: "current property bank version".into(),
-        })?;
+    ) -> Result<(), SchemaRepositoryError> {
+        let current = self.current().ok_or(
+            SchemaRepositoryError::EmptyVersionHistory(self.path.clone()),
+        )?;
         let metadata = Version::metadata(current).clone();
         let hashes = HashRecord::new(
             content_hash,

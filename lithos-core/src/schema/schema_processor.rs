@@ -69,10 +69,7 @@ use crate::{
         bank::PropertyBank,
         delta::PropertyDeltaEngine,
         discovery::DiscoveryResult,
-        error::{
-            SchemaError, SchemaIngestionError, SchemaLoaderError,
-            SchemaRepositoryError,
-        },
+        error::{SchemaError, SchemaIngestionError, SchemaLoaderError},
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, SchemaIndex},
@@ -2120,12 +2117,9 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 current.hashes().properties().clone(),
             );
             payload.view.add_version(current.with_metadata(file_info, hashes));
-            repository.save_raw_schema_view(*id, &payload.view).map_err(
-                |e| {
-                    let repo_err: SchemaRepositoryError = e.into();
-                    SchemaLoaderError::Repository(repo_err)
-                },
-            )?;
+            repository
+                .save_raw_schema_view(*id, &payload.view)
+                .map_err(SchemaLoaderError::Repository)?;
         }
         Ok(())
     }
@@ -2165,10 +2159,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         .add_version(current.with_metadata(file_info, hashes));
                     repository
                         .save_raw_schema_view(*id, &payload.view)
-                        .map_err(|e| {
-                            let repo_err: SchemaRepositoryError = e.into();
-                            SchemaLoaderError::Repository(repo_err)
-                        })?;
+                        .map_err(SchemaLoaderError::Repository)?;
                 }
                 PipelinePayload::Analysis(AnalysisBranch::Refresh(
                     ref mut payload,
@@ -2190,10 +2181,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                         .add_version(current.with_metadata(file_info, hashes));
                     repository
                         .save_raw_schema_view(*id, &payload.view)
-                        .map_err(|e| {
-                            let repo_err: SchemaRepositoryError = e.into();
-                            SchemaLoaderError::Repository(repo_err)
-                        })?;
+                        .map_err(SchemaLoaderError::Repository)?;
                 }
                 PipelinePayload::Present(_)
                 | PipelinePayload::Compared(_)
@@ -2225,12 +2213,9 @@ impl SchemaProcessor<Refresh, Analyzed> {
             else {
                 continue;
             };
-            repository.save_raw_schema_view(*id, &payload.view).map_err(
-                |e| {
-                    let repo_err: SchemaRepositoryError = e.into();
-                    SchemaLoaderError::Repository(repo_err)
-                },
-            )?;
+            repository
+                .save_raw_schema_view(*id, &payload.view)
+                .map_err(SchemaLoaderError::Repository)?;
         }
         Ok(())
     }
@@ -2297,11 +2282,9 @@ impl SchemaProcessor<Construction, Analyzed> {
         }
         let mut fetched_by_id: HashMap<SchemaId, Schema> = HashMap::new();
         if !fetch_ids.is_empty() {
-            let fetched =
-                repository.find_schemas_by_ids(&fetch_ids).map_err(|e| {
-                    let repo_err: SchemaRepositoryError = e.into();
-                    SchemaLoaderError::Repository(repo_err)
-                })?;
+            let fetched = repository
+                .find_schemas_by_ids(&fetch_ids)
+                .map_err(SchemaLoaderError::Repository)?;
             fetched_by_id = fetched.into_iter().map(|s| (*s.id(), s)).collect();
         }
 
@@ -2394,10 +2377,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             } else {
                 repository
                     .find_schema_by_id(schema_id)
-                    .map_err(|e| {
-                        let repo_err: SchemaRepositoryError = e.into();
-                        SchemaLoaderError::Repository(repo_err)
-                    })?
+                    .map_err(SchemaLoaderError::Repository)?
                     .ok_or_else(|| {
                         SchemaLoaderError::Ingestion(
                             SchemaIngestionError::File(
@@ -2776,10 +2756,9 @@ impl SchemaProcessor<Construction, NewBuild> {
                     parsed.content_hash,
                 )?;
             let view = RawSchemaView::new(path, version);
-            repository.save_raw_schema_view(schema_id, &view).map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?;
+            repository
+                .save_raw_schema_view(schema_id, &view)
+                .map_err(SchemaLoaderError::Repository)?;
 
             let schema = Arc::new(schema);
             constructed_cache.insert(schema_id, Arc::clone(&schema));
@@ -2792,10 +2771,9 @@ impl SchemaProcessor<Construction, NewBuild> {
                 .map(std::convert::AsRef::as_ref)
                 .cloned()
                 .collect();
-            repository.save_many_schemas(&owned).map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?;
+            repository
+                .save_many_schemas(&owned)
+                .map_err(SchemaLoaderError::Repository)?;
         }
 
         // Build unit-payload graph for persistence (structure only)
@@ -2813,10 +2791,9 @@ impl SchemaProcessor<Construction, NewBuild> {
             InheritanceGraph::try_from(persist_builder.build()).map_err(
                 |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
             )?;
-        repository.save_topological_graph(&inheritance_graph).map_err(|e| {
-            let repo_err: SchemaRepositoryError = e.into();
-            SchemaLoaderError::Repository(repo_err)
-        })?;
+        repository
+            .save_topological_graph(&inheritance_graph)
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(built)
     }
@@ -2844,17 +2821,15 @@ impl SchemaProcessor<Construction, Constructed> {
                 .map(std::convert::AsRef::as_ref)
                 .cloned()
                 .collect();
-            repository.save_many_schemas(&owned).map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?;
+            repository
+                .save_many_schemas(&owned)
+                .map_err(SchemaLoaderError::Repository)?;
         }
 
         for id in &deleted_ids {
-            repository.delete_schema(*id).map_err(|e| {
-                let repo_err: SchemaRepositoryError = e.into();
-                SchemaLoaderError::Repository(repo_err)
-            })?;
+            repository
+                .delete_schema(*id)
+                .map_err(SchemaLoaderError::Repository)?;
         }
 
         // Build unit-payload graph for persistence (structure only)
@@ -2873,10 +2848,9 @@ impl SchemaProcessor<Construction, Constructed> {
                 |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
             )?;
 
-        repository.save_topological_graph(&inheritance_graph).map_err(|e| {
-            let repo_err: SchemaRepositoryError = e.into();
-            SchemaLoaderError::Repository(repo_err)
-        })?;
+        repository
+            .save_topological_graph(&inheritance_graph)
+            .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition(Completed, Constructed {
             graph,
