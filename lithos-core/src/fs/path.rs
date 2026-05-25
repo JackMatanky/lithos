@@ -17,6 +17,48 @@ use super::{
     name::{BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef},
 };
 
+/// A trait for path fragments that can be appended to a directory to form a
+/// file path.
+pub trait FileFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl FileFragment for FileName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl FileFragment for RelativeFilePath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+/// A trait for path fragments that can be appended to a directory to form a
+/// directory path.
+pub trait DirFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl DirFragment for DirName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl DirFragment for RelativeDirPath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
 /// Unified path enum representing either a file or a directory.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
@@ -521,6 +563,31 @@ impl DirPath {
         self.0.join(child)
     }
 
+    /// Appends a file fragment to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing file.
+    #[inline]
+    pub fn append_file<T: FileFragment>(
+        &self,
+        file: &T,
+    ) -> Result<FilePath, super::PathError> {
+        FilePath::try_new(self.join(Path::new(file.as_str())))
+    }
+
+    /// Appends a directory fragment to this directory path.
+    ///
+    /// # Errors
+    /// Returns error if the resulting path does not refer to an existing
+    /// directory.
+    #[inline]
+    pub fn append_dir<T: DirFragment>(
+        &self,
+        dir: &T,
+    ) -> Result<DirPath, super::PathError> {
+        DirPath::try_new(self.join(dir.as_str()))
+    }
+
     /// Appends a validated filename to this directory path.
     ///
     /// # Errors
@@ -530,7 +597,7 @@ impl DirPath {
         &self,
         file: &FileName,
     ) -> Result<FilePath, super::PathError> {
-        FilePath::try_new(self.join(Path::new(file.as_str())))
+        self.append_file(file)
     }
 
     /// Appends a validated directory name to this directory path.
@@ -543,7 +610,7 @@ impl DirPath {
         &self,
         dir: &DirName,
     ) -> Result<DirPath, super::PathError> {
-        DirPath::try_new(self.join(dir.as_str()))
+        self.append_dir(dir)
     }
 
     /// Joins a child path and classifies it by path shape.
@@ -2111,6 +2178,100 @@ mod tests {
                     .expect("dir path should be valid");
                 let buf: PathBuf = path.into();
                 assert_eq!(buf, temp.path().to_path_buf());
+            }
+        }
+
+        mod append {
+            use super::*;
+
+            #[test]
+            fn returns_file_path_when_appending_relative_file_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_file = RelativeFilePath::try_new("notes/daily.md")
+                    .expect("valid rel file");
+
+                // Ensure the file exists for validation
+                let abs_file = temp.path().join("notes/daily.md");
+                std::fs::create_dir_all(abs_file.parent().unwrap()).unwrap();
+                std::fs::write(&abs_file, "content").unwrap();
+
+                let file = dir
+                    .append_file(&rel_file)
+                    .expect("append_file should succeed");
+                assert_eq!(file.as_path(), abs_file);
+            }
+
+            #[test]
+            fn returns_file_path_when_appending_file_name() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let file_name = FileName::new("note.md".into());
+
+                let abs_file = temp.path().join("note.md");
+                std::fs::write(&abs_file, "content").unwrap();
+
+                let file = dir
+                    .append_file(&file_name)
+                    .expect("append_file should succeed");
+                assert_eq!(file.as_path(), abs_file);
+            }
+
+            #[test]
+            fn returns_dir_path_when_appending_relative_dir_path() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_dir = RelativeDirPath::try_new("schemas/cache")
+                    .expect("valid rel dir");
+
+                let abs_dir = temp.path().join("schemas/cache");
+                std::fs::create_dir_all(&abs_dir).unwrap();
+
+                let result = dir
+                    .append_dir(&rel_dir)
+                    .expect("append_dir should succeed");
+                assert_eq!(result.as_path(), abs_dir);
+            }
+
+            #[test]
+            fn returns_dir_path_when_appending_dir_name() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let dir_name = DirName::new("notes".into());
+
+                let abs_dir = temp.path().join("notes");
+                std::fs::create_dir_all(&abs_dir).unwrap();
+
+                let result = dir
+                    .append_dir(&dir_name)
+                    .expect("append_dir should succeed");
+                assert_eq!(result.as_path(), abs_dir);
+            }
+
+            #[test]
+            fn returns_error_when_appended_file_does_not_exist() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_file = RelativeFilePath::try_new("missing.md")
+                    .expect("valid rel file");
+
+                assert!(dir.append_file(&rel_file).is_err());
+            }
+
+            #[test]
+            fn returns_error_when_appended_dir_does_not_exist() {
+                let temp = TempDir::new().expect("temp dir should be created");
+                let dir = DirPath::try_new(temp.path().to_path_buf())
+                    .expect("dir path should be valid");
+                let rel_dir = RelativeDirPath::try_new("missing_dir")
+                    .expect("valid rel dir");
+
+                assert!(dir.append_dir(&rel_dir).is_err());
             }
         }
     }

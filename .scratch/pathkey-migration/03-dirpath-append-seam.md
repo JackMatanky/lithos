@@ -2,12 +2,12 @@
 title: "Issue 03: Add DirPath append seam for file/dir fragments"
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-05-25
-date_completed: null
+date_completed: 2026-05-25
 ---
 
-# Issue 03: Add DirPath append seam for file/dir fragments
+# Issue 03: Add DirPath append seam for file/dir fragments (Completed)
 
 Labels: `ready-for-agent`
 Type: AFK
@@ -62,10 +62,10 @@ impl DirPath {
 ```
 
 **Acceptance criteria:**
-- [ ] `FileFragment` and `DirFragment` traits are defined.
-- [ ] Implementations are provided for `FileName`, `RelativeFilePath`, `DirName`, and `RelativeDirPath`.
-- [ ] `DirPath::append_file` and `DirPath::append_dir` are implemented and return validated `FilePath`/`DirPath` instances.
-- [ ] Tests cover single-segment and multi-segment append behaviors.
+- [x] `FileFragment` and `DirFragment` traits are defined.
+- [x] Implementations are provided for `FileName`, `RelativeFilePath`, `DirName`, and `RelativeDirPath`.
+- [x] `DirPath::append_file` and `DirPath::append_dir` are implemented and return validated `FilePath`/`DirPath` instances.
+- [x] Tests cover single-segment and multi-segment append behaviors.
 
 **Out of scope:**
 - Modifying callers outside of the `fs` module to use this seam (done in slice 04+).
