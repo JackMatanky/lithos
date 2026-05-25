@@ -915,6 +915,36 @@ impl PathValidationContext {
         }
     }
 
+    fn analyze(path: &str) -> Self {
+        let path_buf = PathBuf::from(path);
+        let mut context = Self::new();
+
+        if path_buf.is_absolute() {
+            context.set(Self::IS_ABSOLUTE);
+        }
+
+        for component in path_buf.components() {
+            match component {
+                Component::ParentDir => {
+                    context.set(Self::HAS_PARENT_TRAVERSAL);
+                }
+                Component::CurDir => {
+                    context.set(Self::HAS_CURRENT_DIR_COMPONENT);
+                }
+                Component::Prefix(_) => {
+                    context.set(Self::HAS_PLATFORM_PREFIX);
+                }
+                Component::RootDir | Component::Normal(_) => {}
+            }
+        }
+
+        if path.split('/').any(|segment| segment == ".") {
+            context.set(Self::HAS_CURRENT_DIR_COMPONENT);
+        }
+
+        context
+    }
+
     fn set(&mut self, flag: u8) {
         self.flags |= flag;
     }
@@ -936,61 +966,70 @@ impl PathValidationContext {
     }
 }
 
-fn analyze_relative_path_components(path: &str) -> PathValidationContext {
-    let path_buf = PathBuf::from(path);
-    let mut context = PathValidationContext::new();
+struct RelativePathValidator;
 
-    if path_buf.is_absolute() {
-        context.set(PathValidationContext::IS_ABSOLUTE);
+impl RelativePathValidator {
+    fn validate(path: &str) -> Result<&str, super::PathError> {
+        let trimmed = path.trim();
+        Self::reject_empty(trimmed)?;
+
+        let ctx = PathValidationContext::analyze(trimmed);
+        Self::reject_absolute(trimmed, ctx)?;
+        Self::reject_parent_traversal(trimmed, ctx)?;
+        Self::reject_current_dir_component(trimmed, ctx)?;
+        Self::reject_platform_prefix(trimmed, ctx)?;
+
+        Ok(trimmed)
     }
 
-    for component in path_buf.components() {
-        match component {
-            Component::ParentDir => {
-                context.set(PathValidationContext::HAS_PARENT_TRAVERSAL);
-            }
-            Component::CurDir => {
-                context.set(PathValidationContext::HAS_CURRENT_DIR_COMPONENT);
-            }
-            Component::Prefix(_) => {
-                context.set(PathValidationContext::HAS_PLATFORM_PREFIX);
-            }
-            Component::RootDir | Component::Normal(_) => {}
+    fn reject_empty(path: &str) -> Result<(), super::PathError> {
+        if path.is_empty() {
+            return Err(super::PathError::Empty);
         }
+        Ok(())
     }
 
-    if path.split('/').any(|segment| segment == ".") {
-        context.set(PathValidationContext::HAS_CURRENT_DIR_COMPONENT);
+    fn reject_absolute(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.is_absolute() {
+            return Err(super::PathError::NotRelative(PathBuf::from(path)));
+        }
+        Ok(())
     }
 
-    context
-}
-
-fn validate_passive_relative_path(
-    path: &str,
-) -> Result<&str, super::PathError> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err(super::PathError::Empty);
+    fn reject_parent_traversal(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_parent_traversal() {
+            return Err(super::PathError::ParentTraversal(PathBuf::from(path)));
+        }
+        Ok(())
     }
 
-    let component_ctx = analyze_relative_path_components(trimmed);
-    if component_ctx.is_absolute() {
-        return Err(super::PathError::NotRelative(PathBuf::from(trimmed)));
-    }
-    if component_ctx.has_parent_traversal() {
-        return Err(super::PathError::ParentTraversal(PathBuf::from(trimmed)));
-    }
-    if component_ctx.has_current_dir_component() {
-        return Err(super::PathError::CurrentDirComponent(PathBuf::from(
-            trimmed,
-        )));
-    }
-    if component_ctx.has_platform_prefix() {
-        return Err(super::PathError::PlatformPrefix(PathBuf::from(trimmed)));
+    fn reject_current_dir_component(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_current_dir_component() {
+            return Err(super::PathError::CurrentDirComponent(PathBuf::from(
+                path,
+            )));
+        }
+        Ok(())
     }
 
-    Ok(trimmed)
+    fn reject_platform_prefix(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_platform_prefix() {
+            return Err(super::PathError::PlatformPrefix(PathBuf::from(path)));
+        }
+        Ok(())
+    }
 }
 
 /// Passive, strict relative directory declaration.
@@ -1008,7 +1047,7 @@ impl RelativeDirPath {
     /// traversal components.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let validated = validate_passive_relative_path(path)?;
+        let validated = RelativePathValidator::validate(path)?;
         Ok(Self(validated.to_owned().into_boxed_str()))
     }
 
@@ -1044,7 +1083,7 @@ impl RelativeFilePath {
     /// traversal components.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let validated = validate_passive_relative_path(path)?;
+        let validated = RelativePathValidator::validate(path)?;
         Ok(Self(validated.to_owned().into_boxed_str()))
     }
 

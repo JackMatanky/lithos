@@ -1,20 +1,34 @@
 ---
 title: "Issue 02: Add passive RelativeDirPath and RelativeFilePath config types"
 category: "enhancement"
-label: "ready-for-agent"
-status: "ready-for-agent"
+label: "completed"
+status: "completed"
 date_created: "2026-05-25"
-date_completed: null
+date_completed: "2026-05-25"
 ---
 
-# Issue 02: Add passive RelativeDirPath and RelativeFilePath config types
+# Issue 02: Add passive RelativeDirPath and RelativeFilePath config types (Completed)
 
-Labels: `ready-for-agent`
+Labels: `completed`
 Type: AFK
 
 ## Parent
 
 - `.scratch/pathkey-migration/PRD.md`
+
+## Status Update
+
+Implemented in `lithos-core/src/fs/path.rs`. Types are `Box<str>` wrappers with passive validation.
+
+## Implementation Notes
+
+- **Location**: `lithos-core/src/fs/path.rs` (moved from `config/paths.rs` to leverage `PathValidationContext`).
+- **Validation logic**:
+  - Uses `analyze_relative_path_components` for absolute, parent traversal, and platform prefix detection.
+  - Uses manual string splitting (`path.split('/')`) to detect `.` components, as `Path::components()` normalizes them out and we must explicitly reject them to prevent ambiguity in joined paths.
+  - **Normalization policy change**: Per user instructions, duplicate separators (`//`) and backslashes (`\`) are **accepted** during validation to ensure compatibility with path joining operations where strict normalization might cause platform-specific issues.
+- **Types**: `RelativeDirPath` and `RelativeFilePath`.
+- **Tests**: 9 unit tests added covering constructors, validation (acceptance/rejection), and accessors.
 
 ## What to build
 
@@ -45,7 +59,7 @@ pub struct RelativeFilePath(Box<str>);
 - Must be valid UTF-8.
 - Must be relative (no leading `/` or platform prefixes).
 - Must not contain traversal components (`.` or `..`).
-- Must have normalized separators (forward slashes only, no duplicates).
+- **Accepted**: Duplicate separators and backslashes (updated during implementation).
 
 **Strict Constraints:**
 - They must NOT wrap `PathBuf` or `Path`.
@@ -53,10 +67,10 @@ pub struct RelativeFilePath(Box<str>);
 - Only expose primitive accessors like `as_str() -> &str`.
 
 **Acceptance criteria:**
-- [ ] `RelativeDirPath` and `RelativeFilePath` are implemented as string wrappers.
-- [ ] Validation correctly rejects absolute paths, empty paths, and `.`/`..` components.
-- [ ] Types expose NO conversion APIs whatsoever.
-- [ ] Tests cover accepted and rejected forms.
+- [x] `RelativeDirPath` and `RelativeFilePath` are implemented as string wrappers.
+- [x] Validation correctly rejects absolute paths, empty paths, and `.`/`..` components.
+- [x] Types expose NO conversion APIs whatsoever.
+- [x] Tests cover accepted and rejected forms.
 
 **Out of scope:**
 - Materialization to `DirPath`/`FilePath`.
@@ -163,12 +177,13 @@ RED:
 GREEN:
 - Implement `as_str(&self) -> &str` only.
 
-### 4. Refactor pass (after GREEN across loops)
+### 4. Refactor pass (Refining Abstraction)
 
-- Remove duplication across validators while keeping behavior unchanged.
-- Keep internals string/borrow-first and avoid unnecessary clones.
-- Ensure both wrappers derive exactly required traits (`Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Archive`, `Serialize`, `Deserialize`).
-- Verify no `PathBuf`/`Path` storage and no conversion/materialization methods are introduced.
+- [ ] Extract `PathValidationContext::analyze(path: &str) -> Self` to centralize analysis facts.
+- [ ] Introduce `RelativePathValidator` as a private ZST to own the relative-only validation policy.
+- [ ] Ensure `RelativeDirPath` and `RelativeFilePath` use `RelativePathValidator::validate(path)`.
+- [ ] Verify existing tests in `mod relative_config_path` pass after refactor.
+- [ ] Ensure `missing-docs` lint is satisfied for any new public items (though validator should be private).
 
 ### 4.1 Non-duplication guardrail (`fs::path` alignment)
 
