@@ -1,4 +1,3 @@
-
 # Progress Tracking
 
 - [x] Initialized plan and findings files.
@@ -8,4 +7,7 @@
 - [x] Refined `SchemaRepositoryError` with typed `NotFound` variants and `EmptyVersionHistory`.
 - [x] Updated all callers in `lithos-core`.
 - [x] Verified with tests: All schema storage and loader tests passed.
+- [x] Fixed clippy warnings (useless conversions).
+- [x] Committed changes with conventional commit message.
+- [x] Moved planning files to `.scratch/` for long-term reference.
 - [x] Task completed successfully.

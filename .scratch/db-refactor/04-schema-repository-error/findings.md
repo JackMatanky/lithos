@@ -1,4 +1,3 @@
-
 # Findings: Error Type Duplication and Hierarchy Analysis
 
 ## Current SchemaPersistence Hierarchy
@@ -17,22 +16,14 @@
 - Map `PropertyBankNotFound` to `SchemaRepositoryError` or a specific domain error.
 - Use `DbError::Serialization` and `DbError::Deserialization` directly.
 
-## Proposed Hierarchy
+## Final Hierarchy
 `SchemaLoaderError` -> `SchemaRepositoryError` -> `DbError`
 
-### Proposed `SchemaRepositoryError`
-```rust
-pub enum SchemaRepositoryError {
-    #[error(transparent)]
-    Storage(#[from] DbError),
-
-    #[error(transparent)]
-    Domain(#[from] SchemaError),
-
-    #[error("not found: {0}")]
-    NotFound(Box<str>),
-
-    #[error("PropertyBank not found in database - initialize by loading schema files or creating properties")]
-    PropertyBankNotFound,
-}
-```
+### Final `SchemaRepositoryError` Implementation
+- `Storage(#[from] DbError)`: Direct wrapping of database failures.
+- `Domain(#[from] SchemaError)`: Direct wrapping of domain validation failures.
+- `NotFoundById(SchemaId)`: Typed lookup failure.
+- `NotFoundByName(SchemaName)`: Typed lookup failure.
+- `NotFoundByPath(RelativePath)`: Typed lookup failure.
+- `PropertyBankNotFound`: Specific domain invariant failure.
+- `EmptyVersionHistory(RelativePath)`: Specific structural invariant failure (replacing generic NotFound for "current version").
