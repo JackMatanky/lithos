@@ -26,6 +26,7 @@
 
 mod read;
 pub(crate) mod tables;
+mod write;
 
 use std::sync::Arc;
 
