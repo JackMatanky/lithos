@@ -53,18 +53,6 @@ pub enum VaultRepositoryError {
     /// Persistence conflict where an entry already exists at the target path.
     #[error("duplicate path: entry already exists at {0}")]
     DuplicatePath(crate::fs::NormalizedPath),
-
-    /// Domain constraint violation.
-    ///
-    /// # Note
-    ///
-    /// This variant is retained for legacy compatibility and is slated for
-    /// removal once all vault persistence is migrated to the new repo pattern.
-    #[error("vault constraint violation: {message}")]
-    ConstraintViolation {
-        /// Human-readable constraint message.
-        message: Box<str>,
-    },
 }
 
 #[cfg(test)]

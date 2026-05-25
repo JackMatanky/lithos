@@ -317,12 +317,12 @@ impl VaultProcessor<Discovery, Unknown> {
     #[tracing::instrument(level = "info", skip(self, store, config))]
     pub fn process_full(
         self,
-        store: &Arc<Store>,
+        store: Arc<Store>,
         config: &Config,
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(Arc::clone(store));
-        let note_repository = NoteRepository::new(Arc::clone(store));
+        let repository = VaultRepository::new(Arc::clone(&store));
+        let note_repository = NoteRepository::new(store);
 
         let compared = self
             .discover(&source, ScanMode::Full)?
@@ -342,13 +342,13 @@ impl VaultProcessor<Discovery, Unknown> {
     #[tracing::instrument(level = "info", skip(self, store, config, paths))]
     pub fn process_partial(
         self,
-        store: &Arc<Store>,
+        store: Arc<Store>,
         config: &Config,
         paths: &[NormalizedPath],
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(Arc::clone(store));
-        let note_repository = NoteRepository::new(Arc::clone(store));
+        let repository = VaultRepository::new(Arc::clone(&store));
+        let note_repository = NoteRepository::new(store);
 
         let compared = self
             .discover_partial(&source, paths)?

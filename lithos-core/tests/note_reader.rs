@@ -80,7 +80,8 @@ mod tests {
         let config = test_config(dir.path().to_path_buf())?;
         let db_path = dir.path().join("notes.redb");
         let store = Arc::new(Store::open(&db_path)?);
-        let report = VaultProcessor::new().process_full(&store, &config)?;
+        let report =
+            VaultProcessor::new().process_full(Arc::clone(&store), &config)?;
         if report.markdown_routed() == 0 {
             return Err(std::io::Error::other(
                 "expected markdown routing to occur",
@@ -302,8 +303,9 @@ mod tests {
         let processor = VaultProcessor::new();
         let repository = NoteRepository::new(Arc::clone(&store));
 
-        let first =
-            processor.process_full(&store, &config).expect("first load");
+        let first = processor
+            .process_full(Arc::clone(&store), &config)
+            .expect("first load");
         assert_eq!(
             first.markdown_routed(),
             1,
@@ -313,7 +315,7 @@ mod tests {
         let _first_note = first_notes.pop().expect("expected stored note");
 
         let second = VaultProcessor::new()
-            .process_full(&store, &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         assert_eq!(
             second.notes_created_or_updated(),
@@ -333,13 +335,14 @@ mod tests {
         let processor = VaultProcessor::new();
         let repository = NoteRepository::new(Arc::clone(&store));
 
-        let _report =
-            processor.process_full(&store, &config).expect("first load");
+        let _report = processor
+            .process_full(Arc::clone(&store), &config)
+            .expect("first load");
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
         let _second_report = VaultProcessor::new()
-            .process_full(&store, &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         let notes = repository.list().expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
@@ -352,14 +355,14 @@ mod tests {
                 .expect("environment");
 
         let _first = VaultProcessor::new()
-            .process_full(&store, &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("first load");
 
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
         let second = VaultProcessor::new()
-            .process_full(&store, &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("second load");
         assert_eq!(
             second.files_deleted(),
@@ -385,7 +388,7 @@ mod tests {
         let repository = NoteRepository::new(Arc::clone(&store));
 
         let first = VaultProcessor::new()
-            .process_full(&store, &config)
+            .process_full(Arc::clone(&store), &config)
             .expect("first full scan");
         assert_eq!(
             first.markdown_routed(),
@@ -400,7 +403,7 @@ mod tests {
                 .expect("partial vault path"),
         ];
         let partial = VaultProcessor::new()
-            .process_partial(&store, &config, &partial_paths)
+            .process_partial(Arc::clone(&store), &config, &partial_paths)
             .expect("partial scan");
 
         assert_eq!(

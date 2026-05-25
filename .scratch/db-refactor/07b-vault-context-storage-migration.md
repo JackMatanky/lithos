@@ -179,9 +179,9 @@ pub trait ReadRepository {
     fn list_markdown_file_views(&self) -> Result<Vec<FileView>, VaultRepositoryError>;
 
     // List operations (table/index scans)
-    fn list_all_file_views(&self) -> Result<Vec<FileView>, VaultRepositoryError>;
+    fn list_file_views(&self) -> Result<Vec<FileView>, VaultRepositoryError>;
     fn list_file_paths(&self) -> Result<Vec<NormalizedPath>, VaultRepositoryError>;
-    fn list_all_dir_views(&self) -> Result<Vec<DirView>, VaultRepositoryError>;
+    fn list_dir_views(&self) -> Result<Vec<DirView>, VaultRepositoryError>;
     fn list_dir_paths(&self) -> Result<Vec<NormalizedPath>, VaultRepositoryError>;
 }
 ```
@@ -299,9 +299,9 @@ Repeat for each read method (following Note pattern):
 - `find_file_views_by_parent()` — multimap scan
 - `list_file_views_by_format()` — multimap scan
 - `list_markdown_file_views()` — special case (FileFormat::Markdown)
-- `list_all_file_views()` — table scan
+- `list_file_views()` — table scan
 - `list_file_paths()` — index scan
-- `list_all_dir_views()` — table scan
+- `list_dir_views()` — table scan
 - `list_dir_paths()` — index scan
 
 **Test naming**: `<method>_<condition>_<outcome>`
@@ -433,7 +433,7 @@ mod tests {
 - Basic lookups (`get_file_view`, `get_dir_view`)
 - Path lookups (`find_file_view_by_path`, `find_dir_view_by_path`, `get_entry`)
 - Multimap queries (`find_file_views_by_basename`, `find_file_views_by_parent`, `list_file_views_by_format`, `list_markdown_file_views`)
-- List operations (`list_all_file_views`, `list_file_paths`, `list_all_dir_views`, `list_dir_paths`)
+    - List operations (`list_file_views`, `list_file_paths`, `list_dir_views`, `list_dir_paths`)
 
 **Write methods** (~8 tests):
 - Single operations (`save_file_view`, `save_dir_view`, `delete_file_view`, `delete_dir_view`)

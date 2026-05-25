@@ -2,7 +2,7 @@
 title: 07c-note-processor-and-tests-migration
 category: enhancement
 label: needs-triage
-status: open
+status: completed
 date_created: 2026-05-25
 ---
 
@@ -12,9 +12,7 @@ Implementation
 
 ## Labels
 
-- needs-triage
 - part-of-07
-- blocked-by-07a-07b
 
 ## What to build
 
@@ -29,7 +27,7 @@ Migrate all call sites from `storage_legacy::Repository` to the new segregated `
 
 2. **vault/processor.rs**:
    - Change import from `storage_legacy::RedbRepository` → `note::storage::RedbRepository`
-   - Use `Arc<Store>` for note repository construction (via bridge from 07b)
+   - Use `Arc<Store>` for note repository construction (no bridge — both repositories share the same `Arc<Store>`)
 
 3. **tests/note_ingest.rs**:
    - Use `note::storage::RedbRepository` instead of `storage_legacy::RedbRepository`
@@ -46,7 +44,7 @@ Migrate all call sites from `storage_legacy::Repository` to the new segregated `
 ## Dependencies
 
 - **07a** (complete): New repository traits + storage implementation exist
-- **07b** (open): Provides `Database` → `Store` bridge for vault processor
+- **07b** (complete): Vault storage migration completed — no bridge, all code uses `Arc<Store>` directly
 
 ## Current State
 
@@ -82,16 +80,7 @@ All other method names are identical between legacy and new traits:
 use crate::note::storage_legacy::RedbRepository as NoteRepository;
 ```
 
-**Construction** (lines 322, 348):
-```rust
-let note_repository = NoteRepository::new(db);  // db: &Database
-```
-
-After 07b, becomes:
-```rust
-let store = Arc::new(db.to_store());  // Or From<&Database> bridge
-let note_repository = note::storage::RedbRepository::new(store);
-```
+**Construction** (lines 322, 348): uses `note::storage::RedbRepository::new(Arc::clone(&store))` directly with the shared `Arc<Store>`.
 
 ### tests/note_ingest.rs
 
@@ -100,21 +89,11 @@ let note_repository = note::storage::RedbRepository::new(store);
 use lithos_core::note::storage_legacy::{RedbRepository, Repository as _};
 ```
 
-**Usage** (line 45):
-```rust
-let db = Database::open(&db_path)?;
-let repository = RedbRepository::new(&db);
-```
-
-After migration:
-```rust
-let store = Arc::new(Store::open(&db_path)?);  // Or bridge from Database
-let repository = note::storage::RedbRepository::new(Arc::clone(&store));
-```
+**Usage**: uses `Store::open` directly with `Arc<Store>`, no bridge involved.
 
 ### tests/note_reader.rs
 
-Same pattern as `note_ingest.rs` (lines 43, 93, 148, 305, 336, 387).
+Same pattern as `note_ingest.rs` — uses `Store::open` directly.
 
 ## Acceptance Criteria
 
@@ -142,12 +121,12 @@ No new tests needed — existing integration tests verify behavior is preserved.
 
 ## Blocked By
 
-- **07b**: Must complete first (provides `Database` → `Store` bridge)
+None (07b completed — the bridge was skipped in favor of direct `Arc<Store>` usage).
 
 ## Estimated Effort
 
-~2 hours (straightforward refactor once 07b provides the bridge)
+~2 hours
 
 ---
 
-**Status**: 🔴 Blocked by 07b
+**Status**: ✅ Complete
