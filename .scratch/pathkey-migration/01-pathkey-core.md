@@ -1,10 +1,10 @@
 ---
 title: "Issue 01: PathKey core type and normalization pipeline"
-category: "enhancement"
-label: "completed"
-status: "completed"
-date_created: "2026-05-25"
-date_completed: "2026-05-25"
+category: enhancement
+label: ready-for-agent
+status: completed
+date_created: 2026-05-25
+date_completed: 2026-05-25
 ---
 
 # Issue 01: PathKey core type and normalization pipeline
