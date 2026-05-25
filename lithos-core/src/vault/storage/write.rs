@@ -334,10 +334,25 @@ struct FileDeleteContext {
 impl FileDeleteContext {
     /// Loads the index metadata for a given file.
     ///
-    /// Reads the primary record to extract basename, parent ID, and format.
-    /// Then scans the entire path-to-ID table (O(N)) to find the matching
-    /// path — this is correct but scales linearly with the number of paths
-    /// in the vault.
+    /// Reads the primary [`FileView`] record to extract basename, parent ID,
+    /// and format. Then scans the entire path-to-ID table (O(N)) to find
+    /// the matching path — this is correct but scales linearly with the
+    /// number of paths in the vault.
+    ///
+    /// # Parameters
+    ///
+    /// * `tx` — An open write transaction containing the vault tables.
+    /// * `file_id` — The unique identifier of the file to look up.
+    ///
+    /// # Returns
+    ///
+    /// A [`FileDeleteContext`] with populated index fields. Fields for
+    /// entries that do not exist in the database are `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DbError`] if the table access fails or if a stored record
+    /// cannot be deserialized.
     fn load(tx: &WriteTx, file_id: FileId) -> Result<Self, DbError> {
         let file_table = tx.try_open_table(FILE_VIEWS.definition())?;
         let path_table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
@@ -392,6 +407,20 @@ impl DirDeleteContext {
     ///
     /// Scans the entire directory path-to-ID table (O(N)) to find the
     /// matching entry — correct but not optimal for batch operations.
+    ///
+    /// # Parameters
+    ///
+    /// * `tx` — An open write transaction containing the vault tables.
+    /// * `dir_id` — The unique identifier of the directory to look up.
+    ///
+    /// # Returns
+    ///
+    /// A [`DirDeleteContext`] with `path` set to the matching path, or
+    /// `None` if the directory does not exist in the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DbError`] if the table access fails.
     fn load(tx: &WriteTx, dir_id: DirId) -> Result<Self, DbError> {
         let path_table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
 
