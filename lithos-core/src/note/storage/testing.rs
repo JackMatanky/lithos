@@ -1,3 +1,22 @@
+//! In-memory [`Repository`] test double for Note persistence.
+//!
+//! This module provides a [`HashMap`]-backed [`Repository`] implementation that
+//! enables pure unit tests without filesystem I/O. Uses the same
+//! instrumentation pattern as other context-level in-memory adapters:
+//!
+//! - Operation counters track read/write activity
+//! - `FailurePoint::BeforeRead`/`BeforeWrite` injection for error-path testing
+//! - Thread-safe via [`RwLock`]-protected internal state
+//!
+//! # When to Use
+//!
+//! | Use Case | Implementation |
+//! |---|---|
+//! | Pure unit tests (no I/O) | [`InMemoryRepository`] |
+//! | Integration tests | [`super::RedbRepository`] |
+//!
+//! [`Repository`]: crate::note::repository::Repository
+
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -17,15 +36,43 @@ use crate::{
     },
 };
 
+/// [`HashMap`]-backed [`Repository`] implementation for pure unit tests.
+///
+/// This is NOT a mock — it is a fully functional [`Repository`] implementation
+/// that stores data in memory instead of a persistent database. All trait
+/// methods behave identically to [`super::RedbRepository`] except data is
+/// ephemeral and lost when the instance is dropped.
+///
+/// # Thread Safety
+///
+/// Internal state is protected by [`RwLock`], allowing concurrent reads and
+/// exclusive writes. Lock poisoning (a thread panicking while holding a lock)
+/// is surfaced as [`NoteRepositoryError::Storage`].
+///
+/// # Performance
+///
+/// - O(1) average lookups via direct [`HashMap`] access
+/// - No serialization overhead — stores [`Note`] objects directly
+/// - [`Clone`] is O(1) via [`Arc`] reference counting
+///
+/// [`Repository`]: crate::note::repository::Repository
 #[derive(Debug, Clone)]
 pub(crate) struct InMemoryRepository {
+    /// Test harness for operation instrumentation and failure injection.
     harness: Arc<InMemoryHarness>,
+
+    /// Note storage: `NoteId` → `Note`
     notes: Arc<RwLock<HashMap<NoteId, Note>>>,
+
+    /// Path-to-ID lookup: `NotePath` → `NoteId`
     path_to_id: Arc<RwLock<HashMap<NotePath, NoteId>>>,
+
+    /// Cached list views: `NoteId` → `ListView`
     views: Arc<RwLock<HashMap<NoteId, ListView>>>,
 }
 
 impl InMemoryRepository {
+    /// Creates a new empty in-memory repository with no failure injector.
     #[must_use]
     pub(crate) fn new() -> Self {
         Self {
@@ -36,6 +83,9 @@ impl InMemoryRepository {
         }
     }
 
+    /// Creates a new repository with the specified test harness.
+    ///
+    /// Useful for tests that need custom failure injection behavior.
     #[must_use]
     pub(crate) fn with_harness(harness: InMemoryHarness) -> Self {
         Self {
@@ -46,6 +96,10 @@ impl InMemoryRepository {
         }
     }
 
+    /// Returns a reference to the test harness for instrumentation.
+    ///
+    /// Allows tests to inspect operation counters and configure failure
+    /// injection.
     #[must_use]
     pub(crate) fn harness(&self) -> &InMemoryHarness {
         &self.harness

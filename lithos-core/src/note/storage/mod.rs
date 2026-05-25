@@ -15,9 +15,9 @@
 //! # Modules
 //!
 //! - [`tables`]: Public table definitions and constants
-//! - `read`: Internal [`ReadRepository`] implementation (private, to be added)
-//! - `write`: Internal [`WriteRepository`] implementation (private, to be
-//!   added)
+//! - `read`: Internal [`ReadRepository`] implementation
+//! - `write`: Internal [`WriteRepository`] implementation
+//! - `testing`: In-memory [`Repository`] test double (test-only)
 //!
 //! [`ReadRepository`]: crate::note::repository::ReadRepository
 //! [`WriteRepository`]: crate::note::repository::WriteRepository
