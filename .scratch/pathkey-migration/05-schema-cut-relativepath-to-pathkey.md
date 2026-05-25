@@ -82,6 +82,26 @@ at a time). Do not batch all tests first.
 - No manual `strip_prefix + RelativePath::try_from` chains remain at schema
   boundaries.
 
+**Allowed `PathKey` construction sources (hard rule):**
+- `FsPath::as_key(root)`
+- `FilePath::as_key(root)`
+- `DirPath::as_key(root)`
+- `SchemaConfigSpec::{property_bank_key, schema_directory_key}` for
+  config-derived canonical keys
+
+**Forbidden patterns (hard rule):**
+- `PathKey::try_new(...)` when input originates from `RelativePath` or ad hoc
+  boundary strings
+- Any new helper that converts `RelativePath -> PathKey` through string
+  extraction
+- Any boundary-level `strip_prefix + RelativePath::try_from` chain
+
+**Repository boundary rule:**
+- Only `PathKey` crosses `ReadRepository` / `WriteRepository` path-key APIs.
+- If internal domain models still contain `RelativePath` during migration,
+  boundary conversion must originate from root-scoped filesystem/config objects,
+  not from `RelativePath` string bridging.
+
 **Units under test:**
 - `ReadRepository` + `WriteRepository` path-keyed lookup/write APIs.
 - Redb read/write adapters and table key serialization for schema path indexes.
@@ -108,7 +128,41 @@ at a time). Do not batch all tests first.
 5. Batch lookups use borrowed slices (`&[PathKey]`) and avoid unnecessary
    cloning.
 
+### 2.1 Migration scope guardrails
+
+**Must migrate in this issue:**
+- `lithos-core/src/schema/repository.rs` path-keyed trait signatures
+- `lithos-core/src/schema/storage/{mod,read,write,testing}.rs`
+  repository/storage key boundaries
+- `lithos-core/src/schema/discovery.rs` boundary calls (`separate_property_bank`,
+  `query_cached_state`)
+- `lithos-core/src/schema/builder.rs` property-bank boundary key derivation
+
+**May remain `RelativePath` for now (unless scope is explicitly expanded):**
+- Internal schema domain payloads/views not used as repository boundary
+  contracts
+- Error payload fields not part of repository/storage boundary signatures
+
+Goal: enforce a hard cut at schema repository/storage boundaries without
+requiring an unrelated full-domain type migration in one issue.
+
 ### 3. RED->GREEN slices
+
+#### Slice 0 (Policy gate): boundary contract and forbidden-pattern guard
+
+**Behavior:** schema repository/storage boundaries reject `RelativePath` APIs and
+avoid forbidden conversion patterns.
+
+**RED:**
+- Add/adjust tests and compile-time API usage so boundary methods fail until
+  signatures are `PathKey`-only.
+- Add migration review checklist entry to fail review when forbidden patterns
+  appear in touched schema migration files.
+
+**GREEN:**
+- Boundary path APIs in repository/storage compile and pass with `PathKey`
+  inputs only.
+- No forbidden conversion pattern remains in touched files.
 
 #### Slice A (Tracer bullet): single-path read lookup via `PathKey`
 
@@ -176,6 +230,8 @@ producing canonical schema keys for downstream cache queries.
 - Replace manual `strip_prefix + RelativePath::try_from` in discovery with
   canonical key derivation from file entries.
 - Update `query_cached_state` inputs and repository calls to `PathKey`.
+- Use config key methods (`SchemaConfigSpec::property_bank_key`) for
+  config-derived property-bank key access.
 
 #### Slice F: builder property-bank key derivation policy
 
@@ -191,6 +247,7 @@ derivation and preserves existing load/update behavior.
   key derivation using `SchemaConfigSpec` key methods where available and
   entry-based conversion when the path originates from discovered filesystem
   entries.
+- Do not introduce `RelativePath -> PathKey` string bridge helpers.
 
 ### 4. Refactor pass (after all slices are green)
 
@@ -217,3 +274,16 @@ Optional final quality gate before merge:
 - [ ] Minimal implementation change to satisfy current failing test only.
 - [ ] No `unwrap()`/`panic!` introduced in production code.
 - [ ] Borrowing preferred (`&PathKey`, `&[PathKey]`) over cloning.
+
+### 7. Migration-specific definition of done
+
+- [ ] No path-based schema repository boundary signature accepts
+      `RelativePath`.
+- [ ] No boundary-level `strip_prefix + RelativePath::try_from` chain remains
+      in touched schema migration files.
+- [ ] No `PathKey::try_new(...)` call in touched migration files uses inputs
+      sourced from `RelativePath`/ad hoc boundary strings.
+- [ ] Discovery and builder boundary flows use only allowed canonical key
+      derivation sources.
+- [ ] `mise run test:unit`, targeted schema integration tests, and
+      `mise run test` pass.
