@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{DirScanInput, DirScanner, FsEntry, RelativePath},
+    fs::{DirScanInput, DirScanner, FsEntry, PathKey},
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
@@ -105,7 +105,7 @@ impl PropertyBankDiscovery {
 #[derive(Debug)]
 pub(crate) struct DiscoveryResult {
     /// Discovered schema files (path → discovery data).
-    schemas: HashMap<RelativePath, SchemaDiscovery>,
+    schemas: HashMap<PathKey, SchemaDiscovery>,
     /// Discovered property bank file (if present).
     property_bank: Option<PropertyBankDiscovery>,
     /// Inheritance graph from database (if exists).
@@ -117,7 +117,7 @@ pub(crate) struct DiscoveryResult {
 impl DiscoveryResult {
     /// Returns the discovered schemas.
     #[inline]
-    pub(crate) fn schemas(&self) -> &HashMap<RelativePath, SchemaDiscovery> {
+    pub(crate) fn schemas(&self) -> &HashMap<PathKey, SchemaDiscovery> {
         &self.schemas
     }
 
@@ -167,8 +167,8 @@ impl DiscoveryResult {
 struct CachedState {
     graph: Option<InheritanceGraph<()>>,
     property_bank_view: Option<RawPropertyBankView>,
-    schema_views: HashMap<RelativePath, RawSchemaView>,
-    schema_ids: HashMap<RelativePath, SchemaId>,
+    schema_views: HashMap<PathKey, RawSchemaView>,
+    schema_ids: HashMap<PathKey, SchemaId>,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -271,7 +271,7 @@ impl DiscoveryEngine {
     fn separate_property_bank(
         entries: Vec<FsEntry>,
         spec: &SchemaConfigSpec,
-    ) -> (Option<FsEntry>, Vec<(RelativePath, FsEntry)>) {
+    ) -> (Option<FsEntry>, Vec<(PathKey, FsEntry)>) {
         let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
         let property_bank_path =
@@ -282,13 +282,7 @@ impl DiscoveryEngine {
                 continue;
             };
 
-            let Ok(relative) =
-                file.path().as_path().strip_prefix(spec.root().as_path())
-            else {
-                continue;
-            };
-
-            let Ok(relative_path) = RelativePath::try_from(relative) else {
+            let Ok(path_key) = file.path().as_key(spec.root()) else {
                 continue;
             };
 
@@ -300,7 +294,7 @@ impl DiscoveryEngine {
             ) {
                 property_bank_entry = Some(entry);
             } else {
-                schemas.push((relative_path, entry));
+                schemas.push((path_key, entry));
             }
         }
 
@@ -331,21 +325,20 @@ impl DiscoveryEngine {
     fn query_cached_state<R>(
         repo: &R,
         property_bank_entry: Option<&FsEntry>,
-        schema_entries: &[(RelativePath, FsEntry)],
+        schema_entries: &[(PathKey, FsEntry)],
         spec: &SchemaConfigSpec,
     ) -> Result<CachedState, SchemaLoaderError>
     where
         R: ReadRepository,
     {
         let property_bank_path =
-            RelativePath::try_from(spec.property_bank_relative().as_str())
-                .map_err(SchemaIngestionError::from)?;
+            spec.property_bank_key().map_err(SchemaIngestionError::from)?;
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iter over &[(RelativePath, FsEntry)] yields \
-                      &&(RelativePath, FsEntry)"
+            reason = "iter over &[(PathKey, FsEntry)] yields &&(PathKey, \
+                      FsEntry)"
         )]
-        let schema_paths: Vec<_> =
+        let schema_keys: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
         let graph = repo
@@ -359,13 +352,13 @@ impl DiscoveryEngine {
             None => None,
         };
 
-        let (schema_views, schema_ids) = if schema_paths.is_empty() {
+        let (schema_views, schema_ids) = if schema_keys.is_empty() {
             (HashMap::new(), HashMap::new())
         } else {
             let schema_views = repo
-                .find_raw_schema_views_by_paths(&schema_paths)
+                .find_raw_schema_views_by_paths(&schema_keys)
                 .map_err(SchemaLoaderError::Repository)?;
-            let schema_views = schema_paths
+            let schema_views = schema_keys
                 .iter()
                 .cloned()
                 .zip(schema_views)
@@ -373,9 +366,9 @@ impl DiscoveryEngine {
                 .collect();
 
             let schema_ids = repo
-                .find_schema_ids_by_paths(&schema_paths)
+                .find_schema_ids_by_paths(&schema_keys)
                 .map_err(SchemaLoaderError::Repository)?;
-            let schema_ids = schema_paths
+            let schema_ids = schema_keys
                 .iter()
                 .cloned()
                 .zip(schema_ids)
@@ -403,7 +396,7 @@ impl DiscoveryEngine {
     /// allocations.
     fn build_result(
         property_bank_entry: Option<FsEntry>,
-        schema_entries: Vec<(RelativePath, FsEntry)>,
+        schema_entries: Vec<(PathKey, FsEntry)>,
         mut cached: CachedState,
     ) -> DiscoveryResult {
         // Build property bank discovery
@@ -559,7 +552,7 @@ mod tests {
 
         fn find_raw_schema_view_by_path(
             &self,
-            path: &RelativePath,
+            path: &PathKey,
         ) -> Result<
             Option<RawSchemaView>,
             crate::schema::error::SchemaRepositoryError,
@@ -569,7 +562,7 @@ mod tests {
 
         fn find_raw_schema_views_by_paths(
             &self,
-            paths: &[RelativePath],
+            paths: &[PathKey],
         ) -> Result<
             Vec<Option<RawSchemaView>>,
             crate::schema::error::SchemaRepositoryError,
@@ -598,7 +591,7 @@ mod tests {
 
         fn get_raw_property_bank_view(
             &self,
-            path: &RelativePath,
+            path: &PathKey,
         ) -> Result<
             Option<RawPropertyBankView>,
             crate::schema::error::SchemaRepositoryError,
@@ -616,7 +609,7 @@ mod tests {
 
         fn find_schema_id_by_path(
             &self,
-            path: &RelativePath,
+            path: &PathKey,
         ) -> Result<Option<SchemaId>, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.find_schema_id_by_path(path)
@@ -624,7 +617,7 @@ mod tests {
 
         fn find_schema_ids_by_paths(
             &self,
-            paths: &[RelativePath],
+            paths: &[PathKey],
         ) -> Result<
             Vec<Option<SchemaId>>,
             crate::schema::error::SchemaRepositoryError,

@@ -1,7 +1,7 @@
 //! Schema repository trait and error types.
 
 use crate::{
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -127,12 +127,12 @@ pub trait ReadRepository {
     /// ```rust,ignore
     /// use lithos_core::schema::repository::ReadRepository;
     /// use lithos_core::schema::storage::RedbRepository;
-    /// use lithos_core::fs::RelativePath;
+    /// use lithos_core::fs::PathKey;
     /// use std::sync::Arc;
     ///
     /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
-    /// let path = RelativePath::try_from("schemas/note.json")?;
+    /// let path = PathKey::try_new("schemas/note.json")?;
     ///
     /// // Cross-table lookup: path → ID → view
     /// if let Some(view) = repo.find_raw_schema_view_by_path(&path)? {
@@ -142,7 +142,7 @@ pub trait ReadRepository {
     /// ```
     fn find_raw_schema_view_by_path(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<RawSchemaView>, SchemaRepositoryError>;
 
     /// Find raw schema views by file paths in a single transaction.
@@ -159,7 +159,7 @@ pub trait ReadRepository {
     /// fails.
     fn find_raw_schema_views_by_paths(
         &self,
-        paths: &[RelativePath],
+        paths: &[PathKey],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaRepositoryError>;
 
     /// Get the Property Bank singleton.
@@ -196,7 +196,7 @@ pub trait ReadRepository {
     /// fails.
     fn get_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<RawPropertyBankView>, SchemaRepositoryError>;
 
     /// Find a schema ID by its name.
@@ -222,7 +222,7 @@ pub trait ReadRepository {
     /// fails.
     fn find_schema_id_by_path(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<SchemaId>, SchemaRepositoryError>;
 
     /// Find multiple schema IDs by their paths in a single transaction.
@@ -236,7 +236,7 @@ pub trait ReadRepository {
     /// fails.
     fn find_schema_ids_by_paths(
         &self,
-        paths: &[RelativePath],
+        paths: &[PathKey],
     ) -> Result<Vec<Option<SchemaId>>, SchemaRepositoryError>;
 
     /// List all schema name to ID mappings.
@@ -355,7 +355,7 @@ pub trait WriteRepository {
     /// fails.
     fn save_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaRepositoryError>;
 

@@ -6,12 +6,12 @@
 //! updates by storing historical metadata (hashes, timestamps) in a way
 //! that is compatible with zero-copy database access.
 
-use std::time::SystemTime;
+use std::{path::Path, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         error::{SchemaIngestionError, SchemaRepositoryError},
         raw::{RawPropertyBank, RawSchema},
@@ -44,7 +44,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawSchemaView {
     /// The vault-relative path to the schema file.
-    path: RelativePath,
+    path: PathKey,
     /// Ring buffer of historical versions (first is current).
     versions: Vec<SchemaVersion>,
 }
@@ -53,7 +53,7 @@ impl RawSchemaView {
     /// Creates a new schema view with an initial version.
     #[inline]
     #[must_use]
-    pub fn new(path: RelativePath, initial_version: SchemaVersion) -> Self {
+    pub fn new(path: PathKey, initial_version: SchemaVersion) -> Self {
         let mut versions = Vec::with_capacity(Self::MAX_VERSIONS);
         versions.push(initial_version);
 
@@ -66,7 +66,7 @@ impl RawSchemaView {
     /// Returns the relative path of the schema file.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &RelativePath {
+    pub fn path(&self) -> &PathKey {
         &self.path
     }
 
@@ -75,8 +75,7 @@ impl RawSchemaView {
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
-        self.path
-            .as_path()
+        Path::new(self.path.as_str())
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("")
@@ -94,7 +93,7 @@ impl RawSchemaView {
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawSchema,
-        path: RelativePath,
+        path: PathKey,
         hashes: HashRecord,
     ) -> Result<Self, SchemaIngestionError> {
         let info = raw.metadata().clone();
@@ -106,7 +105,7 @@ impl RawSchemaView {
 
 /// Implements [`RawView`] for [`RawSchemaView`].
 impl RawView for RawSchemaView {
-    type FilePath = RelativePath;
+    type FilePath = PathKey;
     type Version = SchemaVersion;
 
     #[inline]
@@ -215,7 +214,7 @@ impl RawViewRead for ArchivedRawSchemaView {
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct RawPropertyBankView {
     /// The vault-relative path to the property bank file.
-    path: RelativePath,
+    path: PathKey,
     /// Ring buffer of historical versions (first is current).
     versions: Vec<PropertyBankVersion>,
 }
@@ -224,10 +223,7 @@ impl RawPropertyBankView {
     /// Creates a new property bank view with an initial version.
     #[inline]
     #[must_use]
-    pub fn new(
-        path: RelativePath,
-        initial_version: PropertyBankVersion,
-    ) -> Self {
+    pub fn new(path: PathKey, initial_version: PropertyBankVersion) -> Self {
         let mut versions = Vec::with_capacity(Self::MAX_VERSIONS);
         versions.push(initial_version);
 
@@ -240,7 +236,7 @@ impl RawPropertyBankView {
     /// Returns the property bank path.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &RelativePath {
+    pub fn path(&self) -> &PathKey {
         &self.path
     }
 
@@ -256,7 +252,7 @@ impl RawPropertyBankView {
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
-        path: RelativePath,
+        path: PathKey,
         raw_hash: HashRecord,
     ) -> Result<Self, SchemaIngestionError> {
         let info = raw.metadata().clone();
@@ -269,7 +265,7 @@ impl RawPropertyBankView {
 
 /// Implements [`RawView`] for [`RawPropertyBankView`].
 impl RawView for RawPropertyBankView {
-    type FilePath = RelativePath;
+    type FilePath = PathKey;
     type Version = PropertyBankVersion;
 
     #[inline]
@@ -383,7 +379,7 @@ mod tests {
 
         #[test]
         fn supports_zero_copy_staleness_checks() {
-            let path = RelativePath::try_from("schemas/note.json").unwrap();
+            let path = PathKey::try_new("schemas/note.json").unwrap();
             let metadata =
                 FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
@@ -417,7 +413,7 @@ mod tests {
 
         #[test]
         fn update_metadata_replaces_full_metadata() {
-            let path = RelativePath::try_from("schemas/note.json").unwrap();
+            let path = PathKey::try_new("schemas/note.json").unwrap();
             let metadata =
                 FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
@@ -457,8 +453,7 @@ mod tests {
 
         #[test]
         fn supports_zero_copy_staleness_checks() {
-            let path =
-                RelativePath::try_from("schemas/property_bank.json").unwrap();
+            let path = PathKey::try_new("schemas/property_bank.json").unwrap();
             let metadata =
                 FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(

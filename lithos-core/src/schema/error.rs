@@ -175,7 +175,7 @@ pub enum SchemaRepositoryError {
 
     /// Returned when an expected entity is missing by path.
     #[error("schema path not found: {0}")]
-    NotFoundByPath(crate::fs::RelativePath),
+    NotFoundByPath(crate::fs::PathKey),
 
     /// Returned when the property bank has not been initialized.
     #[error(
@@ -188,7 +188,7 @@ pub enum SchemaRepositoryError {
     #[error(
         "version history missing for {0} - cached view is corrupt or empty"
     )]
-    EmptyVersionHistory(crate::fs::RelativePath),
+    EmptyVersionHistory(crate::fs::PathKey),
 }
 
 /// High-level errors returned by schema loading operations.
@@ -1052,11 +1052,11 @@ mod tests {
             "schema name not found: test"
         )]
         #[case::not_found_by_path(
-            SchemaRepositoryError::NotFoundByPath(crate::fs::RelativePath::try_from("test.json").unwrap()),
+            SchemaRepositoryError::NotFoundByPath(crate::fs::PathKey::try_new("test.json").unwrap()),
             "schema path not found: test.json"
         )]
         #[case::empty_version_history(
-            SchemaRepositoryError::EmptyVersionHistory(crate::fs::RelativePath::try_from("test.json").unwrap()),
+            SchemaRepositoryError::EmptyVersionHistory(crate::fs::PathKey::try_new("test.json").unwrap()),
             "version history missing for test.json"
         )]
         fn repository_error_display_contains_message(

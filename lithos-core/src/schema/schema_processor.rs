@@ -60,7 +60,7 @@ use std::{
 pub(crate) use crate::schema::delta::{ExcludesDelta, PropertyDelta};
 use crate::{
     fs::{
-        FsReader, RelativePath,
+        FsReader, PathKey,
         metadata::{FileMetadata, FsTimes},
     },
     graph::{GraphNode, GraphNodeMut},
@@ -269,7 +269,7 @@ pub(crate) enum PresentPayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FoundPayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     view: RawSchemaView,
 }
@@ -279,13 +279,13 @@ pub(crate) struct DeletedPayload;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FreshPayload {
-    path: RelativePath,
+    path: PathKey,
     view: RawSchemaView,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SuspectPayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_str: Box<str>,
     view: RawSchemaView,
@@ -293,7 +293,7 @@ pub(crate) struct SuspectPayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StalePayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_str: Box<str>,
     content_hash: Blake3Hash,
@@ -302,7 +302,7 @@ pub(crate) struct StalePayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NewParsedPayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
@@ -310,7 +310,7 @@ pub(crate) struct NewParsedPayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StaleParsedPayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
@@ -489,7 +489,7 @@ impl AnalysisBranch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RefreshNodePayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     view: RawSchemaView,
@@ -497,7 +497,7 @@ pub(crate) struct RefreshNodePayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RebuildNodePayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
@@ -508,7 +508,7 @@ pub(crate) struct RebuildNodePayload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct UpdateNodePayload {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
@@ -585,13 +585,13 @@ impl<T> IntoIterator for NewBatch<T> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialScan {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialRead {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_str: Box<str>,
     content_hash: Blake3Hash,
@@ -599,7 +599,7 @@ pub(crate) struct InitialRead {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InitialParsed {
-    path: RelativePath,
+    path: PathKey,
     metadata: FileMetadata,
     content_hash: Blake3Hash,
     raw: RawSchema,
@@ -790,13 +790,11 @@ impl SchemaProcessor<Discovery, Review> {
         discovery: &DiscoveryResult,
         graph: &InheritanceGraph<()>,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
-        let files: Vec<RelativePath> =
-            discovery.schemas().keys().cloned().collect();
+        let files: Vec<PathKey> = discovery.schemas().keys().cloned().collect();
 
         // Build views_by_path and ids_by_path from DiscoveryResult
-        let mut views_by_path: HashMap<RelativePath, RawSchemaView> =
-            HashMap::new();
-        let mut ids_by_path: HashMap<RelativePath, SchemaId> = HashMap::new();
+        let mut views_by_path: HashMap<PathKey, RawSchemaView> = HashMap::new();
+        let mut ids_by_path: HashMap<PathKey, SchemaId> = HashMap::new();
 
         for (path, schema_discovery) in discovery.schemas() {
             if let Some(cached) = schema_discovery.cached() {
@@ -842,9 +840,9 @@ impl SchemaProcessor<Discovery, Review> {
     //  Discovery Helpers
     // ═════════════════════════════════════════════════════════════════════
     fn classify_file_state(
-        files: &[RelativePath],
-        mut views_by_path: HashMap<RelativePath, RawSchemaView>,
-        ids_by_path: &HashMap<RelativePath, SchemaId>,
+        files: &[PathKey],
+        mut views_by_path: HashMap<PathKey, RawSchemaView>,
+        ids_by_path: &HashMap<PathKey, SchemaId>,
         graph: Option<&InheritanceGraph<()>>,
         source: &FsReader,
     ) -> FileState {
@@ -853,7 +851,7 @@ impl SchemaProcessor<Discovery, Review> {
 
         for path in files {
             let metadata = source
-                .metadata(path.as_path())
+                .metadata(std::path::Path::new(path.as_str()))
                 .ok()
                 .and_then(|m| m.as_file().cloned())
                 .unwrap_or_else(|| {
@@ -984,7 +982,7 @@ impl SchemaProcessor<Comparison, Present> {
                                 TimestampBranch::Match(matched_payload) => {
                                     if is_bank_affected {
                                         let content_str = source
-                                            .read_to_string(matched_payload.path.as_path())
+                                            .read_to_string(std::path::Path::new(matched_payload.path.as_str()))
                                             .map_err(SchemaIngestionError::from)
                                             .map_err(SchemaLoaderError::Ingestion)?;
                                         let content_hash =
@@ -1082,7 +1080,7 @@ impl SchemaProcessor<Comparison, Present> {
         let mut new_reads = NewBatch::new();
         for (id, scan) in new_schemas.into_sorted_iter() {
             let content = source
-                .read_to_string(scan.path.as_path())
+                .read_to_string(std::path::Path::new(scan.path.as_str()))
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             let content_hash = Blake3Hash::compute(content.as_bytes());
@@ -1119,7 +1117,7 @@ impl SchemaProcessor<Comparison, Present> {
             Ok(TimestampBranch::Match(payload))
         } else {
             let content_str = source
-                .read_to_string(payload.path.as_path())
+                .read_to_string(std::path::Path::new(payload.path.as_str()))
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
             Ok(TimestampBranch::Mismatch(SuspectPayload {
@@ -1196,15 +1194,18 @@ impl SchemaProcessor<FileParsed, AllMissing> {
             let metadata_for_raw = metadata.clone();
 
             let content = source
-                .read_to_string(path.as_path())
+                .read_to_string(std::path::Path::new(path.as_str()))
                 .map_err(SchemaIngestionError::from)
                 .map_err(SchemaLoaderError::Ingestion)?;
 
             let content_hash = Blake3Hash::compute(content.as_bytes());
 
-            let schema_name = schema_stem_from_path(source, path.as_path())?;
+            let schema_name = schema_stem_from_path(
+                source,
+                std::path::Path::new(path.as_str()),
+            )?;
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
-                path.as_path(),
+                std::path::Path::new(path.as_str()),
                 &content,
             )
             .map_err(SchemaIngestionError::from)
@@ -1264,13 +1265,13 @@ impl SchemaProcessor<FileParsed, Compared> {
                         )) => {
                             let schema_name = schema_stem_from_path(
                                 source,
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                             )?;
                             let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                                 &payload.content_str,
                             )
                             .map_err(SchemaIngestionError::from)
@@ -1299,13 +1300,13 @@ impl SchemaProcessor<FileParsed, Compared> {
                         ) => {
                             let schema_name = schema_stem_from_path(
                                 source,
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                             )?;
                             let metadata_for_raw = payload.metadata.clone();
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                                 &payload.content_str,
                             )
                             .map_err(SchemaIngestionError::from)
@@ -1383,11 +1384,13 @@ impl SchemaProcessor<FileParsed, Compared> {
         let mut parsed_new = NewBatch::new();
 
         for (id, read) in new_schemas.into_sorted_iter() {
-            let schema_name =
-                schema_stem_from_path(source, read.path.as_path())?;
+            let schema_name = schema_stem_from_path(
+                source,
+                std::path::Path::new(read.path.as_str()),
+            )?;
             let metadata_for_raw = read.metadata.clone();
             let raw = FsReader::parse_structured_from_str::<RawSchema>(
-                read.path.as_path(),
+                std::path::Path::new(read.path.as_str()),
                 &read.content_str,
             )
             .map_err(SchemaIngestionError::from)
@@ -1768,7 +1771,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                         if bank_changed {
                             let metadata_for_raw = source
-                                .metadata(payload.path.as_path())
+                                .metadata(std::path::Path::new(payload.path.as_str()))
                                 .map(|m| {
                                     m.as_file().map_or_else(|| {
                                         FileMetadata::new(FsTimes::new(None, None), 0, false)
@@ -1777,19 +1780,19 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content = source
-                                .read_to_string(payload.path.as_path())
+                                .read_to_string(std::path::Path::new(payload.path.as_str()))
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 schema_stem_from_path(
                                     source,
-                                    payload.path.as_path(),
+                                    std::path::Path::new(payload.path.as_str()),
                                 )?;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                                 &content,
                             )
                             .map_err(SchemaIngestionError::from)
@@ -1834,19 +1837,19 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
 
                         if bank_changed {
                             let content = source
-                                .read_to_string(payload.path.as_path())
+                                .read_to_string(std::path::Path::new(payload.path.as_str()))
                                 .map_err(SchemaIngestionError::from)
                                 .map_err(SchemaLoaderError::Ingestion)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 schema_stem_from_path(
                                     source,
-                                    payload.path.as_path(),
+                                    std::path::Path::new(payload.path.as_str()),
                                 )?;
                             let raw = FsReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
-                                payload.path.as_path(),
+                                std::path::Path::new(payload.path.as_str()),
                                 &content,
                             )
                             .map_err(SchemaIngestionError::from)
@@ -3004,8 +3007,7 @@ mod tests {
                 .expect("valid schema view fixture");
         let path = format!("schemas/{name}.toml");
         RawSchemaView::new(
-            crate::fs::RelativePath::try_from(path.as_str())
-                .expect("valid relative schema path"),
+            PathKey::try_new(path.as_str()).expect("valid schema key"),
             version,
         )
     }
@@ -3015,8 +3017,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = FsReader::new(temp.path());
         let id = SchemaId::new();
-        let path = crate::fs::RelativePath::try_from("schema.toml")
-            .expect("valid relative path");
+        let path = PathKey::try_new("schema.toml").expect("valid schema key");
 
         let view = make_view("schema", Blake3Hash::new([7u8; 32]));
 
@@ -3067,8 +3068,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = FsReader::new(temp.path());
         let id = SchemaId::new();
-        let path = crate::fs::RelativePath::try_from("schema.toml")
-            .expect("valid relative path");
+        let path = PathKey::try_new("schema.toml").expect("valid schema key");
 
         let view = make_view("schema", Blake3Hash::new([9u8; 32]));
 

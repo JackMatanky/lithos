@@ -830,6 +830,13 @@ impl PathKey {
     }
 }
 
+impl std::fmt::Display for PathKey {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Deprecated compatibility alias for callers not yet migrated to `PathKey`.
 #[deprecated(note = "Use PathKey instead")]
 pub type NormalizedPath = PathKey;

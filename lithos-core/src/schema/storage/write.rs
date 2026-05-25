@@ -39,7 +39,7 @@ use redb::ReadableTable;
 
 use crate::{
     db::{ArchivedEntity, DbError},
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -129,7 +129,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaRepositoryError> {
         let bytes = view.to_bytes().map_err(SchemaRepositoryError::from)?;
@@ -165,14 +165,17 @@ impl WriteRepository for RedbRepository {
                     let existing_view =
                         RawSchemaView::from_bytes(existing.value())?;
                     if existing_view.path() != view.path() {
-                        let stale_key = path_key(existing_view.path());
+                        let stale_key =
+                            existing_view.path().as_str().to_owned();
                         let _ = path_table.remove(stale_key)?;
                     }
                 }
 
                 view_table.insert(id, view_bytes.as_slice())?;
-                path_table
-                    .insert(path_key(view.path()), id_bytes.as_slice())?;
+                path_table.insert(
+                    view.path().as_str().to_owned(),
+                    id_bytes.as_slice(),
+                )?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -218,7 +221,7 @@ impl WriteRepository for RedbRepository {
 
 struct DeleteContext {
     schema_name: Option<SchemaName>,
-    view_path: Option<RelativePath>,
+    view_path: Option<PathKey>,
 }
 
 /// Loads schema name and path for deletion context.
@@ -298,12 +301,12 @@ fn remove_name_id_index(
 /// [`SCHEMA_ID_BY_PATH`]: crate::schema::storage::tables::SCHEMA_ID_BY_PATH
 fn remove_path_id_index(
     tx: &crate::db::WriteTx,
-    view_path: Option<&RelativePath>,
+    view_path: Option<&PathKey>,
 ) -> Result<(), DbError> {
     let mut path_index = tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
 
     if let Some(path) = view_path {
-        let _ = path_index.remove(path_key(path))?;
+        let _ = path_index.remove(path.as_str().to_owned())?;
     }
 
     Ok(())
@@ -594,7 +597,7 @@ mod tests {
         use crate::{
             db::Store,
             fs::{
-                RelativePath,
+                PathKey,
                 metadata::{FileMetadata, FsTimes},
             },
             schema::{
@@ -611,7 +614,7 @@ mod tests {
         };
 
         fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
-            let path = RelativePath::try_from(path).unwrap();
+            let path = PathKey::try_new(path).unwrap();
             let info = FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
                 Blake3Hash::new([hash_byte; 32]),
@@ -627,6 +630,10 @@ mod tests {
             };
             let version = SchemaVersion::new(info, hashes, &raw).unwrap();
             RawSchemaView::new(path, version)
+        }
+
+        fn key(path: &str) -> PathKey {
+            PathKey::try_new(path).expect("valid path key")
         }
 
         #[test]
@@ -645,7 +652,8 @@ mod tests {
                 Some(view.clone())
             );
             assert_eq!(
-                repo.find_raw_schema_view_by_path(view.path()).unwrap(),
+                repo.find_raw_schema_view_by_path(&key("schemas/note.json"))
+                    .unwrap(),
                 Some(view)
             );
         }
@@ -669,12 +677,13 @@ mod tests {
                 Some(new_view.clone())
             );
             assert!(
-                repo.find_raw_schema_view_by_path(old_view.path())
+                repo.find_raw_schema_view_by_path(&key("schemas/old.json"))
                     .unwrap()
                     .is_none()
             );
             assert_eq!(
-                repo.find_raw_schema_view_by_path(new_view.path()).unwrap(),
+                repo.find_raw_schema_view_by_path(&key("schemas/new.json"))
+                    .unwrap(),
                 Some(new_view)
             );
         }
@@ -734,7 +743,7 @@ mod tests {
         use crate::{
             db::Store,
             fs::{
-                RelativePath,
+                PathKey,
                 metadata::{FileMetadata, FsTimes},
             },
             schema::{
@@ -753,7 +762,7 @@ mod tests {
         };
 
         fn test_raw_view(path: &str, hash_byte: u8) -> RawSchemaView {
-            let path = RelativePath::try_from(path).unwrap();
+            let path = PathKey::try_new(path).unwrap();
             let info = FileMetadata::new(FsTimes::new(None, None), 100, false);
             let hashes = HashRecord::new(
                 Blake3Hash::new([hash_byte; 32]),
@@ -780,7 +789,7 @@ mod tests {
 
             let id = SchemaId::new();
             let name = SchemaName::try_new("schema-delete").unwrap();
-            let path = RelativePath::try_from("schemas/delete.json").unwrap();
+            let path = PathKey::try_new("schemas/delete.json").unwrap();
             let schema = Schema::new(
                 id,
                 name.clone(),
@@ -788,7 +797,7 @@ mod tests {
                 vec![],
                 PropertyMap::new(),
             );
-            let view = test_raw_view(&path.as_path().to_string_lossy(), 11);
+            let view = test_raw_view(path.as_str(), 11);
 
             repo.save_schema(&schema).unwrap();
             repo.save_raw_schema_view(id, &view).unwrap();
@@ -798,7 +807,13 @@ mod tests {
             assert!(repo.find_schema_by_id(id).unwrap().is_none());
             assert!(repo.get_raw_schema_view(id).unwrap().is_none());
             assert!(repo.find_schema_id_by_name(&name).unwrap().is_none());
-            assert!(repo.find_schema_id_by_path(&path).unwrap().is_none());
+            assert!(
+                repo.find_schema_id_by_path(
+                    &PathKey::try_new("schemas/delete.json").unwrap()
+                )
+                .unwrap()
+                .is_none()
+            );
         }
 
         #[test]

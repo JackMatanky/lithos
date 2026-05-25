@@ -32,7 +32,7 @@ use crate::{
         DbError,
         testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
     },
-    fs::RelativePath,
+    fs::PathKey,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -109,11 +109,11 @@ pub(crate) struct InMemoryRepository {
     raw_schema_views: Arc<RwLock<HashMap<SchemaId, RawSchemaView>>>,
 
     /// Path-to-ID lookup for raw views: file path → `SchemaId`
-    path_to_id: Arc<RwLock<HashMap<RelativePath, SchemaId>>>,
+    path_to_id: Arc<RwLock<HashMap<PathKey, SchemaId>>>,
 
     /// Raw property bank views for staleness detection: path →
     /// `RawPropertyBankView`
-    raw_bank_views: Arc<RwLock<HashMap<RelativePath, RawPropertyBankView>>>,
+    raw_bank_views: Arc<RwLock<HashMap<PathKey, RawPropertyBankView>>>,
 
     /// Cached topological graph singleton.
     topological_graph: Arc<RwLock<Option<InheritanceGraph<()>>>>,
@@ -296,7 +296,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_raw_schema_view_by_path(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<RawSchemaView>, SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -318,7 +318,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_raw_schema_views_by_paths(
         &self,
-        paths: &[RelativePath],
+        paths: &[PathKey],
     ) -> Result<Vec<Option<RawSchemaView>>, SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -334,12 +334,13 @@ impl ReadRepository for InMemoryRepository {
         )?;
         self.harness.counters().inc_read();
 
-        Ok(paths
-            .iter()
-            .map(|path| {
-                path_to_id.get(path).and_then(|id| views.get(id).cloned())
-            })
-            .collect())
+        let mut results = Vec::with_capacity(paths.len());
+        for path in paths {
+            results.push(
+                path_to_id.get(path).and_then(|id| views.get(id).cloned()),
+            );
+        }
+        Ok(results)
     }
 
     #[inline]
@@ -370,7 +371,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn get_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<RawPropertyBankView>, SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -397,7 +398,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_schema_id_by_path(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
     ) -> Result<Option<SchemaId>, SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -410,7 +411,7 @@ impl ReadRepository for InMemoryRepository {
     #[inline]
     fn find_schema_ids_by_paths(
         &self,
-        paths: &[RelativePath],
+        paths: &[PathKey],
     ) -> Result<Vec<Option<SchemaId>>, SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -418,7 +419,11 @@ impl ReadRepository for InMemoryRepository {
             read_lock(&self.path_to_id, "find_schema_ids_by_paths")?;
         self.harness.counters().inc_read();
 
-        Ok(paths.iter().map(|path| path_to_id.get(path).copied()).collect())
+        let mut results = Vec::with_capacity(paths.len());
+        for path in paths {
+            results.push(path_to_id.get(path).copied());
+        }
+        Ok(results)
     }
 
     #[inline]
@@ -533,7 +538,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_raw_property_bank_view(
         &self,
-        path: &RelativePath,
+        path: &PathKey,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
