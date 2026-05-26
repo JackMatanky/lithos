@@ -94,6 +94,8 @@ pub mod vault;
 //               Logic & Infrastructure Modules                //
 // ----------------------------------------------------------- //
 
+/// Configuration storage with unified Repository pattern.
+pub mod repository;
 /// Unified repository for configuration persistence.
 pub mod storage;
 

@@ -43,7 +43,7 @@ use std::{
 use super::{
     aggregate::{Config, Version},
     global::Global,
-    storage::Repository,
+    repository::Repository,
     vault::{Vault, VaultId, VaultRoot},
 };
 use crate::config::error::ConfigError;

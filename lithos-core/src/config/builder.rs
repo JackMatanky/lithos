@@ -24,20 +24,14 @@ use tracing::instrument;
 use crate::{
     config::{
         aggregate::{Config, Version},
-        discovery::DiscoveryEngine,
-        error::{ConfigError, ConfigIngestError},
-        frontmatter::Frontmatter,
-        logging::Logging,
-        merger::{ConfigResolver, ResolutionPlan},
-        paths::Paths,
-        processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
-        raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
-        storage::Repository,
-        task::Task,
+        discovery::Discovery,
+        error::{ConfigError, ConfigRepositoryError},
+        merger::{Merger, Outcome},
+        repository::Repository,
         vault::{VaultId, VaultRoot},
-        views::RawFileVersion,
+        views::{RawGlobalConfigView, RawVaultConfigView},
     },
-    fs::FsReader,
+    support::hash::Hash,
 };
 
 /// Build validated config from layered raw sources.
