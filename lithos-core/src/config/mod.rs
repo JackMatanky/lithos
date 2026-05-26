@@ -26,18 +26,19 @@
 //! # Usage
 //!
 //! ```rust,no_run
+//! # use std::sync::Arc;
 //! # use lithos_core::config::{
 //! #     builder::Builder,
 //! #     storage::RedbStorage,
 //! #     vault::VaultRoot,
 //! # };
-//! # use lithos_core::db::Database;
+//! # use lithos_core::db::Store;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # let vault_root = std::path::Path::new("/path/to/vault");
 //! # let db_path = std::path::Path::new("/tmp/test.redb");
-//! # let db = Database::open(db_path)?;
+//! # let store = Arc::new(Store::open(db_path)?);
 //! // 1. Create builder with repository
-//! let storage = RedbStorage::new(&db);
+//! let storage = RedbStorage::new(store);
 //! let builder = Builder::new(vault_root, storage);
 //!
 //! // 2. Load configuration (with automatic staleness detection)
@@ -94,10 +95,18 @@ pub mod vault;
 //               Logic & Infrastructure Modules                //
 // ----------------------------------------------------------- //
 
+/// Configuration storage traits.
+pub mod repository;
 /// Unified repository for configuration persistence.
 pub mod storage;
 
+pub use repository::{ReadRepository, Repository, WriteRepository};
+#[cfg(any(test, feature = "testing"))]
+pub use storage::testing::InMemoryRepository;
+pub use storage::{RedbRepository, RedbStorage};
+
 // ----------------------------------------------------------- //
+
 //                  Supporting Domain Modules                  //
 // ----------------------------------------------------------- //
 
@@ -121,9 +130,6 @@ pub mod processor;
 pub mod raw;
 /// Task configuration schema and validation.
 pub mod task;
-/// Testing utilities (InMemoryRepository).
-#[cfg(test)]
-pub mod testing;
 /// Field specification and value validation types.
 pub mod value;
 /// View types for config staleness tracking.
@@ -133,51 +139,5 @@ pub mod views;
 //               Concrete Implementation Aliases               //
 // ----------------------------------------------------------- //
 
-pub(crate) mod db_table {
-    use redb::TableDefinition;
-
-    /// Versioned global configuration.
-    ///
-    /// Keys: `"{version}"` → `Global`.
-    /// Example: `"1"` → `Global { ... }`.
-    pub(crate) const GLOBAL_CONFIG: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("global_config");
-
-    /// Versioned vault-specific configuration.
-    ///
-    /// Keys: `"{vault_id}:{version}"` → `Vault`.
-    /// Example: `"abc123:1"` → `Vault { ... }`.
-    pub(crate) const VAULT_CONFIG: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("vault_config");
-
-    /// Versioned final configuration (result of merging global + vault).
-    ///
-    /// Keys: `"{vault_id}:{version}"` → `Config`.
-    /// Example: `"abc123:1"` → `Config { ... }`.
-    pub(crate) const CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("config_versions");
-
-    /// Vault path bidirectional mapping.
-    ///
-    /// Keys: `vault_root.as_key()` → `VaultId`.
-    pub(crate) const VAULT_ID_BY_PATH: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("vault_id_by_path");
-
-    /// Vault ID to path reverse mapping.
-    ///
-    /// Keys: `vault_id.to_string()` → `VaultRoot`.
-    pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("vault_path_by_id");
-
-    /// Raw global config view with version history.
-    ///
-    /// Keys: `"global"` → `RawGlobalConfigView`.
-    pub(crate) const RAW_GLOBAL_CONFIG_VIEW: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_global_config_view");
-
-    /// Raw vault config views with version history.
-    ///
-    /// Keys: `vault_id.to_string()` → `RawVaultConfigView`.
-    pub(crate) const RAW_VAULT_CONFIG_VIEW: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("raw_vault_config_view");
-}
+// Removed legacy db_table definitions. Use crate::config::storage::tables
+// instead.

@@ -42,7 +42,7 @@ use std::sync::{
 /// This error type is used by `db::testing` primitives and can be converted
 /// into context-specific error types via `From<InMemoryDbError>`.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum InMemoryDbError {
+pub enum InMemoryDbError {
     /// Lock was poisoned (another thread panicked while holding the lock).
     #[error("Lock poisoned: {context}")]
     LockPoisoned {
@@ -61,7 +61,7 @@ pub(crate) enum InMemoryDbError {
 
     /// Test invariant was violated.
     #[error("Invariant violation: {message}")]
-    #[expect(dead_code, reason = "Reserved for future test scenarios")]
+    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     InvariantViolation {
         /// Description of the invariant that was violated.
         message: Box<str>,
@@ -99,7 +99,7 @@ pub(crate) enum InMemoryDbError {
 /// }
 /// ```
 #[derive(Default)]
-pub(crate) struct InMemoryHarness {
+pub struct InMemoryHarness {
     counters: OpCounters,
     injector: Option<Box<dyn FailureInjector + Send + Sync>>,
 }
@@ -155,7 +155,7 @@ impl InMemoryHarness {
 /// Uses `AtomicUsize` for lock-free, thread-safe counting. Suitable for
 /// instrumenting test operations without introducing contention.
 #[derive(Debug, Default)]
-pub(crate) struct OpCounters {
+pub struct OpCounters {
     reads: AtomicUsize,
     writes: AtomicUsize,
     batches: AtomicUsize,
@@ -180,13 +180,13 @@ impl OpCounters {
     }
 
     /// Increments the delete operation counter.
-    #[expect(dead_code, reason = "Reserved for future test scenarios")]
+    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     pub(crate) fn inc_delete(&self) {
         self.deletes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the injected failure counter.
-    #[expect(dead_code, reason = "Reserved for future test scenarios")]
+    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     pub(crate) fn inc_injected_failure(&self) {
         self.injected_failures.fetch_add(1, Ordering::Relaxed);
     }
@@ -240,16 +240,16 @@ pub(crate) struct OpCountersSnapshot {
 
 /// Points in execution where failures can be injected for testing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FailurePoint {
+pub enum FailurePoint {
     /// Before a read operation.
     BeforeRead,
     /// Before a write operation.
     BeforeWrite,
     /// After serialization but before commit.
-    #[expect(dead_code, reason = "Reserved for future test scenarios")]
+    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     AfterSerialize,
     /// Before committing a transaction.
-    #[expect(dead_code, reason = "Reserved for future test scenarios")]
+    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     BeforeCommit,
 }
 
@@ -257,7 +257,7 @@ pub(crate) enum FailurePoint {
 ///
 /// Implement this trait to create custom failure injection strategies for
 /// testing error handling and rollback logic.
-pub(crate) trait FailureInjector {
+pub trait FailureInjector {
     /// Attempts to inject a failure at the specified point.
     ///
     /// Returns `Ok(())` if no failure should be injected, or

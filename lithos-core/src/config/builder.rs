@@ -30,9 +30,12 @@ use crate::{
         logging::Logging,
         merger::{ConfigResolver, ResolutionPlan},
         paths::Paths,
-        processor::{self, ConfigFileProcessor, GlobalConfig, VaultConfig},
+        processor::{
+            AnalysisBranch, ComparisonBranch, ConfigFileProcessor,
+            GlobalConfig, VaultConfig,
+        },
         raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
-        storage::Repository,
+        repository::Repository,
         task::Task,
         vault::{VaultId, VaultRoot},
         views::RawFileVersion,
@@ -196,10 +199,7 @@ where
         level = "debug",
         fields(vault_root = %self.vault_root.display())
     )]
-    pub fn load(&self) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    pub fn load(&self) -> Result<Config, ConfigError> {
         // Step 1: Validate and get vault root
         let vault_root = VaultRoot::try_new(self.vault_root.clone())?;
 
@@ -246,12 +246,10 @@ where
             global_view,
         );
         let global_outcome = match global_processor.compare()? {
-            processor::ComparisonBranch::Fresh(proc) => proc.finalize(),
-            processor::ComparisonBranch::Stale(proc) => match proc.analyze()? {
-                processor::AnalysisBranch::NoChanges(proc) => proc.finalize(),
-                processor::AnalysisBranch::PropertyChanges(proc) => {
-                    proc.finalize()
-                }
+            ComparisonBranch::Fresh(proc) => proc.finalize(),
+            ComparisonBranch::Stale(proc) => match proc.analyze()? {
+                AnalysisBranch::NoChanges(proc) => proc.finalize(),
+                AnalysisBranch::PropertyChanges(proc) => proc.finalize(),
             },
         };
 
@@ -260,12 +258,10 @@ where
             vault_raw, vault_view,
         );
         let vault_outcome = match vault_processor.compare()? {
-            processor::ComparisonBranch::Fresh(proc) => proc.finalize(),
-            processor::ComparisonBranch::Stale(proc) => match proc.analyze()? {
-                processor::AnalysisBranch::NoChanges(proc) => proc.finalize(),
-                processor::AnalysisBranch::PropertyChanges(proc) => {
-                    proc.finalize()
-                }
+            ComparisonBranch::Fresh(proc) => proc.finalize(),
+            ComparisonBranch::Stale(proc) => match proc.analyze()? {
+                AnalysisBranch::NoChanges(proc) => proc.finalize(),
+                AnalysisBranch::PropertyChanges(proc) => proc.finalize(),
             },
         };
 
@@ -280,10 +276,7 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
         plan: ResolutionPlan,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<Config, ConfigError> {
         match plan {
             ResolutionPlan::UseCached => self.load_cached_config(vault_id),
             ResolutionPlan::UpdateViews {
@@ -313,14 +306,11 @@ where
     fn load_cached_config(
         &self,
         vault_id: VaultId,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<Config, ConfigError> {
         let version = self
             .repository
             .get_active_version(vault_id)
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
             .ok_or(ConfigError::ValidationFailed {
                 field: "config".into(),
                 message: "No active config version found".into(),
@@ -328,7 +318,7 @@ where
 
         self.repository
             .get_config(vault_id, version)
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
             .ok_or(ConfigError::ValidationFailed {
                 field: "config".into(),
                 message: "Config not found in database".into(),
@@ -338,14 +328,11 @@ where
     fn update_global_view(
         &self,
         raw: &RawGlobalConfig,
-    ) -> Result<(), ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<(), ConfigError> {
         let mut view = self
             .repository
             .get_raw_global_view()
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
             .ok_or(ConfigError::ValidationFailed {
                 field: "global_view".into(),
                 message: "expected cached global view for metadata-only update"
@@ -354,21 +341,20 @@ where
 
         let version = Self::raw_global_to_version(raw)?;
         view.push_version(version);
-        self.repository.save_raw_global_view(&view).map_err(Into::into)
+        self.repository
+            .save_raw_global_view(&view)
+            .map_err(Into::<ConfigError>::into)
     }
 
     fn update_vault_view(
         &self,
         vault_id: VaultId,
         raw: &RawVaultConfig,
-    ) -> Result<(), ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<(), ConfigError> {
         let mut view = self
             .repository
             .get_raw_vault_view(vault_id)
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
             .ok_or(ConfigError::ValidationFailed {
                 field: "vault_view".into(),
                 message: "expected cached vault view for metadata-only update"
@@ -377,7 +363,9 @@ where
 
         let version = Self::raw_vault_to_version(raw)?;
         view.push_version(version);
-        self.repository.save_raw_vault_view(vault_id, &view).map_err(Into::into)
+        self.repository
+            .save_raw_vault_view(vault_id, &view)
+            .map_err(Into::<ConfigError>::into)
     }
 
     fn rebuild_with_configs(
@@ -386,14 +374,11 @@ where
         vault_root: &VaultRoot,
         global: Option<&RawGlobalConfig>,
         vault: Option<&RawVaultConfig>,
-    ) -> Result<Config, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    ) -> Result<Config, ConfigError> {
         let next_version = self
             .repository
             .get_active_version(vault_id)
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
             .map(super::aggregate::Version::next)
             .transpose()?
             .unwrap_or_else(Version::initial);
@@ -406,7 +391,9 @@ where
             next_version,
         )?;
 
-        self.repository.save_config(vault_id, &config).map_err(Into::into)?;
+        self.repository
+            .save_config(vault_id, &config)
+            .map_err(Into::<ConfigError>::into)?;
 
         Ok(config)
     }
@@ -470,23 +457,20 @@ where
     /// Get or create vault ID for the vault root.
     ///
     /// Looks up existing vault ID from path mapping, or creates a new one.
-    fn get_or_create_vault_id(&self) -> Result<VaultId, ConfigError>
-    where
-        R::Error: Into<ConfigError>,
-    {
+    fn get_or_create_vault_id(&self) -> Result<VaultId, ConfigError> {
         let vault_root = VaultRoot::try_new(self.vault_root.clone())?;
 
         if let Some(existing_id) = self
             .repository
             .find_vault_id_by_path(&vault_root)
-            .map_err(Into::into)?
+            .map_err(Into::<ConfigError>::into)?
         {
             Ok(existing_id)
         } else {
             let new_id = VaultId::new();
             self.repository
                 .save_vault_path_mapping(new_id, &vault_root)
-                .map_err(Into::into)?;
+                .map_err(Into::<ConfigError>::into)?;
             Ok(new_id)
         }
     }
