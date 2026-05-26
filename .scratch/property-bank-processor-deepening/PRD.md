@@ -128,4 +128,3 @@ Tests should verify behavior through the **processor's public interface** — th
 - `PropertyBankDiscovery` type change (`FsEntry` → `FsFile`) is the most impactful — it removes the `as_file()` runtime check from every builder call path
 - After this PRD, the implementation should be decomposed into 3 independent issues (one per candidate) for sequential implementation
 - The `Stale` status consolidation is intentionally deferred — separate statuses for separate invariants are correct; `sync_metadata` duplication is the real problem
-
