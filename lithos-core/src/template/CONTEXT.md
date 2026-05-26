@@ -1,9 +1,7 @@
 # Template
-
 The Template context defines reusable generation assets and rendering contracts for producing note content.
 
 ## Language
-
 **Template Asset**:
 A stored template definition that can be rendered into note content.
 _Avoid_: snippet, script file
@@ -34,10 +32,19 @@ _Avoid_: query string, raw db query
 - Rendering behavior is deterministic for the same template asset and render context.
 - Template usage is constrained by configuration and schema semantics.
 - Runtime schema discovery is strictly limited to child schemas of those explicitly declared in the template frontmatter.
-- Defines a unified `Repository` trait for all persistence operations.
+
+## Interfaces
+- Defines segregated `Repository` interfaces (Read, Write, and Unified) for persistence operations.
 
 ## Not Owned Here
-
 - Note extraction logic (tasks, links, tag parsing).
 - Schema graph resolution and property-rule authoring.
 - Filesystem root safety policy and persistence transaction internals.
+
+## Resources
+- **[Templater](https://silentvoid13.github.io/Templater/)** provides conceptual reference material for programmable note-generation workflows.
+  - Relevant concepts: template files, runtime functions, interactive prompts, user scripts
+  - GitHub: <https://github.com/SilentVoid13/Templater>
+  - Source Digest: `docs/refs/digests/obsidian_silentvoid13-templater-src-digest.txt`
+  - Docs: `docs/refs/digests/obsidian_silentvoid13-templater-docs-digest.txt`
+  - Internal Reference: `docs/refs/obsidian/templater-reference.md`
