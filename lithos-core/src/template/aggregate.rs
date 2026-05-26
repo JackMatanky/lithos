@@ -48,7 +48,7 @@ use crate::utils::UuidV7;
     RkyvDeserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
-pub struct TemplateId(UuidV7);
+pub struct TemplateId(pub(crate) UuidV7);
 
 impl TemplateId {
     /// Creates a new UUID v7 template identifier.

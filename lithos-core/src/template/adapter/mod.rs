@@ -9,22 +9,9 @@ pub mod engine;
 /// Custom filters for input constraints.
 pub mod filters;
 
-/// Redb command adapter.
-pub mod command;
-/// Redb query adapter.
-pub mod query;
-
 pub use emitter::Emitter;
 pub use engine::TemplateEngine;
 pub use filters::FilterRegistry;
-
-/// Type alias to remove path stuttering: `adapter::Command` vs
-/// `adapter::command::Command`.
-pub type Command<'db> = command::Command<'db>;
-
-/// Type alias to remove path stuttering: `adapter::Query` vs
-/// `adapter::query::Query`.
-pub type Query<'db> = query::Query<'db>;
 
 /// Newtype for `MiniJinja` filter names to ensure consistency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

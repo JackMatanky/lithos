@@ -89,6 +89,7 @@ path = "benches/note_parsing.rs"
 
 [features]
 default = []
+testing = []
 # Serde support for domain types (Proposal 10)
 # Future: make serde optional with feature flags
 # serde = ["dep:serde", "dep:serde_json"]

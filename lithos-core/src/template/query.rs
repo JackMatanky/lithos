@@ -3,30 +3,31 @@
 use super::{
     aggregate::{Template, TemplateId},
     error::TemplateError,
-    ports as template_ports,
+    repository::ReadRepository,
 };
 
 /// Query implementation for Template read operations.
 ///
-/// This struct is generic over a storage port to support multiple backends.
-pub struct Query<Q> {
-    port: Q,
+/// This struct is generic over a storage repository to support multiple
+/// backends.
+pub struct Query<R> {
+    repository: R,
 }
 
-impl<Q> Query<Q> {
-    /// Creates a new `Query` wrapper with a storage port.
+impl<R> Query<R> {
+    /// Creates a new `Query` wrapper with a storage repository.
     #[inline]
     #[must_use]
-    pub const fn new(port: Q) -> Self {
+    pub const fn new(repository: R) -> Self {
         Self {
-            port,
+            repository,
         }
     }
 }
 
-impl<Q> Query<Q>
+impl<R> Query<R>
 where
-    Q: template_ports::Query,
+    R: ReadRepository,
 {
     /// Find a template by its ID.
     ///
@@ -37,7 +38,7 @@ where
         &self,
         id: TemplateId,
     ) -> Result<Option<Template>, TemplateError> {
-        self.port.find_by_id(id)
+        self.repository.find_template_by_id(id).map_err(TemplateError::from)
     }
 
     /// Find a template by its unique name.
@@ -49,7 +50,16 @@ where
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        self.port.find_by_name(name)
+        let name_val =
+            crate::template::aggregate::TemplateName::try_from(name)?;
+        let id = self
+            .repository
+            .find_template_id_by_name(&name_val)
+            .map_err(TemplateError::from)?;
+        match id {
+            Some(id) => self.find_by_id(id),
+            None => Ok(None),
+        }
     }
 
     /// List all templates.
@@ -58,23 +68,7 @@ where
     /// Returns `TemplateError` if query fails.
     #[inline]
     pub fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.port.list()
-    }
-
-    /// Access a template with zero-copy.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if query fails.
-    #[inline]
-    pub fn with_archived<F, R>(
-        &self,
-        id: TemplateId,
-        f: F,
-    ) -> Result<Option<R>, TemplateError>
-    where
-        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
-    {
-        self.port.with_archived(id, f)
+        self.repository.list_templates().map_err(TemplateError::from)
     }
 }
 
@@ -82,38 +76,26 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use tempfile::tempdir;
-
     use super::*;
-    use crate::{
-        db::Database,
-        template::{adapter, aggregate::TemplateName, ports::Command as _},
+    use crate::template::{
+        aggregate::TemplateName, repository::WriteRepository,
+        storage::testing::InMemoryRepository,
     };
 
     #[test]
-
-    fn with_archived_zero_copy() {
-        let temp = tempdir().unwrap();
-        let db_path = temp.path().join("test.db");
-        let db = Database::open(&db_path).unwrap();
-
-        let query_adapter = adapter::Query::new(&db);
-        let query = Query::new(query_adapter);
-        let command = adapter::Command::new(&db);
+    fn query_wrapper_works() {
+        let repo = InMemoryRepository::new();
+        let query = Query::new(repo.clone());
 
         let tn = TemplateName::try_from("test").unwrap();
         let template =
             Template::try_new(&tn, None, vec![], HashMap::new()).unwrap();
-        command.create(&template).unwrap();
+        repo.save_template(&template).unwrap();
 
-        // Zero-copy read
-        let name_read = query
-            .with_archived(template.id(), |archived| {
-                archived.name.0.to_string()
-            })
-            .unwrap()
-            .unwrap();
+        let found = query.find_by_id(template.id()).unwrap().unwrap();
+        assert_eq!(found.name(), &tn);
 
-        assert_eq!(name_read, "test");
+        let found_by_name = query.find_by_name("test").unwrap().unwrap();
+        assert_eq!(found_by_name.id(), template.id());
     }
 }

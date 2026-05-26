@@ -3,30 +3,31 @@
 use super::{
     aggregate::{Template, TemplateId},
     error::TemplateError,
-    ports as template_ports,
+    repository::WriteRepository,
 };
 
 /// Command implementation for Template write operations.
 ///
-/// This struct is generic over a storage port to support multiple backends.
-pub struct Command<C> {
-    port: C,
+/// This struct is generic over a storage repository to support multiple
+/// backends.
+pub struct Command<R> {
+    repository: R,
 }
 
-impl<C> Command<C> {
-    /// Creates a new `Command` wrapper with a storage port.
+impl<R> Command<R> {
+    /// Creates a new `Command` wrapper with a storage repository.
     #[inline]
     #[must_use]
-    pub const fn new(port: C) -> Self {
+    pub const fn new(repository: R) -> Self {
         Self {
-            port,
+            repository,
         }
     }
 }
 
-impl<C> Command<C>
+impl<R> Command<R>
 where
-    C: template_ports::Command,
+    R: WriteRepository,
 {
     /// Creates a new template.
     ///
@@ -34,7 +35,7 @@ where
     /// Returns `TemplateError` if creation fails.
     #[inline]
     pub fn create(&self, template: &Template) -> Result<(), TemplateError> {
-        self.port.create(template)
+        self.repository.save_template(template).map_err(TemplateError::from)
     }
 
     /// Deletes a template by its unique identifier.
@@ -43,7 +44,7 @@ where
     /// Returns `TemplateError` if deletion fails.
     #[inline]
     pub fn delete(&self, id: TemplateId) -> Result<(), TemplateError> {
-        self.port.delete(id)
+        self.repository.delete_template(id).map_err(TemplateError::from)
     }
 
     /// Updates an existing template.
@@ -52,79 +53,36 @@ where
     /// Returns `TemplateError` if update fails.
     #[inline]
     pub fn update(&self, template: &Template) -> Result<(), TemplateError> {
-        self.port.update(template)
+        self.repository.save_template(template).map_err(TemplateError::from)
     }
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test module groups fixtures and submodules for readability."
-)]
 mod tests {
-    mod fixtures {
-        use std::collections::HashMap;
-
-        use tempfile::{TempDir, tempdir};
-
-        use crate::{
-            db::Database,
-            template::aggregate::{Template, TemplateName},
-        };
-
-        pub fn test_db() -> Result<(TempDir, Database), String> {
-            let dir = tempdir().map_err(|e| e.to_string())?;
-            let path = dir.path().join("templates.redb");
-            let db = Database::open(&path).map_err(|e| e.to_string())?;
-            Ok((dir, db))
-        }
-
-        pub fn template_fixture(name: &str) -> Result<Template, String> {
-            let tn = TemplateName::try_from(name).map_err(|e| e.to_string())?;
-            Template::try_new(&tn, None, vec![], HashMap::new())
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    use tempfile::TempDir;
+    use std::collections::HashMap;
 
     use super::*;
-    use crate::{
-        db::Database,
-        template::{adapter, aggregate::Template},
+    use crate::template::{
+        aggregate::{Template, TemplateName},
+        storage::testing::InMemoryRepository,
     };
 
-    mod persistence {
-        use super::*;
+    #[test]
+    fn command_wrapper_works() {
+        let repo = InMemoryRepository::new();
+        let cmd = Command::new(repo.clone());
 
-        fn created_template() -> (TempDir, Database, Template, String) {
-            let (dir, db) =
-                fixtures::test_db().expect("Failed to create test db");
-            let cmd_adapter = adapter::Command::new(&db);
-            let cmd = Command::new(cmd_adapter);
-            let template = fixtures::template_fixture("daily")
-                .expect("Failed to create template fixture");
-            cmd.create(&template).expect("Create should succeed");
-            let id_str = template.id().to_string();
-            (dir, db, template, id_str)
-        }
+        let tn = TemplateName::try_from("test").unwrap();
+        let template =
+            Template::try_new(&tn, None, vec![], HashMap::new()).unwrap();
 
-        #[test]
+        // Create
+        cmd.create(&template).unwrap();
 
-        fn create_persists_template() {
-            let (_dir, db, _template, id_str) = created_template();
-            let stored = db
-                .get_owned::<Template>(
-                    crate::template::db_table::TEMPLATES,
-                    &id_str,
-                )
-                .expect("Read after create should succeed");
-            let stored_template = stored.expect("Stored template should exist");
-            assert_eq!(
-                stored_template.name().as_str(),
-                "daily",
-                "Stored template name should match"
-            );
-        }
+        // Update
+        cmd.update(&template).unwrap();
+
+        // Delete
+        cmd.delete(template.id()).unwrap();
     }
 }

@@ -17,33 +17,26 @@ pub mod command;
 pub mod error;
 /// Template domain events.
 pub mod events;
-/// Template ports for CQRS.
-pub mod ports;
 /// Template query implementations (Generic CQRS wrapper).
 pub mod query;
 /// Raw template input definitions.
 pub mod raw;
+/// Template repository traits and errors.
+pub mod repository;
+/// Template storage implementations.
+pub mod storage;
 /// Template input specifications.
 pub mod value;
 
-pub(crate) mod db_table {
-    use redb::{MultimapTableDefinition, TableDefinition};
-
-    pub(crate) const TEMPLATES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("templates");
-    pub(crate) const NAME_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("name_to_id");
-}
-
-pub use aggregate::{InputName, Metadata, Template, TemplateName};
+pub use aggregate::{InputName, Metadata, Template, TemplateId, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
 pub use value::InputSpec;
 
 /// Generic command type alias to remove path stuttering: `template::Command` vs
 /// `template::command::Command`.
-pub type Command<C> = command::Command<C>;
+pub type Command<R> = command::Command<R>;
 
 /// Generic query type alias to remove path stuttering: `template::Query` vs
 /// `template::query::Query`.
-pub type Query<Q> = query::Query<Q>;
+pub type Query<R> = query::Query<R>;

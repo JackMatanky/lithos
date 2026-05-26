@@ -21,7 +21,12 @@
 //! These non-goals protect DB context locality and prevent creating a shallow
 //! cross-context fake storage module.
 
-#![cfg(test)]
+#![cfg(any(test, feature = "testing"))]
+#![allow(
+    dead_code,
+    reason = "Testing utilities may be unused when features are active but \
+              tests are not running"
+)]
 
 use std::sync::{
     Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
