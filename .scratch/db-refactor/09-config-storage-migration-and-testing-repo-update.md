@@ -24,14 +24,16 @@ This slice is complete when Config read/write and batch behavior are preserved e
 
 ### Phase 1: Infrastructure & Traits
 1. **Define Repository Error**: Create `ConfigRepositoryError` in `config/error.rs` wrapping `DbError` and implementing `From<InMemoryDbError>`.
-2. **Define Traits**: Create `config/repository.rs` with `ConfigReadRepository`, `ConfigWriteRepository`, and the unified `ConfigRepository` marker trait.
+2. **Define Traits**: Create `config/repository.rs`:
+   * `ConfigReadRepository` and `ConfigWriteRepository`.
+   * Unified `ConfigRepository` marker trait with blanket impl for all `T: ConfigReadRepository + ConfigWriteRepository`.
 3. **Migrate Tables**: Create `config/storage/tables.rs` using `db` typed wrappers (`Table`, `PathTable`) instead of raw `redb::TableDefinition`.
 
 ### Phase 2: In-Memory Implementation (`config/storage/testing.rs`)
-Implement `InMemoryRepository` using vertical slices and **Structure A** (submodules) per `unit-naming.md`.
+Implement `InMemoryRepository` following **Structure A** (submodules) per `unit-naming.md` and the `vault`/`schema` patterns.
 
 #### Vertical 2.1: Global & Vault Config
-* **RED**: Test `lookup::global_roundtrip` and `lookup::vault_roundtrip`.
+* **RED**: Test `lookup::global_roundtrip` and `lookup::vault_roundtrip` in `storage/testing.rs`.
 * **GREEN**: Implement `get_global`, `save_global`, `get_vault`, `save_vault` using `read_lock`/`write_lock` and `harness` instrumentation.
 
 #### Vertical 2.2: Versioning & Merged Config
@@ -40,18 +42,22 @@ Implement `InMemoryRepository` using vertical slices and **Structure A** (submod
 
 #### Vertical 2.3: Instrumentation & Injection
 * **RED**: Test `counters::increments_on_ops` and `injection::returns_error_on_injected_failure`.
-* **GREEN**: Wire `harness.fail_at(FailurePoint::BeforeRead/Write)` into all methods.
+* **GREEN**: Wire `harness.fail_at(FailurePoint::BeforeRead/Write)` into all methods. Implement `From<InMemoryDbError> for ConfigRepositoryError`.
 
-### Phase 3: Redb Implementation (`config/storage/read.rs` & `write.rs`)
-Implement `ConfigRedbRepository` using integration tests with `Store::open_temp()`.
+### Phase 3: Redb Implementation (`config/storage/`)
+Implement a single `RedbRepository` struct split across submodules.
 
-#### Vertical 3.1: Read Operations (`read.rs`)
-* **RED**: Integration test for `get_global` and `get_vault`.
-* **GREEN**: Implement `ReadRepository` using `Store::read` transactions and `rkyv` deserialization.
+#### Vertical 3.1: Repository Shell (`storage/mod.rs`)
+* Define `RedbRepository { pub(crate) store: Arc<Store> }`.
+* Define transaction helpers if needed.
 
-#### Vertical 3.2: Write Operations (`write.rs`)
-* **RED**: Integration test for `save_config` (atomic version allocation) and `save_vault_path_mapping` (bidirectional consistency).
-* **GREEN**: Implement `WriteRepository` using `Store::write` or `Store::read_write_unit_of_work`.
+#### Vertical 3.2: Read Operations (`storage/read.rs`)
+* **RED**: Integration test for `get_global` and `get_vault` using `Store::open_temp()`.
+* **GREEN**: `impl ConfigReadRepository for RedbRepository` using `Store::read` and `rkyv` deserialization.
+
+#### Vertical 3.3: Write Operations (`storage/write.rs`)
+* **RED**: Integration test for `save_config` (atomic version allocation) and `save_vault_path_mapping`.
+* **GREEN**: `impl ConfigWriteRepository for RedbRepository` using `Store::write` or `Store::read_write_unit_of_work`.
 
 ### Phase 4: Integration & Cleanup
 1. **Update Builder**: Refactor `config/builder.rs` to accept `impl ConfigRepository`.
