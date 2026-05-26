@@ -46,6 +46,7 @@
 mod codec;
 mod core;
 mod error;
+mod path;
 mod read;
 mod reader;
 pub mod retry;
