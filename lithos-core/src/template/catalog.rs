@@ -11,26 +11,26 @@ use crate::template::{
     adapter::{Emitter, FilterRegistry},
     aggregate::{Template, TemplateName},
     error::TemplateError,
-    ports::Query,
+    repository::ReadRepository,
 };
 
 /// Template catalog: orchestrates loading, compilation, and rendering.
 ///
 /// # Responsibilities
-/// - Loads all templates from storage (via `Query` port).
+/// - Loads all templates from storage (via `ReadRepository` trait).
 /// - Topologically sorts by extends relationships (parents before children).
 /// - Compiles templates via `Emitter` + `MiniJinja`.
 /// - Caches compiled templates in `Arc<Environment>` (shared across threads).
 /// - Provides unified render API.
-pub struct TemplateCatalog<Q: Query> {
+pub struct TemplateCatalog<R: ReadRepository> {
     /// Compiled templates (shared across threads).
     env: Arc<Environment<'static>>,
 
     /// Domain metadata storage (for template queries).
-    metadata: Q,
+    repository: R,
 }
 
-impl<Q: Query> TemplateCatalog<Q> {
+impl<R: ReadRepository> TemplateCatalog<R> {
     /// Constructs catalog with storage backend.
     ///
     /// Configures `MiniJinja` Environment:
@@ -42,7 +42,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     /// # Errors
     /// Returns `TemplateError` if initialization fails.
     #[inline]
-    pub fn try_new(metadata: Q) -> Result<Self, TemplateError> {
+    pub fn try_new(repository: R) -> Result<Self, TemplateError> {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_recursion_limit(10);
@@ -52,7 +52,7 @@ impl<Q: Query> TemplateCatalog<Q> {
 
         Ok(Self {
             env: Arc::new(env),
-            metadata,
+            repository,
         })
     }
 
@@ -79,7 +79,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     #[inline]
     pub fn load_all(&mut self) -> Result<(), TemplateError> {
         // 1. Load all templates from storage
-        let templates = self.metadata.list()?;
+        let templates = self.repository.list_templates()?;
 
         // 2. Topologically sort by extends (parents before children)
         let sorted = Self::topological_sort(&templates)?;
@@ -146,7 +146,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     /// Returns `TemplateError` if storage fails.
     #[inline]
     pub fn list_names(&self) -> Result<Vec<String>, TemplateError> {
-        let templates = self.metadata.list()?;
+        let templates = self.repository.list_templates()?;
         Ok(templates.into_iter().map(|t| t.name().to_string()).collect())
     }
 
@@ -236,14 +236,14 @@ mod tests {
 
     use super::*;
     use crate::template::{
-        BlockStrategy, TemplateBlock,
-        ports::{Command as _, FakeTemplateStorage},
+        BlockStrategy, TemplateBlock, repository::WriteRepository,
+        storage::testing::InMemoryRepository,
     };
 
     #[test]
 
     fn loads_and_compiles_all_templates() {
-        let storage = FakeTemplateStorage::new();
+        let storage = InMemoryRepository::new();
 
         // Create parent template
         let parent_name = TemplateName::try_from("parent").unwrap();
@@ -274,8 +274,8 @@ mod tests {
         )
         .unwrap();
 
-        storage.create(&parent).unwrap();
-        storage.create(&child).unwrap();
+        storage.save_template(&parent).unwrap();
+        storage.save_template(&child).unwrap();
 
         // Load all into catalog (automatic topological sort)
         let mut catalog = TemplateCatalog::try_new(storage).unwrap();
@@ -290,7 +290,7 @@ mod tests {
     #[test]
 
     fn detects_circular_extends() {
-        let storage = FakeTemplateStorage::new();
+        let storage = InMemoryRepository::new();
 
         // Create circular dependency: A extends B, B extends A
         let a_name = TemplateName::try_from("a").unwrap();
@@ -311,8 +311,8 @@ mod tests {
         )
         .unwrap();
 
-        storage.create(&a).unwrap();
-        storage.create(&b).unwrap();
+        storage.save_template(&a).unwrap();
+        storage.save_template(&b).unwrap();
 
         // Load should fail with cycle detection error
         let mut catalog = TemplateCatalog::try_new(storage).unwrap();
@@ -322,7 +322,7 @@ mod tests {
     #[test]
 
     fn topological_sort_compiles_parents_before_children() {
-        let storage = FakeTemplateStorage::new();
+        let storage = InMemoryRepository::new();
 
         // Create 3-level hierarchy: grandparent <- parent <- child
         let gp_name = TemplateName::try_from("grandparent").unwrap();
@@ -357,9 +357,9 @@ mod tests {
         .unwrap();
 
         // Store in WRONG order (child first)
-        storage.create(&child).unwrap();
-        storage.create(&grandparent).unwrap();
-        storage.create(&parent).unwrap();
+        storage.save_template(&child).unwrap();
+        storage.save_template(&grandparent).unwrap();
+        storage.save_template(&parent).unwrap();
 
         // Catalog should sort them correctly
         let mut catalog = TemplateCatalog::try_new(storage).unwrap();
@@ -382,7 +382,7 @@ mod tests {
     #[test]
 
     fn list_names_returns_all_templates() {
-        let storage = FakeTemplateStorage::new();
+        let storage = InMemoryRepository::new();
 
         let t1_name = TemplateName::try_from("t1").unwrap();
         let t1 =
@@ -391,8 +391,8 @@ mod tests {
         let t2 =
             Template::try_new(&t2_name, None, vec![], HashMap::new()).unwrap();
 
-        storage.create(&t1).unwrap();
-        storage.create(&t2).unwrap();
+        storage.save_template(&t1).unwrap();
+        storage.save_template(&t2).unwrap();
 
         let catalog = TemplateCatalog::try_new(storage).unwrap();
         let names = catalog.list_names().unwrap();

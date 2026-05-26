@@ -114,6 +114,52 @@ pub enum TemplateError {
     /// Template content too large.
     #[error("template content too large: {0} bytes (max {1})")]
     TemplateContentTooLarge(usize, usize),
+
+    /// Repository error.
+    #[error(transparent)]
+    Repository(Box<TemplateRepositoryError>),
+}
+
+impl From<TemplateRepositoryError> for TemplateError {
+    #[inline]
+    fn from(error: TemplateRepositoryError) -> Self {
+        Self::Repository(Box::new(error))
+    }
+}
+
+/// Errors returned by template repository implementations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum TemplateRepositoryError {
+    /// Returned when the underlying storage layer fails.
+    #[error("storage error: {0}")]
+    Storage(Box<str>),
+
+    /// Returned when domain validation fails while saving or loading.
+    #[error(transparent)]
+    Domain(Box<TemplateError>),
+
+    /// Returned when an expected entity is missing by ID.
+    #[error("template not found: {0}")]
+    NotFoundById(crate::template::aggregate::TemplateId),
+
+    /// Returned when an expected entity is missing by name.
+    #[error("template name not found: {0}")]
+    NotFoundByName(crate::template::aggregate::TemplateName),
+}
+
+impl From<crate::db::DbError> for TemplateRepositoryError {
+    #[inline]
+    fn from(error: crate::db::DbError) -> Self {
+        Self::Storage(error.to_string().into_boxed_str())
+    }
+}
+
+impl From<TemplateError> for TemplateRepositoryError {
+    #[inline]
+    fn from(error: TemplateError) -> Self {
+        Self::Domain(Box::new(error))
+    }
 }
 
 #[cfg(test)]
