@@ -2,11 +2,6 @@
 
 use crate::fs::path::PathKey;
 
-#[allow(
-    clippy::panic,
-    reason = "Database corruption must panic per redb::Value trait contract \
-              (no Result return)"
-)]
 impl redb::Value for PathKey {
     type AsBytes<'a>
         = &'a [u8]
@@ -35,10 +30,20 @@ impl redb::Value for PathKey {
     where
         Self: 'a,
     {
+        #[expect(
+            clippy::panic,
+            reason = "redb::Value trait requires panic on invalid data - no \
+                      Result return type allowed"
+        )]
         let Ok(s) = std::str::from_utf8(data) else {
             panic!("PathKey data from database must be valid UTF-8");
         };
 
+        #[expect(
+            clippy::panic,
+            reason = "redb::Value trait requires panic on invalid data - no \
+                      Result return type allowed"
+        )]
         let Ok(path_key) = PathKey::try_new(s) else {
             panic!("PathKey data from database must be normalized");
         };
