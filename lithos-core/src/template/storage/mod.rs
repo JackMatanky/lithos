@@ -9,10 +9,7 @@ pub mod testing;
 
 use std::sync::Arc;
 
-use crate::{
-    db::Store,
-    template::repository::{ReadRepository, WriteRepository},
-};
+use crate::db::Store;
 
 /// Redb-backed implementation of the template repository traits.
 #[derive(Debug, Clone)]
@@ -31,93 +28,15 @@ impl RedbRepository {
     }
 }
 
-impl ReadRepository for RedbRepository {
-    #[inline]
-    fn find_template_by_id(
-        &self,
-        id: crate::template::aggregate::TemplateId,
-    ) -> Result<
-        Option<crate::template::aggregate::Template>,
-        crate::template::error::TemplateRepositoryError,
-    > {
-        self.read_repo().find_template_by_id(id)
-    }
-
-    #[inline]
-    fn find_many_templates_by_id(
-        &self,
-        ids: &[crate::template::aggregate::TemplateId],
-    ) -> Result<
-        Vec<Option<crate::template::aggregate::Template>>,
-        crate::template::error::TemplateRepositoryError,
-    > {
-        self.read_repo().find_many_templates_by_id(ids)
-    }
-
-    #[inline]
-    fn find_template_id_by_name(
-        &self,
-        name: &crate::template::aggregate::TemplateName,
-    ) -> Result<
-        Option<crate::template::aggregate::TemplateId>,
-        crate::template::error::TemplateRepositoryError,
-    > {
-        self.read_repo().find_template_id_by_name(name)
-    }
-
-    #[inline]
-    fn list_templates(
-        &self,
-    ) -> Result<
-        Vec<crate::template::aggregate::Template>,
-        crate::template::error::TemplateRepositoryError,
-    > {
-        self.read_repo().list_templates()
-    }
-}
-
-impl WriteRepository for RedbRepository {
-    #[inline]
-    fn save_template(
-        &self,
-        template: &crate::template::aggregate::Template,
-    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
-        self.write_repo().save_template(template)
-    }
-
-    #[inline]
-    fn save_many_templates(
-        &self,
-        templates: &[crate::template::aggregate::Template],
-    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
-        self.write_repo().save_many_templates(templates)
-    }
-
-    #[inline]
-    fn delete_template(
-        &self,
-        id: crate::template::aggregate::TemplateId,
-    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
-        self.write_repo().delete_template(id)
-    }
-}
-
-impl RedbRepository {
-    fn read_repo(&self) -> read::TemplateReadRepository<'_> {
-        read::TemplateReadRepository::new(&self.store)
-    }
-
-    fn write_repo(&self) -> write::TemplateWriteRepository<'_> {
-        write::TemplateWriteRepository::new(&self.store)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::template::aggregate::{Template, TemplateName};
+    use crate::template::{
+        aggregate::{Template, TemplateName},
+        repository::{ReadRepository, WriteRepository},
+    };
 
     #[test]
     fn redb_repository_roundtrip() {

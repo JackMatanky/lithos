@@ -3,29 +3,19 @@
 use redb::ReadableTable as _;
 
 use crate::{
-    db::{ArchivedEntity, Store},
+    db::ArchivedEntity,
     template::{
         aggregate::{Template, TemplateId},
         error::TemplateRepositoryError,
         repository::WriteRepository,
-        storage::tables::{NAME_TO_ID, TEMPLATES},
+        storage::{
+            RedbRepository,
+            tables::{NAME_TO_ID, TEMPLATES},
+        },
     },
 };
 
-/// Internal write repository implementation.
-pub(crate) struct TemplateWriteRepository<'a> {
-    store: &'a Store,
-}
-
-impl<'a> TemplateWriteRepository<'a> {
-    pub(crate) fn new(store: &'a Store) -> Self {
-        Self {
-            store,
-        }
-    }
-}
-
-impl WriteRepository for TemplateWriteRepository<'_> {
+impl WriteRepository for RedbRepository {
     #[inline]
     fn save_template(
         &self,

@@ -3,29 +3,19 @@
 use redb::ReadableTable as _;
 
 use crate::{
-    db::{ArchivedEntity, Store},
+    db::ArchivedEntity,
     template::{
         aggregate::{Template, TemplateId, TemplateName},
         error::TemplateRepositoryError,
         repository::ReadRepository,
-        storage::tables::{NAME_TO_ID, TEMPLATES},
+        storage::{
+            RedbRepository,
+            tables::{NAME_TO_ID, TEMPLATES},
+        },
     },
 };
 
-/// Internal read repository implementation.
-pub(crate) struct TemplateReadRepository<'a> {
-    store: &'a Store,
-}
-
-impl<'a> TemplateReadRepository<'a> {
-    pub(crate) fn new(store: &'a Store) -> Self {
-        Self {
-            store,
-        }
-    }
-}
-
-impl ReadRepository for TemplateReadRepository<'_> {
+impl ReadRepository for RedbRepository {
     #[inline]
     fn find_template_by_id(
         &self,
