@@ -55,6 +55,33 @@ Template persistence uses the legacy v1 repository and storage pattern.
 **Revision Note (2026-05-12):**
 Plan established following the **Segregated Unified Repository** pattern (ADR 016).
 
+## TDD Implementation Plan (v1 - 2026-05-26)
+
+Migrate `Template` storage layer following the **Segregated Unified Repository** pattern (ADR 016).
+
+### Phase 1: Foundation (Infrastructure)
+1. **Error Taxonomy**: Add `TemplateRepositoryError` to `lithos-core/src/template/error.rs` to handle storage-specific failures and domain validation at the persistence boundary.
+2. **Trait Definition**: Create `lithos-core/src/template/repository.rs` defining `ReadRepository` and `WriteRepository` traits.
+
+### Phase 2: In-Memory Adapter (Tracer Bullet)
+1. **New Adapter**: Create `lithos-core/src/template/storage/testing.rs` implementing `InMemoryRepository`.
+2. **DB Seam**: Wire `InMemoryHarness` into the repository for operation counting and failure injection.
+3. **TDD Cycles**:
+   - **RED**: Write a test for `save_template` and `find_template_by_id`.
+   - **GREEN**: Implement basic `HashMap` storage with `RwLock` and `db::testing` lock helpers.
+   - **RED/GREEN**: Add tests for failure injection (`BeforeRead`/`BeforeWrite`) using the harness.
+
+### Phase 3: Redb Implementation
+1. **Table Definitions**: Extract table definitions into `lithos-core/src/template/storage/tables.rs`.
+2. **Segregated Implementation**: Implement `TemplateRedbRepository` split across `read.rs` and `write.rs`, using typed table wrappers.
+3. **Verification**: Verify the `redb` implementation against the same behavior tests used for the in-memory double.
+
+### Phase 4: Migration & Cleanup
+1. **Catalog Update**: Update `TemplateCatalog` to depend on the new repository traits.
+2. **Module Reorganization**: Update `template/mod.rs` and remove legacy `ports.rs` and `adapter/` directory.
+
+---
+
 ## Acceptance criteria
 
 - [ ] Template Repository Adapter uses the new storage module layout and DB seam.
