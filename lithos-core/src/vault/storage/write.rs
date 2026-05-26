@@ -83,7 +83,7 @@ impl WriteRepository for RedbRepository {
                 let mut by_format = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
                 file_table.insert(&file.id(), file_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &file.id())?;
+                path_table.insert(path, &file.id())?;
                 reverse_path_table
                     .insert(&file.id(), path.as_str().to_owned())?;
                 by_basename.insert(basename.as_str(), &file.id())?;
@@ -115,7 +115,7 @@ impl WriteRepository for RedbRepository {
                 let mut reverse_path_table =
                     tx.try_open_table(PATH_BY_DIR_ID.definition())?;
                 dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                path_table.insert(path, &dir.id())?;
                 reverse_path_table
                     .insert(&dir.id(), path.as_str().to_owned())?;
                 Ok(())
@@ -173,7 +173,7 @@ impl WriteRepository for RedbRepository {
                         tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
                     file_table.insert(&file.id(), bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &file.id())?;
+                    path_table.insert(path, &file.id())?;
                     by_basename.insert(basename.as_str(), &file.id())?;
                     if let Some(parent_id) = file.parent_id() {
                         by_parent.insert(&parent_id, &file.id())?;
@@ -206,7 +206,7 @@ impl WriteRepository for RedbRepository {
                     let mut path_table =
                         tx.try_open_table(DIR_ID_BY_PATH.definition())?;
                     dir_table.insert(&dir.id(), bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                    path_table.insert(path, &dir.id())?;
                 }
                 Ok(())
             })
@@ -249,9 +249,11 @@ impl RedbRepository {
         tx: &WriteTx,
         path: Option<&str>,
     ) -> Result<(), DbError> {
-        if let Some(path) = path {
+        if let Some(path_str) = path {
             let mut table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
+            let path_key = PathKey::try_new(path_str)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            table.remove(&path_key)?;
         }
         Ok(())
     }
@@ -306,9 +308,11 @@ impl RedbRepository {
         tx: &WriteTx,
         path: Option<&str>,
     ) -> Result<(), DbError> {
-        if let Some(path) = path {
+        if let Some(path_str) = path {
             let mut table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
+            let path_key = PathKey::try_new(path_str)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            table.remove(&path_key)?;
         }
         Ok(())
     }
