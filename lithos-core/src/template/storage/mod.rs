@@ -34,7 +34,7 @@ mod tests {
 
     use super::*;
     use crate::template::{
-        aggregate::{Template, TemplateName},
+        aggregate::{Template, TemplateId, TemplateName},
         repository::{ReadRepository, WriteRepository},
     };
 
@@ -69,6 +69,47 @@ mod tests {
         repo.delete_template(id).expect("delete");
         assert!(repo.find_template_by_id(id).unwrap().is_none());
         assert!(repo.find_template_id_by_name(&name).unwrap().is_none());
+    }
+
+    #[test]
+    fn redb_repository_batch_operations() {
+        let (_dir, store) = Store::open_temp_arc().unwrap();
+        let repo = RedbRepository::new(store);
+
+        let name1 = TemplateName::try_from("t1").unwrap();
+        let t1 =
+            Template::try_new(&name1, None, vec![], HashMap::new()).unwrap();
+        let name2 = TemplateName::try_from("t2").unwrap();
+        let t2 =
+            Template::try_new(&name2, None, vec![], HashMap::new()).unwrap();
+
+        // Batch save
+        repo.save_many_templates(&[t1.clone(), t2.clone()]).unwrap();
+
+        // Batch lookup
+        let ids = vec![t1.id(), TemplateId::new(), t2.id()];
+        let results = repo.find_many_templates_by_id(&ids).unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results.first().and_then(Option::as_ref).map(Template::id),
+            Some(t1.id())
+        );
+        assert!(results.get(1).is_some_and(Option::is_none));
+        assert_eq!(
+            results.get(2).and_then(Option::as_ref).map(Template::id),
+            Some(t2.id())
+        );
+    }
+
+    #[test]
+    fn redb_repository_deleting_missing_is_idempotent() {
+        let (_dir, store) = Store::open_temp_arc().unwrap();
+        let repo = RedbRepository::new(store);
+
+        let id = TemplateId::new();
+        repo.delete_template(id).expect("delete missing should succeed");
+        repo.delete_template(id).expect("second delete should succeed");
     }
 
     #[test]

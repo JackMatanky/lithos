@@ -18,5 +18,5 @@ pub(crate) const TEMPLATES: UuidTable<TemplateId, &[u8]> =
 /// Map mapping template name to template ID.
 ///
 /// Key: `TemplateName` string
-/// Value: `TemplateId` (UUID v7)
-pub(crate) const NAME_TO_ID: Table<&str, TemplateId> = Table::new("name_to_id");
+/// Value: serialized `TemplateId` (UUID v7)
+pub(crate) const NAME_TO_ID: Table<&str, &[u8]> = Table::new("name_to_id");

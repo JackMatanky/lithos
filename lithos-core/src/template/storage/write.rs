@@ -21,6 +21,9 @@ impl WriteRepository for RedbRepository {
         &self,
         template: &Template,
     ) -> Result<(), TemplateRepositoryError> {
+        let bytes =
+            template.to_bytes().map_err(TemplateRepositoryError::from)?;
+
         self.store
             .write(|tx| {
                 let mut templates =
@@ -45,9 +48,13 @@ impl WriteRepository for RedbRepository {
                     name_to_id.remove(name.as_str())?;
                 }
 
-                templates
-                    .insert(template.id(), template.to_bytes()?.as_slice())?;
-                name_to_id.insert(template.name().as_str(), template.id())?;
+                templates.insert(template.id(), bytes.as_slice())?;
+
+                name_to_id.insert(
+                    template.name().as_str(),
+                    <TemplateId as redb::Value>::as_bytes(&template.id())
+                        .as_slice(),
+                )?;
 
                 Ok(())
             })
@@ -59,6 +66,14 @@ impl WriteRepository for RedbRepository {
         &self,
         templates: &[Template],
     ) -> Result<(), TemplateRepositoryError> {
+        // Pre-serialize all templates to minimize critical section
+        let mut serialized = Vec::with_capacity(templates.len());
+        for template in templates {
+            serialized.push(
+                template.to_bytes().map_err(TemplateRepositoryError::from)?,
+            );
+        }
+
         self.store
             .write(|tx| {
                 let mut templates_table =
@@ -66,7 +81,7 @@ impl WriteRepository for RedbRepository {
                 let mut name_to_id =
                     tx.try_open_table(NAME_TO_ID.definition())?;
 
-                for template in templates {
+                for (template, bytes) in templates.iter().zip(&serialized) {
                     let old_name = if let Some(old_bytes) =
                         templates_table.get(template.id())?
                     {
@@ -81,12 +96,12 @@ impl WriteRepository for RedbRepository {
                         name_to_id.remove(name.as_str())?;
                     }
 
-                    templates_table.insert(
-                        template.id(),
-                        template.to_bytes()?.as_slice(),
+                    templates_table.insert(template.id(), bytes.as_slice())?;
+                    name_to_id.insert(
+                        template.name().as_str(),
+                        <TemplateId as redb::Value>::as_bytes(&template.id())
+                            .as_slice(),
                     )?;
-                    name_to_id
-                        .insert(template.name().as_str(), template.id())?;
                 }
                 Ok(())
             })

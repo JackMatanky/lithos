@@ -266,6 +266,35 @@ mod tests {
         }
 
         #[test]
+        fn find_many_templates_by_id_preserves_order_and_handles_missing() {
+            let repo = InMemoryRepository::new();
+            let name1 = TemplateName::try_from("t1").unwrap();
+            let t1 = Template::try_new(&name1, None, vec![], HashMap::new())
+                .unwrap();
+            let name2 = TemplateName::try_from("t2").unwrap();
+            let t2 = Template::try_new(&name2, None, vec![], HashMap::new())
+                .unwrap();
+
+            repo.save_template(&t1).unwrap();
+            repo.save_template(&t2).unwrap();
+
+            let missing_id = TemplateId::new();
+            let ids = vec![t1.id(), missing_id, t2.id()];
+            let results = repo.find_many_templates_by_id(&ids).unwrap();
+
+            assert_eq!(results.len(), 3);
+            assert_eq!(
+                results.first().and_then(Option::as_ref).map(Template::id),
+                Some(t1.id())
+            );
+            assert!(results.get(1).is_some_and(Option::is_none));
+            assert_eq!(
+                results.get(2).and_then(Option::as_ref).map(Template::id),
+                Some(t2.id())
+            );
+        }
+
+        #[test]
         fn returns_storage_error_when_before_read_failure_is_injected() {
             let harness = InMemoryHarness::with_injector(Box::new(FailOnRead));
             let repo = InMemoryRepository::with_harness(harness);
@@ -293,6 +322,37 @@ mod tests {
             let found =
                 repo.find_template_by_id(id).expect("lookup should succeed");
             assert_eq!(found.unwrap().name(), &name);
+        }
+
+        #[test]
+        fn save_many_templates_persists_all() {
+            let repo = InMemoryRepository::new();
+            let name1 = TemplateName::try_from("t1").unwrap();
+            let t1 = Template::try_new(&name1, None, vec![], HashMap::new())
+                .unwrap();
+            let name2 = TemplateName::try_from("t2").unwrap();
+            let t2 = Template::try_new(&name2, None, vec![], HashMap::new())
+                .unwrap();
+
+            repo.save_many_templates(&[t1.clone(), t2.clone()]).unwrap();
+
+            assert_eq!(repo.find_template_by_id(t1.id()).unwrap().unwrap(), t1);
+            assert_eq!(repo.find_template_by_id(t2.id()).unwrap().unwrap(), t2);
+        }
+
+        #[test]
+        fn delete_template_is_idempotent() {
+            let repo = InMemoryRepository::new();
+            let name = TemplateName::try_from("test").unwrap();
+            let template =
+                Template::try_new(&name, None, vec![], HashMap::new()).unwrap();
+            let id = template.id();
+
+            repo.save_template(&template).unwrap();
+            repo.delete_template(id).unwrap();
+            repo.delete_template(id).unwrap();
+
+            assert!(repo.find_template_by_id(id).unwrap().is_none());
         }
 
         #[test]

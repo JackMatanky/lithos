@@ -78,7 +78,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                Ok(Some(guard.value()))
+                Ok(Some(<TemplateId as redb::Value>::from_bytes(guard.value())))
             })
             .map_err(TemplateRepositoryError::from)
     }
