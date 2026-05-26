@@ -110,7 +110,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{FsReader, PathKey, metadata::FileMetadata},
+    fs::{DirPath, FsFile, FsReader, PathKey, metadata::FileMetadata},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -143,21 +143,41 @@ use crate::{
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct PropertyBankProcessor<P, S> {
+    file: FsFile,
+    path_key: PathKey,
     status: S,
     _stage: PhantomData<P>,
 }
 
 impl<P, S> PropertyBankProcessor<P, S> {
-    /// Internal constructor for state transitions.
     #[inline]
-    pub(crate) fn transition<NP, NS>(
-        _stage: NP,
+    fn into_parts(self) -> (FsFile, PathKey, S) {
+        (self.file, self.path_key, self.status)
+    }
+
+    #[inline]
+    fn transition_from_parts<NP, NS>(
+        file: FsFile,
+        path_key: PathKey,
         status: NS,
     ) -> PropertyBankProcessor<NP, NS> {
         PropertyBankProcessor {
+            file,
+            path_key,
             status,
             _stage: PhantomData,
         }
+    }
+
+    /// Internal constructor for state transitions.
+    #[inline]
+    pub(crate) fn transition<NP, NS>(
+        self,
+        _stage: NP,
+        status: NS,
+    ) -> PropertyBankProcessor<NP, NS> {
+        let (file, path_key, _) = self.into_parts();
+        Self::transition_from_parts(file, path_key, status)
     }
 }
 
@@ -185,27 +205,18 @@ pub(crate) enum ComparisonBranch {
 
 /// Entry-state operations that decide whether a cached view exists.
 impl PropertyBankProcessor<Discovery, Unknown> {
-    /// Creates a new processor in the initial state.
-    ///
-    /// ```ignore
-    /// # use lithos_core::schema::property_bank_processor::{
-    /// #     Discovery, PropertyBankProcessor, Unknown,
-    /// # };
-    /// let processor = PropertyBankProcessor::<Discovery, Unknown>::new();
-    /// ```
     #[inline]
-    pub(crate) fn new() -> Self {
-        PropertyBankProcessor {
+    pub(crate) fn from_fs_file(
+        file: FsFile,
+        root: &DirPath,
+    ) -> Result<Self, crate::fs::PathError> {
+        let path_key = file.path().as_key(root)?;
+        Ok(Self {
+            file,
+            path_key,
             status: Unknown,
             _stage: PhantomData,
-        }
-    }
-}
-
-impl Default for PropertyBankProcessor<Discovery, Unknown> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+        })
     }
 }
 
@@ -311,25 +322,28 @@ impl PropertyBankProcessor<Comparison, Present> {
     pub(crate) fn check_timestamps(
         self,
         source: &FsReader,
-        config_path: &std::path::Path,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
-        let timestamps_match = self.status.view.is_timestamp_match(
-            self.status.metadata.times().created_at(),
-            self.status.metadata.times().modified_at(),
+        let (file, path_key, status) = self.into_parts();
+        let timestamps_match = status.view.is_timestamp_match(
+            status.metadata.times().created_at(),
+            status.metadata.times().modified_at(),
         );
 
         if timestamps_match {
-            Ok(TimestampBranch::Match(Self::transition(Construction, Fresh)))
+            Ok(TimestampBranch::Match(Self::transition_from_parts(
+                file, path_key, Fresh,
+            )))
         } else {
             let content = source
-                .read_to_string(config_path)
+                .read_to_string(file.path().as_path())
                 .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-            Ok(TimestampBranch::Mismatch(Self::transition(
-                Comparison,
+            Ok(TimestampBranch::Mismatch(Self::transition_from_parts(
+                file,
+                path_key,
                 Suspect {
-                    metadata: self.status.metadata,
-                    view: self.status.view,
+                    metadata: status.metadata,
+                    view: status.view,
                     content,
                 },
             )))
@@ -356,22 +370,31 @@ impl PropertyBankProcessor<Comparison, Suspect> {
     /// Transitions to Parsed stage with Stale on mismatch.
     #[inline]
     pub(crate) fn check_content(self) -> ContentBranch {
-        let content_hash = Blake3Hash::compute(self.status.content.as_bytes());
+        let (file, path_key, status) = self.into_parts();
+        let content_hash = Blake3Hash::compute(status.content.as_bytes());
 
-        let content_match = self.status.view.is_content_match(&content_hash);
+        let content_match = status.view.is_content_match(&content_hash);
 
         if content_match {
-            ContentBranch::Match(Self::transition(Refresh, StaleTimestamps {
-                metadata: self.status.metadata,
-                view: self.status.view,
-            }))
+            ContentBranch::Match(Self::transition_from_parts(
+                file,
+                path_key,
+                StaleTimestamps {
+                    metadata: status.metadata,
+                    view: status.view,
+                },
+            ))
         } else {
-            ContentBranch::Mismatch(Self::transition(Parsed, Stale {
-                metadata: self.status.metadata,
-                content: self.status.content,
-                content_hash,
-                view: self.status.view,
-            }))
+            ContentBranch::Mismatch(Self::transition_from_parts(
+                file,
+                path_key,
+                Stale {
+                    metadata: status.metadata,
+                    content: status.content,
+                    content_hash,
+                    view: status.view,
+                },
+            ))
         }
     }
 }
@@ -412,21 +435,23 @@ impl PropertyBankProcessor<Parsed, Missing> {
     pub(crate) fn parse(
         self,
         source: &FsReader,
-        config_path: &std::path::Path,
     ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
     {
+        let (file, path_key, status) = self.into_parts();
         let content = source
-            .read_to_string(config_path)
+            .read_to_string(file.path().as_path())
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw: RawPropertyBank =
-            FsReader::parse_structured_from_str(config_path, &content)
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        let raw: RawPropertyBank = FsReader::parse_structured_from_str(
+            file.path().as_path(),
+            &content,
+        )
+        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_metadata(self.status.metadata);
+        let raw = raw.with_metadata(status.metadata);
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
-        Ok(Self::transition(Construction, New {
+        Ok(Self::transition_from_parts(file, path_key, New {
             raw,
             content_hash,
         }))
@@ -447,21 +472,21 @@ impl PropertyBankProcessor<Parsed, Stale> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn parse(
         self,
-        config_path: &std::path::Path,
     ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaLoaderError>
     {
+        let (file, path_key, status) = self.into_parts();
         let raw: RawPropertyBank = FsReader::parse_structured_from_str(
-            config_path,
-            &self.status.content,
+            file.path().as_path(),
+            &status.content,
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_metadata(self.status.metadata);
+        let raw = raw.with_metadata(status.metadata);
 
-        Ok(Self::transition(Analysis, ParsedStale {
+        Ok(Self::transition_from_parts(file, path_key, ParsedStale {
             raw,
-            content_hash: self.status.content_hash,
-            view: self.status.view,
+            content_hash: status.content_hash,
+            view: status.view,
         }))
     }
 }
@@ -498,15 +523,17 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn analyze(self) -> AnalysisBranch {
-        let raw = &self.status.raw;
-        let content_hash = self.status.content_hash;
-        let view = self.status.view;
+        let (file, path_key, status) = self.into_parts();
+        let raw = status.raw;
+        let content_hash = status.content_hash;
+        let view = status.view;
 
         let Some(version) = view.current() else {
-            return AnalysisBranch::Corrupt(Self::transition(
-                Construction,
+            return AnalysisBranch::Corrupt(Self::transition_from_parts(
+                file,
+                path_key,
                 New {
-                    raw: raw.clone(),
+                    raw,
                     content_hash,
                 },
             ));
@@ -514,15 +541,16 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
         let Ok((delta, property_hashes)) =
             PropertyDeltaEngine::for_property_bank(
-                raw,
+                &raw,
                 version.hashes().properties(),
             )
             .diff_property_bank()
         else {
-            return AnalysisBranch::Corrupt(Self::transition(
-                Construction,
+            return AnalysisBranch::Corrupt(Self::transition_from_parts(
+                file,
+                path_key,
                 New {
-                    raw: raw.clone(),
+                    raw,
                     content_hash,
                 },
             ));
@@ -530,17 +558,25 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
         let raw_hash = HashRecord::new(content_hash, property_hashes);
 
         if delta.is_empty() {
-            AnalysisBranch::Empty(Self::transition(Refresh, StaleContent {
-                metadata: raw.metadata().clone(),
-                view,
-                content_hash,
-            }))
+            AnalysisBranch::Empty(Self::transition_from_parts(
+                file,
+                path_key,
+                StaleContent {
+                    metadata: raw.metadata().clone(),
+                    view,
+                    content_hash,
+                },
+            ))
         } else {
-            AnalysisBranch::Delta(Self::transition(Construction, Changed {
-                raw: raw.clone(),
-                delta,
-                raw_hash,
-            }))
+            AnalysisBranch::Delta(Self::transition_from_parts(
+                file,
+                path_key,
+                Changed {
+                    raw,
+                    delta,
+                    raw_hash,
+                },
+            ))
         }
     }
 }
@@ -579,17 +615,16 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
-        path_key: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_metadata(self.status.metadata);
+        self.status.view.update_metadata(self.status.metadata.clone());
 
         repository
-            .save_raw_property_bank_view(path_key, &self.status.view)
+            .save_raw_property_bank_view(&self.path_key, &self.status.view)
             .map_err(SchemaLoaderError::Repository)?;
 
-        Ok(Self::transition(Construction, Fresh))
+        Ok(self.transition(Construction, Fresh))
     }
 }
 
@@ -604,21 +639,20 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn sync_metadata<R: WriteRepository>(
         mut self,
-        path_key: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_metadata(self.status.metadata);
+        self.status.view.update_metadata(self.status.metadata.clone());
         self.status
             .view
             .update_content_hash(self.status.content_hash)
             .map_err(SchemaLoaderError::Repository)?;
 
         repository
-            .save_raw_property_bank_view(path_key, &self.status.view)
+            .save_raw_property_bank_view(&self.path_key, &self.status.view)
             .map_err(SchemaLoaderError::Repository)?;
 
-        Ok(Self::transition(Construction, Fresh))
+        Ok(self.transition(Construction, Fresh))
     }
 }
 
@@ -664,7 +698,6 @@ impl PropertyBankProcessor<Construction, New> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn create<R: WriteRepository>(
         self,
-        path: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     {
@@ -676,9 +709,9 @@ impl PropertyBankProcessor<Construction, New> {
                 })
             },
         )?;
-        self.persist(path, repository, &bank)?;
+        self.persist(repository, &bank)?;
 
-        Ok(Self::transition(Completed, NewReady {
+        Ok(self.transition(Completed, NewReady {
             bank,
         }))
     }
@@ -686,7 +719,6 @@ impl PropertyBankProcessor<Construction, New> {
     #[inline]
     fn persist<R: WriteRepository>(
         &self,
-        path: &PathKey,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
@@ -700,13 +732,13 @@ impl PropertyBankProcessor<Construction, New> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            path.clone(),
+            self.path_key.clone(),
             raw_hash,
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
         repository
-            .save_raw_property_bank_view(path, &view)
+            .save_raw_property_bank_view(&self.path_key, &view)
             .map_err(SchemaLoaderError::Repository)
     }
 }
@@ -725,10 +757,10 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     pub(crate) fn update<R: Repository>(
         self,
-        path: &PathKey,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     {
+        let delta = self.status.delta.clone().into_changed_name_set();
         let mut bank = repository
             .get_property_bank()
             .map_err(SchemaLoaderError::Repository)?
@@ -739,10 +771,10 @@ impl PropertyBankProcessor<Construction, Changed> {
             ))?;
 
         self.apply_delta(&mut bank);
-        self.persist(path, repository, &bank)?;
-        Ok(Self::transition(Completed, StaleReady {
+        self.persist(repository, &bank)?;
+        Ok(self.transition(Completed, StaleReady {
             bank,
-            delta: self.status.delta.into_changed_name_set(),
+            delta,
         }))
     }
 
@@ -767,7 +799,6 @@ impl PropertyBankProcessor<Construction, Changed> {
     #[inline]
     fn persist<R: WriteRepository>(
         &self,
-        path: &PathKey,
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
@@ -777,13 +808,13 @@ impl PropertyBankProcessor<Construction, Changed> {
 
         let view = RawPropertyBankView::try_from_raw_with_hashes(
             &self.status.raw,
-            path.clone(),
+            self.path_key.clone(),
             self.status.raw_hash.clone(),
         )
         .map_err(SchemaLoaderError::Ingestion)?;
 
         repository
-            .save_raw_property_bank_view(path, &view)
+            .save_raw_property_bank_view(&self.path_key, &view)
             .map_err(SchemaLoaderError::Repository)
     }
 }
@@ -805,7 +836,6 @@ impl PropertyBankProcessor<Construction, Fresh> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
     {
-        drop(self);
         let bank = repository
             .get_property_bank()
             .map_err(SchemaLoaderError::Repository)?
@@ -813,7 +843,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
                 SchemaRepositoryError::PropertyBankNotFound,
             ))?;
 
-        Ok(Self::transition(Completed, FreshReady {
+        Ok(self.transition(Completed, FreshReady {
             bank,
         }))
     }
@@ -873,5 +903,70 @@ impl PropertyBankProcessor<Completed, StaleReady> {
         self,
     ) -> (PropertyBank, HashSet<PropertyName>) {
         (self.status.bank, self.status.delta)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::{
+        fs::{DirPath, FsFile},
+        schema::storage::testing::InMemoryRepository,
+    };
+
+    mod constructor {
+        use super::*;
+
+        #[test]
+        fn persists_view_with_rooted_path_key_when_constructing_new_bank() {
+            let vault_dir = TempDir::new().expect("temp dir");
+            let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())
+                .expect("vault root");
+            let relative =
+                std::path::PathBuf::from("schema/property-bank.json");
+            let absolute = vault_dir.path().join(&relative);
+            std::fs::create_dir_all(absolute.parent().expect("parent"))
+                .expect("mkdir");
+            std::fs::write(
+                &absolute,
+                r#"{"$version":"1.0","properties":{"title":{"type":"string"}}}"#,
+            )
+            .expect("write file");
+
+            let source = FsReader::new(vault_dir.path());
+            let file_path = crate::fs::FilePath::try_new(absolute.clone())
+                .expect("file path");
+            let metadata = source
+                .metadata(file_path.as_path())
+                .expect("metadata")
+                .as_file()
+                .cloned()
+                .expect("file metadata");
+            let file = FsFile::new(file_path, metadata.clone());
+
+            let key = file.path().as_key(&vault_root).expect("path key");
+            let repository = InMemoryRepository::new();
+            let pipeline =
+                PropertyBankProcessor::<Discovery, Unknown>::from_fs_file(
+                    file,
+                    &vault_root,
+                )
+                .expect("pipeline");
+            let parsed = pipeline.transition(Parsed, Missing::new(metadata));
+            let constructed = parsed.parse(&source).expect("parse");
+            let completed = constructed.create(&repository).expect("create");
+            let bank = completed.into_bank();
+
+            assert!(
+                bank.has(&"title".try_into().expect("property name")),
+                "Expected title property in constructed bank"
+            );
+
+            let view =
+                repository.get_raw_property_bank_view(&key).expect("read view");
+            assert!(view.is_some(), "Expected rooted path key to persist view");
+        }
     }
 }

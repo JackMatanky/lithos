@@ -20,7 +20,7 @@ use lithos_core::{
         builder,
         vault::{VaultId, VaultRoot},
     },
-    fs::{FsReader, PathKey},
+    fs::{DirPath, FsReader},
     schema::{builder::Builder, repository::ReadRepository as _},
 };
 use tempfile::TempDir;
@@ -80,7 +80,11 @@ fn loads_and_persists_property_bank() -> TestResult {
     assert!(saved_bank.has(&"status".try_into()?), "Expected status property");
 
     let _source2 = FsReader::new(vault_dir.path());
-    let bank_path = PathKey::try_new(property_path.to_string_lossy().as_ref())?;
+    let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())?;
+    let bank_path = lithos_core::fs::PathKey::from_rooted_path(
+        &vault_root,
+        &vault_dir.path().join(&property_path),
+    )?;
     let view = repository2.get_raw_property_bank_view(&bank_path)?;
     assert!(view.is_some(), "Expected raw view to be persisted");
 
