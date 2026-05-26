@@ -10,6 +10,7 @@
 use redb::{Key, MultimapTableDefinition, TableDefinition, Value};
 
 use super::UuidV7DbType;
+use crate::fs::path::PathKey;
 
 /// Table with UUID keys implementing [`UuidV7DbType`].
 ///
@@ -82,19 +83,19 @@ impl<K: UuidV7DbType + 'static, V: Key + 'static> UuidMultimap<K, V> {
     }
 }
 
-/// Table with string keys, typically representing file paths.
+/// Table with PathKey keys, typically representing vault-relative file paths.
 ///
-/// Uses `String` keys to support runtime path lookups (as opposed to
-/// compile-time static strings). This is the correct choice for path-based
-/// indices where keys come from filesystem discovery.
+/// Uses `PathKey` directly as the redb key type (requires `PathKey` to
+/// implement `redb::Key` and `redb::Value`). This enforces type safety: only
+/// normalized, validated paths can be stored.
 ///
 /// # Design Note
 ///
-/// Earlier versions used `&'static str` keys, which prevented inserting runtime
-/// paths. The "parse, don't validate" principle here means: validate paths are
-/// proper at the call site, then store them as strings in the database.
+/// Earlier versions used `String` keys, requiring manual `.to_owned()`
+/// conversions. With PathKey implementing redb traits, we can store and
+/// retrieve paths directly without string allocation.
 pub struct PathTable<V: Value + 'static> {
-    definition: TableDefinition<'static, String, V>,
+    definition: TableDefinition<'static, PathKey, V>,
 }
 
 impl<V: Value + 'static> PathTable<V> {
@@ -121,7 +122,7 @@ impl<V: Value + 'static> PathTable<V> {
     /// Use this to open the table in a transaction.
     #[inline]
     #[must_use]
-    pub const fn definition(&self) -> TableDefinition<'static, String, V> {
+    pub const fn definition(&self) -> TableDefinition<'static, PathKey, V> {
         self.definition
     }
 }
