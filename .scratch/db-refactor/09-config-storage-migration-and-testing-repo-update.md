@@ -23,18 +23,18 @@ This slice is complete when Config read/write and batch behavior are preserved e
 ## TDD Implementation Plan
 
 ### Phase 1: Infrastructure & Traits
-1. **Define Repository Error**: Create `ConfigRepositoryError` in `config/error.rs` wrapping `DbError` and implementing `From<InMemoryDbError>`.
-2. **Define Traits**: Create `config/repository.rs`:
-   * `ConfigReadRepository` and `ConfigWriteRepository`.
-   * Unified `ConfigRepository` marker trait with blanket impl for all `T: ConfigReadRepository + ConfigWriteRepository`.
+1. **Repository Error**: Verify `ConfigRepositoryError` in `config/error.rs` (exists). Implement `From<InMemoryDbError> for ConfigRepositoryError` to support the testing seam.
+2. **Define Traits**: Create `config/repository.rs` following the `schema`/`vault` pattern:
+   * `ReadRepository` and `WriteRepository` traits.
+   * Unified `Repository` marker trait extending both, with a blanket impl for all `T: ReadRepository + WriteRepository`.
 3. **Migrate Tables**: Create `config/storage/tables.rs` using `db` typed wrappers (`Table`, `PathTable`) instead of raw `redb::TableDefinition`.
 
 ### Phase 2: In-Memory Implementation (`config/storage/testing.rs`)
-Implement `InMemoryRepository` following **Structure A** (submodules) per `unit-naming.md` and the `vault`/`schema` patterns.
+Implement `InMemoryRepository` following **Structure A** (submodules) per `unit-naming.md`. Move and refactor from `config/testing.rs`.
 
 #### Vertical 2.1: Global & Vault Config
 * **RED**: Test `lookup::global_roundtrip` and `lookup::vault_roundtrip` in `storage/testing.rs`.
-* **GREEN**: Implement `get_global`, `save_global`, `get_vault`, `save_vault` using `read_lock`/`write_lock` and `harness` instrumentation.
+* **GREEN**: Implement `get_global`, `save_global`, `get_vault`, `save_vault` using `db::testing` primitives (`read_lock`, `write_lock`, `harness`).
 
 #### Vertical 2.2: Versioning & Merged Config
 * **RED**: Test `update::save_config_allocates_version` (atomic increments) and `lookup::config_retrieval`.
@@ -42,25 +42,25 @@ Implement `InMemoryRepository` following **Structure A** (submodules) per `unit-
 
 #### Vertical 2.3: Instrumentation & Injection
 * **RED**: Test `counters::increments_on_ops` and `injection::returns_error_on_injected_failure`.
-* **GREEN**: Wire `harness.fail_at(FailurePoint::BeforeRead/Write)` into all methods. Implement `From<InMemoryDbError> for ConfigRepositoryError`.
+* **GREEN**: Wire `harness.fail_at(FailurePoint::BeforeRead/Write)` into all methods. Ensure all lock acquisitions are counted.
 
 ### Phase 3: Redb Implementation (`config/storage/`)
 Implement a single `RedbRepository` struct split across submodules.
 
 #### Vertical 3.1: Repository Shell (`storage/mod.rs`)
 * Define `RedbRepository { pub(crate) store: Arc<Store> }`.
-* Define transaction helpers if needed.
+* Implement the unified `Repository` blanket impl.
 
 #### Vertical 3.2: Read Operations (`storage/read.rs`)
 * **RED**: Integration test for `get_global` and `get_vault` using `Store::open_temp()`.
-* **GREEN**: `impl ConfigReadRepository for RedbRepository` using `Store::read` and `rkyv` deserialization.
+* **GREEN**: `impl ReadRepository for RedbRepository` using `Store::read` transactions and `rkyv` deserialization.
 
 #### Vertical 3.3: Write Operations (`storage/write.rs`)
 * **RED**: Integration test for `save_config` (atomic version allocation) and `save_vault_path_mapping`.
-* **GREEN**: `impl ConfigWriteRepository for RedbRepository` using `Store::write` or `Store::read_write_unit_of_work`.
+* **GREEN**: `impl WriteRepository for RedbRepository` using `Store::write` or `Store::read_write_unit_of_work`.
 
 ### Phase 4: Integration & Cleanup
-1. **Update Builder**: Refactor `config/builder.rs` to accept `impl ConfigRepository`.
+1. **Update Builder**: Refactor `config/builder.rs` to accept `impl Repository`.
 2. **Module Export**: Update `config/mod.rs` to export the new `storage` submodule layout.
 3. **Cleanup**: Delete legacy `config/storage.rs` and `config/testing.rs`.
 4. **Verification**: Run `mise run verify` to ensure all tests pass and standards are met.
