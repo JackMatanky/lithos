@@ -43,9 +43,9 @@ Processors like `VaultProcessor` and `SchemaProcessor` will be updated to accept
 - Retain the `Validator` within `FileReader` to enforce strict/flexible boundary security on arbitrary path strings.
 
 ### 2. Dependency Injection Updates
-- Update `VaultProcessor` (`scan_views`) to accept both `reader: &FileReader` and `scanner: &DirScanner` instead of `FsReader`.
-- Update `SchemaProcessor` (`parse`, `parse_new`) to accept `reader: &FileReader` and `scanner: &DirScanner`.
-- Update the discovery engines (`src/schema/discovery.rs` and `src/config/discovery.rs`) to instantiate `DirScanner` and perform discovery natively, passing the results (and the `FileReader` for I/O) to the processors.
+- Update `VaultProcessor` (`scan_views`) to accept a `DirScanner` for discovering vault files, removing its reliance on the reader for traversal.
+- Update all other processors (`SchemaProcessor`, `NoteProcessor`, `ConfigBuilder`, etc.) to accept `FileReader` instead of `FsReader`. They already do not use any scanning methods, so this is a strict type rename for them.
+- Continue using `DirScanner` natively in `schema/discovery.rs` and `config/discovery.rs`.
 
 ### 3. Type State and Validation
 - Rely on `FsPath` (and its variants `FilePath`/`DirPath`) guarantees: since `DirScanner` constructs these types, any function accepting an `FsPath` can safely assume it is structurally valid.
