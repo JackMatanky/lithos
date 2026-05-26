@@ -68,3 +68,25 @@ Note and template repositories process `PathKey` exclusively. This brings the en
 
 ### 3. Refactor
 - [ ] Verify `RelativePath` is completely removed from note/template domain service arguments.
+
+## Additional Scope (from Issue 06 findings)
+
+During vault context migration (Issue 06), we discovered filesystem layer violations where processor code converts paths directly to `PathKey` via string (`PathKey::try_new(raw)`), bypassing the typed filesystem layer (`FilePath`/`DirPath`).
+
+**Correct pattern:**
+```rust
+// ✅ Good: Typed FS → as_key(root) → PathKey
+let file_path = FilePath::try_new(absolute_path)?;
+let key = file_path.as_key(root)?;
+
+// ❌ Bad: Direct string conversion
+let key = PathKey::try_new(relative_str)?;
+```
+
+**Actions for this issue:**
+- [ ] Audit note processor for `PathKey::try_new()` calls in filesystem scanning
+- [ ] Audit template processor for similar violations
+- [ ] Ensure all path conversions use typed FS layer before `as_key(root)`
+- [ ] Add tests verifying typed conversion contracts
+
+**Reference:** See `lithos-core/src/vault/processor.rs:866` (Issue 06) for example of the violation and fix pattern.
