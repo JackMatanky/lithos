@@ -189,6 +189,22 @@ mod tests {
             let _def = TABLE.definition();
             // If this compiles, const construction works
         }
+
+        /// `PathTable<V>` uses `PathKey` as key type, not `String`.
+        ///
+        /// Behavior: Type safety - only validated, normalized paths can be
+        /// stored. Verification: `definition()` returns
+        /// `TableDefinition<PathKey, V>`.
+        #[test]
+        fn accepts_pathkey_as_key_type() {
+            use crate::fs::path::PathKey;
+
+            const TABLE: PathTable<u64> = PathTable::new("test");
+
+            // This should compile with PathKey as key type
+            let _def: TableDefinition<'static, PathKey, u64> =
+                TABLE.definition();
+        }
     }
 
     mod table {
