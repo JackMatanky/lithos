@@ -154,7 +154,7 @@ impl DiscoveryEngine {
         repo: &R,
     ) -> Result<DiscoveryResult, ConfigIngestError>
     where
-        R: crate::config::storage::Repository,
+        R: crate::config::repository::Repository,
     {
         // Step 1: Scan filesystem for config files
         let (global_entry, vault_entry) = Self::scan_filesystem(vault_root)?;
@@ -335,7 +335,7 @@ impl DiscoveryEngine {
         ConfigIngestError,
     >
     where
-        R: crate::config::storage::Repository,
+        R: crate::config::repository::Repository,
     {
         let global_view = repo.get_raw_global_view().map_err(|error| {
             ConfigIngestError::Io {

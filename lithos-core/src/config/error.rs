@@ -185,7 +185,22 @@ impl From<DbError> for ConfigError {
     }
 }
 
-#[cfg(test)]
+impl From<ConfigRepositoryError> for ConfigError {
+    #[inline]
+    fn from(error: ConfigRepositoryError) -> Self {
+        match error {
+            ConfigRepositoryError::Domain(e) => e,
+            ConfigRepositoryError::Storage(e) => {
+                Self::Storage(e.to_string().into())
+            }
+            ConfigRepositoryError::Ingest(e) => {
+                Self::Ingestion(e.to_string().into())
+            }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
 impl From<crate::db::testing::InMemoryDbError> for ConfigRepositoryError {
     #[inline]
     fn from(err: crate::db::testing::InMemoryDbError) -> Self {
@@ -385,7 +400,7 @@ mod tests {
     fn config_repository_error_converts_from_in_memory_db_error() {
         use crate::db::testing::InMemoryDbError;
         let db_err = InMemoryDbError::LockPoisoned {
-            context: "test".into(),
+            context: "test",
         };
         let err: ConfigRepositoryError = db_err.into();
         assert!(matches!(err, ConfigRepositoryError::Storage(_)));

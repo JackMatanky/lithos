@@ -39,7 +39,7 @@ use crate::{fs::DirPath, utils::UuidV7};
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct VaultId(UuidV7);
+pub struct VaultId(pub(crate) UuidV7);
 
 impl VaultId {
     /// Create a new unique vault identity.
