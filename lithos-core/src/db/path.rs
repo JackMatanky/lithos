@@ -66,6 +66,17 @@ impl redb::Value for PathKey {
     }
 }
 
+impl redb::Key for PathKey {
+    /// Compare `PathKey` bytes lexicographically.
+    ///
+    /// UTF-8 byte comparison is valid because `PathKey` enforces UTF-8 at
+    /// construction.
+    #[inline]
+    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
+        data1.cmp(data2)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +98,25 @@ mod tests {
             let deserialized = PathKey::from_bytes(bytes);
 
             assert_eq!(original, deserialized);
+        }
+    }
+
+    mod ordering {
+        use redb::Key;
+
+        use super::*;
+
+        #[test]
+        fn orders_keys_lexicographically() {
+            let key1 = PathKey::try_new("a/file.md").expect("valid");
+            let key2 = PathKey::try_new("b/file.md").expect("valid");
+
+            let bytes1 = key1.as_str().as_bytes();
+            let bytes2 = key2.as_str().as_bytes();
+
+            let result = PathKey::compare(bytes1, bytes2);
+
+            assert_eq!(result, std::cmp::Ordering::Less);
         }
     }
 }
