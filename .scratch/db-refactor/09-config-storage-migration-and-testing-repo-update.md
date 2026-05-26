@@ -20,6 +20,45 @@ Migrate Config persistence to the new storage seam with `repository.rs`, `storag
 
 This slice is complete when Config read/write and batch behavior are preserved end-to-end in both redb-backed and in-memory test flows.
 
+## TDD Implementation Plan
+
+### Phase 1: Infrastructure & Traits
+1. **Define Repository Error**: Create `ConfigRepositoryError` in `config/error.rs` wrapping `DbError` and implementing `From<InMemoryDbError>`.
+2. **Define Traits**: Create `config/repository.rs` with `ConfigReadRepository`, `ConfigWriteRepository`, and the unified `ConfigRepository` marker trait.
+3. **Migrate Tables**: Create `config/storage/tables.rs` using `db` typed wrappers (`Table`, `PathTable`) instead of raw `redb::TableDefinition`.
+
+### Phase 2: In-Memory Implementation (`config/storage/testing.rs`)
+Implement `InMemoryRepository` using vertical slices and **Structure A** (submodules) per `unit-naming.md`.
+
+#### Vertical 2.1: Global & Vault Config
+* **RED**: Test `lookup::global_roundtrip` and `lookup::vault_roundtrip`.
+* **GREEN**: Implement `get_global`, `save_global`, `get_vault`, `save_vault` using `read_lock`/`write_lock` and `harness` instrumentation.
+
+#### Vertical 2.2: Versioning & Merged Config
+* **RED**: Test `update::save_config_allocates_version` (atomic increments) and `lookup::config_retrieval`.
+* **GREEN**: Implement `get_config`, `save_config`, and `get_active_version`.
+
+#### Vertical 2.3: Instrumentation & Injection
+* **RED**: Test `counters::increments_on_ops` and `injection::returns_error_on_injected_failure`.
+* **GREEN**: Wire `harness.fail_at(FailurePoint::BeforeRead/Write)` into all methods.
+
+### Phase 3: Redb Implementation (`config/storage/read.rs` & `write.rs`)
+Implement `ConfigRedbRepository` using integration tests with `Store::open_temp()`.
+
+#### Vertical 3.1: Read Operations (`read.rs`)
+* **RED**: Integration test for `get_global` and `get_vault`.
+* **GREEN**: Implement `ReadRepository` using `Store::read` transactions and `rkyv` deserialization.
+
+#### Vertical 3.2: Write Operations (`write.rs`)
+* **RED**: Integration test for `save_config` (atomic version allocation) and `save_vault_path_mapping` (bidirectional consistency).
+* **GREEN**: Implement `WriteRepository` using `Store::write` or `Store::read_write_unit_of_work`.
+
+### Phase 4: Integration & Cleanup
+1. **Update Builder**: Refactor `config/builder.rs` to accept `impl ConfigRepository`.
+2. **Module Export**: Update `config/mod.rs` to export the new `storage` submodule layout.
+3. **Cleanup**: Delete legacy `config/storage.rs` and `config/testing.rs`.
+4. **Verification**: Run `mise run verify` to ensure all tests pass and standards are met.
+
 ## Agent Brief (v1 - 2026-05-12)
 
 **Category:** enhancement
