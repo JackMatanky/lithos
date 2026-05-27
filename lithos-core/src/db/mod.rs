@@ -46,6 +46,7 @@
 mod codec;
 mod core;
 mod error;
+mod path;
 mod read;
 mod reader;
 pub mod retry;
@@ -62,7 +63,9 @@ pub use codec::ArchivedEntity;
 pub use error::{DbError, DbErrorKind};
 pub use read::ReadTx;
 pub use reader::BatchReader;
-pub use table::{PathTable, Table, UuidMultimap, UuidTable};
+pub use table::{
+    PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
+};
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,
     UuidTableWriteExt, UuidV7DbType, sealed,

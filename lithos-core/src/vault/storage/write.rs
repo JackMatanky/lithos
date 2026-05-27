@@ -83,9 +83,8 @@ impl WriteRepository for RedbRepository {
                 let mut by_format = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
                 file_table.insert(&file.id(), file_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &file.id())?;
-                reverse_path_table
-                    .insert(&file.id(), path.as_str().to_owned())?;
+                path_table.insert(path, &file.id())?;
+                reverse_path_table.insert(&file.id(), path)?;
                 by_basename.insert(basename.as_str(), &file.id())?;
                 if let Some(parent_id) = file.parent_id() {
                     by_parent.insert(&parent_id, &file.id())?;
@@ -115,9 +114,8 @@ impl WriteRepository for RedbRepository {
                 let mut reverse_path_table =
                     tx.try_open_table(PATH_BY_DIR_ID.definition())?;
                 dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                path_table.insert(path.as_str().to_owned(), &dir.id())?;
-                reverse_path_table
-                    .insert(&dir.id(), path.as_str().to_owned())?;
+                path_table.insert(path, &dir.id())?;
+                reverse_path_table.insert(&dir.id(), path)?;
                 Ok(())
             })
             .map_err(VaultRepositoryError::from)
@@ -173,7 +171,7 @@ impl WriteRepository for RedbRepository {
                         tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
                     file_table.insert(&file.id(), bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &file.id())?;
+                    path_table.insert(path, &file.id())?;
                     by_basename.insert(basename.as_str(), &file.id())?;
                     if let Some(parent_id) = file.parent_id() {
                         by_parent.insert(&parent_id, &file.id())?;
@@ -206,7 +204,7 @@ impl WriteRepository for RedbRepository {
                     let mut path_table =
                         tx.try_open_table(DIR_ID_BY_PATH.definition())?;
                     dir_table.insert(&dir.id(), bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                    path_table.insert(path, &dir.id())?;
                 }
                 Ok(())
             })
@@ -247,11 +245,11 @@ impl WriteRepository for RedbRepository {
 impl RedbRepository {
     fn remove_file_path_index(
         tx: &WriteTx,
-        path: Option<&str>,
+        path: Option<&PathKey>,
     ) -> Result<(), DbError> {
-        if let Some(path) = path {
+        if let Some(path_key) = path {
             let mut table = tx.try_open_table(FILE_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
+            table.remove(path_key)?;
         }
         Ok(())
     }
@@ -304,11 +302,11 @@ impl RedbRepository {
 
     fn remove_dir_path_index(
         tx: &WriteTx,
-        path: Option<&str>,
+        path: Option<&PathKey>,
     ) -> Result<(), DbError> {
-        if let Some(path) = path {
+        if let Some(path_key) = path {
             let mut table = tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-            table.remove(path.to_owned())?;
+            table.remove(path_key)?;
         }
         Ok(())
     }
@@ -321,7 +319,7 @@ impl RedbRepository {
 
     fn remove_file_graph(tx: &WriteTx, file_id: FileId) -> Result<(), DbError> {
         let ctx = FileDeleteContext::load(tx, file_id)?;
-        Self::remove_file_path_index(tx, ctx.path.as_deref())?;
+        Self::remove_file_path_index(tx, ctx.path.as_ref())?;
         Self::remove_file_basename_index(tx, ctx.basename.as_ref(), file_id)?;
         Self::remove_file_parent_index(tx, ctx.parent_id, file_id)?;
         Self::remove_file_format_index(tx, ctx.format, file_id)?;
@@ -336,7 +334,7 @@ impl RedbRepository {
 
     fn remove_dir_graph(tx: &WriteTx, dir_id: DirId) -> Result<(), DbError> {
         let ctx = DirDeleteContext::load(tx, dir_id)?;
-        Self::remove_dir_path_index(tx, ctx.path.as_deref())?;
+        Self::remove_dir_path_index(tx, ctx.path.as_ref())?;
 
         // Remove reverse index entry
         let mut reverse_path_table =
@@ -353,7 +351,7 @@ impl RedbRepository {
 /// deleted, so that each index-mutation call has the key values it needs.
 #[derive(Debug, Default)]
 struct FileDeleteContext {
-    path: Option<String>,
+    path: Option<PathKey>,
     basename: Option<BaseName>,
     parent_id: Option<DirId>,
     format: Option<crate::fs::FileFormat>,
@@ -430,7 +428,7 @@ impl FileDeleteContext {
 /// deleted so the path index can be cleaned.
 #[derive(Debug, Default)]
 struct DirDeleteContext {
-    path: Option<String>,
+    path: Option<PathKey>,
 }
 
 impl DirDeleteContext {
@@ -554,7 +552,7 @@ mod tests {
             repo.save_file_view(&path, &file).unwrap();
 
             // Assert: Reverse index contains the path
-            let recovered_path: Result<Option<String>, _> =
+            let recovered_path: Result<Option<PathKey>, _> =
                 repo.store.read(|tx| {
                     let Some(table) =
                         tx.try_open_table(PATH_BY_FILE_ID.definition())?
@@ -571,7 +569,7 @@ mod tests {
             );
             assert_eq!(
                 recovered_path.unwrap(),
-                Some(path.as_str().to_owned()),
+                Some(path.clone()),
                 "Reverse index should map FileId → path"
             );
         }
@@ -587,7 +585,7 @@ mod tests {
             repo.save_dir_view(&path, &dir).unwrap();
 
             // Assert: Reverse index contains the path
-            let recovered_path: Result<Option<String>, _> =
+            let recovered_path: Result<Option<PathKey>, _> =
                 repo.store.read(|tx| {
                     let Some(table) =
                         tx.try_open_table(PATH_BY_DIR_ID.definition())?
@@ -604,7 +602,7 @@ mod tests {
             );
             assert_eq!(
                 recovered_path.unwrap(),
-                Some(path.as_str().to_owned()),
+                Some(path.clone()),
                 "Reverse index should map DirId → path"
             );
         }
@@ -639,7 +637,7 @@ mod tests {
             repo.save_file_view(&new_path, &second).unwrap();
 
             // Assert: Reverse index has new path only
-            let recovered_path: Result<Option<String>, _> =
+            let recovered_path: Result<Option<PathKey>, _> =
                 repo.store.read(|tx| {
                     let Some(table) =
                         tx.try_open_table(PATH_BY_FILE_ID.definition())?
@@ -651,7 +649,7 @@ mod tests {
 
             assert_eq!(
                 recovered_path.unwrap(),
-                Some(new_path.as_str().to_owned()),
+                Some(new_path.clone()),
                 "Reverse index should contain updated path"
             );
         }
@@ -813,7 +811,7 @@ mod tests {
             repo.delete_file_view(file.id()).unwrap();
 
             // Assert: Reverse index entry is cleaned
-            let recovered_path: Result<Option<String>, _> =
+            let recovered_path: Result<Option<PathKey>, _> =
                 repo.store.read(|tx| {
                     let Some(table) =
                         tx.try_open_table(PATH_BY_FILE_ID.definition())?
@@ -842,7 +840,7 @@ mod tests {
             repo.delete_dir_view(dir.id()).unwrap();
 
             // Assert: Reverse index entry is cleaned
-            let recovered_path: Result<Option<String>, _> =
+            let recovered_path: Result<Option<PathKey>, _> =
                 repo.store.read(|tx| {
                     let Some(table) =
                         tx.try_open_table(PATH_BY_DIR_ID.definition())?

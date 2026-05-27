@@ -556,8 +556,19 @@ impl VaultProcessor<Discovery, Unknown> {
 
         let mut dirs = Vec::with_capacity(dir_entries.len());
         let mut dir_ids_by_path = HashMap::with_capacity(dir_entries.len());
+        let root =
+            crate::fs::path::DirPath::try_new(source.root().to_path_buf())
+                .map_err(|error| VaultFileError::InvalidPath {
+                    path: source.root().display().to_string().into(),
+                    reason: error.to_string().into(),
+                })?;
         for (relative, entry) in dir_entries {
-            let path = normalized_path_from_relative(relative.as_path())?;
+            let path = entry.path().as_key(&root).map_err(|error| {
+                VaultFileError::InvalidPath {
+                    path: error.to_string().into(),
+                    reason: "path conversion failed".into(),
+                }
+            })?;
             let parent = parent_path(&path)?;
             let parent_id = parent
                 .as_ref()
@@ -593,7 +604,12 @@ impl VaultProcessor<Discovery, Unknown> {
                     path: "<vault>".into(),
                     message: error.to_string().into(),
                 })?;
-            let path = normalized_path_from_relative(relative.as_path())?;
+            let path = file_entry.path().as_key(&root).map_err(|error| {
+                VaultFileError::InvalidPath {
+                    path: error.to_string().into(),
+                    reason: "path conversion failed".into(),
+                }
+            })?;
             let parent = parent_path(&path)?;
             let parent_id = parent
                 .as_ref()
@@ -856,19 +872,6 @@ impl Default for VaultProcessor<Discovery, Unknown> {
     }
 }
 
-fn normalized_path_from_relative(
-    relative: &Path,
-) -> Result<PathKey, VaultFileError> {
-    let raw = relative.to_str().ok_or_else(|| VaultFileError::InvalidPath {
-        path: "<invalid>".into(),
-        reason: "path is not valid utf-8".into(),
-    })?;
-    PathKey::try_new(raw).map_err(|error| VaultFileError::InvalidPath {
-        path: raw.into(),
-        reason: error.to_string().into(),
-    })
-}
-
 fn parent_path(path: &PathKey) -> Result<Option<PathKey>, VaultFileError> {
     let parent = Path::new(path.as_str()).parent();
     let Some(parent) = parent else {
@@ -1059,6 +1062,41 @@ mod tests {
             );
             assert!(evaluate_dir(None, &dir, &mut report));
             assert_eq!(report.folders_added(), 1);
+        }
+    }
+
+    mod path_conversion {
+        use tempfile::TempDir;
+
+        use crate::fs::path::{DirPath, FilePath};
+
+        #[test]
+        fn converts_dir_paths_via_typed_fs_layer() {
+            let temp = TempDir::new().expect("temp");
+            let root =
+                DirPath::try_new(temp.path().to_path_buf()).expect("root");
+            let notes_dir = temp.path().join("notes");
+            std::fs::create_dir_all(&notes_dir).expect("create dir");
+
+            let dir_path = DirPath::try_new(notes_dir).expect("dir path");
+            let key = dir_path.as_key(&root).expect("key");
+
+            assert_eq!(key.as_str(), "notes");
+        }
+
+        #[test]
+        fn converts_file_paths_via_typed_fs_layer() {
+            let temp = TempDir::new().expect("temp");
+            let root =
+                DirPath::try_new(temp.path().to_path_buf()).expect("root");
+            let file_abs = temp.path().join("notes/daily.md");
+            std::fs::create_dir_all(file_abs.parent().unwrap()).expect("dirs");
+            std::fs::write(&file_abs, "# test").expect("write");
+
+            let file_path = FilePath::try_new(file_abs).expect("file path");
+            let key = file_path.as_key(&root).expect("key");
+
+            assert_eq!(key.as_str(), "notes/daily.md");
         }
     }
 }

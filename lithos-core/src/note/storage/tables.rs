@@ -10,7 +10,7 @@
 //! |-------|-----|-------|---------|
 //! | [`NOTES`] | `NoteId` | `&[u8]` | Primary note aggregate table |
 //! | [`LIST_VIEWS`] | `NoteId` | `&[u8]` | Cached list view projections |
-//! | [`NOTE_ID_BY_PATH`] | `&str` | `&[u8]` | Path-to-ID index |
+//! | [`NOTE_ID_BY_PATH`] | `PathKey` | `NoteId` | Path-to-ID index (`PathUuidTable`) |
 //!
 //! # Consistency Model
 //!
@@ -30,7 +30,7 @@
 //! ```
 
 use crate::{
-    db::{PathTable, UuidTable},
+    db::{PathUuidTable, UuidTable},
     impl_redb_uuid,
     note::aggregate::NoteId,
 };
@@ -68,12 +68,12 @@ pub const LIST_VIEWS: UuidTable<NoteId, &[u8]> = UuidTable::new("list_views");
 
 /// Path-to-ID index for path-based note lookup.
 ///
-/// Maps vault-relative paths (e.g., `"daily/2024-05-25.md"`) to their
+/// Maps vault-relative [`PathKey`](crate::fs::PathKey) paths to their
 /// corresponding [`NoteId`](crate::note::aggregate::NoteId), enabling O(1)
 /// path-based note retrieval and enforcing path uniqueness at write time.
 ///
-/// Key: vault path string (`&str`)
-/// Value: rkyv-serialized [`NoteId`](crate::note::aggregate::NoteId)
+/// Key: [`PathKey`](crate::fs::PathKey) (vault-relative path)
+/// Value: [`NoteId`](crate::note::aggregate::NoteId)
 ///
 /// # Consistency
 ///
@@ -85,9 +85,11 @@ pub const LIST_VIEWS: UuidTable<NoteId, &[u8]> = UuidTable::new("list_views");
 ///
 /// ```rust,ignore
 /// use lithos_core::note::storage::tables::NOTE_ID_BY_PATH;
+/// use lithos_core::fs::PathKey;
 ///
+/// let path = PathKey::try_new("daily/2024-05-25.md")?;
 /// let table = tx.open_table(NOTE_ID_BY_PATH.definition())?;
-/// let id_bytes = table.get("daily/2024-05-25.md")?;
-/// let note_id = NoteId::from_bytes(id_bytes.unwrap().value())?;
+/// let note_id = table.get(&path)?.expect("note exists").value();
 /// ```
-pub const NOTE_ID_BY_PATH: PathTable<&[u8]> = PathTable::new("note_id_by_path");
+pub const NOTE_ID_BY_PATH: PathUuidTable<NoteId> =
+    PathUuidTable::new("note_id_by_path");

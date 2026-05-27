@@ -29,7 +29,7 @@
 use redb::MultimapTableDefinition;
 
 use super::super::model::{DirId, FileId};
-use crate::db::{PathTable, UuidMultimap, UuidTable};
+use crate::db::{PathUuidTable, UuidMultimap, UuidPathTable, UuidTable};
 
 /// File views with bincode serialization.
 ///
@@ -60,13 +60,13 @@ pub(crate) const DIR_VIEWS: UuidTable<DirId, &[u8]> =
 /// Supports `find_file_view_by_path`. Updated in lockstep with `FILE_VIEWS`
 /// and all `FILE_IDS_BY_*` multimaps within the same write transaction.
 ///
-/// Uses the [`PathTable`] wrapper (string keys) because paths are discovered at
-/// runtime from the filesystem, not known at compile time.
+/// Uses the [`PathUuidTable`] wrapper (path keys → UUID values) because paths
+/// are discovered at runtime from the filesystem, not known at compile time.
 ///
 /// Key: vault-relative path string
 /// Value: `FileId`
-pub(crate) const FILE_ID_BY_PATH: PathTable<FileId> =
-    PathTable::new("file_id_by_path");
+pub(crate) const FILE_ID_BY_PATH: PathUuidTable<FileId> =
+    PathUuidTable::new("file_id_by_path");
 
 /// Path-to-dir-id index for path-based directory lookup.
 ///
@@ -74,8 +74,8 @@ pub(crate) const FILE_ID_BY_PATH: PathTable<FileId> =
 ///
 /// Key: vault-relative path string
 /// Value: `DirId`
-pub(crate) const DIR_ID_BY_PATH: PathTable<DirId> =
-    PathTable::new("dir_id_by_path");
+pub(crate) const DIR_ID_BY_PATH: PathUuidTable<DirId> =
+    PathUuidTable::new("dir_id_by_path");
 
 /// Basename-to-file-id multimap for wikilink-style resolution.
 ///
@@ -128,24 +128,30 @@ pub(crate) const FILE_IDS_BY_FORMAT: MultimapTableDefinition<&str, FileId> =
 /// reverse index, delete operations achieve O(1) path lookup via direct hash
 /// table access.
 ///
+/// Uses the [`UuidPathTable`] wrapper (UUID keys → path values) to enforce
+/// type-safe path handling without exposing raw String types.
+///
 /// Key: `FileId`
 /// Value: vault-relative path string
 ///
 /// [`FileDeleteContext::load`]: super::write::FileDeleteContext::load
-pub(crate) const PATH_BY_FILE_ID: UuidTable<FileId, String> =
-    UuidTable::new("path_by_file_id");
+pub(crate) const PATH_BY_FILE_ID: UuidPathTable<FileId> =
+    UuidPathTable::new("path_by_file_id");
 
 /// Reverse index for O(1) directory path recovery during delete operations.
 ///
-/// Enables [`DirDeleteContext::load`] to avoid O(N) scan of `DIR_ID_BY_PATH`.
+/// Enables [`DirDeleteContext::load`] to avoid O(1) scan of `DIR_ID_BY_PATH`.
 /// Updated atomically with `DIR_ID_BY_PATH` within the same write transaction.
+///
+/// Uses the [`UuidPathTable`] wrapper (UUID keys → path values) to enforce
+/// type-safe path handling without exposing raw String types.
 ///
 /// Key: `DirId`
 /// Value: vault-relative path string
 ///
 /// [`DirDeleteContext::load`]: super::write::DirDeleteContext::load
-pub(crate) const PATH_BY_DIR_ID: UuidTable<DirId, String> =
-    UuidTable::new("path_by_dir_id");
+pub(crate) const PATH_BY_DIR_ID: UuidPathTable<DirId> =
+    UuidPathTable::new("path_by_dir_id");
 
 #[cfg(test)]
 mod path_by_file_id {
