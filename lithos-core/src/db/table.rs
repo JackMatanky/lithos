@@ -83,7 +83,7 @@ impl<K: UuidV7DbType + 'static, V: Key + 'static> UuidMultimap<K, V> {
     }
 }
 
-/// Table with PathKey keys, typically representing vault-relative file paths.
+/// Table with `PathKey` keys, typically representing vault-relative file paths.
 ///
 /// Uses `PathKey` directly as the redb key type (requires `PathKey` to
 /// implement `redb::Key` and `redb::Value`). This enforces type safety: only
@@ -92,7 +92,7 @@ impl<K: UuidV7DbType + 'static, V: Key + 'static> UuidMultimap<K, V> {
 /// # Design Note
 ///
 /// Earlier versions used `String` keys, requiring manual `.to_owned()`
-/// conversions. With PathKey implementing redb traits, we can store and
+/// conversions. With `PathKey` implementing redb traits, we can store and
 /// retrieve paths directly without string allocation.
 pub struct PathTable<V: Value + 'static> {
     definition: TableDefinition<'static, PathKey, V>,
@@ -123,6 +123,76 @@ impl<V: Value + 'static> PathTable<V> {
     #[inline]
     #[must_use]
     pub const fn definition(&self) -> TableDefinition<'static, PathKey, V> {
+        self.definition
+    }
+}
+
+/// Table mapping `PathKey` → UUID (forward index).
+///
+/// Use this for path-based lookups where filesystem paths are the query key.
+/// Typical use case: finding entity IDs by their vault-relative paths.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_core::{db::PathUuidTable, vault::FileId};
+///
+/// const FILE_ID_BY_PATH: PathUuidTable<FileId> =
+///     PathUuidTable::new("file_id_by_path");
+/// ```
+pub struct PathUuidTable<V: UuidV7DbType + 'static> {
+    definition: TableDefinition<'static, PathKey, V>,
+}
+
+impl<V: UuidV7DbType + 'static> PathUuidTable<V> {
+    /// Create a new `PathKey` → UUID table definition.
+    #[inline]
+    #[must_use]
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            definition: TableDefinition::new(name),
+        }
+    }
+
+    /// Get the underlying redb table definition.
+    #[inline]
+    #[must_use]
+    pub const fn definition(&self) -> TableDefinition<'static, PathKey, V> {
+        self.definition
+    }
+}
+
+/// Table mapping UUID → `PathKey` (reverse index).
+///
+/// Use this for ID-to-path lookups, enabling O(1) path recovery during delete
+/// operations and ID-based queries.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_core::{db::UuidPathTable, vault::FileId};
+///
+/// const PATH_BY_FILE_ID: UuidPathTable<FileId> =
+///     UuidPathTable::new("path_by_file_id");
+/// ```
+pub struct UuidPathTable<K: UuidV7DbType + 'static> {
+    definition: TableDefinition<'static, K, PathKey>,
+}
+
+impl<K: UuidV7DbType + 'static> UuidPathTable<K> {
+    /// Create a new UUID → `PathKey` table definition.
+    #[inline]
+    #[must_use]
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            definition: TableDefinition::new(name),
+        }
+    }
+
+    /// Get the underlying redb table definition.
+    #[inline]
+    #[must_use]
+    pub const fn definition(&self) -> TableDefinition<'static, K, PathKey> {
         self.definition
     }
 }
@@ -205,6 +275,80 @@ mod tests {
             // This should compile with PathKey as key type
             let _def: TableDefinition<'static, PathKey, u64> =
                 TABLE.definition();
+        }
+    }
+
+    mod uuid_path_table {
+        use super::*;
+        use crate::{fs::path::PathKey, impl_redb_uuid, utils::UuidV7};
+
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        struct TestId(UuidV7);
+        impl_redb_uuid!(TestId);
+
+        /// `UuidPathTable` inserts and retrieves UUID→`PathKey` mappings.
+        ///
+        /// Behavior: Store UUID keys with `PathKey` values, enabling reverse
+        /// path lookups. Verification: Insert ID→path, retrieve by ID.
+        #[test]
+        fn inserts_and_retrieves_uuid_to_pathkey() {
+            use redb::ReadableDatabase;
+
+            const TABLE: UuidPathTable<TestId> = UuidPathTable::new("test");
+
+            let db = redb::Database::create(":memory:").expect("db");
+            let id = TestId(UuidV7::new());
+            let key = PathKey::try_new("notes/test.md").expect("key");
+
+            // Write
+            let write_tx = db.begin_write().expect("tx");
+            {
+                let mut table =
+                    write_tx.open_table(TABLE.definition()).expect("open");
+                table.insert(&id, &key).expect("insert");
+            }
+            write_tx.commit().expect("commit");
+
+            // Read
+            let read_tx = db.begin_read().expect("tx");
+            let table = read_tx.open_table(TABLE.definition()).expect("open");
+            let retrieved = table.get(&id).expect("get").expect("value");
+
+            assert_eq!(retrieved.value(), key);
+        }
+
+        /// `UuidPathTable` supports path recovery for delete operations.
+        ///
+        /// Behavior: Reverse index use case - given file ID, find its path for
+        /// cleanup. Verification: Store ID→path, recover path by ID.
+        #[test]
+        fn supports_path_recovery_for_deletes() {
+            use redb::ReadableDatabase;
+
+            const TABLE: UuidPathTable<TestId> = UuidPathTable::new("test");
+
+            // Demonstrates reverse index use case
+            let tmp = tempfile::NamedTempFile::new().expect("tmpfile");
+            let db = redb::Database::create(tmp.path()).expect("db");
+            let id = TestId(UuidV7::new());
+            let key = PathKey::try_new("notes/daily.md").expect("key");
+
+            // Store
+            let write_tx = db.begin_write().expect("tx");
+            {
+                let mut table =
+                    write_tx.open_table(TABLE.definition()).expect("open");
+                table.insert(&id, &key).expect("insert");
+            }
+            write_tx.commit().expect("commit");
+
+            // Recover path by ID (for delete operations)
+            let read_tx = db.begin_read().expect("tx");
+            let table = read_tx.open_table(TABLE.definition()).expect("open");
+            let recovered_path =
+                table.get(&id).expect("get").expect("value").value();
+
+            assert_eq!(recovered_path, key);
         }
     }
 
