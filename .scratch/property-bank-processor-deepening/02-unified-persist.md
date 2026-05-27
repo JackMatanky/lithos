@@ -1,7 +1,7 @@
 ---
 title: "Issue 02: Unified persist() HashRecord Source"
-labels: enhancement, ready-for-agent
-status: ready-for-agent
+labels: enhancement, done
+status: done
 created: 2026-05-27
 ---
 

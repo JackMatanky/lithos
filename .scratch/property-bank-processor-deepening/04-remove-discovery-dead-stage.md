@@ -1,7 +1,7 @@
 ---
 title: "Issue 04: Remove Discovery Dead Stage"
-labels: needs-triage
-status: draft
+labels: enhancement, ready-for-agent
+status: ready-for-agent
 created: 2026-05-27
 ---
 
@@ -26,8 +26,7 @@ Remove the `Discovery` stage marker from `PropertyBankProcessor`. The `Discovery
 
 ## Blocked by
 
-- `.scratch/property-bank-processor-deepening/issues/01-fsfile-processor-root.md` (needs `FsFile` root)
-- `.scratch/property-bank-processor-deepening/issues/03-property-bank-discovery-fsfile.md` (needs `FsFile` in discovery)
+- None (Issue 01 and Issue 03 are merged to `main`)
 
 ## Implementation notes
 

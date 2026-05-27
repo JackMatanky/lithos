@@ -1,7 +1,7 @@
 ---
 title: "Issue 01: FsFile in PropertyBankProcessor Root"
-labels: enhancement, ready-for-agent
-status: ready-for-agent
+labels: enhancement, done
+status: done
 created: 2026-05-27
 ---
 
@@ -25,13 +25,13 @@ Add `file: FsFile` as a root-level field to `PropertyBankProcessor<P, S>`. All s
 
 ## Acceptance criteria
 
-- [ ] `PropertyBankProcessor<P, S>` gains `file: FsFile` private field
-- [ ] `PathKey` is derived once at construction via `file.path().as_key()` — never `PathKey::try_new()`
-- [ ] `config_path: &Path` is removed from all method signatures (every `persist`, `parse`, `create`, `update`, `fetch`, `sync_metadata`)
-- [ ] `path_key: &PathKey` is removed from all method signatures
-- [ ] All `builder.rs` integration tests pass unchanged (lines 301–394)
-- [ ] `transition()` retains its internal-only signature — no `file` arg added
-- [ ] `from_fs_file()` is the only public constructor
+- [x] `PropertyBankProcessor<P, S>` gains `file: FsFile` private field
+- [x] `PathKey` is derived once at construction via `file.path().as_key()` — never `PathKey::try_new()`
+- [x] `config_path: &Path` is removed from all method signatures (every `persist`, `parse`, `create`, `update`, `fetch`, `sync_metadata`)
+- [x] `path_key: &PathKey` is removed from all method signatures
+- [x] All `builder.rs` integration tests pass unchanged (lines 301–394)
+- [x] `transition()` retains its internal-only signature — no `file` arg added
+- [x] `from_fs_file()` is the only public constructor
 
 ## Blocked by
 
@@ -44,6 +44,23 @@ None — can start immediately.
 - All status methods: `&self.file.path()` instead of `config_path`, `&self.file.metadata()` instead of receiving `FileMetadata`
 - `PathKey` stored once — not per-method
 - `FileMetadata` stays in status for content freshness; `FilePath` is identity, lives at processor root
+
+## Implementation outcome
+
+- Implemented in branch `feat/property-bank-fsfile-root`
+- Main implementation commit: `e1603a52` (`refactor(schema): root file identity in property bank processor`)
+- Merge commit on `main`: `898ac73d` (`chore(merge): integrate feat/property-bank-fsfile-root`)
+- Processor root now carries `FsFile`, and typestate methods derive identity from processor context
+
+## Files changed
+
+- `lithos-core/src/schema/property_bank_processor.rs`
+- `lithos-core/src/schema/builder.rs`
+
+## Test evidence
+
+- Verified through existing and targeted schema/property-bank tests during implementation
+- Merge completed to `main` with passing repository hooks
 
 ## Triage Notes
 
