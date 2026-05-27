@@ -1,7 +1,7 @@
 ---
 title: "Issue 03: PropertyBankDiscovery entry -> FsFile"
-labels: enhancement, ready-for-agent
-status: ready-for-agent
+labels: enhancement, done
+status: done
 created: 2026-05-27
 ---
 
@@ -19,11 +19,11 @@ Change `PropertyBankDiscovery` so its `entry` field is `FsFile` instead of `FsEn
 
 ## Acceptance criteria
 
-- [ ] `PropertyBankDiscovery.entry` is `FsFile` (not `FsEntry`)
-- [ ] `PropertyBankDiscovery.entry()` returns `&FsFile` (not `Option<&FsFile>`)
-- [ ] No `.as_file()` call exists in any property-bank builder code path
-- [ ] Property-bank load path no longer maps impossible runtime branch (`"property bank entry must be a file"`)
-- [ ] Discovery and builder tests pass with compile-time file guarantee preserved
+- [x] `PropertyBankDiscovery.entry` is `FsFile` (not `FsEntry`)
+- [x] `PropertyBankDiscovery.entry()` returns `&FsFile` (not `Option<&FsFile>`)
+- [x] No `.as_file()` call exists in any property-bank builder code path
+- [x] Property-bank load path no longer maps impossible runtime branch (`"property bank entry must be a file"`)
+- [x] Discovery and builder tests pass with compile-time file guarantee preserved
 
 ## Blocked by
 
@@ -40,6 +40,40 @@ Change `PropertyBankDiscovery` so its `entry` field is `FsFile` instead of `FsEn
 ## Test
 
 Add/update focused unit tests in `schema::discovery` and `schema::builder` to assert compile-time file guarantees and unchanged behavior under create/update paths.
+
+## Implementation outcome
+
+- Implemented and merged via branch `feat/property-bank-discovery-fsfile`
+- Feature commit: `fd3579a5` (`refactor(schema): type property bank discovery as fsfile`)
+- Merge commit on `main`: `b00d2664` (`chore(merge): integrate feat/property-bank-discovery-fsfile`)
+
+## Code changes
+
+- `PropertyBankDiscovery.entry` changed from `FsEntry` to `FsFile`
+- `PropertyBankDiscovery::entry()` now returns `&FsFile`
+- Discovery pipeline typing updated to carry file-typed property bank entry:
+  - `separate_property_bank(...) -> (Option<FsFile>, Vec<(PathKey, FsEntry)>)`
+  - `query_cached_state(..., property_bank_entry: Option<&FsFile>, ...)`
+  - `build_result(property_bank_entry: Option<FsFile>, ...)`
+- Builder load path simplified to use typed entry directly:
+  - removed `bank_discovery.entry().as_file().cloned().ok_or_else(...)`
+  - removed impossible runtime error branch (`"property bank entry must be a file"`)
+
+## Files changed
+
+- `lithos-core/src/schema/discovery.rs`
+- `lithos-core/src/schema/builder.rs`
+
+## Test evidence
+
+- Targeted tests:
+  - `cargo test -p lithos-core schema::discovery::tests`
+  - `cargo test -p lithos-core schema::builder::tests`
+- Full crate verification fallback:
+  - `cargo test -p lithos-core`
+- Notes:
+  - `mise run test` hit an existing shell-task issue in `.mise/tasks/test/unit` (`local -n: invalid option`), so full verification used `cargo test -p lithos-core`
+  - Commit hooks passed `fmt`, `clippy`, and `cargo test`
 
 ## Triage Notes
 
