@@ -73,7 +73,9 @@
     - `run_present()` handles Present → TimestampBranch
     - `run_content_mismatch()` handles Suspect → ContentBranch → AnalysisBranch
     - `run_analysis()` handles AnalysisBranch terminal states
-  - Added `PropertyBankResult` type alias for complex return type (clippy::type_complexity)
+  - Replaced anonymous tuple `(PropertyBank, Option<HashSet<PropertyName>>)` with `PropertyBankResolution` struct.
+  - `PropertyBankResolution` provides `into_parts()` for controlled destructuring in `Builder`.
+  - Removed `PropertyBankResult` type alias to make `Result` explicit in signatures.
   - Fixed clippy::single_match_else (converted match to if-let)
   - Fixed clippy::doc_markdown (added backticks to `run()`)
   - Fixed clippy::shadow_unrelated (renamed seed banks in tests to `seed_bank`)
@@ -81,7 +83,8 @@
   - Full test suite: 1376/1376 passing
   - Clippy: clean with `-D warnings`
 - Files modified:
-  - `lithos-core/src/schema/property_bank_processor.rs` (extracted helpers, type alias, test fixes)
+  - `lithos-core/src/schema/property_bank_processor.rs` (extracted helpers, struct, test fixes)
+  - `lithos-core/src/schema/builder.rs` (updated to use PropertyBankResolution)
 
 ### Phase 7: Commit
 
