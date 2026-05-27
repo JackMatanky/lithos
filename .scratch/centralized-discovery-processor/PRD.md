@@ -1,8 +1,9 @@
 # PRD: Centralized Discovery Processor
 
-**Status**: draft
+**Status**: locked-in-design
 **Created**: 2026-05-25
-**Context**:
+**Updated**: 2026-05-28
+**Context**: Architectural blind spots resolved through grilling session
 
 ---
 
@@ -55,13 +56,73 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 ### 2. Scanning & Classification
 - **Scoped Scans**: Discovery processing is scoped by scan input and should support partial or targeted scans.
 - **Incremental Capabilities**: Incremental change ingestion will be introduced so that indexing does not always require a full directory traversal (e.g., allowing file/directory updates to trigger lean reprocessing).
-- **Freshness Classification**: Discovery includes a timestamp-based comparison phase to classify records by freshness; it does not blindly scan-and-write.
-- **Result Contract**: Discovery results will use a flat classification model: a single `Vec<DiscoveredFile>` where each item holds a `DiscoveryStatus` enum (`New`, `Unchanged`, `Stale`, `Deleted`).
+- **Freshness Classification**: Discovery includes metadata-based comparison (timestamp AND size) to classify records by freshness; it does not blindly scan-and-write.
+- **Result Contract**:
+  ```rust
+  pub struct DiscoveredFile {
+      pub id: FileId,
+      pub view: FileView,        // Embedded view with path, metadata, recorded_at
+      pub path: FilePath,        // From scan, for immediate reads
+      pub status: DiscoveryStatus,
+  }
+
+  pub enum DiscoveryStatus {
+      New,      // Not in DB
+      Fresh,    // Metadata unchanged (timestamp AND size match)
+      Stale,    // Metadata changed (timestamp OR size differs)
+      Deleted,  // In DB, not on filesystem
+  }
+
+  pub struct DiscoveryResult {
+      pub files: Vec<DiscoveredFile>,       // New, Fresh, Stale only
+      pub deleted_file_ids: Vec<FileId>,    // Separate collection
+  }
+  ```
+- **Staleness Detection**: Uses existing `FileMetadata::is_timestamp_match()` and `FileMetadata::is_size_match()` methods. File is `Fresh` only if BOTH match; `Stale` if EITHER differs.
 
 ### 3. Identity & Paths
-- **Canonical Identity**: `FileId` and `DirId` become the canonical identity across contexts for all file-backed entities. `SchemaId` and `NoteId` are intended to become unnecessary for file identity.
-- **Persisted Paths**: Path models in persisted views will use `Relative*Path` or `PathKey` for stable identity across platforms.
-- **Runtime Paths**: Persisted relative paths will not be relied upon alone for reading files due to cross-OS joining reliability bounds. The discovery result must preserve enough path information for safe file reads (`FilePath` from scanner) alongside the canonical storage identity (`PathKey`).
+
+**Decision: FileId replaces SchemaId/NoteId for all file identity**
+
+- **Canonical Identity**: `FileId` and `DirId` become the ONLY identity for file-backed entities. `SchemaId` and `NoteId` are REMOVED.
+  - Rationale: Source of truth is files. Schema inheritance = "file A extends file B" via FileId relationships.
+  - Migration: Replace all `SchemaId`/`NoteId` usage with `FileId` in tables, indexes, and inheritance graphs.
+
+- **Cross-Platform Path Storage**:
+  ```rust
+  pub struct FileView {
+      id: FileId,
+      parent_id: Option<DirId>,
+      path: PathKey,              // ✅ LOCKED: Forward-slash normalized path
+      name: FileName,
+      format: FileFormat,
+      metadata: FileMetadata,
+      #[rkyv(with = rkyv::with::AsUnixTime)]
+      recorded_at: SystemTime,    // ✅ LOCKED: When view was persisted
+  }
+
+  pub struct DirView {
+      id: DirId,
+      parent_id: Option<DirId>,
+      path: PathKey,              // ✅ LOCKED: Forward-slash normalized path
+      name: DirName,
+      metadata: DirMetadata,
+      #[rkyv(with = rkyv::with::AsUnixTime)]
+      recorded_at: SystemTime,    // ✅ LOCKED: When view was persisted
+  }
+  ```
+
+- **PathKey Cross-Platform Guarantee**:
+  - `PathKey` stores forward slashes (e.g., `"notes/daily/2026.md"`)
+  - Research confirmed: `vault_root.join(view.path.as_str())` produces correct `FilePath` on Windows/macOS/Linux
+  - Forward slashes work universally (Windows has supported `/` since MS-DOS 2.0)
+  - Database portability: Same redb file works on all OSes without re-indexing
+  - Reference: `.scratch/CROSS_PLATFORM_PATH_FINDINGS.md`
+
+- **Table Simplification**:
+  - ✅ REMOVE: `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` reverse index tables
+  - ✅ KEEP: `FILE_ID_BY_PATH` and `DIR_ID_BY_PATH` (path → ID lookups)
+  - Rationale: Path now in `FileView`/`DirView`, so reverse lookup via view fetch (no separate table needed)
 
 ### 4. Persistence & Tables
 - **Delta Persistence**: Discovery persists only deltas (new files, stale metadata updates, deletions) and uses batch repository operations for efficient writes/deletes.
@@ -72,11 +133,144 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 - **Structured Contexts**: Structured contexts (Schema/Config) require both content hash and entry/property hash indexing in their own view models.
 - **Hash Contracts**: Hash capability contracts are crate-private and based on support hash primitives, utilizing traits: `HasContentHash`, `HasContentHashMut`, `HasEntryHashes`, `HasEntryHashesMut`.
 
-### 6. Pipeline Resilience
-- **Typestate Checkpoints**: Partial success and pipeline restartability will be modeled using the Typestate Pattern. Discovery state will be checkpointed.
-- **Completion Journaling**: As contexts successfully process files, completions will be recorded in a persistent Write-Ahead Log (WAL) or Redb table journal (using `rkyv`).
-- **Resumption**: If downstream processing fails, the pipeline can be resumed by reading the discovery checkpoint, subtracting successfully processed files from the journal, and initializing directly into the post-discovery state without re-scanning.
-- **Error Modeling**: Partial processing failures will be modeled using `std::ops::ControlFlow` (when expected operationally) or an enriched `Result::Err` variant via `thiserror` (when tracking successes alongside failures).
+### 6. Pipeline Resilience & Restartability
+
+**Decision: Context-Specific Event Sourcing with Shared Infrastructure**
+
+**Architecture Pattern**: Event sourcing enables complete pipeline restartability after crashes, preserving all completed work and providing audit trails for debugging.
+
+#### Core Components
+
+1. **Generic Event Store** (shared infrastructure in `db` module):
+   ```rust
+   pub struct EventStore<E> {
+       db: Database,
+       table_def: TableDefinition<u64, &'static [u8]>,
+       _event: PhantomData<E>,
+   }
+
+   impl<E> EventStore<E> {
+       pub fn append(&self, event: &E) -> Result<u64, DbError>;
+       pub fn append_batch(&self, events: &[E]) -> Result<Vec<u64>, DbError>;
+       pub fn load_all(&self) -> Result<Vec<E>, DbError>;
+       pub fn compact(&self, completed_file_ids: &[FileId]) -> Result<(), DbError>;
+   }
+   ```
+
+2. **Context-Specific Event Tables** (maintains bounded contexts):
+   - `DISCOVERY_EVENTS` (vault module) - Discovery scan events
+   - `SCHEMA_EVENTS` (schema module) - Schema processing events
+   - `NOTE_EVENTS` (note module) - Note processing events
+   - `TEMPLATE_EVENTS` (template module) - Template processing events
+   - `CONFIG_EVENTS` (config module) - Config processing events
+
+3. **Event Types Per Context** (intermediate typestate transitions):
+   ```rust
+   // Example: Schema events track full pipeline lifecycle
+   pub enum SchemaEvent {
+       Discovered { file_id: FileId, path: PathKey, discovered_at: SystemTime },
+       ParseStarted { file_id: FileId, started_at: SystemTime },
+       Parsed { file_id: FileId, parsed_at: SystemTime },
+       PropertyBankReferenceExpanded { file_id: FileId, expanded_at: SystemTime },
+       InheritanceResolved { file_id: FileId, parent_count: usize, resolved_at: SystemTime },
+       SchemaPersisted { file_id: FileId, persisted_at: SystemTime },
+       Completed { file_id: FileId, completed_at: SystemTime },
+       Failed { file_id: FileId, error: String, failed_at: SystemTime },
+   }
+   ```
+
+4. **Projector Pattern** (rehydrates state from events):
+   ```rust
+   pub struct PendingSchemaState {
+       pub pending: HashMap<FileId, PathKey>,
+       pub completed: HashSet<FileId>,
+       pub failed: HashSet<FileId>,
+   }
+
+   impl PendingSchemaState {
+       pub fn from_events(events: &[SchemaEvent]) -> Self {
+           // Fold events into current state
+       }
+
+       pub fn pending_files(&self) -> Vec<FileId> {
+           self.pending.keys().copied().collect()
+       }
+   }
+   ```
+
+#### Partial Success & Resumption Flow
+
+**Scenario**: Discovery scans 1000 files → Schema processes 300 files → **CRASH** → Restart
+
+**Recovery Process**:
+1. **Rehydrate State**: Load all `SchemaEvent` from `SCHEMA_EVENTS` table
+2. **Project State**: `PendingSchemaState::from_events()` identifies:
+   - 300 completed files (via `Completed` events)
+   - 700 pending files (via `Discovered` but no `Completed/Failed`)
+3. **Resume Processing**: Process only the 700 pending files
+4. **Emit Events**: Append `Completed/Failed` events as files finish
+5. **Compact Log**: After all files complete, delete events for completed/failed files
+
+**Key Benefits**:
+- ✅ **Zero Work Lost**: All completed work preserved across crashes
+- ✅ **Audit Trail**: Full history of state transitions for debugging
+- ✅ **Bounded Context Isolation**: Schema crash cannot corrupt Note event log
+- ✅ **Natural Typestate Fit**: Events emitted at typestate transitions
+
+#### Batch Performance
+
+**Discovery**: Batch commits every N=100 files
+```rust
+const BATCH_SIZE: usize = 100;
+for batch in files.chunks(BATCH_SIZE) {
+    // Atomic: persist views + append events
+    repository.persist_discovery_batch(batch)?;
+    event_store.append_batch(batch_events)?;
+}
+```
+
+**Context Processing**: Per-file event logging
+```rust
+for file in pending_files {
+    match process_schema_file(file) {
+        Ok(_) => {
+            event_store.append(&SchemaEvent::Completed { file_id })?;
+        }
+        Err(e) => {
+            event_store.append(&SchemaEvent::Failed { file_id, error })?;
+        }
+    }
+}
+```
+
+#### Dependency-Aware Cleanup
+
+**Cleanup timing respects context dependencies**:
+```
+Discovery → Config → {Schema, Note, Template}
+```
+
+- **Immediate Cleanup**: Schema, Note, Template event logs (independent contexts)
+- **Deferred Cleanup**: Config event log (after all dependents complete)
+- **Final Cleanup**: Discovery events (after ALL contexts complete)
+
+```rust
+// Schema completes
+event_store.compact(&completed_file_ids)?;  // ✅ Immediate
+
+// All contexts complete
+clear_config_events()?;       // ✅ After dependents
+clear_discovery_events()?;    // ✅ After all
+```
+
+#### Performance Characteristics
+
+- **Append-only writes**: Lock-free, fast (1-2ms per 100-file batch)
+- **Redb single-writer**: No write contention (sequential by design)
+- **Log compaction**: Keeps event tables bounded (delete completed/failed)
+- **Rehydration cost**: O(N) where N = pending files (typically small after compaction)
+
+**Reference**: `.scratch/pipeline-restartability-research.md`
 
 ## Testing Decisions
 
@@ -101,8 +295,43 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 - Immediate removal of all old context discovery code in a single change.
 - Any UI/CLI redesign unrelated to orchestration ordering.
 
-## Further Notes
+## Locked-In Design Summary
 
-- Config-first orchestration is required in composed processing runs.
-- Standalone context processors are preferred to keep downstream stages independent and enable selective parallel execution.
-- A follow-up design session is expected to finalize long-term architecture for table ownership and repository seams after this initial refactor draft.
+### Critical Decisions Resolved (2026-05-28)
+
+1. **Identity Migration** (✅ LOCKED):
+   - FileId replaces SchemaId/NoteId everywhere
+   - Schema inheritance graph uses FileId (file-to-file relationships)
+   - Simpler identity model, fewer index tables
+
+2. **Discovery Result Contract** (✅ LOCKED):
+   - `DiscoveredFile { id, view, path, status }`
+   - `DiscoveryStatus::Fresh` (not "Unchanged")
+   - Embedded `FileView` (not flattened fields)
+   - Deleted files in separate `Vec<FileId>`
+
+3. **Path Storage** (✅ LOCKED):
+   - `PathKey` with forward slashes in `FileView`/`DirView`
+   - Cross-platform guarantee: forward slashes work on all OSes
+   - Remove `PATH_BY_FILE_ID`/`PATH_BY_DIR_ID` reverse indexes
+   - Add `recorded_at: SystemTime` to views
+
+4. **Pipeline Restartability** (✅ LOCKED):
+   - Context-specific event sourcing (separate tables per context)
+   - Generic `EventStore<E>` infrastructure in `db` module
+   - Projector pattern for state rehydration
+   - Batch commits (N=100 for discovery, per-file for contexts)
+   - Dependency-aware log compaction
+
+### Remaining Open Questions
+
+1. **Orchestration Policy**: Config-first execution, parallelization rules
+2. **Reindex Policy**: Full vs partial/scoped scan triggers
+3. **Table Ownership**: Which tables are discovery-owned vs context-owned post-refactor
+4. **ADR**: Architecture Decision Record generation after all decisions locked
+
+### Reference Documentation
+
+- **Cross-Platform Paths**: `.scratch/CROSS_PLATFORM_PATH_FINDINGS.md`
+- **Pipeline Restartability**: `.scratch/pipeline-restartability-research.md`
+- **Existing Processor Patterns**: GitNexus analysis of current typestate processors
