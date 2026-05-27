@@ -124,6 +124,12 @@ impl RedbRepository {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[inline]
+#[deprecated(
+    since = "0.1.0",
+    note = "PathTable now uses PathKey directly. Use path reference instead \
+            of converting to String."
+)]
+#[allow(dead_code)]
 pub(super) fn path_key(path: &PathKey) -> String {
     path.as_str().to_owned()
 }
