@@ -67,43 +67,34 @@
 //!
 //! ```ignore
 //! use lithos_core::schema::property_bank_processor::{
-//!     AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
+//!     AnalysisBranch, Comparison, ContentBranch,
 //!     Init, PropertyBankProcessor, TimestampBranch, Unknown,
 //! };
 //!
 //! let pipeline =
 //!     PropertyBankProcessor::<Init, Unknown>::from_discovery(file, root)?;
-//! let branch = match view {
-//!     Some(view) => ComparisonBranch::Present(
-//!         pipeline.transition(Comparison, Present::new(view)),
-//!     ),
-//!     None => ComparisonBranch::Missing(
-//!         pipeline.transition(Parsed, Missing),
-//!     ),
-//! };
 //!
-//! match branch {
-//!     ComparisonBranch::Missing(p) => {
-//!         p.parse(&source, &config_path)?.create(filename, &repo)?
-//!     }
-//!     ComparisonBranch::Present(p) => {
-//!         match p.check_timestamps(&source, &config_path)? {
-//!             TimestampBranch::Match(p) => p.fetch(&repo)?,
-//!             TimestampBranch::Mismatch(p) => {
-//!                 match p.check_content() {
-//!                     ContentBranch::Match(p) => p.sync_metadata(&repo)?,
-//!                     ContentBranch::Mismatch(p) => {
-//!                         let parsed = p.parse(&config_path)?;
-//!                         match parsed.analyze() {
-//!                             AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
-//!                             AnalysisBranch::Delta(p) => p.update(filename, &repo)?,
-//!                             AnalysisBranch::Corrupt(p) => p.create(filename, &repo)?,
-//!                         }
+//! if let Some(view) = cached_view {
+//!     let present = pipeline.transition(Comparison, Present::new(view));
+//!     match present.check_timestamps(&source)? {
+//!         TimestampBranch::Match(p) => p.fetch(&repo)?,
+//!         TimestampBranch::Mismatch(p) => {
+//!             match p.check_content() {
+//!                 ContentBranch::Match(p) => p.sync_metadata(&repo)?,
+//!                 ContentBranch::Mismatch(p) => {
+//!                     let parsed = p.parse()?;
+//!                     match parsed.analyze() {
+//!                         AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
+//!                         AnalysisBranch::Delta(p) => p.update(&repo)?,
+//!                         AnalysisBranch::Corrupt(p) => p.create(&repo)?,
 //!                     }
 //!                 }
 //!             }
 //!         }
 //!     }
+//! } else {
+//!     let missing = pipeline.transition(Parsed, Missing);
+//!     missing.parse(&source)?.create(&repo)?;
 //! }
 //! ```
 //!
@@ -195,16 +186,6 @@ impl<P, S> PropertyBankProcessor<P, S> {
 /// Initial state before any knowledge has been gathered.
 #[derive(Debug)]
 pub(crate) struct Unknown;
-
-/// Result of entry-state branching into comparison paths.
-///
-/// This enum fans out the next state for orchestration.
-#[derive(Debug)]
-#[must_use = "branch outcomes must be handled"]
-pub(crate) enum ComparisonBranch {
-    Missing(PropertyBankProcessor<Parsed, Missing>),
-    Present(PropertyBankProcessor<Comparison, Present>),
-}
 
 /// Entry-point stage: processor created from discovery data, not yet compared.
 #[derive(Debug)]

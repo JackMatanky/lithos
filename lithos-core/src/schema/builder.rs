@@ -13,10 +13,9 @@ use crate::{
         error::{SchemaIngestionError, SchemaLoaderError},
         property::PropertyName,
         property_bank_processor::{
-            AnalysisBranch, Comparison, ComparisonBranch, Construction,
-            ContentBranch, Fresh, Init, Missing, Parsed, Present,
-            PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
-            Suspect, TimestampBranch, Unknown,
+            AnalysisBranch, Comparison, Construction, ContentBranch, Fresh,
+            Init, Missing, Parsed, Present, PropertyBankProcessor, Refresh,
+            StaleContent, StaleTimestamps, Suspect, TimestampBranch, Unknown,
         },
         repository::Repository,
     },
@@ -159,18 +158,12 @@ where
         )
         .map_err(SchemaIngestionError::from)?;
 
-        let branch = match bank_discovery.view() {
-            Some(view) => ComparisonBranch::Present(
+        let (completed, delta) = if let Some(view) = bank_discovery.view() {
+            self.handle_present(
                 processor.transition(Comparison, Present::new(view.clone())),
-            ),
-            None => {
-                ComparisonBranch::Missing(processor.transition(Parsed, Missing))
-            }
-        };
-
-        let (completed, delta) = match branch {
-            ComparisonBranch::Missing(p) => self.handle_missing(p)?,
-            ComparisonBranch::Present(p) => self.handle_present(p)?,
+            )?
+        } else {
+            self.handle_missing(processor.transition(Parsed, Missing))?
         };
 
         self.property_bank_delta = delta;
