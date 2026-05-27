@@ -10,82 +10,63 @@
 
 set -euo pipefail
 
+# Argument arrays populated by build_args and its helpers.
+CARGO_ARGS=()
+LINT_ARGS=()
+
 #######################################
 # Add fix-related arguments to clippy.
 # Globals:
-#   usage_no_fix
-# Arguments:
-#   Reference to an array for arguments
+#   usage_no_fix  (read)
+#   CARGO_ARGS    (modified)
 #######################################
 add_fix_args() {
-  # shellcheck disable=SC2178
-  local -n ref_args=$1
   if [[ "${usage_no_fix:-}" != "1" ]]; then
-    ref_args+=("--fix" "--allow-dirty" "--allow-staged")
+    CARGO_ARGS+=("--fix" "--allow-dirty" "--allow-staged")
   fi
 }
 
 #######################################
 # Add verbose flag to clippy arguments if requested.
 # Globals:
-#   usage_verbose
-# Arguments:
-#   Reference to an array for arguments
+#   usage_verbose  (read)
+#   CARGO_ARGS     (modified)
 #######################################
 add_verbose_args() {
-  # shellcheck disable=SC2178
-  local -n ref_args=$1
   if [[ "${usage_verbose:-}" == "1" ]]; then
-    ref_args+=("--verbose")
+    CARGO_ARGS+=("--verbose")
   fi
 }
 
 #######################################
 # Add lint level arguments to clippy.
 # Globals:
-#   usage_pedantic
-# Arguments:
-#   Reference to an array for arguments
+#   usage_pedantic  (read)
+#   LINT_ARGS       (modified)
 #######################################
 add_lint_level_args() {
-  # shellcheck disable=SC2178
-  local -n ref_args=$1
-  ref_args+=("-D" "warnings")
+  LINT_ARGS+=("-D" "warnings")
 
   if [[ "${usage_pedantic:-}" == "1" ]]; then
-    ref_args+=("-W" "clippy::pedantic")
+    LINT_ARGS+=("-W" "clippy::pedantic")
   fi
 }
 
 #######################################
 # Build all clippy-related arguments.
 # Globals:
-#   usage_no_fix
-#   usage_verbose
-#   usage_pedantic
-# Arguments:
-#   $1: Reference to an array for cargo-level arguments
-#   $2: Reference to an array for lint-level arguments
+#   CARGO_ARGS  (modified)
+#   LINT_ARGS   (modified)
 #######################################
 build_args() {
-  # shellcheck disable=SC2178
-  local -n ref_cargo_args=$1
-  # shellcheck disable=SC2178,SC2034
-  local -n ref_lint_args=$2
-
-  ref_cargo_args+=("--all-targets" "--all-features")
-  add_fix_args ref_cargo_args
-  add_verbose_args ref_cargo_args
-
-  add_lint_level_args ref_lint_args
+  CARGO_ARGS+=("--all-targets" "--all-features")
+  add_fix_args
+  add_verbose_args
+  add_lint_level_args
 }
 
 #######################################
 # Create a stamp file for mise caching.
-# Arguments:
-#   None
-# Outputs:
-#   None
 #######################################
 create_stamp_file() {
   mkdir -p target
@@ -94,22 +75,12 @@ create_stamp_file() {
 
 #######################################
 # Main execution flow for the lint task.
-# Orchestrates argument building, clippy execution, and caching.
-# Globals:
-#   None
-# Arguments:
-#   $@: Raw arguments from command line (unused in this version)
-# Outputs:
-#   None
 #######################################
 main() {
-  local cargo_args=()
-  local lint_args=()
-
-  build_args cargo_args lint_args
+  build_args
 
   echo "🔍 Running clippy lints (deny-level warnings)..."
-  cargo clippy "${cargo_args[@]}" -- "${lint_args[@]}"
+  cargo clippy "${CARGO_ARGS[@]}" -- "${LINT_ARGS[@]}"
 
   create_stamp_file
   echo "✅ Linting complete"

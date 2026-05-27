@@ -14,81 +14,47 @@ set -euo pipefail
 #######################################
 # Map shorthand package names to full cargo package names.
 # Globals:
-#   usage_package
-# Arguments:
-#   None
+#   usage_package  (read)
 # Outputs:
-#   Echoes the full package name
+#   Echoes the full package name (may be empty)
 #######################################
 map_package_name() {
-    case "${usage_package:-}" in
+  case "${usage_package:-}" in
     core)
-        echo "lithos-core"
-        ;;
+      echo "lithos-core"
+      ;;
     cli)
-        echo "lithos"
-        ;;
+      echo "lithos"
+      ;;
     *)
-        echo ""
-        ;;
-    esac
-}
-
-#######################################
-# Build arguments for cargo build.
-# Globals:
-#   usage_release
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-# Outputs:
-#   None
-#######################################
-build_cargo_args() {
-    local -n ref_args=$1
-    local package_name=$2
-
-    if [[ "${usage_release:-}" == "1" ]]; then
-        ref_args+=("--release")
-    fi
-
-    if [[ -n "${package_name}" ]]; then
-        ref_args+=("--package" "${package_name}")
-    else
-        ref_args+=("--workspace")
-    fi
-}
-
-#######################################
-# Run cargo build.
-# Arguments:
-#   Arguments for cargo build
-# Outputs:
-#   Writes build results to stdout
-#######################################
-run_cargo_build() {
-    echo "🏗️  Building codebase..."
-    cargo build "$@"
+      echo ""
+      ;;
+  esac
 }
 
 #######################################
 # Main entry point.
 # Globals:
-#   None
-# Arguments:
-#   $@
-# Outputs:
-#   None
+#   usage_release  (read)
 #######################################
 main() {
-    local resolved_package
-    resolved_package=$(map_package_name)
+  local resolved_package
+  resolved_package=$(map_package_name)
 
-    local args=()
-    build_cargo_args args "${resolved_package}"
+  local args=()
+  if [[ "${usage_release:-}" == "1" ]]; then
+    args+=("--release")
+  fi
 
-    run_cargo_build "${args[@]}"
-    echo "✅ Build complete"
+  if [[ -n "${resolved_package}" ]]; then
+    args+=("--package" "${resolved_package}")
+  else
+    args+=("--workspace")
+  fi
+
+  echo "🏗️  Building codebase..."
+  cargo build "${args[@]}"
+  echo "✅ Build complete"
 }
 
 main "$@"
