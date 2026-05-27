@@ -179,18 +179,6 @@ impl<P, S> PropertyBankProcessor<P, S> {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Entry Stage
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Initial state before any knowledge has been gathered.
-#[derive(Debug)]
-pub(crate) struct Unknown;
-
-/// Entry-point stage: processor created from discovery data, not yet compared.
-#[derive(Debug)]
-pub(crate) struct Init;
-
 /// The result of a property bank resolution attempt.
 pub(crate) struct PropertyBankResolution {
     bank: PropertyBank,
@@ -216,6 +204,18 @@ impl PropertyBankResolution {
         (self.bank, self.delta)
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Entry Stage
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Initial state before any knowledge has been gathered.
+#[derive(Debug)]
+pub(crate) struct Unknown;
+
+/// Entry-point stage: processor created from discovery data, not yet compared.
+#[derive(Debug)]
+pub(crate) struct Init;
 
 /// Entry-state operations that bootstrap the comparison pipeline.
 impl PropertyBankProcessor<Init, Unknown> {
