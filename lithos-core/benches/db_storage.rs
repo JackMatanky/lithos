@@ -204,12 +204,6 @@
     clippy::excessive_nesting,
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "Iterating over Vec<(String, T)> creates unavoidable conflicts \
-              between pattern_type_mismatch, ref_patterns, and \
-              needless_borrowed_reference lints"
-)]
 
 use std::hint::black_box;
 
@@ -217,13 +211,13 @@ use criterion::{
     BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 };
 use lithos_core::{
-    db::Database,
+    db::{ArchivedEntity, Store},
     note::{
         aggregate::{Note, NoteId},
         paths::NotePath,
     },
 };
-use redb::TableDefinition;
+use redb::{ReadableTable, TableDefinition};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -240,27 +234,28 @@ fn create_test_note(index: usize) -> Note {
     Note::new(id, note_path)
 }
 
-fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
+fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     let mut note_ids = Vec::with_capacity(count);
 
-    db.batch_write(|batch_db| {
-        for i in 0..count {
-            let note = create_test_note(i);
-            let id_str = Uuid::from(note.id()).to_string();
-            note_ids.push(note.id());
-            batch_db
-                .put(NOTES_BY_ID_TABLE, &id_str, &note)
-                .expect("insert note");
-        }
-        Ok(())
-    })
-    .expect("batch write");
+    store
+        .write(|tx| {
+            let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+            for i in 0..count {
+                let note = create_test_note(i);
+                let id_str = Uuid::from(note.id()).to_string();
+                note_ids.push(note.id());
+                let bytes = note.to_bytes()?;
+                table.insert(id_str.as_str(), bytes.as_ref())?;
+            }
+            Ok(())
+        })
+        .expect("batch write");
 
-    (temp_dir, db, note_ids)
+    (temp_dir, store, note_ids)
 }
 
 /// Benchmarks zero-copy archived read access (steady-state, hot cache).
@@ -313,7 +308,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 /// - Changing `StoredNote` field layout may affect archived access patterns
 /// - Do not remove `black_box(archived)` or compiler will eliminate closure
 fn bench_zero_copy_read(c: &mut Criterion) {
-    let (_temp, db, note_ids) = setup_db_with_notes(100);
+    let (_temp, store, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
     let test_key = Uuid::from(test_id).to_string();
 
@@ -322,10 +317,18 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>(NOTES_BY_ID_TABLE, &test_key, |archived| {
-                black_box(archived);
-            })
-            .expect("get note")
+            store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
+                        && let Some(guard) = table.get(test_key.as_str())?
+                    {
+                        Note::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get note");
         });
     });
 
@@ -383,7 +386,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 /// - Adding nested collections to `StoredNote` will increase deserialization
 ///   cost non-linearly
 fn bench_full_deserialize(c: &mut Criterion) {
-    let (_temp, db, note_ids) = setup_db_with_notes(100);
+    let (_temp, store, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
     let test_key = Uuid::from(test_id).to_string();
 
@@ -392,8 +395,15 @@ fn bench_full_deserialize(c: &mut Criterion) {
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<Note> = db
-                .get_owned(NOTES_BY_ID_TABLE, &test_key)
+            let note: Option<Note> = store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
+                        && let Some(guard) = table.get(test_key.as_str())?
+                    {
+                        return Ok(Some(Note::from_bytes(guard.value())?));
+                    }
+                    Ok(None)
+                })
                 .expect("get owned note");
             black_box(note.expect("note exists"));
         });
@@ -427,7 +437,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
 fn bench_single_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench_write.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     let mut group = c.benchmark_group("write_single");
     group.throughput(Throughput::Elements(1));
@@ -437,7 +447,14 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid(NOTES_BY_ID_TABLE, *note.id().as_uuid_v7(), &note)
+            let id_str = Uuid::from(note.id()).to_string();
+            store
+                .write(|tx| {
+                    let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+                    let bytes = note.to_bytes()?;
+                    table.insert(id_str.as_str(), bytes.as_ref())?;
+                    Ok(())
+                })
                 .expect("put note");
         });
     });
@@ -491,19 +508,22 @@ fn bench_batch_write(c: &mut Criterion) {
                     ));
                     file_index = file_index.wrapping_add(1);
 
-                    let db = Database::open(&db_path).expect("open database");
+                    let store = Store::open(&db_path).expect("open database");
 
-                    db.batch_write(|batch_db| {
-                        for i in 0..size {
-                            let note = create_test_note(i as usize);
-                            let id_str = Uuid::from(note.id()).to_string();
-                            batch_db
-                                .put(NOTES_BY_ID_TABLE, &id_str, &note)
-                                .expect("put note");
-                        }
-                        Ok(())
-                    })
-                    .expect("batch write");
+                    store
+                        .write(|tx| {
+                            let mut table =
+                                tx.try_open_table(NOTES_BY_ID_TABLE)?;
+                            for i in 0..size {
+                                let note = create_test_note(i as usize);
+                                let id_str = Uuid::from(note.id()).to_string();
+                                let bytes = note.to_bytes()?;
+                                table
+                                    .insert(id_str.as_str(), bytes.as_ref())?;
+                            }
+                            Ok(())
+                        })
+                        .expect("batch write");
                 });
             },
         );
@@ -533,7 +553,7 @@ fn bench_batch_write(c: &mut Criterion) {
 /// - **Complexity**: O(log n) B-tree removal + transaction commit
 /// - **Typical**: Similar to single writes (~3-5 ms)
 fn bench_delete(c: &mut Criterion) {
-    let (_temp, db, note_ids) = setup_db_with_notes(1000);
+    let (_temp, store, note_ids) = setup_db_with_notes(1000);
 
     let mut group = c.benchmark_group("delete");
     group.throughput(Throughput::Elements(1));
@@ -543,9 +563,14 @@ fn bench_delete(c: &mut Criterion) {
         b.iter(|| {
             let id = note_ids[index % note_ids.len()];
             index = index.wrapping_add(1);
+            let id_str = Uuid::from(id).to_string();
 
-            let existed = db
-                .delete_by_uuid(NOTES_BY_ID_TABLE, *id.as_uuid_v7())
+            let existed = store
+                .write(|tx| {
+                    let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+                    let prev = table.remove(id_str.as_str())?;
+                    Ok(prev.is_some())
+                })
                 .expect("delete note");
             black_box(existed);
         });
@@ -578,7 +603,7 @@ fn bench_delete(c: &mut Criterion) {
 /// - **Both slow**: Database layer regression
 /// - **Both fast**: Cache may be too large (masking cold case)
 fn bench_cache_effectiveness(c: &mut Criterion) {
-    let (_temp, db, note_ids) = setup_db_with_notes(100);
+    let (_temp, store, note_ids) = setup_db_with_notes(100);
     let note_keys: Vec<String> =
         note_ids.iter().map(|id| Uuid::from(*id).to_string()).collect();
 
@@ -588,14 +613,18 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>(
-                NOTES_BY_ID_TABLE,
-                hot_key.as_str(),
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get note")
+            store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
+                        && let Some(guard) = table.get(hot_key.as_str())?
+                    {
+                        Note::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get note");
         });
     });
 
@@ -605,10 +634,18 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<Note, _, _>(NOTES_BY_ID_TABLE, cold_id, |archived| {
-                black_box(archived);
-            })
-            .expect("get note")
+            store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
+                        && let Some(guard) = table.get(cold_id)?
+                    {
+                        Note::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get note");
         });
     });
 
@@ -659,16 +696,19 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                 .join(format!("bench_txn_individual_{file_index}.db"));
             file_index = file_index.wrapping_add(1);
 
-            let db = Database::open(&db_path).expect("open database");
+            let store = Store::open(&db_path).expect("open database");
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid(
-                    NOTES_BY_ID_TABLE,
-                    *note.id().as_uuid_v7(),
-                    &note,
-                )
-                .expect("put note");
+                let id_str = Uuid::from(note.id()).to_string();
+                store
+                    .write(|tx| {
+                        let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+                        let bytes = note.to_bytes()?;
+                        table.insert(id_str.as_str(), bytes.as_ref())?;
+                        Ok(())
+                    })
+                    .expect("put note");
             }
         });
     });
@@ -680,19 +720,20 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                 .join(format!("bench_txn_batch_{file_index}.db"));
             file_index = file_index.wrapping_add(1);
 
-            let db = Database::open(&db_path).expect("open database");
+            let store = Store::open(&db_path).expect("open database");
 
-            db.batch_write(|batch_db| {
-                for i in 0..batch_size {
-                    let note = create_test_note(i as usize);
-                    let id_str = Uuid::from(note.id()).to_string();
-                    batch_db
-                        .put(NOTES_BY_ID_TABLE, &id_str, &note)
-                        .expect("put note");
-                }
-                Ok(())
-            })
-            .expect("batch write");
+            store
+                .write(|tx| {
+                    let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+                    for i in 0..batch_size {
+                        let note = create_test_note(i as usize);
+                        let id_str = Uuid::from(note.id()).to_string();
+                        let bytes = note.to_bytes()?;
+                        table.insert(id_str.as_str(), bytes.as_ref())?;
+                    }
+                    Ok(())
+                })
+                .expect("batch write");
         });
     });
 
@@ -742,20 +783,23 @@ fn bench_scan_range(c: &mut Criterion) {
 
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("range_bench.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     // Pre-populate with 1000 notes using prefixed keys
     // Keys format: "notes/test-XXXX" where XXXX is 0000-0999
     let notes: Vec<Note> = (0..TOTAL_NOTES).map(create_test_note).collect();
 
-    db.batch_write(|writer| {
-        for (i, note) in notes.iter().enumerate() {
-            let key = format!("notes/test-{i:04}");
-            writer.put(NOTES_BY_ID_TABLE, &key, note)?;
-        }
-        Ok(())
-    })
-    .expect("batch write");
+    store
+        .write(|tx| {
+            let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
+            for (i, note) in notes.iter().enumerate() {
+                let key = format!("notes/test-{i:04}");
+                let bytes = note.to_bytes()?;
+                table.insert(key.as_str(), bytes.as_ref())?;
+            }
+            Ok(())
+        })
+        .expect("batch write");
 
     let mut group = c.benchmark_group("scan_range");
 
@@ -764,13 +808,22 @@ fn bench_scan_range(c: &mut Criterion) {
     group.bench_function("range_query_100_matches", |b| {
         b.iter(|| {
             let prefix = "notes/test-01";
-            let count = db
-                .batch_read(|reader| {
-                    let results =
-                        reader.scan_range::<Note>(NOTES_BY_ID_TABLE, prefix)?;
-                    Ok(results.len())
+            let count = store
+                .read(|tx| {
+                    let mut count = 0;
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)? {
+                        let end_bound = next_prefix(prefix);
+                        for result in table.range(prefix..end_bound.as_str())? {
+                            let (_key, guard) = result.expect("range result");
+                            Note::with_archived(guard.value(), |archived| {
+                                black_box(archived);
+                            })?;
+                            count += 1;
+                        }
+                    }
+                    Ok(count)
                 })
-                .expect("batch_read");
+                .expect("read");
             black_box(count)
         });
     });
@@ -779,25 +832,51 @@ fn bench_scan_range(c: &mut Criterion) {
     group.bench_function("full_scan_filter_100_matches", |b| {
         b.iter(|| {
             let prefix = "notes/test-01";
-            let count = db
-                .batch_read(|reader| {
-                    let all_pairs = reader
-                        .list_key_value_pairs::<Note>(NOTES_BY_ID_TABLE)?;
-                    let filtered = all_pairs
-                        .into_iter()
-                        .filter(|(key, _)| key.starts_with(prefix))
-                        .fold(0usize, |count, (_, value)| {
-                            black_box(value);
-                            count + 1
-                        });
-                    Ok(filtered)
+            let count = store
+                .read(|tx| {
+                    let mut count = 0;
+                    if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)? {
+                        for result in table.iter()? {
+                            let (key_guard, value_guard) =
+                                result.expect("iter result");
+                            if key_guard.value().starts_with(prefix) {
+                                Note::with_archived(
+                                    value_guard.value(),
+                                    |archived| {
+                                        black_box(archived);
+                                    },
+                                )?;
+                                count += 1;
+                            }
+                        }
+                    }
+                    Ok(count)
                 })
-                .expect("batch_read");
+                .expect("read");
             black_box(count)
         });
     });
 
     group.finish();
+}
+
+fn next_prefix(prefix: &str) -> String {
+    let bytes = prefix.as_bytes();
+
+    for i in (0..bytes.len()).rev() {
+        if let Some(&byte) = bytes.get(i)
+            && byte < 255
+        {
+            let mut next = bytes.to_vec();
+            if let Some(last) = next.get_mut(i) {
+                *last = last.saturating_add(1);
+            }
+            return String::from_utf8(next)
+                .unwrap_or_else(|_| format!("{prefix}\u{FFFF}"));
+        }
+    }
+
+    format!("{prefix}\u{FFFF}")
 }
 
 criterion_group!(

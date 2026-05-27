@@ -157,19 +157,23 @@
     clippy::arithmetic_side_effects,
     clippy::as_conversions,
     clippy::cast_possible_truncation,
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use lithos_core::{db::Database, utils::UuidV7};
+use lithos_core::db::{ArchivedEntity, Store};
 use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("templates");
+const TEMPLATES_TABLE_UUID: TableDefinition<[u8; 16], &[u8]> =
+    TableDefinition::new("templates_uuid");
+const TEMPLATES_TABLE_STR: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("templates_str");
 const BENCHMARK_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("benchmark");
 
@@ -229,17 +233,23 @@ const BENCHMARK_TABLE: TableDefinition<&str, &[u8]> =
 fn bench_uuid_handling(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("uuid_bench.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     // Pre-populate with test data
     let test_uuid = Uuid::now_v7();
     let test_key = test_uuid.to_string();
-    db.put_by_uuid(
-        TEMPLATES_TABLE,
-        UuidV7::try_from(test_uuid).expect("Uuid::now_v7 should be v7"),
-        &"test_value".to_owned(),
-    )
-    .expect("put_by_uuid");
+    store
+        .write(|tx| {
+            let uuid_bytes = *test_uuid.as_bytes();
+            let value_bytes = "test_value".to_owned().to_bytes()?;
+            let mut table_uuid = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
+            table_uuid.insert(uuid_bytes, value_bytes.as_ref())?;
+
+            let mut table_str = tx.try_open_table(TEMPLATES_TABLE_STR)?;
+            table_str.insert(test_key.as_str(), value_bytes.as_ref())?;
+            Ok(())
+        })
+        .expect("setup");
 
     let mut group = c.benchmark_group("uuid_handling");
     group.throughput(Throughput::Elements(1));
@@ -248,10 +258,19 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("get_preformatted_key", |b| {
         b.iter(|| {
             let id_str = black_box(test_key.as_str());
-            db.get::<String, _, _>(TEMPLATES_TABLE, id_str, |archived| {
-                black_box(archived);
-            })
-            .expect("get")
+            store
+                .read(|tx| {
+                    if let Some(table) =
+                        tx.try_open_table(TEMPLATES_TABLE_STR)?
+                        && let Some(guard) = table.get(id_str)?
+                    {
+                        String::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get");
         });
     });
 
@@ -259,24 +278,36 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("get_format_each_time", |b| {
         b.iter(|| {
             let id_str = black_box(test_uuid).to_string();
-            db.get::<String, _, _>(TEMPLATES_TABLE, &id_str, |archived| {
-                black_box(archived);
-            })
-            .expect("get")
+            store
+                .read(|tx| {
+                    if let Some(table) =
+                        tx.try_open_table(TEMPLATES_TABLE_STR)?
+                        && let Some(guard) = table.get(id_str.as_str())?
+                    {
+                        String::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get");
         });
     });
 
     // Optimized: UUID-native put
     group.bench_function("put_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = UuidV7::try_from(Uuid::now_v7())
-                .expect("Uuid::now_v7 should be v7");
-            db.put_by_uuid(
-                TEMPLATES_TABLE,
-                black_box(uuid),
-                &"benchmark_value".to_owned(),
-            )
-            .expect("put_by_uuid");
+            let uuid = Uuid::now_v7();
+            store
+                .write(|tx| {
+                    let uuid_bytes = *uuid.as_bytes();
+                    let value_bytes =
+                        "benchmark_value".to_owned().to_bytes()?;
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
+                    table.insert(uuid_bytes, value_bytes.as_ref())?;
+                    Ok(())
+                })
+                .expect("put_by_uuid");
         });
     });
 
@@ -285,7 +316,14 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put(TEMPLATES_TABLE, &id_str, &"benchmark_value".to_owned())
+            store
+                .write(|tx| {
+                    let value_bytes =
+                        "benchmark_value".to_owned().to_bytes()?;
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
+                    table.insert(id_str.as_str(), value_bytes.as_ref())?;
+                    Ok(())
+                })
                 .expect("put");
         });
     });
@@ -293,13 +331,25 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Optimized: UUID-native delete
     group.bench_function("delete_by_uuid_native", |b| {
         b.iter(|| {
-            let uuid = UuidV7::try_from(Uuid::now_v7())
-                .expect("Uuid::now_v7 should be v7");
-            db.put_by_uuid(TEMPLATES_TABLE, uuid, &"temp".to_owned())
+            let uuid = Uuid::now_v7();
+            store
+                .write(|tx| {
+                    let uuid_bytes = *uuid.as_bytes();
+                    let value_bytes = "temp".to_owned().to_bytes()?;
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
+                    table.insert(uuid_bytes, value_bytes.as_ref())?;
+                    Ok(())
+                })
                 .expect("setup");
-            let existed = db
-                .delete_by_uuid(TEMPLATES_TABLE, black_box(uuid))
-                .expect("delete_by_uuid");
+
+            let existed = store
+                .write(|tx| {
+                    let uuid_bytes = *uuid.as_bytes();
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
+                    let prev = table.remove(uuid_bytes)?;
+                    Ok(prev.is_some())
+                })
+                .expect("delete");
             black_box(existed);
         });
     });
@@ -309,9 +359,22 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put(TEMPLATES_TABLE, &id_str, &"temp".to_owned())
+            store
+                .write(|tx| {
+                    let value_bytes = "temp".to_owned().to_bytes()?;
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
+                    table.insert(id_str.as_str(), value_bytes.as_ref())?;
+                    Ok(())
+                })
                 .expect("setup");
-            let existed = db.delete(TEMPLATES_TABLE, &id_str).expect("delete");
+
+            let existed = store
+                .write(|tx| {
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
+                    let prev = table.remove(id_str.as_str())?;
+                    Ok(prev.is_some())
+                })
+                .expect("delete");
             black_box(existed);
         });
     });
@@ -361,14 +424,20 @@ fn bench_uuid_handling(c: &mut Criterion) {
 fn bench_key_formatting(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("key_bench.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     // Pre-populate with some data
-    for i in 0..100u32 {
-        let key = format!("key-{i:04}");
-        let value = format!("value-{i}");
-        db.put(BENCHMARK_TABLE, &key, &value).expect("put");
-    }
+    store
+        .write(|tx| {
+            let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
+            for i in 0..100u32 {
+                let key = format!("key-{i:04}");
+                let value_bytes = format!("value-{i}").to_bytes()?;
+                table.insert(key.as_str(), value_bytes.as_ref())?;
+            }
+            Ok(())
+        })
+        .expect("put");
 
     let mut group = c.benchmark_group("key_formatting");
     group.throughput(Throughput::Elements(1));
@@ -376,14 +445,18 @@ fn bench_key_formatting(c: &mut Criterion) {
     // Optimized: Current implementation uses pre-allocated buffer
     group.bench_function("get_with_string_key", |b| {
         b.iter(|| {
-            db.get::<String, _, _>(
-                BENCHMARK_TABLE,
-                black_box("key-0050"),
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get")
+            store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(BENCHMARK_TABLE)?
+                        && let Some(guard) = table.get(black_box("key-0050"))?
+                    {
+                        String::with_archived(guard.value(), |archived| {
+                            black_box(archived);
+                        })?;
+                    }
+                    Ok(())
+                })
+                .expect("get");
         });
     });
 
@@ -393,7 +466,16 @@ fn bench_key_formatting(c: &mut Criterion) {
         b.iter(|| {
             let key = format!("key-{counter:04}");
             counter += 1;
-            db.put(BENCHMARK_TABLE, &key, black_box(&"test_value".to_owned()))
+            store
+                .write(|tx| {
+                    let value_bytes = "test_value".to_owned().to_bytes()?;
+                    let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
+                    table.insert(
+                        key.as_str(),
+                        black_box(value_bytes.as_ref()),
+                    )?;
+                    Ok(())
+                })
                 .expect("put");
         });
     });

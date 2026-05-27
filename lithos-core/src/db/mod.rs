@@ -18,8 +18,7 @@
 //!
 //! # Thread Safety & Concurrency
 //!
-//! - [`Store`] and [`Database`] are `Send + Sync` and can be shared across
-//!   threads.
+//! - [`Store`] is `Send + Sync` and can be shared across threads.
 //! - `redb` supports multiple concurrent readers but only one writer.
 //! - Write operations are automatically rolled back if the closure returns an
 //!   error.
@@ -47,25 +46,21 @@ mod codec;
 mod core;
 mod error;
 mod read;
-mod reader;
 pub mod retry;
 mod table;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 mod uuid;
 mod write;
-mod writer;
 
-pub use core::{Database, Store};
+pub use core::Store;
 
 pub use codec::ArchivedEntity;
 pub use error::{DbError, DbErrorKind};
 pub use read::ReadTx;
-pub use reader::BatchReader;
 pub use table::{PathTable, Table, UuidMultimap, UuidTable};
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,
     UuidTableWriteExt, UuidV7DbType, sealed,
 };
 pub use write::WriteTx;
-pub use writer::BatchWriter;

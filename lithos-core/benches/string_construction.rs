@@ -156,6 +156,7 @@
     clippy::as_conversions,
     clippy::cast_possible_truncation,
     clippy::float_arithmetic,
+    clippy::excessive_nesting,
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
@@ -163,19 +164,18 @@ use std::{collections::HashMap, hint::black_box};
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use lithos_core::{
-    db::Database,
+    db::{ArchivedEntity, Store},
     schema::{
         identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
     },
     template::aggregate::{Template, TemplateName},
-    utils::UuidV7,
 };
 use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("templates");
+const TEMPLATES_TABLE: TableDefinition<[u8; 16], &[u8]> =
+    TableDefinition::new("templates_uuid");
 
 // ----------------------------------------------------------- //
 //                     Numeric Formatting                      //
@@ -385,7 +385,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
 fn bench_aggregate_workflow(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("workflow.db");
-    let db = Database::open(&db_path).expect("open database");
+    let store = Store::open(&db_path).expect("open database");
 
     let mut group = c.benchmark_group("aggregate_workflow");
     group.throughput(Throughput::Elements(1));
@@ -410,19 +410,33 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             black_box(score_str);
 
             // Task 2: UUID-native database operations
-            let template_uuid = UuidV7::try_from(Uuid::now_v7())
-                .expect("Uuid::now_v7 should be v7");
+            let template_uuid = Uuid::now_v7();
             let name = TemplateName::try_from("workflow-template")
                 .expect("valid name");
             let template =
                 Template::try_new(&name, None, vec![], HashMap::new())
                     .expect("valid template");
 
-            db.put_by_uuid(TEMPLATES_TABLE, template_uuid, &template)
+            store
+                .write(|tx| {
+                    let uuid_bytes = *template_uuid.as_bytes();
+                    let bytes = template.to_bytes()?;
+                    let mut table = tx.try_open_table(TEMPLATES_TABLE)?;
+                    table.insert(uuid_bytes, bytes.as_ref())?;
+                    Ok(())
+                })
                 .expect("put_by_uuid");
 
-            let retrieved: Option<Template> = db
-                .get_owned(TEMPLATES_TABLE, &template_uuid.to_string())
+            let retrieved: Option<Template> = store
+                .read(|tx| {
+                    if let Some(table) = tx.try_open_table(TEMPLATES_TABLE)?
+                        && let Some(guard) =
+                            table.get(*template_uuid.as_bytes())?
+                    {
+                        return Ok(Some(Template::from_bytes(guard.value())?));
+                    }
+                    Ok(None)
+                })
                 .expect("get_owned");
 
             black_box((schema_name, prop_name, date_spec, retrieved));

@@ -1,9 +1,7 @@
 //! Core database handles and transaction scaffolding.
 //!
 //! This module provides the primary [`Store`] handle for managing database
-//! connections and scoped transactions. It also contains the legacy
-//! [`Database`] handle which is maintained for backwards compatibility during
-//! migration.
+//! connections and scoped transactions.
 
 use std::path::Path;
 
@@ -30,19 +28,6 @@ use crate::db::{error::DbError, read::ReadTx, write::WriteTx};
 /// memory-mapped database pages) cannot escape the transaction lifetime.
 #[derive(Debug)]
 pub struct Store {
-    inner: redb::Database,
-}
-
-/// Standalone database handle for migration and low-level access.
-///
-/// `Database` provides methods that manage their own transaction lifetimes.
-/// While convenient for simple operations, new code should prefer [`Store`]
-/// for better control over transaction boundaries and atomicity.
-///
-/// Like [`Store`], this type is `Send + Sync`.
-#[derive(Debug)]
-#[non_exhaustive]
-pub struct Database {
     inner: redb::Database,
 }
 
@@ -135,60 +120,6 @@ impl Store {
     -> Result<(tempfile::TempDir, std::sync::Arc<Self>), DbError> {
         let (tempdir, store) = Self::open_temp()?;
         Ok((tempdir, std::sync::Arc::new(store)))
-    }
-}
-
-impl Database {
-    /// Returns a reference to the inner redb database.
-    pub(super) fn inner(&self) -> &redb::Database {
-        &self.inner
-    }
-
-    /// Open or create a database at the given path.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DbError::Database`] if the database cannot be opened or
-    /// created.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use std::path::Path;
-    ///
-    /// use lithos_core::db::Database;
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let db = Database::open(Path::new("/tmp/lithos.db"))?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn open(path: &Path) -> Result<Self, DbError> {
-        let inner = redb::Database::create(path)?;
-        Ok(Self {
-            inner,
-        })
-    }
-
-    /// Begin a new read-only transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DbError::Transaction`] if the transaction cannot be started.
-    #[inline]
-    pub fn begin_read(&self) -> Result<redb::ReadTransaction, DbError> {
-        self.inner.begin_read().map_err(Into::into)
-    }
-
-    /// Begin a new read-write transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DbError::Transaction`] if the transaction cannot be started.
-    #[inline]
-    pub fn begin_write(&self) -> Result<redb::WriteTransaction, DbError> {
-        self.inner.begin_write().map_err(Into::into)
     }
 }
 
@@ -298,17 +229,13 @@ mod tests {
             assert!(dir1.path().exists());
             assert!(dir2.path().exists());
         }
-    }
-
-    mod database {
-        use super::*;
 
         #[test]
         fn can_be_constructed() -> Result<(), Box<dyn std::error::Error>> {
             let temp = tempfile::tempdir()?;
             let db_path = temp.path().join("test.db");
-            Database::open(&db_path).map_err(|err| {
-                format!("Database should open successfully, got: {err:?}")
+            Store::open(&db_path).map_err(|err| {
+                format!("Store should open successfully, got: {err:?}")
             })?;
             Ok(())
         }

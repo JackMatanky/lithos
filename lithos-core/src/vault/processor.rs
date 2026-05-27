@@ -24,12 +24,12 @@ use crate::{
         error::NoteProcessError,
         paths::NotePath,
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
-        storage::RedbRepository as NoteRepository,
+        repository as note_repository, storage as note_storage,
     },
     vault::{
         model::{DirId, DirView, FileId, FileView},
-        repository::{ReadRepository as _, WriteRepository as _},
-        storage::RedbRepository as VaultRepository,
+        repository::{self as vault_repository},
+        storage as vault_storage,
     },
 };
 
@@ -321,8 +321,8 @@ impl VaultProcessor<Discovery, Unknown> {
         config: &Config,
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(Arc::clone(&store));
-        let note_repository = NoteRepository::new(store);
+        let repository = vault_storage::RedbRepository::new(Arc::clone(&store));
+        let note_repository = note_storage::RedbRepository::new(store);
 
         let compared = self
             .discover(&source, ScanMode::Full)?
@@ -347,8 +347,8 @@ impl VaultProcessor<Discovery, Unknown> {
         paths: &[PathKey],
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let source = FsReader::new(config.vault_metadata().root().as_path());
-        let repository = VaultRepository::new(Arc::clone(&store));
-        let note_repository = NoteRepository::new(store);
+        let repository = vault_storage::RedbRepository::new(Arc::clone(&store));
+        let note_repository = note_storage::RedbRepository::new(store);
 
         let compared = self
             .discover_partial(&source, paths)?
@@ -625,7 +625,7 @@ impl VaultProcessor<Comparison, Scanned> {
     #[inline]
     fn compare(
         self,
-        repository: &VaultRepository,
+        repository: &impl vault_repository::Repository,
     ) -> Result<VaultProcessor<Routing, Compared>, VaultProcessError> {
         let mut report = VaultProcessReport {
             files_scanned: self.status.files.len(),
@@ -659,7 +659,7 @@ impl VaultProcessor<Comparison, Scanned> {
 
     fn compare_full(
         &self,
-        repository: &VaultRepository,
+        repository: &impl vault_repository::ReadRepository,
         report: &mut VaultProcessReport,
     ) -> Result<CompareOutcome, VaultProcessError> {
         let existing_file_paths = repository.list_file_paths()?;
@@ -709,7 +709,7 @@ impl VaultProcessor<Comparison, Scanned> {
 
     fn compare_partial(
         &self,
-        repository: &VaultRepository,
+        repository: &impl vault_repository::ReadRepository,
         report: &mut VaultProcessReport,
     ) -> Result<CompareOutcome, VaultProcessError> {
         let mut file_updates = Vec::new();
@@ -746,7 +746,7 @@ impl VaultProcessor<Routing, Compared> {
     #[inline]
     fn route(
         self,
-        note_repository: &NoteRepository,
+        note_repository: &impl note_repository::Repository,
         config: &Config,
         source: &FsReader,
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
@@ -784,8 +784,8 @@ impl VaultProcessor<Prune, Routed> {
     #[inline]
     fn prune(
         self,
-        repository: &VaultRepository,
-        note_repository: &NoteRepository,
+        repository: &impl vault_repository::Repository,
+        note_repository: &impl note_repository::Repository,
     ) -> Result<VaultProcessor<Completed, Ready>, VaultProcessError> {
         let mut report = self.status.report;
         if self.status.mode != ScanMode::Full {
