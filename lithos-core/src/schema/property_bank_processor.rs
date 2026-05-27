@@ -5,8 +5,8 @@
 //! This module implements a typestate pipeline that chooses the cheapest valid
 //! path to a final `PropertyBank`. It uses two compile-time dimensions:
 //!
-//! - **Stage**: the current pipeline phase (`Discovery`, `Comparison`,
-//!   `Analysis`, `Refresh`, `Construction`, `Completed`).
+//! - **Stage**: the current pipeline phase (`Comparison`, `Analysis`,
+//!   `Refresh`, `Construction`, `Completed`).
 //! - **Status**: the knowledge state carrying data and invariants (`Unknown`,
 //!   `Missing`, `Present`, `Suspect`, `StaleTimestamps`, `StaleContent`, `New`,
 //!   `Changed`, `Fresh`, `FreshReady`, `NewReady`, `StaleReady`).
@@ -18,17 +18,16 @@
 //!
 //! The pipeline follows a "cheap to expensive" hierarchy:
 //!
-//! 1. **Discovery**: determine if a cached view exists.
-//! 2. **Comparison**: compare timestamps, then content hash.
-//! 3. **Analysis**: parse and compare per-property hashes.
-//! 4. **Refresh**: early-commit metadata when only timestamps/content changed.
-//! 5. **Construction**: create, update, or fetch the domain bank.
-//! 6. **Completed**: produce the final `PropertyBank`.
+//! 1. **Comparison**: compare timestamps, then content hash.
+//! 2. **Analysis**: parse and compare per-property hashes.
+//! 3. **Refresh**: early-commit metadata when only timestamps/content changed.
+//! 4. **Construction**: create, update, or fetch the domain bank.
+//! 5. **Completed**: produce the final `PropertyBank`.
 //!
 //! # Flow
 //!
 //! ```text
-//! Discovery
+//! Entry
 //!   ├─ No view
 //!   │   → [Comparison] parse raw file
 //!   │   → [Construction] construct domain from raw → Completed
@@ -68,12 +67,20 @@
 //!
 //! ```ignore
 //! use lithos_core::schema::property_bank_processor::{
-//!     AnalysisBranch, ComparisonBranch, ContentBranch, Discovery,
+//!     AnalysisBranch, Comparison, ComparisonBranch, ContentBranch,
 //!     PropertyBankProcessor, TimestampBranch, Unknown,
 //! };
 //!
-//! let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
-//! let branch = pipeline.discover(filename, &source, &config_path, &repo)?;
+//! let pipeline =
+//!     PropertyBankProcessor::<Comparison, Unknown>::from_fs_file(file, root)?;
+//! let branch = match view {
+//!     Some(view) => ComparisonBranch::Present(
+//!         pipeline.transition(Comparison, Present::new(metadata, view)),
+//!     ),
+//!     None => ComparisonBranch::Missing(
+//!         pipeline.transition(Parsed, Missing::new(metadata)),
+//!     ),
+//! };
 //!
 //! match branch {
 //!     ComparisonBranch::Missing(p) => {
@@ -210,18 +217,14 @@ impl<P, S> PropertyBankProcessor<P, S> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Discovery Stage
+//  Entry Stage
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Entry phase: checking the repository for a cached view.
-#[derive(Debug)]
-pub(crate) struct Discovery;
 
 /// Initial state before any knowledge has been gathered.
 #[derive(Debug)]
 pub(crate) struct Unknown;
 
-/// Result of the Discovery stage, determining the next branch in the pipeline.
+/// Result of entry-state branching into comparison paths.
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
@@ -231,8 +234,8 @@ pub(crate) enum ComparisonBranch {
     Present(PropertyBankProcessor<Comparison, Present>),
 }
 
-/// Entry-state operations that decide whether a cached view exists.
-impl PropertyBankProcessor<Discovery, Unknown> {
+/// Entry-state operations that bootstrap the comparison pipeline.
+impl PropertyBankProcessor<Comparison, Unknown> {
     #[inline]
     pub(crate) fn from_fs_file(
         file: FsFile,
@@ -1005,7 +1008,7 @@ mod tests {
             let key = file.path().as_key(&vault_root).expect("path key");
             let repository = InMemoryRepository::new();
             let pipeline =
-                PropertyBankProcessor::<Discovery, Unknown>::from_fs_file(
+                PropertyBankProcessor::<Comparison, Unknown>::from_fs_file(
                     file,
                     &vault_root,
                 )

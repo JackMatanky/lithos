@@ -14,7 +14,7 @@ use crate::{
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, Construction,
-            ContentBranch, Discovery, Fresh, Missing, Parsed, Present,
+            ContentBranch, Fresh, Missing, Parsed, Present,
             PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
             Suspect, TimestampBranch, Unknown,
         },
@@ -153,11 +153,10 @@ where
                 },
             ))
         })?;
-        // Route directly to Comparison stage using discovered data
-        // (skip Discovery stage since PropertyBankDiscovery already has all
-        // data)
+        // Route directly to Comparison stage using discovered data.
+        // PropertyBankDiscovery already carries presence + metadata.
         let processor =
-            PropertyBankProcessor::<Discovery, Unknown>::from_fs_file(
+            PropertyBankProcessor::<Comparison, Unknown>::from_fs_file(
                 file,
                 schema_spec.root(),
             )
