@@ -137,6 +137,17 @@ Both new tests use `make_fixture()`, which was already created during Q2 impleme
   4. **Removed `impl Missing` block** — `Missing` is a unit struct; replaced `Missing::new()` with `Missing` at all 3 call sites
 - Test result: 1366 passed, 0 failed, clippy clean, fmt clean
 
+## Deepening Analysis (GitNexus + rust-best-practices)
+- **Date:** 2026-05-27
+- **Findings:**
+  1. `ComparisonBranch` is the only manually-constructed branch enum — confirmed anomalous
+  2. Builder orchestration tree maps 1:1 to processor branch enums (visible re-implementation)
+  3. Call graph: `load_all` → `load_property_bank` → 4 direct handler methods → 3 inline wrappers
+  4. Verified: no test outside `schema` module depends on processor internals
+- **Next steps planned in task_plan.md:**
+  - Phase 7: Inline `ComparisonBranch` into builder
+  - Candidate A: `Processor::run()` deepening opportunity (deferred to separate scratch if schema processor also involved)
+
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|

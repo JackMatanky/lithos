@@ -60,6 +60,60 @@ Option 1 is the pragmatic choice. The real value is eliminating the builder meta
 | Eliminate `delta.clone()` in `update()` | Destructure self before persist — saves PropertyDelta clone |
 | Accept `metadata.clone()` in `sync_metadata` | `update_metadata` takes `FileMetadata` by value; changing views API is out of scope for this refactor |
 
+### `ComparisonBranch` — Anomalous Branch Enum
+
+`ComparisonBranch` is the only branch enum in the processor that is **not returned by a method**. The other three are:
+
+| Branch | Returned by | Encapsulates |
+|--------|-------------|-------------|
+| `TimestampBranch` | `check_timestamps()` | Filesystem I/O (read file, compare timestamps) |
+| `ContentBranch` | `check_content()` | Hashing (compute Blake3, compare with view) |
+| `AnalysisBranch` | `analyze()` | Property diff (PropertyDeltaEngine) |
+| `ComparisonBranch` | **Manually constructed** | `view.is_some()` boolean |
+
+**Impact on builder imports**: `ComparisonBranch` contributes 1 of 17 items from the processor that the builder must import. Inlining it removes the import and simplifies the branch to a direct `if let ... else` on `bank_discovery.view()`.
+
+**Recommendation**: Inline — no renamed enum in builder either. The builder already has the `view` reference. Using `if let Some(view) = bank_discovery.view()` is more direct and avoids introducing a single-consumer type.
+
+### GitNexus Analysis — Call Graph Verification
+
+**Execution flow confirmed:**
+- `Builder::load_all` → `load_property_bank` → `handle_missing` OR `handle_present` → `handle_content_mismatch` → `handle_analysis_branch` → `fetch_fresh` / `sync_and_fetch_timestamps` / `sync_and_fetch_content`
+
+**Blast radius for processor changes**:
+- `from_discovery` (entry point): 2 direct callers — `builder::load_property_bank` and processor's own test. Risk: LOW
+- `PropertyBankCompletion` type alias: private to builder.rs only
+- No test outside `schema` module directly references processor internals
+
+**Key insight**: The builder's orchestration tree forms a strict 1:1 correspondence with the processor's branch enums. Every builder handler method (`handle_missing`, `handle_present`, etc.) is a thin match on one processor branch enum. This is visible re-implementation — the processor already encodes the decision tree in its typestate, and the builder mirrors it.
+
+### Deepening Opportunities (Property Bank Processor + Builder)
+
+Architecture vocabulary from `improve-codebase-architecture`: **Module**, **Interface**, **Depth**, **Seam**, **Deletion test**.
+
+#### ✅ Inline `ComparisonBranch` (ready now)
+- **Files**: `property_bank_processor.rs`, `builder.rs`
+- **Problem**: `ComparisonBranch` is a thin wrapper around `view.is_some()` — the only manually-constructed branch enum
+- **Solution**: Remove enum, inline `if let Some(view) = bank_discovery.view()` into the builder
+- **Benefit**: Drops 1 export from processor, simplifies branch to direct boolean test
+- **Risk**: LOW (2 callers, no external consumers)
+
+#### 🔍 Candidate A: Internalize the decision tree (`Processor::run()`)
+- **Files**: `property_bank_processor.rs`, `builder.rs`
+- **Problem**: Builder's orchestration tree (5 helper methods, 17-item import) is a visible re-implementation of the processor's typestate encoding. Every branch the builder handles is already encoded by the processor's state transitions
+- **Solution**: Add `impl PropertyBankProcessor<Init, Unknown> { fn run(self, view: Option<&RawPropertyBankView>, source: &FsReader, repository: &R) -> Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError> }` that internalizes the cheapest-path algorithm
+- **Benefit**: Builder drops from 5 helpers + 17 imports to 1 call + 3 imports. Processor's internal seams (branch enums) remain testable via existing tests. Per Chapter 7.2: "Invalid states become compile errors" — `run()` enforces the tree internally
+- **Cost**: Decision tree becomes opaque. Currently it's visible as a flat sequence in the builder
+- **Verdict**: Worth exploring if the builder's schema pipeline also gets simplified (but schema processor is deferred to separate scratch)
+
+#### 🔍 Candidate B: Dedicated Property Bank Loader Adapter
+- **Files**: New `property_bank_loader.rs` in `schema/`
+- **Problem**: `Builder` has dual responsibilities — schema pipeline orchestration AND property bank pipeline orchestration. The property bank code paths (~85 lines, 7 methods) are intertwined with schema loading in `load_all()`
+- **Solution**: Extract `PropertyBankLoader` struct at a seam. The builder calls `loader.load(bank_discovery, &source, &repository)?`
+- **Benefit**: True separation of concerns. Property bank pipeline independently testable at its own seam. Builder becomes a strictly schema orchestrator
+- **Cost**: One-team seam (single adapter). Per LANGUAGE.md: "One adapter means a hypothetical seam. Two adapters means a real one." Not justified unless a second consumer emerges
+- **Verdict**: Premature — keep in builder until a second consumer materializes
+
 ### Decisions from Post-05 Design Review
 
 | Decision | Rationale |

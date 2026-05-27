@@ -66,11 +66,25 @@ Phase 6: Verification (COMPLETE — all phases done)
 - [x] All builder integration tests unchanged
 - **Status:** complete
 
+### Phase 7: Inline `ComparisonBranch` into Builder
+<!-- rust-best-practices §7.5: "Avoid type-state when writing trivial states like enums."
+ComparisonBranch is the only branch enum that is manually constructed by the builder (not returned by a processor method). The builder branches on `bank_discovery.view().is_some()` — a boolean — and ComparisonBridge just wraps that boolean into two typed variants. -->
+
+- [ ] Remove `ComparisonBranch` enum definition from `property_bank_processor.rs` (lines 199-207)
+- [ ] Update doc comment / usage example in `property_bank_processor.rs` to reference `if let view` instead of `ComparisonBranch`
+- [ ] Remove `ComparisonBranch` from `builder.rs` import (line 16)
+- [ ] Replace match on `ComparisonBranch` (lines 162-174) with `if let Some(view) = bank_discovery.view() { ... } else { ... }`
+- [ ] Run tests: `cargo test -p lithos-core`
+- [ ] Run clippy: `cargo clippy -p lithos-core`
+- [ ] Run fmt: `cargo fmt -p lithos-core --check`
+- **Status:** pending
+
 ## Key Questions (resolved)
 1. ✅ Dead accessors: `Missing::metadata()`, `Present::metadata()` removed with status metadata
 2. ✅ `Present::view()` — removed (dead, no consumer)
 3. ✅ `Missing::new()` — removed; `Missing` is a unit struct, used directly
-4. ✅ Tracking reference: `#05` (Issue 05 — impl-tightening)
+4. ✅ `ComparisonBranch` — inlined into builder; removed from processor (was the only manually-constructed branch enum)
+5. ✅ Tracking reference: `#05` (Issue 05 — impl-tightening)
 
 ## Decisions Made
 | Decision | Rationale |
