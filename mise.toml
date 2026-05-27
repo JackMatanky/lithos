@@ -206,3 +206,37 @@ depends = ["lint", "test", "deny"]
 [tasks.deny]
 description = "Check dependencies for security vulnerabilities and license compliance"
 run = "cargo deny check"
+
+# --------------------------- Build ---------------------------- #
+[tasks.build]
+description = "Build all workspace crates"
+alias = "b"
+depends = ["fmt"]
+sources = ["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
+outputs = ["{{vars.target_dir}}/debug/{{vars.binary_name}}"]
+usage = '''
+flag "-r --release" help="Build in release mode"
+flag "-p --package <package>" help="Build a specific package" {
+  choices "core" "cli"
+}
+'''
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+args=()
+[[ "${usage_release:-}" == "true" ]] && args+=("--release")
+case "${usage_package:-}" in
+  core) args+=("--package" "lithos-core") ;;
+  cli)  args+=("--package" "lithos") ;;
+  *)    args+=("--workspace") ;;
+esac
+cargo build "${args[@]}"
+'''
+
+# ------------------------ Documentation ----------------------- #
+[tasks.doc]
+description = "Generate and open documentation for all workspace crates"
+sources = ["**/*.rs", "Cargo.toml"]
+outputs = ["{{vars.target_doc_dir}}"]
+usage = 'flag "-o --open" help="Open documentation in browser"'
+run = 'cargo doc --no-deps --all-features $( [ "$usage_open" = "true" ] && echo "--open" )'
