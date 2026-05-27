@@ -46,25 +46,37 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 
 ## Implementation Decisions
 
-- Discovery remains an incremental refactor from the current Vault module first; full module renaming/re-homing is deferred.
-- The discovery typestate processor lives in the discovery layer and is the shared base filesystem discovery engine.
-- Discovery processing is scoped by scan input and should support partial or targeted scans.
-- Discovery includes a comparison phase and classifies records by freshness; it does not only scan-and-write blindly.
-- Discovery persists deltas and should call batch repository operations for efficient writes/deletes.
-- Context processors remain standalone and consume discovery results as input to their own pipelines.
-- FileId and DirId become canonical identity across contexts for file-backed entities.
-- SchemaId and NoteId are intended to become unnecessary for file identity.
-- Parsing remains context-specific and is not owned by base discovery.
-- File-level content hashing is context-owned for freshness checks; discovery should not force file content hashing in FileView.
-- Structured contexts (Schema/Config) require both content hash and entry/property hash indexing in their own view models.
-- Hash capability contracts are crate-private and based on support hash primitives, using traits:
-  - HasContentHash
-  - HasContentHashMut
-  - HasEntryHashes
-  - HasEntryHashesMut
-- Discovery result should preserve enough path information for safe file reads and must not drop useful scanner information.
-- Discovery result representation should begin with a flat classification model and remain extensible.
-- Basename index can be removed from the general discovery concern; retained indexes are path, parent, format, and primary views.
+### 1. Architecture & Boundaries
+- **Discovery First**: Discovery remains an incremental refactor from the current Vault module first; full module renaming/re-homing is deferred.
+- **Shared Engine**: The discovery typestate processor lives in the discovery layer and acts as the shared base filesystem discovery engine for all contexts.
+- **Standalone Processors**: Context processors remain standalone and consume discovery results as input to their own pipelines, preserving independent evolution and parallel execution.
+- **Parsing**: Parsing remains context-specific and is not owned by base discovery.
+
+### 2. Scanning & Classification
+- **Scoped Scans**: Discovery processing is scoped by scan input and should support partial or targeted scans.
+- **Incremental Capabilities**: Incremental change ingestion will be introduced so that indexing does not always require a full directory traversal (e.g., allowing file/directory updates to trigger lean reprocessing).
+- **Freshness Classification**: Discovery includes a timestamp-based comparison phase to classify records by freshness; it does not blindly scan-and-write.
+- **Result Contract**: Discovery results will use a flat classification model: a single `Vec<DiscoveredFile>` where each item holds a `DiscoveryStatus` enum (`New`, `Unchanged`, `Stale`, `Deleted`).
+
+### 3. Identity & Paths
+- **Canonical Identity**: `FileId` and `DirId` become the canonical identity across contexts for all file-backed entities. `SchemaId` and `NoteId` are intended to become unnecessary for file identity.
+- **Persisted Paths**: Path models in persisted views will use `Relative*Path` or `PathKey` for stable identity across platforms.
+- **Runtime Paths**: Persisted relative paths will not be relied upon alone for reading files due to cross-OS joining reliability bounds. The discovery result must preserve enough path information for safe file reads (`FilePath` from scanner) alongside the canonical storage identity (`PathKey`).
+
+### 4. Persistence & Tables
+- **Delta Persistence**: Discovery persists only deltas (new files, stale metadata updates, deletions) and uses batch repository operations for efficient writes/deletes.
+- **Indices**: The basename index can be removed from general discovery concerns; retained indexes are path, parent, format, and primary views.
+
+### 5. Hashing & Content Staleness
+- **Context Ownership**: File-level content hashing is context-owned for freshness checks; discovery will not force file content hashing in `FileView`.
+- **Structured Contexts**: Structured contexts (Schema/Config) require both content hash and entry/property hash indexing in their own view models.
+- **Hash Contracts**: Hash capability contracts are crate-private and based on support hash primitives, utilizing traits: `HasContentHash`, `HasContentHashMut`, `HasEntryHashes`, `HasEntryHashesMut`.
+
+### 6. Pipeline Resilience
+- **Typestate Checkpoints**: Partial success and pipeline restartability will be modeled using the Typestate Pattern. Discovery state will be checkpointed.
+- **Completion Journaling**: As contexts successfully process files, completions will be recorded in a persistent Write-Ahead Log (WAL) or Redb table journal (using `rkyv`).
+- **Resumption**: If downstream processing fails, the pipeline can be resumed by reading the discovery checkpoint, subtracting successfully processed files from the journal, and initializing directly into the post-discovery state without re-scanning.
+- **Error Modeling**: Partial processing failures will be modeled using `std::ops::ControlFlow` (when expected operationally) or an enriched `Result::Err` variant via `thiserror` (when tracking successes alongside failures).
 
 ## Testing Decisions
 
