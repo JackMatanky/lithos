@@ -70,14 +70,14 @@ Phase 6: Verification (COMPLETE — all phases done)
 <!-- rust-best-practices §7.5: "Avoid type-state when writing trivial states like enums."
 ComparisonBranch is the only branch enum that is manually constructed by the builder (not returned by a processor method). The builder branches on `bank_discovery.view().is_some()` — a boolean — and ComparisonBridge just wraps that boolean into two typed variants. -->
 
-- [ ] Remove `ComparisonBranch` enum definition from `property_bank_processor.rs` (lines 199-207)
-- [ ] Update doc comment / usage example in `property_bank_processor.rs` to reference `if let view` instead of `ComparisonBranch`
-- [ ] Remove `ComparisonBranch` from `builder.rs` import (line 16)
-- [ ] Replace match on `ComparisonBranch` (lines 162-174) with `if let Some(view) = bank_discovery.view() { ... } else { ... }`
-- [ ] Run tests: `cargo test -p lithos-core`
-- [ ] Run clippy: `cargo clippy -p lithos-core`
-- [ ] Run fmt: `cargo fmt -p lithos-core --check`
-- **Status:** pending
+- [x] Remove `ComparisonBranch` enum definition from `property_bank_processor.rs`
+- [x] Update doc comment / usage example in `property_bank_processor.rs`
+- [x] Remove `ComparisonBranch` from `builder.rs` import (line 16)
+- [x] Replace match on `ComparisonBranch` with `if let Some(view) = bank_discovery.view() { ... } else { ... }`
+- [x] Run tests: `cargo test -p lithos-core` — 1404 passed
+- [x] Run clippy: `cargo clippy -p lithos-core` — clean
+- [x] Run fmt: `cargo fmt -p lithos-core --check` — clean
+- **Status:** complete
 
 ## Key Questions (resolved)
 1. ✅ Dead accessors: `Missing::metadata()`, `Present::metadata()` removed with status metadata

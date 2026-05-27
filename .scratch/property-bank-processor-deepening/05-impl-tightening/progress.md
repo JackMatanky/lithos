@@ -144,9 +144,17 @@ Both new tests use `make_fixture()`, which was already created during Q2 impleme
   2. Builder orchestration tree maps 1:1 to processor branch enums (visible re-implementation)
   3. Call graph: `load_all` → `load_property_bank` → 4 direct handler methods → 3 inline wrappers
   4. Verified: no test outside `schema` module depends on processor internals
-- **Next steps planned in task_plan.md:**
-  - Phase 7: Inline `ComparisonBranch` into builder
-  - Candidate A: `Processor::run()` deepening opportunity (deferred to separate scratch if schema processor also involved)
+-**Next steps:**
+  - Phase 7: Inline `ComparisonBranch` into builder — **COMPLETE**
+
+## Phase 7: Inline `ComparisonBranch`
+- **Date:** 2026-05-27
+- **Changes:**
+  1. Removed `ComparisonBranch` enum (4 lines) from `property_bank_processor.rs`
+  2. Updated doc comment usage example to use `if let view` pattern
+  3. Builder branches directly on `bank_discovery.view()` — no wrapping enum
+  4. Builder import drops 1 item; processor drops 1 export
+- **Test result:** 1404 passed, clippy clean, fmt clean
 
 ## 5-Question Reboot Check
 | Question | Answer |
