@@ -169,7 +169,7 @@ impl<P, S> PropertyBankProcessor<P, S> {
 
     /// Internal constructor for state transitions.
     #[inline]
-    pub(crate) fn transition<NP, NS>(
+    fn transition<NP, NS>(
         self,
         _stage: NP,
         status: NS,
@@ -321,20 +321,20 @@ impl PropertyBankProcessor<Init, Unknown> {
 
 /// Identity phase: comparing file attributes with cached metadata.
 #[derive(Debug)]
-pub(crate) struct Comparison;
+struct Comparison;
 
 /// Proven: View does not exist in repository; carries file info.
 #[derive(Debug)]
-pub(crate) struct Missing;
+struct Missing;
 
 /// Proven: View exists in repository; carries file info and cached view.
 #[derive(Debug)]
-pub(crate) struct Present {
+struct Present {
     view: RawPropertyBankView,
 }
 
 impl Present {
-    pub(crate) fn new(view: RawPropertyBankView) -> Self {
+    fn new(view: RawPropertyBankView) -> Self {
         Self {
             view,
         }
@@ -343,7 +343,7 @@ impl Present {
 
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
-pub(crate) struct Suspect {
+struct Suspect {
     view: RawPropertyBankView,
     content: String,
 }
@@ -351,7 +351,7 @@ pub(crate) struct Suspect {
 /// Proven: Content hash mismatch; file content retained for parsing.
 /// Transitions to Analysis.
 #[derive(Debug)]
-pub(crate) struct Stale {
+struct Stale {
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -362,7 +362,7 @@ pub(crate) struct Stale {
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 #[must_use = "branch outcomes must be handled"]
-pub(crate) enum TimestampBranch {
+enum TimestampBranch {
     /// Timestamps match; the cached bank is fresh.
     Match(PropertyBankProcessor<Construction, Fresh>),
     /// Timestamps mismatch; proceed to content hash check.
@@ -382,7 +382,7 @@ impl PropertyBankProcessor<Comparison, Present> {
     /// Returns [`SchemaLoaderError`] if the file cannot be read.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn check_timestamps(
+    fn check_timestamps(
         self,
         source: &FsReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
@@ -418,7 +418,7 @@ impl PropertyBankProcessor<Comparison, Present> {
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 #[must_use = "branch outcomes must be handled"]
-pub(crate) enum ContentBranch {
+enum ContentBranch {
     /// Content hash matches; only timestamps need updating.
     Match(PropertyBankProcessor<Refresh, StaleTimestamps>),
     /// Content hash mismatches; proceed to Parsed stage for parsing.
@@ -431,7 +431,7 @@ impl PropertyBankProcessor<Comparison, Suspect> {
     ///
     /// Transitions to Parsed stage with Stale on mismatch.
     #[inline]
-    pub(crate) fn check_content(self) -> ContentBranch {
+    fn check_content(self) -> ContentBranch {
         let (file, path_key, status) = self.into_parts();
         let content_hash = Blake3Hash::compute(status.content.as_bytes());
 
@@ -469,12 +469,12 @@ impl PropertyBankProcessor<Comparison, Suspect> {
 /// Path A (Missing): Missing → Parsed (Missing) → Construction (New).
 /// Path B (Content mismatch): Suspect → Parsed (Stale) → Analysis.
 #[derive(Debug)]
-pub(crate) struct Parsed;
+struct Parsed;
 
 /// Proven: Content has been parsed from Stale status.
 /// Transitions to Analysis for property hash comparison.
 #[derive(Debug)]
-pub(crate) struct ParsedStale {
+struct ParsedStale {
     raw: RawPropertyBank,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -492,7 +492,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
     /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn parse(
+    fn parse(
         self,
         source: &FsReader,
     ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
@@ -530,7 +530,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
     /// Returns [`SchemaLoaderError`] if parsing fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn parse(
+    fn parse(
         self,
     ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaLoaderError>
     {
@@ -557,14 +557,14 @@ impl PropertyBankProcessor<Parsed, Stale> {
 
 /// Semantic phase: computing the property delta between the file and view.
 #[derive(Debug)]
-pub(crate) struct Analysis;
+struct Analysis;
 
 /// Result of property delta analysis in the Analysis stage.
 ///
 /// This enum fans out the next state for orchestration.
 #[derive(Debug)]
 #[must_use = "branch outcomes must be handled"]
-pub(crate) enum AnalysisBranch {
+enum AnalysisBranch {
     /// Content changed but properties did not.
     Empty(PropertyBankProcessor<Refresh, StaleContent>),
     /// Properties changed; proceed with delta update.
@@ -582,7 +582,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
     /// transitions to `New`.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn analyze(self) -> AnalysisBranch {
+    fn analyze(self) -> AnalysisBranch {
         let (file, path_key, status) = self.into_parts();
         let raw = status.raw;
         let content_hash = status.content_hash;
@@ -644,17 +644,17 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
 
 /// Maintenance phase: early commitment of proven metadata.
 #[derive(Debug)]
-pub(crate) struct Refresh;
+struct Refresh;
 
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
-pub(crate) struct StaleTimestamps {
+struct StaleTimestamps {
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
-pub(crate) struct StaleContent {
+struct StaleContent {
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }
@@ -668,7 +668,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: WriteRepository>(
+    fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
@@ -692,7 +692,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     /// Returns [`SchemaLoaderError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn sync_metadata<R: WriteRepository>(
+    fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
@@ -717,11 +717,11 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
 
 /// Building phase: terminal domain construction.
 #[derive(Debug)]
-pub(crate) struct Construction;
+struct Construction;
 
 /// Proven: initial ingestion path selected; carries raw bank and content hash.
 #[derive(Debug)]
-pub(crate) struct New {
+struct New {
     raw: RawPropertyBank,
     content_hash: Blake3Hash,
 }
@@ -729,7 +729,7 @@ pub(crate) struct New {
 /// Proven: property divergence detected; carries raw bank, delta, and content
 /// hash.
 #[derive(Debug)]
-pub(crate) struct Changed {
+struct Changed {
     raw: RawPropertyBank,
     delta: PropertyDelta,
     content_hash: Blake3Hash,
@@ -737,7 +737,7 @@ pub(crate) struct Changed {
 
 /// Proven: identity is fully synchronized; bank can be fetched without rebuild.
 #[derive(Debug)]
-pub(crate) struct Fresh;
+struct Fresh;
 
 /// Construction operations that build the initial property bank.
 impl PropertyBankProcessor<Construction, New> {
@@ -751,7 +751,7 @@ impl PropertyBankProcessor<Construction, New> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn create<R: WriteRepository>(
+    fn create<R: WriteRepository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
@@ -801,7 +801,7 @@ impl PropertyBankProcessor<Construction, Changed> {
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn update<R: Repository>(
+    fn update<R: Repository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
@@ -871,7 +871,7 @@ impl PropertyBankProcessor<Construction, Fresh> {
     /// is missing.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
-    pub(crate) fn fetch<R: ReadRepository>(
+    fn fetch<R: ReadRepository>(
         self,
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
@@ -895,23 +895,23 @@ impl PropertyBankProcessor<Construction, Fresh> {
 
 /// Terminal phase: the `PropertyBank` is ready and owned.
 #[derive(Debug)]
-pub(crate) struct Completed;
+struct Completed;
 
 /// Proven: terminal ingestion goal reached with fresh bank.
 #[derive(Debug)]
-pub(crate) struct FreshReady {
+struct FreshReady {
     bank: PropertyBank,
 }
 
 /// Proven: terminal ingestion goal reached with newly built bank.
 #[derive(Debug)]
-pub(crate) struct NewReady {
+struct NewReady {
     bank: PropertyBank,
 }
 
 /// Proven: terminal ingestion goal reached with stale updates applied.
 #[derive(Debug)]
-pub(crate) struct StaleReady {
+struct StaleReady {
     bank: PropertyBank,
     delta: HashSet<PropertyName>,
 }
@@ -921,7 +921,7 @@ impl PropertyBankProcessor<Completed, FreshReady> {
     /// Extracts the completed `PropertyBank`.
     #[inline]
     #[must_use]
-    pub(crate) fn into_bank(self) -> PropertyBank {
+    fn into_bank(self) -> PropertyBank {
         self.status.bank
     }
 }
@@ -930,7 +930,7 @@ impl PropertyBankProcessor<Completed, NewReady> {
     /// Extracts the completed `PropertyBank`.
     #[inline]
     #[must_use]
-    pub(crate) fn into_bank(self) -> PropertyBank {
+    fn into_bank(self) -> PropertyBank {
         self.status.bank
     }
 }
@@ -939,9 +939,7 @@ impl PropertyBankProcessor<Completed, StaleReady> {
     /// Extracts the completed `PropertyBank` and changed property names.
     #[inline]
     #[must_use]
-    pub(crate) fn into_bank_with_changes(
-        self,
-    ) -> (PropertyBank, HashSet<PropertyName>) {
+    fn into_bank_with_changes(self) -> (PropertyBank, HashSet<PropertyName>) {
         (self.status.bank, self.status.delta)
     }
 }

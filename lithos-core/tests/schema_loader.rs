@@ -56,7 +56,7 @@ use lithos_core::{
         builder,
         vault::{VaultId, VaultRoot},
     },
-    fs::FsReader,
+    fs::{DirPath, FsReader},
     schema::{
         builder::Builder, property::PropertyName,
         repository::ReadRepository as _,
@@ -352,6 +352,15 @@ mod initial_loading {
         assert!(bank.has(&"title".try_into()?));
         assert!(bank.has(&"status".try_into()?));
         assert!(bank.has(&"priority".try_into()?));
+
+        // Verify raw view was persisted
+        let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())?;
+        let bank_path = lithos_core::fs::PathKey::from_rooted_path(
+            &vault_root,
+            &vault_dir.path().join("schemas/property_bank.json"),
+        )?;
+        let view = repository2.get_raw_property_bank_view(&bank_path)?;
+        assert!(view.is_some(), "Raw view should be persisted");
 
         Ok(())
     }
