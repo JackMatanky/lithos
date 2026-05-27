@@ -54,11 +54,21 @@ Option 1 is the pragmatic choice. The real value is eliminating the builder meta
 | Remove FileMetadata from ALL status structs | Eliminates builder clone AND is conceptually cleaner; `FsFile` at root is the single source of truth for file metadata |
 | Remove `Missing::metadata()` | Dead code — removing metadata from Missing makes this entirely unused |
 | Remove `Present::metadata()` | Accessor was "reserved for future use" — keep decoupled from metadata removal |
-| Keep `Present::view()` dead but link to issue | Builder may need view access in future for diagnostics; annotate with `#[expect(dead_code, reason="TODO(#XXX): exposed for caller diagnostics")]` |
+| ~~Keep `Present::view()` dead but link to issue~~ | **REVERSED** — remove entirely. Nothing calls it; can be re-added when a consumer exists |
 | Remove `DiscoveryResult::is_cold_start()` | Dead code — no callers, no planned usage; can be reintroduced when needed |
 | Eliminate `raw.clone()` in `create()` | Move raw after view creation — saves heap allocation |
 | Eliminate `delta.clone()` in `update()` | Destructure self before persist — saves PropertyDelta clone |
 | Accept `metadata.clone()` in `sync_metadata` | `update_metadata` takes `FileMetadata` by value; changing views API is out of scope for this refactor |
+
+### Decisions from Post-05 Design Review
+
+| Decision | Rationale |
+|----------|-----------|
+| Remove `Present::view()` | Genuinely dead — the builder reads the view from `bank_discovery.view()` before constructing `Present`, and `FetchReady` consumes it via destructuring. No code path reads it back from the status |
+| Keep `Present::new()` | Needed — `view` field is private for encapsulation; `schema::builder` (sibling module) cannot use struct-literal syntax |
+| Add `Init` stage marker | `<Comparison, Unknown>` conflated entry with comparison — `Init` makes pipeline entry explicit |
+| `from_fs_file` renamed to `from_discovery` on `<Init, Unknown>` | Pairs semantically with `Init`; signals pipeline intent rather than parameter type |
+| Keep `Option<RawPropertyBankView>` out of processor | Would push view-existence to runtime checks, defeating the type-state pattern's compile-time safety |
 
 ## Issues Encountered
 
@@ -67,6 +77,36 @@ Option 1 is the pragmatic choice. The real value is eliminating the builder meta
 | `sync_metadata` clones forced by `update_metadata` API | Accept as cosmetic-only cost — `FileMetadata` is a small Copy-like struct |
 | `FsFile` clone at builder boundary still needed | `from_fs_file()` takes `FsFile` by value; no way around this without changing constructor API to accept reference + clone internally |
 | Builder still calls `bank_discovery.entry().clone()` for `from_fs_file()` | Keep — `entry()` returns `&FsFile` but `from_fs_file()` needs owned `FsFile`. A separate `from(&FsFile)` constructor could be added later |
+
+## Implementation Notes (post-hoc)
+
+### Surprises during implementation
+
+1. **`persist_raw_property_bank` orphaned**: After inlining persist logic into `create()`/`update()` (because `self` was destructured and methods like `self.path_key.clone()` no longer worked on a consumed `self`), the shared `persist_raw_property_bank()` method became unreferenced and was removed. The plan didn't anticipate this — the extra dead code removal was a side benefit.
+
+2. **Metadata accessor removal was automatic**: The plan listed `Missing::metadata()` and `Present::metadata()` as Phase 5 items, but removing `FileMetadata` from the structs in Phase 3 naturally removed the accessors too. No separate Phase 5 step needed.
+
+3. **`sync_metadata` clones unchanged**: As predicted, `sync_metadata` still clones `FileMetadata` because `update_metadata()` takes `FileMetadata` by value. This is the one clone that survived the refactor.
+
+4. **Test-only tests**: The `create_and_update_persist_equivalent_hash_view_for_same_raw_property_bank` integration test still works unchanged — the refactored `create()` and `update()` produce the same hash views.
+
+### What didn't get implemented (and why it's OK)
+
+| Item | Reason |
+|------|--------|
+| `sync_metadata` clone removal | Blocked by `update_metadata(…)` API shape (views module, out of scope) |
+| `FsFile` clone at builder boundary | Blocked by `from_fs_file()` ownership requirement |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Plain `cargo clippy -p lithos-core` sufficient (no features, no excluded targets) |
+
+### Planned future work (from post-05 design review)
+
+| Item | Status |
+|------|--------|
+| Remove `Present::view()` dead accessor | **Implemented** |
+| Rename entry stage `Comparison` → `Init` | **Implemented** |
+| Rename `from_fs_file(…)` → `from_discovery(…)` on `<Init, Unknown>` | **Implemented** |
+| Remove `impl Missing` block (`Missing::new()` → `Missing`) | **Implemented** (follow-up) |
+| Embed `Option<RawPropertyBankView>` in processor | **Rejected** — would lose type-state safety |
 
 ## Resources
 - `lithos-core/src/schema/property_bank_processor.rs` — main target

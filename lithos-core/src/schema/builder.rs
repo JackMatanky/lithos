@@ -14,7 +14,7 @@ use crate::{
         property::PropertyName,
         property_bank_processor::{
             AnalysisBranch, Comparison, ComparisonBranch, Construction,
-            ContentBranch, Fresh, Missing, Parsed, Present,
+            ContentBranch, Fresh, Init, Missing, Parsed, Present,
             PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
             Suspect, TimestampBranch, Unknown,
         },
@@ -141,7 +141,6 @@ where
         use crate::schema::error::SchemaIngestionError;
 
         let file = bank_discovery.entry().clone();
-        let file_info = file.metadata().clone();
 
         let schema_spec = self.config.to_schema_spec().map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::File(
@@ -154,24 +153,20 @@ where
             ))
         })?;
         // Route directly to Comparison stage using discovered data.
-        // PropertyBankDiscovery already carries presence + metadata.
-        let processor =
-            PropertyBankProcessor::<Comparison, Unknown>::from_fs_file(
-                file,
-                schema_spec.root(),
-            )
-            .map_err(SchemaIngestionError::from)?;
+        let processor = PropertyBankProcessor::<Init, Unknown>::from_discovery(
+            file,
+            schema_spec.root(),
+        )
+        .map_err(SchemaIngestionError::from)?;
 
-        let branch =
-            match bank_discovery.view() {
-                Some(view) => ComparisonBranch::Present(processor.transition(
-                    Comparison,
-                    Present::new(file_info, view.clone()),
-                )),
-                None => ComparisonBranch::Missing(
-                    processor.transition(Parsed, Missing::new(file_info)),
-                ),
-            };
+        let branch = match bank_discovery.view() {
+            Some(view) => ComparisonBranch::Present(
+                processor.transition(Comparison, Present::new(view.clone())),
+            ),
+            None => {
+                ComparisonBranch::Missing(processor.transition(Parsed, Missing))
+            }
+        };
 
         let (completed, delta) = match branch {
             ComparisonBranch::Missing(p) => self.handle_missing(p)?,

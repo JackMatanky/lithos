@@ -22,21 +22,47 @@
   - `.scratch/property-bank-processor-deepening/05-impl-tightening/progress.md` (updated)
 
 ### Phase 2: Split Dual-Assertion Test & Adopt Shared Fixture
-- **Status:** pending
+- **Status:** complete
 - TDD approach: Fix test surface FIRST (split test into one-assertion-per-test), then refactor production code against improved tests.
 - Pre-condition: `cargo test -p lithos-core` passes GREEN.
 
 ### Phase 3: Remove FileMetadata from Status Structs
-- **Status:** pending
+- **Status:** complete
+- Changes:
+  - Removed `FileMetadata` field from `Missing`, `Present`, `Suspect`, `Stale`, `StaleTimestamps`, `StaleContent`
+  - `Present::new()` now accepts only `view: RawPropertyBankView`
+  - `Missing::new()` now takes no args
+  - All metadata comparisons use `self.file.metadata()` from processor root
+  - Builder boundary: removed `file.metadata().clone()`
+  - Removed `Missing::metadata()`, `Present::metadata()` accessors
+  - Fixed 3 compiler warnings (unused import, unused variable, unfulfilled expect)
+- Test result: 1366 passed, 0 failed
 
 ### Phase 4: Eliminate Clones in Construction
-- **Status:** pending
+- **Status:** complete
+- Changes:
+  - `create()`: Destructured `self` via `into_parts()`, created view from `&status.raw` (borrow), then moved `raw` into `PropertyBank::try_from` — eliminates `raw.clone()`
+  - `update()`: Destructured `self`, extracted `(raw, delta, content_hash)` by value, applied delta via borrow, consumed `delta.into_changed_name_set()` — eliminates `delta.clone()`
+  - Private `persist()` method and `persist_raw_property_bank()` removed (orphaned after inlining persist logic into create/update)
+- Test result: 1366 passed, 0 failed
 
 ### Phase 5: Remove Remaining Dead Code
-- **Status:** pending
+- **Status:** complete
+- Changes:
+  - `Missing::metadata()` — naturally removed (no metadata field in `Missing`)
+  - `Present::metadata()` — naturally removed (no metadata field in `Present`)
+  - `Present::view()` — annotated with `#[expect(dead_code, reason="TODO(#05): expose for caller diagnostics")]` (kept, linked to issue)
+  - `DiscoveryResult::is_cold_start()` — removed entirely
+  - `persist_raw_property_bank()` — removed (orphaned by Phase 4 inlining)
+- Test result: 1366 passed, 0 failed
 
 ### Phase 6: Verification
-- **Status:** pending
+- **Status:** complete
+- Results:
+  - `cargo test -p lithos-core`: 1366 passed, 0 failed
+  - `cargo clippy -p lithos-core`: no warnings
+  - `cargo fmt -p lithos-core --check`: formatted
+- All builder integration tests unchanged
 
 ## Analysis Summary per Question
 
@@ -98,11 +124,24 @@ Both new tests use `make_fixture()`, which was already created during Q2 impleme
 | `pbr.rs:733` `RawPropertyBank::clone()` | **Yes** | Reorder: create view from `&raw`, then move `raw` to `try_from` |
 | `pbr.rs:781` `PropertyDelta::clone()` | **Yes** | Destructure `self` before persist, extract `delta` by value |
 
+## Post-05 Design Review (initial)
+- **Date:** 2026-05-27
+- **Status:** superseded (implemented below)
+
+## Post-05 Implementation
+- **Date:** 2026-05-27 (later same session)
+- **Changes implemented:**
+  1. **Removed `Present::view()`** — dead accessor removed; `Present::new()` kept for private-field construction
+  2. **Added `Init` stage** — new unit struct before `Comparison`; `<Init, Unknown>` is now the explicit pipeline entry point
+  3. **Renamed `from_fs_file` → `from_discovery`** on `<Init, Unknown>`; updated all call sites (builder + 2 tests + doc comment)
+  4. **Removed `impl Missing` block** — `Missing` is a unit struct; replaced `Missing::new()` with `Missing` at all 3 call sites
+- Test result: 1366 passed, 0 failed, clippy clean, fmt clean
+
 ## 5-Question Reboot Check
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 1: Analysis & Planning |
-| Where am I going? | Phases 2-6 (awaiting user approval) |
+| Where am I? | Phase 6: Verification (COMPLETE — all phases done) |
+| Where am I going? | N/A — session complete. Next step: stage & commit. |
 | What's the goal? | Complete review-driven refactor of property-bank deepening implementation |
 | What have I learned? | See findings.md |
-| What have I done? | See above |
+| What have I done? | Phases 1-6 complete. Test split (Phase 2), metadata removal from statuses (Phase 3), clone elimination (Phase 4), dead code removal (Phase 5), verification (Phase 6). All 1366 tests pass, clippy clean, fmt clean. |

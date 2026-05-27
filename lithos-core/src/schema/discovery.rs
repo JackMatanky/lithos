@@ -145,15 +145,6 @@ impl DiscoveryResult {
     pub(crate) fn has_schemas(&self) -> bool {
         !self.schemas.is_empty()
     }
-
-    /// Returns `true` if this is a cold-start discovery (no cached data).
-    #[must_use]
-    #[expect(dead_code, reason = "may be useful for future optimization")]
-    pub(crate) fn is_cold_start(&self) -> bool {
-        self.graph.is_none()
-            && self.schemas.values().all(|s| s.cached.is_none())
-            && self.property_bank.as_ref().is_none_or(|pb| pb.view.is_none())
-    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
