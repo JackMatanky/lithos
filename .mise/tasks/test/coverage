@@ -36,127 +36,55 @@ map_package_name() {
 }
 
 #######################################
-# Build base tarpaulin arguments (output format and directory).
-# Globals:
-#   TARGET_DIR (from env)
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-build_tarpaulin_base_args() {
-    local -n _base_ref_args=$1
-    local output_dir="${TARGET_DIR}/tarpaulin"
-
-    mkdir -p "${output_dir}"
-
-    _base_ref_args+=("--ignore-tests")
-    _base_ref_args+=("--out" "Html")
-    _base_ref_args+=("--output-dir" "${output_dir}")
-}
-
-#######################################
-# Add package selection to tarpaulin args.
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-# Outputs:
-#   None
-#######################################
-add_package_selection() {
-    local -n _pkg_ref_args=$1
-    local package_name=$2
-
-    if [[ -n "${package_name}" ]]; then
-        _pkg_ref_args+=("--packages" "${package_name}")
-    else
-        _pkg_ref_args+=("--workspace")
-    fi
-}
-
-#######################################
-# Build test filter arguments for tarpaulin.
-# Globals:
-#   usage_package
-#   usage_skip_e2e
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-build_test_filter_args() {
-    local -n _filter_ref_args=$1
-
-    # Handle --skip-e2e flag
-    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
-        _filter_ref_args+=("--" "--skip" "cli_smoke")
-        return
-    fi
-
-    # Handle module-specific filtering
-    case "${usage_package:-}" in
-    config | note | schema | template | db | fs)
-        _filter_ref_args+=("--" "${usage_package}::")
-        ;;
-    esac
-}
-
-#######################################
-# Generate code coverage report using tarpaulin.
-# Arguments:
-#   Arguments for cargo tarpaulin (array elements)
-# Outputs:
-#   Writes coverage report to stdout
-#######################################
-run_tarpaulin() {
-    echo "📊 Generating code coverage report..."
-    cargo tarpaulin "$@"
-}
-
-#######################################
-# Handle opening the report if requested.
-# Globals:
-#   usage_open
-#   TARGET_DIR
-#   COVERAGE_REPORT
-# Arguments:
-#   None
-# Outputs:
-#   None
-#######################################
-open_report() {
-    if [[ "${usage_open:-}" == "1" ]]; then
-        echo "🌐 Opening coverage report..."
-        open_file "${TARGET_DIR}/tarpaulin/${COVERAGE_REPORT}"
-    fi
-}
-
-#######################################
 # Main entry point.
 # Globals:
-#   usage_package
-#   usage_skip_e2e
-#   usage_open
-# Arguments:
-#   $@
-# Outputs:
-#   None
+#   TARGET_DIR        (read, from env)
+#   COVERAGE_REPORT   (read, from env)
+#   usage_package     (read)
+#   usage_skip_e2e    (read)
+#   usage_open        (read)
 #######################################
 main() {
     local resolved_package
     resolved_package=$(map_package_name)
 
-    # Build tarpaulin arguments
-    local tarpaulin_args=()
-    build_tarpaulin_base_args tarpaulin_args
-    add_package_selection tarpaulin_args "${resolved_package}"
-    build_test_filter_args tarpaulin_args
+    local output_dir="${TARGET_DIR}/tarpaulin"
+    mkdir -p "${output_dir}"
+
+    local args=()
+
+    # Base tarpaulin options
+    args+=("--ignore-tests")
+    args+=("--out" "Html")
+    args+=("--output-dir" "${output_dir}")
+
+    # Package selection
+    if [[ -n "${resolved_package}" ]]; then
+        args+=("--packages" "${resolved_package}")
+    else
+        args+=("--workspace")
+    fi
+
+    # Test filters
+    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
+        args+=("--" "--skip" "cli_smoke")
+    else
+        case "${usage_package:-}" in
+        config | note | schema | template | db | fs)
+            args+=("--" "${usage_package}::")
+            ;;
+        esac
+    fi
 
     # Run coverage
-    run_tarpaulin "${tarpaulin_args[@]}"
+    echo "📊 Generating code coverage report..."
+    cargo tarpaulin "${args[@]}"
 
     # Open report if requested
-    open_report
+    if [[ "${usage_open:-}" == "1" ]]; then
+        echo "🌐 Opening coverage report..."
+        open_file "${output_dir}/${COVERAGE_REPORT}"
+    fi
 
     echo "✅ Coverage report generated"
 }

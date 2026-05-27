@@ -64,132 +64,60 @@ context_filter() {
 }
 
 #######################################
-# Add nextest specific arguments.
+# Build nextest or doc-test arguments into a named global array.
 # Globals:
-#   usage_verbose
-#   usage_filter
-#   usage_package
+#   usage_package   (read)
+#   usage_verbose   (read)
+#   usage_filter    (read)
 # Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
+#   $1 - The resolved package name
+#   $2 - The test runner type ("nextest" or "doc")
 #######################################
-add_nextest_args() {
-    local -n _nextest_ref_args=$1
+NEXTEST_ARGS=()
+DOC_ARGS=()
 
-    # CLI package is binary-only, so only test bins
-    if [[ "${usage_package:-}" == "cli" ]]; then
-        _nextest_ref_args+=("--bins")
-    else
-        _nextest_ref_args+=("--lib" "--bins")
-    fi
+build_test_args() {
+    local package_name=$1
+    local test_type=$2
+    local -a args=()
 
-    _nextest_ref_args+=("--partition" "hash:1/1")
-
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        _nextest_ref_args+=("--verbose")
-    fi
-
-}
-
-#######################################
-# Add package selection arguments.
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-# Outputs:
-#   None
-#######################################
-add_package_args() {
-    local -n _pkg_ref_args=$1
-    local package_name=$2
-
-    if [[ -n "${package_name}" ]]; then
-        _pkg_ref_args+=("--package" "${package_name}")
-    else
-        _pkg_ref_args+=("--workspace")
-    fi
-}
-
-#######################################
-# Build arguments for nextest unit tests.
-# Globals:
-#   RUST_BACKTRACE (set by #MISE env directive)
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-#   The test runner type ("nextest" or "doc")
-# Outputs:
-#   None
-#######################################
-build_test_arg() {
-    local -n _main_ref_args=$1
-    local package_name=$2
-    local test_type=$3
-
-    # Core test arguments
+    # Nextest-specific arguments
     if [[ "${test_type}" == "nextest" ]]; then
-        add_nextest_args _main_ref_args
-    fi
-
-    # Package selection (Common)
-    add_package_args _main_ref_args "${package_name}"
-
-    # Optional name filter (Common)
-    if [[ -n "${usage_filter:-}" ]]; then
-        _main_ref_args+=("${usage_filter}")
-    fi
-}
-
-#######################################
-# Execute unit tests using nextest and doc tests using cargo.
-# Globals:
-#   usage_package
-# Arguments:
-#   Arguments for cargo nextest run (array elements)
-#   --- separator ---
-#   Arguments for cargo test --doc (remaining array elements)
-# Outputs:
-#   Writes test results to stdout
-#######################################
-run_tests() {
-    local nextest_args=()
-    local doc_args=()
-    local target="nextest"
-
-    for arg in "$@"; do
-        if [[ "${arg}" == "---" ]]; then
-            target="doc"
-            continue
-        fi
-
-        if [[ "${target}" == "nextest" ]]; then
-            nextest_args+=("${arg}")
+        if [[ "${usage_package:-}" == "cli" ]]; then
+            args+=("--bins")
         else
-            doc_args+=("${arg}")
+            args+=("--lib" "--bins")
         fi
-    done
+        args+=("--partition" "hash:1/1")
+        if [[ "${usage_verbose:-}" == "1" ]]; then
+            args+=("--verbose")
+        fi
+    fi
 
-    echo "🧪 Running unit tests (nextest)..."
-    cargo nextest run "${nextest_args[@]}"
-
-    # Skip doc tests for binary-only packages (CLI)
-    if [[ "${usage_package:-}" == "cli" ]]; then
-        echo "📖 Skipping doc tests (binary-only package)..."
+    # Package selection
+    if [[ -n "${package_name}" ]]; then
+        args+=("--package" "${package_name}")
     else
-        echo "📖 Running doc tests..."
-        cargo test --doc "${doc_args[@]}"
+        args+=("--workspace")
+    fi
+
+    # Optional name filter
+    if [[ -n "${usage_filter:-}" ]]; then
+        args+=("${usage_filter}")
+    fi
+
+    # Store into the appropriate global array
+    if [[ "${test_type}" == "nextest" ]]; then
+        NEXTEST_ARGS=("${args[@]}")
+    else
+        DOC_ARGS=("${args[@]}")
     fi
 }
 
 #######################################
 # Main entry point.
 # Globals:
-#   RUST_BACKTRACE (set by #MISE env directive)
-# Arguments:
-#   $@
-# Outputs:
-#   None
+#   usage_package  (read)
 #######################################
 main() {
     context_filter
@@ -197,13 +125,19 @@ main() {
     local resolved_package
     resolved_package=$(map_package_name)
 
-    local nextest_args=()
-    build_test_arg nextest_args "${resolved_package}" "nextest"
+    build_test_args "${resolved_package}" "nextest"
+    build_test_args "${resolved_package}" "doc"
 
-    local doc_args=()
-    build_test_arg doc_args "${resolved_package}" "doc"
+    echo "🧪 Running unit tests (nextest)..."
+    cargo nextest run "${NEXTEST_ARGS[@]}"
 
-    run_tests "${nextest_args[@]}" "---" "${doc_args[@]}"
+    if [[ "${usage_package:-}" == "cli" ]]; then
+        echo "📖 Skipping doc tests (binary-only package)..."
+    else
+        echo "📖 Running doc tests..."
+        cargo test --doc "${DOC_ARGS[@]}"
+    fi
+
     echo "✅ All unit and doc tests complete"
 }
 

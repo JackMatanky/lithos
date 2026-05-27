@@ -13,11 +13,9 @@
 #######################################
 # Map shorthand package names to full cargo package names.
 # Globals:
-#   usage_package
-# Arguments:
-#   None
+#   usage_package  (read)
 # Outputs:
-#   Echoes the full package name
+#   Echoes the full package name (may be empty)
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
@@ -34,127 +32,43 @@ map_package_name() {
 }
 
 #######################################
-# Add parallel execution control matching mise.toml configuration
-# Globals:
-#   TEST_THREADS (from env)
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-add_threading_args() {
-    local -n _threading_ref_args=$1
-    _threading_ref_args+=("--test-threads" "${TEST_THREADS:-4}")
-}
-
-#######################################
-# Add package selection logic.
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name (optional)
-# Outputs:
-#   None
-#######################################
-add_package_args() {
-    local -n _package_ref_args=$1
-    local package_name=$2
-
-    if [[ -n "${package_name}" ]]; then
-        _package_ref_args+=("--package" "${package_name}")
-    else
-        # If no package is specified, target everything in workspace
-        _package_ref_args+=("--workspace")
-    fi
-}
-
-#######################################
-# Add optional user-provided test filter.
-# Globals:
-#   usage_filter
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-add_filter_args() {
-    local -n _filter_ref_args=$1
-
-    # Integration tests only
-    _filter_ref_args+=("--filter-expr" "kind(test)")
-
-    # Add user-provided filter if specified
-    if [[ -n "${usage_filter:-}" ]]; then
-        _filter_ref_args+=("${usage_filter}")
-    fi
-}
-
-#######################################
-# Add nextest execution options (partitioning, verbosity).
-# Globals:
-#   usage_verbose
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-add_execution_args() {
-    local -n _exec_ref_args=$1
-
-    # Nextest partitioning for consistent test distribution
-    _exec_ref_args+=("--partition" "hash:1/1")
-    _exec_ref_args+=("--no-tests" "pass")
-
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        _exec_ref_args+=("--verbose")
-    fi
-}
-
-#######################################
-# Main build function orchestrating argument assembly.
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-# Outputs:
-#   None
-#######################################
-build_test_args() {
-    local -n _main_ref_args=$1
-    local package_name=$2
-
-    add_threading_args _main_ref_args
-    add_package_args _main_ref_args "${package_name}"
-    add_filter_args _main_ref_args
-    add_execution_args _main_ref_args
-}
-
-#######################################
-# Execute integration tests using nextest.
-# Arguments:
-#   Arguments for cargo nextest run
-# Outputs:
-#   Writes test results to stdout
-#######################################
-run_nextest() {
-    echo "🧪 Running integration tests..."
-    cargo nextest run "$@"
-}
-
-#######################################
 # Main entry point.
 # Globals:
-#   RUST_BACKTRACE (set by #MISE env directive)
-# Arguments:
-#   $@
-# Outputs:
-#   None
+#   TEST_THREADS   (read)
+#   usage_verbose  (read)
+#   usage_filter   (read)
 #######################################
 main() {
     local resolved_package
     resolved_package=$(map_package_name)
 
     local args=()
-    build_test_args args "${resolved_package}"
-    run_nextest "${args[@]}"
+
+    # Threading
+    args+=("--test-threads" "${TEST_THREADS:-4}")
+
+    # Package selection
+    if [[ -n "${resolved_package}" ]]; then
+        args+=("--package" "${resolved_package}")
+    else
+        args+=("--workspace")
+    fi
+
+    # Integration tests only
+    args+=("--filter-expr" "kind(test)")
+    if [[ -n "${usage_filter:-}" ]]; then
+        args+=("${usage_filter}")
+    fi
+
+    # Execution options
+    args+=("--partition" "hash:1/1")
+    args+=("--no-tests" "pass")
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+        args+=("--verbose")
+    fi
+
+    echo "🧪 Running integration tests..."
+    cargo nextest run "${args[@]}"
     echo "✅ Integration tests complete"
 }
 
