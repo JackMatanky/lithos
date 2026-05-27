@@ -12,11 +12,7 @@ use crate::{
         discovery::{DiscoveryEngine, PropertyBankDiscovery},
         error::{SchemaIngestionError, SchemaLoaderError},
         property::PropertyName,
-        property_bank_processor::{
-            AnalysisBranch, Comparison, Construction, ContentBranch, Fresh,
-            Init, Missing, Parsed, Present, PropertyBankProcessor, Refresh,
-            StaleContent, StaleTimestamps, Suspect, TimestampBranch, Unknown,
-        },
+        property_bank_processor::PropertyBankProcessor,
         repository::Repository,
     },
 };
@@ -151,108 +147,21 @@ where
                 },
             ))
         })?;
-        // Route directly to Comparison stage using discovered data.
-        let processor = PropertyBankProcessor::<Init, Unknown>::from_discovery(
-            file,
-            schema_spec.root(),
-        )
-        .map_err(SchemaIngestionError::from)?;
 
-        let (completed, delta) = if let Some(view) = bank_discovery.view() {
-            self.handle_present(
-                processor.transition(Comparison, Present::new(view.clone())),
-            )?
-        } else {
-            self.handle_missing(processor.transition(Parsed, Missing))?
-        };
+        let processor =
+            PropertyBankProcessor::from_discovery(file, schema_spec.root())
+                .map_err(SchemaIngestionError::from)?;
+
+        let (bank, delta) = processor.run(
+            bank_discovery.view(),
+            &self.source,
+            &self.repository,
+        )?;
 
         self.property_bank_delta = delta;
-        Ok(completed)
-    }
-
-    fn handle_missing(
-        &self,
-        processor: PropertyBankProcessor<Parsed, Missing>,
-    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        let constructed = processor.parse(&self.source)?;
-        let completed = constructed.create(&self.repository)?;
-        Ok((completed.into_bank(), None))
-    }
-
-    fn handle_present(
-        &self,
-        processor: PropertyBankProcessor<Comparison, Present>,
-    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        match processor.check_timestamps(&self.source)? {
-            TimestampBranch::Match(p) => Ok((self.fetch_fresh(p)?, None)),
-            TimestampBranch::Mismatch(p) => self.handle_content_mismatch(p),
-        }
-    }
-
-    fn handle_content_mismatch(
-        &self,
-        processor: PropertyBankProcessor<Comparison, Suspect>,
-    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        match processor.check_content() {
-            ContentBranch::Match(p) => {
-                Ok((self.sync_and_fetch_timestamps(p)?, None))
-            }
-            ContentBranch::Mismatch(p) => {
-                let parsed = p.parse()?;
-                self.handle_analysis_branch(parsed.analyze())
-            }
-        }
-    }
-
-    fn handle_analysis_branch(
-        &self,
-        branch: AnalysisBranch,
-    ) -> Result<PropertyBankCompletion, SchemaLoaderError> {
-        match branch {
-            AnalysisBranch::Empty(p) => {
-                Ok((self.sync_and_fetch_content(p)?, None))
-            }
-            AnalysisBranch::Delta(p) => {
-                let completed = p.update(&self.repository)?;
-                let (bank, delta) = completed.into_bank_with_changes();
-                Ok((bank, Some(delta)))
-            }
-            AnalysisBranch::Corrupt(p) => {
-                let completed = p.create(&self.repository)?;
-                Ok((completed.into_bank(), None))
-            }
-        }
-    }
-
-    #[inline]
-    fn fetch_fresh(
-        &self,
-        processor: PropertyBankProcessor<Construction, Fresh>,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        let completed = processor.fetch(&self.repository)?;
-        Ok(completed.into_bank())
-    }
-
-    #[inline]
-    fn sync_and_fetch_timestamps(
-        &self,
-        processor: PropertyBankProcessor<Refresh, StaleTimestamps>,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        let fresh = processor.sync_metadata(&self.repository)?;
-        self.fetch_fresh(fresh)
-    }
-
-    #[inline]
-    fn sync_and_fetch_content(
-        &self,
-        processor: PropertyBankProcessor<Refresh, StaleContent>,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        let fresh = processor.sync_metadata(&self.repository)?;
-        self.fetch_fresh(fresh)
+        Ok(bank)
     }
 }
-
-type PropertyBankCompletion = (PropertyBank, Option<HashSet<PropertyName>>);
 
 #[cfg(test)]
 mod tests {

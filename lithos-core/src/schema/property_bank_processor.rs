@@ -191,6 +191,10 @@ pub(crate) struct Unknown;
 #[derive(Debug)]
 pub(crate) struct Init;
 
+/// Type alias for the `run()` method return type.
+type PropertyBankResult =
+    Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError>;
+
 /// Entry-state operations that bootstrap the comparison pipeline.
 impl PropertyBankProcessor<Init, Unknown> {
     #[inline]
@@ -205,6 +209,87 @@ impl PropertyBankProcessor<Init, Unknown> {
             status: Unknown,
             _stage: PhantomData,
         })
+    }
+
+    /// Run the full property bank pipeline.
+    ///
+    /// When `view` is `None`, the processor runs the missing path
+    /// (parse from scratch → create).
+    /// When `view` is `Some(...)`, the processor runs the present path
+    /// (check timestamps → check content → analyze → create/update/fetch).
+    pub(crate) fn run<R: Repository>(
+        self,
+        view: Option<&RawPropertyBankView>,
+        source: &FsReader,
+        repository: &R,
+    ) -> PropertyBankResult {
+        if let Some(view) = view {
+            let present =
+                self.transition(Comparison, Present::new(view.clone()));
+            Self::run_present(present, source, repository)
+        } else {
+            let constructed = self.transition(Parsed, Missing).parse(source)?;
+            let completed = constructed.create(repository)?;
+            Ok((completed.into_bank(), None))
+        }
+    }
+
+    /// Internal helper for the present path (view exists).
+    fn run_present<R: Repository>(
+        processor: PropertyBankProcessor<Comparison, Present>,
+        source: &FsReader,
+        repository: &R,
+    ) -> PropertyBankResult {
+        match processor.check_timestamps(source)? {
+            TimestampBranch::Match(fresh) => {
+                let completed = fresh.fetch(repository)?;
+                Ok((completed.into_bank(), None))
+            }
+            TimestampBranch::Mismatch(suspect) => {
+                Self::run_content_mismatch(suspect, repository)
+            }
+        }
+    }
+
+    /// Internal helper for content mismatch path.
+    fn run_content_mismatch<R: Repository>(
+        processor: PropertyBankProcessor<Comparison, Suspect>,
+        repository: &R,
+    ) -> PropertyBankResult {
+        match processor.check_content() {
+            ContentBranch::Match(stale_ts) => {
+                let fresh = stale_ts.sync_metadata(repository)?;
+                let completed = fresh.fetch(repository)?;
+                Ok((completed.into_bank(), None))
+            }
+            ContentBranch::Mismatch(stale) => {
+                let parsed = stale.parse()?;
+                Self::run_analysis(parsed.analyze(), repository)
+            }
+        }
+    }
+
+    /// Internal helper for analysis path.
+    fn run_analysis<R: Repository>(
+        branch: AnalysisBranch,
+        repository: &R,
+    ) -> PropertyBankResult {
+        match branch {
+            AnalysisBranch::Empty(stale_content) => {
+                let fresh = stale_content.sync_metadata(repository)?;
+                let completed = fresh.fetch(repository)?;
+                Ok((completed.into_bank(), None))
+            }
+            AnalysisBranch::Delta(changed) => {
+                let completed = changed.update(repository)?;
+                let (bank, delta) = completed.into_bank_with_changes();
+                Ok((bank, Some(delta)))
+            }
+            AnalysisBranch::Corrupt(new) => {
+                let completed = new.create(repository)?;
+                Ok((completed.into_bank(), None))
+            }
+        }
     }
 }
 
@@ -848,6 +933,262 @@ mod tests {
         fs::{DirPath, FsFile},
         schema::storage::testing::InMemoryRepository,
     };
+
+    mod run {
+        use super::*;
+
+        struct Fixture {
+            repository: InMemoryRepository,
+            source: FsReader,
+            vault_root: DirPath,
+            _vault_dir: TempDir,
+            file: FsFile,
+            key: PathKey,
+            raw: RawPropertyBank,
+            content_hash: Blake3Hash,
+        }
+
+        /// Helper to create a view with old timestamps (1 hour ago) for testing
+        /// mismatch scenarios.
+        fn make_stale_view(
+            raw: &RawPropertyBank,
+            key: PathKey,
+            content_hash: Blake3Hash,
+        ) -> RawPropertyBankView {
+            use std::time::Duration;
+
+            use crate::fs::metadata::{FileMetadata, FsTimes};
+
+            let property_hashes = raw.properties().compute_hashes();
+            let raw_hash =
+                HashRecord::new(content_hash, property_hashes.into());
+
+            // Create metadata with stale timestamps (1 hour ago)
+            let old_time = SystemTime::now()
+                .checked_sub(Duration::from_secs(3600))
+                .expect("old time");
+            let stale_times = FsTimes::new(Some(old_time), Some(old_time));
+            let stale_metadata = FileMetadata::new(
+                stale_times,
+                raw.metadata().size(),
+                raw.metadata().is_symlink(),
+            );
+
+            // Create a modified raw with stale metadata
+            let stale_raw = raw.clone().with_metadata(stale_metadata);
+
+            // Create view from the stale raw
+            RawPropertyBankView::try_from_raw_with_hashes(
+                &stale_raw, key, raw_hash,
+            )
+            .expect("view")
+        }
+
+        fn make_fixture() -> Fixture {
+            let vault_dir = TempDir::new().expect("temp dir");
+            let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())
+                .expect("vault root");
+            let relative =
+                std::path::PathBuf::from("schema/property-bank.json");
+            let absolute = vault_dir.path().join(&relative);
+            std::fs::create_dir_all(absolute.parent().expect("parent"))
+                .expect("mkdir");
+            let content = r#"{"$version":"1.0","properties":{"title":{"type":"string"}}}"#;
+            std::fs::write(&absolute, content).expect("write file");
+
+            let source = FsReader::new(vault_dir.path());
+            let file_path = crate::fs::FilePath::try_new(absolute.clone())
+                .expect("file path");
+            let metadata = source
+                .metadata(file_path.as_path())
+                .expect("metadata")
+                .as_file()
+                .cloned()
+                .expect("file metadata");
+            let file = FsFile::new(file_path.clone(), metadata.clone());
+            let key = file.path().as_key(&vault_root).expect("path key");
+            let raw: RawPropertyBank = FsReader::parse_structured_from_str::<
+                RawPropertyBank,
+            >(
+                file_path.as_path(), content
+            )
+            .expect("parse raw")
+            .with_metadata(metadata);
+            let content_hash = Blake3Hash::compute(content.as_bytes());
+
+            Fixture {
+                repository: InMemoryRepository::new(),
+                source,
+                vault_root,
+                _vault_dir: vault_dir,
+                file,
+                key,
+                raw,
+                content_hash,
+            }
+        }
+
+        #[test]
+        fn run_missing_path_constructs_bank_with_title_property() {
+            let fixture = make_fixture();
+            let processor =
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("pipeline");
+
+            let (bank, delta) = processor
+                .run(None, &fixture.source, &fixture.repository)
+                .expect("run");
+
+            assert!(
+                bank.has(&"title".try_into().expect("property name")),
+                "Expected title property in constructed bank"
+            );
+            assert!(delta.is_none(), "Missing path should not produce a delta");
+        }
+
+        #[test]
+        fn run_fresh_path_returns_bank_without_delta_when_timestamps_match() {
+            let fixture = make_fixture();
+
+            let property_hashes = fixture.raw.properties().compute_hashes();
+            let raw_hash =
+                HashRecord::new(fixture.content_hash, property_hashes.into());
+            let view = RawPropertyBankView::try_from_raw_with_hashes(
+                &fixture.raw,
+                fixture.key.clone(),
+                raw_hash,
+            )
+            .expect("view");
+
+            let seed_bank = PropertyBank::try_from(fixture.raw.clone())
+                .expect("property bank");
+            fixture
+                .repository
+                .save_property_bank(&seed_bank)
+                .expect("seed bank");
+
+            let processor =
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("pipeline");
+
+            let (bank, delta) = processor
+                .run(Some(&view), &fixture.source, &fixture.repository)
+                .expect("run");
+
+            assert!(
+                bank.has(&"title".try_into().expect("property name")),
+                "Expected title property in fetched bank"
+            );
+            assert!(delta.is_none(), "Fresh path should not produce a delta");
+        }
+
+        #[test]
+        fn run_content_match_path_syncs_and_returns_bank_without_delta() {
+            let fixture = make_fixture();
+
+            // Create view with stale timestamps but matching content hash
+            let view = make_stale_view(
+                &fixture.raw,
+                fixture.key.clone(),
+                fixture.content_hash,
+            );
+
+            let seed_bank = PropertyBank::try_from(fixture.raw.clone())
+                .expect("property bank");
+            fixture
+                .repository
+                .save_property_bank(&seed_bank)
+                .expect("seed bank");
+
+            let processor =
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("pipeline");
+
+            let (bank, delta) = processor
+                .run(Some(&view), &fixture.source, &fixture.repository)
+                .expect("run");
+
+            assert!(
+                bank.has(&"title".try_into().expect("property name")),
+                "Expected title property in fetched bank"
+            );
+            assert!(
+                delta.is_none(),
+                "Content match path should not produce a delta"
+            );
+        }
+
+        #[test]
+        fn run_analysis_delta_path_returns_bank_with_delta() {
+            let mut fixture = make_fixture();
+
+            // Modify the file content to have a different property
+            let modified_content = r#"{"$version":"1.0","properties":{"title":{"type":"number"}}}"#;
+            std::fs::write(fixture.file.path().as_path(), modified_content)
+                .expect("write modified file");
+
+            // Create view with stale content (original property)
+            let view = make_stale_view(
+                &fixture.raw,
+                fixture.key.clone(),
+                fixture.content_hash,
+            );
+
+            let seed_bank = PropertyBank::try_from(fixture.raw.clone())
+                .expect("property bank");
+            fixture
+                .repository
+                .save_property_bank(&seed_bank)
+                .expect("seed bank");
+
+            // Reload file metadata after modification
+            let modified_metadata = fixture
+                .source
+                .metadata(fixture.file.path().as_path())
+                .expect("metadata")
+                .as_file()
+                .cloned()
+                .expect("file metadata");
+            fixture.file =
+                FsFile::new(fixture.file.path().clone(), modified_metadata);
+
+            let processor =
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("pipeline");
+
+            let (bank, delta) = processor
+                .run(Some(&view), &fixture.source, &fixture.repository)
+                .expect("run");
+
+            assert!(
+                bank.has(&"title".try_into().expect("property name")),
+                "Expected title property in updated bank"
+            );
+            assert!(
+                delta.is_some(),
+                "Delta path should produce changed property set"
+            );
+            let changed_names = delta.expect("delta");
+            let title_name: PropertyName =
+                "title".try_into().expect("property name");
+            assert!(
+                changed_names.contains(&title_name),
+                "Delta should include changed 'title' property"
+            );
+        }
+    }
 
     mod constructor {
         use super::*;
