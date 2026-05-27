@@ -1,3 +1,11 @@
+# PRD: Centralized Discovery Processor
+
+**Status**: draft
+**Created**: 2026-05-25
+**Context**:
+
+---
+
 ## Problem Statement
 
 Lithos currently repeats filesystem discovery logic across multiple contexts (notably Schema and Config), while Vault already maintains file and directory identity tables. This duplication increases maintenance cost, creates inconsistent discovery behavior, and makes it harder to evolve freshness checks and indexing safely.
