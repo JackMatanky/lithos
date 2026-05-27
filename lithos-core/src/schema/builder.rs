@@ -152,11 +152,13 @@ where
             PropertyBankProcessor::from_discovery(file, schema_spec.root())
                 .map_err(SchemaIngestionError::from)?;
 
-        let (bank, delta) = processor.run(
+        let resolution = processor.run(
             bank_discovery.view(),
             &self.source,
             &self.repository,
         )?;
+
+        let (bank, delta) = resolution.into_parts();
 
         self.property_bank_delta = delta;
         Ok(bank)

@@ -191,9 +191,31 @@ pub(crate) struct Unknown;
 #[derive(Debug)]
 pub(crate) struct Init;
 
-/// Type alias for the `run()` method return type.
-type PropertyBankResult =
-    Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError>;
+/// The result of a property bank resolution attempt.
+pub(crate) struct PropertyBankResolution {
+    bank: PropertyBank,
+    delta: Option<HashSet<PropertyName>>,
+}
+
+impl PropertyBankResolution {
+    /// Create a new resolution result.
+    pub(crate) fn new(
+        bank: PropertyBank,
+        delta: Option<HashSet<PropertyName>>,
+    ) -> Self {
+        Self {
+            bank,
+            delta,
+        }
+    }
+
+    /// Decompose the resolution into its constituent parts.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (PropertyBank, Option<HashSet<PropertyName>>) {
+        (self.bank, self.delta)
+    }
+}
 
 /// Entry-state operations that bootstrap the comparison pipeline.
 impl PropertyBankProcessor<Init, Unknown> {
@@ -222,7 +244,7 @@ impl PropertyBankProcessor<Init, Unknown> {
         view: Option<&RawPropertyBankView>,
         source: &FsReader,
         repository: &R,
-    ) -> PropertyBankResult {
+    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         if let Some(view) = view {
             let present =
                 self.transition(Comparison, Present::new(view.clone()));
@@ -230,7 +252,7 @@ impl PropertyBankProcessor<Init, Unknown> {
         } else {
             let constructed = self.transition(Parsed, Missing).parse(source)?;
             let completed = constructed.create(repository)?;
-            Ok((completed.into_bank(), None))
+            Ok(PropertyBankResolution::new(completed.into_bank(), None))
         }
     }
 
@@ -239,11 +261,11 @@ impl PropertyBankProcessor<Init, Unknown> {
         processor: PropertyBankProcessor<Comparison, Present>,
         source: &FsReader,
         repository: &R,
-    ) -> PropertyBankResult {
+    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         match processor.check_timestamps(source)? {
             TimestampBranch::Match(fresh) => {
                 let completed = fresh.fetch(repository)?;
-                Ok((completed.into_bank(), None))
+                Ok(PropertyBankResolution::new(completed.into_bank(), None))
             }
             TimestampBranch::Mismatch(suspect) => {
                 Self::run_content_mismatch(suspect, repository)
@@ -255,12 +277,12 @@ impl PropertyBankProcessor<Init, Unknown> {
     fn run_content_mismatch<R: Repository>(
         processor: PropertyBankProcessor<Comparison, Suspect>,
         repository: &R,
-    ) -> PropertyBankResult {
+    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         match processor.check_content() {
             ContentBranch::Match(stale_ts) => {
                 let fresh = stale_ts.sync_metadata(repository)?;
                 let completed = fresh.fetch(repository)?;
-                Ok((completed.into_bank(), None))
+                Ok(PropertyBankResolution::new(completed.into_bank(), None))
             }
             ContentBranch::Mismatch(stale) => {
                 let parsed = stale.parse()?;
@@ -273,21 +295,21 @@ impl PropertyBankProcessor<Init, Unknown> {
     fn run_analysis<R: Repository>(
         branch: AnalysisBranch,
         repository: &R,
-    ) -> PropertyBankResult {
+    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(stale_content) => {
                 let fresh = stale_content.sync_metadata(repository)?;
                 let completed = fresh.fetch(repository)?;
-                Ok((completed.into_bank(), None))
+                Ok(PropertyBankResolution::new(completed.into_bank(), None))
             }
             AnalysisBranch::Delta(changed) => {
                 let completed = changed.update(repository)?;
                 let (bank, delta) = completed.into_bank_with_changes();
-                Ok((bank, Some(delta)))
+                Ok(PropertyBankResolution::new(bank, Some(delta)))
             }
             AnalysisBranch::Corrupt(new) => {
                 let completed = new.create(repository)?;
-                Ok((completed.into_bank(), None))
+                Ok(PropertyBankResolution::new(completed.into_bank(), None))
             }
         }
     }
@@ -1038,9 +1060,10 @@ mod tests {
                 )
                 .expect("pipeline");
 
-            let (bank, delta) = processor
+            let resolution = processor
                 .run(None, &fixture.source, &fixture.repository)
                 .expect("run");
+            let (bank, delta) = resolution.into_parts();
 
             assert!(
                 bank.has(&"title".try_into().expect("property name")),
@@ -1077,9 +1100,10 @@ mod tests {
                 )
                 .expect("pipeline");
 
-            let (bank, delta) = processor
+            let resolution = processor
                 .run(Some(&view), &fixture.source, &fixture.repository)
                 .expect("run");
+            let (bank, delta) = resolution.into_parts();
 
             assert!(
                 bank.has(&"title".try_into().expect("property name")),
@@ -1113,9 +1137,10 @@ mod tests {
                 )
                 .expect("pipeline");
 
-            let (bank, delta) = processor
+            let resolution = processor
                 .run(Some(&view), &fixture.source, &fixture.repository)
                 .expect("run");
+            let (bank, delta) = resolution.into_parts();
 
             assert!(
                 bank.has(&"title".try_into().expect("property name")),
@@ -1168,9 +1193,10 @@ mod tests {
                 )
                 .expect("pipeline");
 
-            let (bank, delta) = processor
+            let resolution = processor
                 .run(Some(&view), &fixture.source, &fixture.repository)
                 .expect("run");
+            let (bank, delta) = resolution.into_parts();
 
             assert!(
                 bank.has(&"title".try_into().expect("property name")),
