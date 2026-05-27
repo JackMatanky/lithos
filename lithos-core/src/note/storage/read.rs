@@ -118,12 +118,14 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(id_guard) =
-                    path_table.get(path.as_str().to_owned())?
-                else {
+                let path_key = crate::fs::PathKey::try_new(path.as_str())
+                    .map_err(|e| {
+                        crate::db::DbError::Deserialization(e.to_string())
+                    })?;
+                let Some(id_guard) = path_table.get(&path_key)? else {
                     return Ok(None);
                 };
-                let id = NoteId::from_bytes(id_guard.value())?;
+                let id = id_guard.value();
 
                 let Some(note_guard) = note_table.get(&id)? else {
                     return Ok(None);

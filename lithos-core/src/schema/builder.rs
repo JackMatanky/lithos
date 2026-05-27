@@ -13,10 +13,9 @@ use crate::{
         error::{SchemaIngestionError, SchemaLoaderError},
         property::PropertyName,
         property_bank_processor::{
-            AnalysisBranch, Comparison, ComparisonBranch, Construction,
-            ContentBranch, Discovery, Fresh, Missing, Parsed, Present,
-            PropertyBankProcessor, Refresh, StaleContent, StaleTimestamps,
-            Suspect, TimestampBranch, Unknown,
+            AnalysisBranch, Comparison, Construction, ContentBranch, Fresh,
+            Init, Missing, Parsed, Present, PropertyBankProcessor, Refresh,
+            StaleContent, StaleTimestamps, Suspect, TimestampBranch, Unknown,
         },
         repository::Repository,
     },
@@ -140,15 +139,7 @@ where
     ) -> Result<PropertyBank, SchemaLoaderError> {
         use crate::schema::error::SchemaIngestionError;
 
-        let file =
-            bank_discovery.entry().as_file().cloned().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
-                        reason: "property bank entry must be a file".into(),
-                    },
-                ))
-            })?;
-        let file_info = file.metadata().clone();
+        let file = bank_discovery.entry().clone();
 
         let schema_spec = self.config.to_schema_spec().map_err(|error| {
             SchemaLoaderError::Ingestion(SchemaIngestionError::File(
@@ -160,30 +151,19 @@ where
                 },
             ))
         })?;
-        // Route directly to Comparison stage using discovered data
-        // (skip Discovery stage since PropertyBankDiscovery already has all
-        // data)
-        let processor =
-            PropertyBankProcessor::<Discovery, Unknown>::from_fs_file(
-                file,
-                schema_spec.root(),
-            )
-            .map_err(SchemaIngestionError::from)?;
+        // Route directly to Comparison stage using discovered data.
+        let processor = PropertyBankProcessor::<Init, Unknown>::from_discovery(
+            file,
+            schema_spec.root(),
+        )
+        .map_err(SchemaIngestionError::from)?;
 
-        let branch =
-            match bank_discovery.view() {
-                Some(view) => ComparisonBranch::Present(processor.transition(
-                    Comparison,
-                    Present::new(file_info, view.clone()),
-                )),
-                None => ComparisonBranch::Missing(
-                    processor.transition(Parsed, Missing::new(file_info)),
-                ),
-            };
-
-        let (completed, delta) = match branch {
-            ComparisonBranch::Missing(p) => self.handle_missing(p)?,
-            ComparisonBranch::Present(p) => self.handle_present(p)?,
+        let (completed, delta) = if let Some(view) = bank_discovery.view() {
+            self.handle_present(
+                processor.transition(Comparison, Present::new(view.clone())),
+            )?
+        } else {
+            self.handle_missing(processor.transition(Parsed, Missing))?
         };
 
         self.property_bank_delta = delta;
@@ -280,12 +260,20 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::aggregate::Config,
-        fs::FsReader,
+        config::{aggregate::Config, paths::SchemaConfigSpec},
+        fs::{
+            DirPath, FsFile, FsReader,
+            path::{RelativeDirPath, RelativeFilePath},
+        },
         schema::{
-            repository::Repository, storage::testing::InMemoryRepository,
+            discovery::DiscoveryEngine, repository::Repository,
+            storage::testing::InMemoryRepository,
         },
     };
+
+    fn assert_file_guarantee(file: &FsFile) {
+        assert!(file.path().as_path().ends_with("property_bank.json"));
+    }
 
     /// Helper to setup test config for a given temp directory.
     fn setup_test_config(temp: &TempDir) -> Config {
@@ -366,5 +354,27 @@ description = "Test schema"
         let repo = InMemoryRepository::new();
 
         assert_builder_new(repo, source, &config);
+    }
+
+    #[test]
+    fn load_property_bank_discovery_entry_is_file_typed() {
+        let temp = TempDir::new().unwrap();
+        let schemas_dir = temp.path().join("schemas");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+        std::fs::write(schemas_dir.join("property_bank.json"), "{}").unwrap();
+
+        let vault_root = DirPath::try_from(temp.path().to_path_buf()).unwrap();
+        let dir_rel = RelativeDirPath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativeFilePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
+
+        let repo = InMemoryRepository::new();
+        let discovery = DiscoveryEngine::run(&spec, &repo).unwrap();
+        let bank_discovery = discovery
+            .property_bank()
+            .expect("property bank should be discovered");
+
+        assert_file_guarantee(bank_discovery.entry());
     }
 }

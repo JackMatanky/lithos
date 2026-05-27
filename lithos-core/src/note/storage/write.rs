@@ -75,10 +75,11 @@ impl RedbRepository {
                     return Ok(None);
                 };
 
-                path_table
-                    .get(path.as_str().to_owned())?
-                    .map(|g| NoteId::from_bytes(g.value()))
-                    .transpose()
+                let path_key = crate::fs::PathKey::try_new(path.as_str())
+                    .map_err(|e| {
+                        crate::db::DbError::Deserialization(e.to_string())
+                    })?;
+                path_table.get(&path_key)?.map(|g| Ok(g.value())).transpose()
             })
             .map_err(NoteRepositoryError::from)?;
 
@@ -98,18 +99,18 @@ impl WriteRepository for RedbRepository {
         let id = note.id();
         self.assert_path_available(note.path(), id)?;
         let note_bytes = note.to_bytes()?;
-        let id_bytes = id.to_bytes()?;
 
         self.store
             .write(|tx| {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
+                let path_key =
+                    crate::fs::PathKey::try_new(note.path().as_str()).map_err(
+                        |e| crate::db::DbError::Deserialization(e.to_string()),
+                    )?;
                 note_table.insert(&id, note_bytes.as_slice())?;
-                path_table.insert(
-                    note.path().as_str().to_owned(),
-                    id_bytes.as_slice(),
-                )?;
+                path_table.insert(&path_key, &id)?;
                 Ok(id)
             })
             .map_err(NoteRepositoryError::from)
@@ -134,12 +135,15 @@ impl WriteRepository for RedbRepository {
                 for note in notes {
                     let id = note.id();
                     let note_bytes = note.to_bytes()?;
-                    let id_bytes = id.to_bytes()?;
+                    let path_key =
+                        crate::fs::PathKey::try_new(note.path().as_str())
+                            .map_err(|e| {
+                                crate::db::DbError::Deserialization(
+                                    e.to_string(),
+                                )
+                            })?;
                     note_table.insert(&id, note_bytes.as_slice())?;
-                    path_table.insert(
-                        note.path().as_str().to_owned(),
-                        id_bytes.as_slice(),
-                    )?;
+                    path_table.insert(&path_key, &id)?;
                     ids.push(id);
                 }
 
@@ -158,8 +162,14 @@ impl WriteRepository for RedbRepository {
 
                 if let Some(existing) = note_table.remove(&id)? {
                     let note = Note::from_bytes(existing.value())?;
-                    let _ =
-                        path_table.remove(note.path().as_str().to_owned())?;
+                    let path_key =
+                        crate::fs::PathKey::try_new(note.path().as_str())
+                            .map_err(|e| {
+                                crate::db::DbError::Deserialization(
+                                    e.to_string(),
+                                )
+                            })?;
+                    let _ = path_table.remove(&path_key)?;
                 }
 
                 Ok(())
@@ -178,8 +188,18 @@ impl WriteRepository for RedbRepository {
                 for id in ids {
                     if let Some(existing) = note_table.remove(id)? {
                         let note = Note::from_bytes(existing.value())?;
-                        let _ = path_table
-                            .remove(note.path().as_str().to_owned())?;
+                        #[allow(
+                            clippy::excessive_nesting,
+                            reason = "TODO: Refactor to reduce nesting depth"
+                        )]
+                        let path_key =
+                            crate::fs::PathKey::try_new(note.path().as_str())
+                                .map_err(|e| {
+                                crate::db::DbError::Deserialization(
+                                    e.to_string(),
+                                )
+                            })?;
+                        let _ = path_table.remove(&path_key)?;
                     }
                 }
 

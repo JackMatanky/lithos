@@ -48,7 +48,7 @@ use crate::{
         inheritance::InheritanceGraph,
         repository::WriteRepository,
         storage::{
-            RedbRepository, path_key,
+            RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -138,7 +138,7 @@ impl WriteRepository for RedbRepository {
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
-                table.insert(path_key(path), bytes.as_slice())?;
+                table.insert(path, bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -165,17 +165,12 @@ impl WriteRepository for RedbRepository {
                     let existing_view =
                         RawSchemaView::from_bytes(existing.value())?;
                     if existing_view.path() != view.path() {
-                        let stale_key =
-                            existing_view.path().as_str().to_owned();
-                        let _ = path_table.remove(stale_key)?;
+                        let _ = path_table.remove(existing_view.path())?;
                     }
                 }
 
                 view_table.insert(id, view_bytes.as_slice())?;
-                path_table.insert(
-                    view.path().as_str().to_owned(),
-                    id_bytes.as_slice(),
-                )?;
+                path_table.insert(view.path(), id_bytes.as_slice())?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -306,7 +301,7 @@ fn remove_path_id_index(
     let mut path_index = tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
 
     if let Some(path) = view_path {
-        let _ = path_index.remove(path.as_str().to_owned())?;
+        let _ = path_index.remove(path)?;
     }
 
     Ok(())

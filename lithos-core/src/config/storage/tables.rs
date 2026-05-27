@@ -2,7 +2,7 @@
 
 use crate::{
     config::vault::VaultId,
-    db::{PathTable, Table, UuidTable},
+    db::{Table, UuidTable},
     impl_redb_uuid,
 };
 
@@ -29,8 +29,7 @@ pub const CONFIG_VERSIONS: Table<&str, &[u8]> = Table::new("config_versions");
 /// Vault path-to-ID mapping.
 ///
 /// Keys: `vault_root.as_key()` → `VaultId`.
-pub const VAULT_ID_BY_PATH: PathTable<&[u8]> =
-    PathTable::new("vault_id_by_path");
+pub const VAULT_ID_BY_PATH: Table<&str, &[u8]> = Table::new("vault_id_by_path");
 
 /// Vault ID-to-path reverse mapping.
 ///

@@ -202,7 +202,7 @@ impl ReadRepository for RedbRepository {
                 };
 
                 table
-                    .get(vault_root.as_key())?
+                    .get(vault_root.as_key().as_str())?
                     .map(|g| VaultId::from_bytes(g.value()))
                     .transpose()
             })
@@ -358,7 +358,7 @@ mod tests {
             .write(|tx| {
                 let mut table =
                     tx.inner.open_table(VAULT_ID_BY_PATH.definition())?;
-                table.insert(root.as_key(), id_bytes.as_slice())?;
+                table.insert(root.as_key().as_str(), id_bytes.as_slice())?;
                 Ok::<_, crate::db::DbError>(())
             })
             .unwrap();

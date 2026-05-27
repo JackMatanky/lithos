@@ -19,7 +19,7 @@ use super::{
     },
 };
 use crate::{
-    db::{ArchivedEntity, DbError},
+    db::ArchivedEntity,
     fs::{FileFormat, PathKey},
     vault::{
         error::VaultRepositoryError,
@@ -86,7 +86,7 @@ impl ReadRepository for RedbRepository {
                 };
 
                 path_table
-                    .get(path.as_str().to_owned())?
+                    .get(path)?
                     .map(|id| file_table.get(&id.value()))
                     .transpose()?
                     .flatten()
@@ -115,7 +115,7 @@ impl ReadRepository for RedbRepository {
                 };
 
                 path_table
-                    .get(path.as_str().to_owned())?
+                    .get(path)?
                     .map(|id| dir_table.get(&id.value()))
                     .transpose()?
                     .flatten()
@@ -272,9 +272,7 @@ impl ReadRepository for RedbRepository {
                 let mut paths = Vec::new();
                 for result in table.iter()? {
                     let (guard, _) = result?;
-                    let path = PathKey::try_new(&guard.value())
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    paths.push(path);
+                    paths.push(guard.value().clone());
                 }
 
                 Ok(paths)
@@ -315,9 +313,7 @@ impl ReadRepository for RedbRepository {
                 let mut paths = Vec::new();
                 for result in table.iter()? {
                     let (guard, _) = result?;
-                    let path = PathKey::try_new(&guard.value())
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    paths.push(path);
+                    paths.push(guard.value().clone());
                 }
 
                 Ok(paths)
@@ -478,7 +474,7 @@ mod tests {
                     let mut path_table =
                         tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
                     file_table.insert(&file.id(), file_bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &file.id())?;
+                    path_table.insert(&path, &file.id())?;
                     Ok::<_, crate::db::DbError>(())
                 })
                 .unwrap();
@@ -508,7 +504,7 @@ mod tests {
                     let mut path_table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
                     dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                    path_table.insert(path.as_str().to_owned(), &dir.id())?;
+                    path_table.insert(&path, &dir.id())?;
                     Ok::<_, crate::db::DbError>(())
                 })
                 .unwrap();
@@ -551,11 +547,9 @@ mod tests {
                     let mut dir_path_table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
                     file_table.insert(&file.id(), file_bytes.as_ref())?;
-                    file_path_table
-                        .insert(path.as_str().to_owned(), &file.id())?;
+                    file_path_table.insert(&path, &file.id())?;
                     dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
-                    dir_path_table
-                        .insert(path.as_str().to_owned(), &dir.id())?;
+                    dir_path_table.insert(&path, &dir.id())?;
                     Ok::<_, crate::db::DbError>(())
                 })
                 .unwrap();
@@ -811,8 +805,8 @@ mod tests {
                 .write(|tx| {
                     let mut table =
                         tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                    table.insert(path1.as_str().to_owned(), &id1)?;
-                    table.insert(path2.as_str().to_owned(), &id2)?;
+                    table.insert(&path1, &id1)?;
+                    table.insert(&path2, &id2)?;
                     Ok::<_, crate::db::DbError>(())
                 })
                 .unwrap();
@@ -856,8 +850,8 @@ mod tests {
                 .write(|tx| {
                     let mut table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
-                    table.insert(path1.as_str().to_owned(), &id1)?;
-                    table.insert(path2.as_str().to_owned(), &id2)?;
+                    table.insert(&path1, &id1)?;
+                    table.insert(&path2, &id2)?;
                     Ok::<_, crate::db::DbError>(())
                 })
                 .unwrap();

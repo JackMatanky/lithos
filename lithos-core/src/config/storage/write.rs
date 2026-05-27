@@ -134,7 +134,7 @@ impl WriteRepository for RedbRepository {
                 let mut path_by_id =
                     tx.inner.open_table(VAULT_PATH_BY_ID.definition())?;
 
-                id_by_path.insert(path_key, id_bytes.as_slice())?;
+                id_by_path.insert(path_key.as_str(), id_bytes.as_slice())?;
                 path_by_id.insert(&vault_id, root_bytes.as_slice())?;
                 Ok(())
             })

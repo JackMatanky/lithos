@@ -47,7 +47,7 @@ pub(crate) mod testing;
 
 use std::sync::Arc;
 
-use crate::{db::Store, fs::PathKey};
+use crate::db::Store;
 
 /// Repository implementation for `redb`-backed schema storage.
 ///
@@ -100,50 +100,10 @@ impl RedbRepository {
     }
 }
 
-/// Converts a [`PathKey`] to an owned `String` for use as a `PathTable`
-/// key.
-///
-/// This helper centralizes the path-to-key conversion logic used across read
-/// and write implementations. It uses `to_string_lossy()` to handle non-UTF8
-/// paths gracefully (rare in practice for schema files).
-///
-/// # Performance Note
-///
-/// Allocates a new `String` on each call. Callers should avoid repeated
-/// conversions of the same path in hot loops. For read-heavy operations,
-/// consider caching the key.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use lithos_core::fs::PathKey;
-/// use lithos_core::schema::storage::path_key;
-///
-/// let path = PathKey::try_new("schemas/note.json")?;
-/// assert_eq!(path_key(&path), "schemas/note.json");
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[inline]
-pub(super) fn path_key(path: &PathKey) -> String {
-    path.as_str().to_owned()
-}
-
 // Blanket implementation: any type that implements both Read and Write
 // automatically implements the unified trait.
 impl<T> crate::schema::repository::Repository for T where
     T: crate::schema::repository::ReadRepository
         + crate::schema::repository::WriteRepository
 {
-}
-
-#[cfg(test)]
-mod tests {
-    use super::path_key;
-    use crate::fs::PathKey;
-
-    #[test]
-    fn path_key_matches_relative_path_display() {
-        let path = PathKey::try_new("schemas/note.json").unwrap();
-        assert_eq!(path_key(&path), "schemas/note.json");
-    }
 }

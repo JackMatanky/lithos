@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{DirScanInput, DirScanner, FsEntry, PathKey},
+    fs::{DirScanInput, DirScanner, FsEntry, FsFile, PathKey},
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
@@ -78,7 +78,7 @@ impl SchemaDiscovery {
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyBankDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    entry: FsEntry,
+    entry: FsFile,
     /// Cached view from database (None if never ingested).
     view: Option<RawPropertyBankView>,
 }
@@ -86,7 +86,7 @@ pub(crate) struct PropertyBankDiscovery {
 impl PropertyBankDiscovery {
     /// Returns the file entry.
     #[inline]
-    pub(crate) fn entry(&self) -> &FsEntry {
+    pub(crate) fn entry(&self) -> &FsFile {
         &self.entry
     }
 
@@ -144,15 +144,6 @@ impl DiscoveryResult {
     #[must_use]
     pub(crate) fn has_schemas(&self) -> bool {
         !self.schemas.is_empty()
-    }
-
-    /// Returns `true` if this is a cold-start discovery (no cached data).
-    #[must_use]
-    #[expect(dead_code, reason = "may be useful for future optimization")]
-    pub(crate) fn is_cold_start(&self) -> bool {
-        self.graph.is_none()
-            && self.schemas.values().all(|s| s.cached.is_none())
-            && self.property_bank.as_ref().is_none_or(|pb| pb.view.is_none())
     }
 }
 
@@ -271,7 +262,7 @@ impl DiscoveryEngine {
     fn separate_property_bank(
         entries: Vec<FsEntry>,
         spec: &SchemaConfigSpec,
-    ) -> (Option<FsEntry>, Vec<(PathKey, FsEntry)>) {
+    ) -> (Option<FsFile>, Vec<(PathKey, FsEntry)>) {
         let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
         let property_bank_path =
@@ -292,7 +283,7 @@ impl DiscoveryEngine {
                     file.path().as_path() == property_bank_abs.as_path()
                 },
             ) {
-                property_bank_entry = Some(entry);
+                property_bank_entry = Some(file.clone());
             } else {
                 schemas.push((path_key, entry));
             }
@@ -324,7 +315,7 @@ impl DiscoveryEngine {
     /// Returns error if database queries fail.
     fn query_cached_state<R>(
         repo: &R,
-        property_bank_entry: Option<&FsEntry>,
+        property_bank_entry: Option<&FsFile>,
         schema_entries: &[(PathKey, FsEntry)],
         spec: &SchemaConfigSpec,
     ) -> Result<CachedState, SchemaLoaderError>
@@ -395,7 +386,7 @@ impl DiscoveryEngine {
     /// Performance: Single pass over `schema_entries`; no intermediate
     /// allocations.
     fn build_result(
-        property_bank_entry: Option<FsEntry>,
+        property_bank_entry: Option<FsFile>,
         schema_entries: Vec<(PathKey, FsEntry)>,
         mut cached: CachedState,
     ) -> DiscoveryResult {
@@ -468,17 +459,27 @@ mod tests {
     };
 
     use super::*;
-    use crate::schema::{
-        aggregate::Schema,
-        bank::PropertyBank,
-        identifier::{SchemaId, SchemaName},
-        index::{NameIdPairs, PathIdPairs, SchemaIndex},
-        inheritance::InheritanceGraph,
-        property::PropertyName,
-        repository::ReadRepository,
-        storage::testing::InMemoryRepository,
-        views::{RawPropertyBankView, RawSchemaView},
+    use crate::{
+        fs::FsFile,
+        schema::{
+            aggregate::Schema,
+            bank::PropertyBank,
+            identifier::{SchemaId, SchemaName},
+            index::{NameIdPairs, PathIdPairs, SchemaIndex},
+            inheritance::InheritanceGraph,
+            property::PropertyName,
+            repository::ReadRepository,
+            storage::testing::InMemoryRepository,
+            views::{RawPropertyBankView, RawSchemaView},
+        },
     };
+
+    fn assert_property_bank_entry_is_file(file: &FsFile) {
+        assert!(
+            file.path().as_path().ends_with("property_bank.json"),
+            "expected property bank file path"
+        );
+    }
 
     struct CountingReadRepo {
         inner: InMemoryRepository,
@@ -684,7 +685,9 @@ mod tests {
         let result = accepts_read_repository_only(&spec, &repo).unwrap();
 
         assert_eq!(result.schemas.len(), 1);
-        assert!(result.property_bank.is_some());
+        let property_bank =
+            result.property_bank.as_ref().expect("property bank exists");
+        assert_property_bank_entry_is_file(property_bank.entry());
         assert!(result.has_schemas());
     }
 

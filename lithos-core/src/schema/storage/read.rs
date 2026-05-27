@@ -52,7 +52,7 @@ use crate::{
         property::PropertyName,
         repository::ReadRepository,
         storage::{
-            RedbRepository, path_key,
+            RedbRepository,
             tables::{
                 PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
                 RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
@@ -208,7 +208,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(id_guard) = path_table.get(path_key(path))? else {
+                let Some(id_guard) = path_table.get(path)? else {
                     return Ok(None);
                 };
                 let id = SchemaId::from_bytes(id_guard.value())?;
@@ -245,7 +245,7 @@ impl ReadRepository for RedbRepository {
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
                     // Step 1: path → SchemaId lookup
-                    let id_guard = path_table.get(path_key(path))?;
+                    let id_guard = path_table.get(path)?;
 
                     let view = if let Some(id_bytes) = id_guard {
                         // Step 2: SchemaId → RawSchemaView lookup
@@ -325,7 +325,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(guard) = table.get(path_key(path))? else {
+                let Some(guard) = table.get(path)? else {
                     return Ok(None);
                 };
 
@@ -371,7 +371,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let Some(guard) = table.get(path_key(path))? else {
+                let Some(guard) = table.get(path)? else {
                     return Ok(None);
                 };
 
@@ -396,7 +396,7 @@ impl ReadRepository for RedbRepository {
 
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
-                    match table.get(path_key(path))? {
+                    match table.get(path)? {
                         Some(guard) => {
                             let id = SchemaId::from_bytes(guard.value())?;
                             results.push(Some(id));
@@ -846,14 +846,8 @@ mod tests {
                         .insert(name1.as_str(), id1.to_bytes()?.as_slice())?;
                     name_table
                         .insert(name2.as_str(), id2.to_bytes()?.as_slice())?;
-                    path_table.insert(
-                        path1.as_str().to_owned(),
-                        id1.to_bytes()?.as_slice(),
-                    )?;
-                    path_table.insert(
-                        path2.as_str().to_owned(),
-                        id2.to_bytes()?.as_slice(),
-                    )?;
+                    path_table.insert(&path1, id1.to_bytes()?.as_slice())?;
+                    path_table.insert(&path2, id2.to_bytes()?.as_slice())?;
                     Ok(())
                 })
                 .unwrap();
@@ -916,31 +910,6 @@ mod tests {
             assert!(msg.contains("invalid schema-name index key"));
             assert!(msg.contains("bad name with spaces"));
         }
-
-        #[test]
-        fn list_schema_path_id_pairs_reports_context_for_invalid_path_key() {
-            let temp_dir = tempfile::TempDir::new().unwrap();
-            let db_path = temp_dir.path().join("test.db");
-            let store = Arc::new(Store::open(&db_path).unwrap());
-
-            store
-                .write(|tx| {
-                    let mut path_table =
-                        tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
-                    path_table.insert(
-                        String::new(),
-                        SchemaId::new().to_bytes()?.as_slice(),
-                    )?;
-                    Ok(())
-                })
-                .unwrap();
-
-            let repo = RedbRepository::new(store);
-            let err = repo.list_schema_path_id_pairs().unwrap_err();
-            let msg = err.to_string();
-
-            assert!(msg.contains("invalid schema-path index key"));
-        }
     }
 
     mod raw_views {
@@ -999,10 +968,7 @@ mod tests {
                 .write(|tx| {
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
-                    path_table.insert(
-                        path.as_str().to_owned(),
-                        id.to_bytes()?.as_slice(),
-                    )?;
+                    path_table.insert(&path, id.to_bytes()?.as_slice())?;
                     Ok(())
                 })
                 .unwrap();

@@ -5,8 +5,8 @@
 //! This module implements a typestate pipeline that chooses the cheapest valid
 //! path to a final `PropertyBank`. It uses two compile-time dimensions:
 //!
-//! - **Stage**: the current pipeline phase (`Discovery`, `Comparison`,
-//!   `Analysis`, `Refresh`, `Construction`, `Completed`).
+//! - **Stage**: the current pipeline phase (`Comparison`, `Analysis`,
+//!   `Refresh`, `Construction`, `Completed`).
 //! - **Status**: the knowledge state carrying data and invariants (`Unknown`,
 //!   `Missing`, `Present`, `Suspect`, `StaleTimestamps`, `StaleContent`, `New`,
 //!   `Changed`, `Fresh`, `FreshReady`, `NewReady`, `StaleReady`).
@@ -18,17 +18,16 @@
 //!
 //! The pipeline follows a "cheap to expensive" hierarchy:
 //!
-//! 1. **Discovery**: determine if a cached view exists.
-//! 2. **Comparison**: compare timestamps, then content hash.
-//! 3. **Analysis**: parse and compare per-property hashes.
-//! 4. **Refresh**: early-commit metadata when only timestamps/content changed.
-//! 5. **Construction**: create, update, or fetch the domain bank.
-//! 6. **Completed**: produce the final `PropertyBank`.
+//! 1. **Comparison**: compare timestamps, then content hash.
+//! 2. **Analysis**: parse and compare per-property hashes.
+//! 3. **Refresh**: early-commit metadata when only timestamps/content changed.
+//! 4. **Construction**: create, update, or fetch the domain bank.
+//! 5. **Completed**: produce the final `PropertyBank`.
 //!
 //! # Flow
 //!
 //! ```text
-//! Discovery
+//! Entry
 //!   ├─ No view
 //!   │   → [Comparison] parse raw file
 //!   │   → [Construction] construct domain from raw → Completed
@@ -68,35 +67,34 @@
 //!
 //! ```ignore
 //! use lithos_core::schema::property_bank_processor::{
-//!     AnalysisBranch, ComparisonBranch, ContentBranch, Discovery,
-//!     PropertyBankProcessor, TimestampBranch, Unknown,
+//!     AnalysisBranch, Comparison, ContentBranch,
+//!     Init, PropertyBankProcessor, TimestampBranch, Unknown,
 //! };
 //!
-//! let pipeline = PropertyBankProcessor::<Discovery, Unknown>::new();
-//! let branch = pipeline.discover(filename, &source, &config_path, &repo)?;
+//! let pipeline =
+//!     PropertyBankProcessor::<Init, Unknown>::from_discovery(file, root)?;
 //!
-//! match branch {
-//!     ComparisonBranch::Missing(p) => {
-//!         p.parse(&source, &config_path)?.create(filename, &repo)?
-//!     }
-//!     ComparisonBranch::Present(p) => {
-//!         match p.check_timestamps(&source, &config_path)? {
-//!             TimestampBranch::Match(p) => p.fetch(&repo)?,
-//!             TimestampBranch::Mismatch(p) => {
-//!                 match p.check_content() {
-//!                     ContentBranch::Match(p) => p.sync_metadata(&repo)?,
-//!                     ContentBranch::Mismatch(p) => {
-//!                         let parsed = p.parse(&config_path)?;
-//!                         match parsed.analyze() {
-//!                             AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
-//!                             AnalysisBranch::Delta(p) => p.update(filename, &repo)?,
-//!                             AnalysisBranch::Corrupt(p) => p.create(filename, &repo)?,
-//!                         }
+//! if let Some(view) = cached_view {
+//!     let present = pipeline.transition(Comparison, Present::new(view));
+//!     match present.check_timestamps(&source)? {
+//!         TimestampBranch::Match(p) => p.fetch(&repo)?,
+//!         TimestampBranch::Mismatch(p) => {
+//!             match p.check_content() {
+//!                 ContentBranch::Match(p) => p.sync_metadata(&repo)?,
+//!                 ContentBranch::Mismatch(p) => {
+//!                     let parsed = p.parse()?;
+//!                     match parsed.analyze() {
+//!                         AnalysisBranch::Empty(p) => p.sync_metadata(&repo)?,
+//!                         AnalysisBranch::Delta(p) => p.update(&repo)?,
+//!                         AnalysisBranch::Corrupt(p) => p.create(&repo)?,
 //!                     }
 //!                 }
 //!             }
 //!         }
 //!     }
+//! } else {
+//!     let missing = pipeline.transition(Parsed, Missing);
+//!     missing.parse(&source)?.create(&repo)?;
 //! }
 //! ```
 //!
@@ -110,7 +108,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{DirPath, FsFile, FsReader, PathKey, metadata::FileMetadata},
+    fs::{DirPath, FsFile, FsReader, PathKey},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -179,62 +177,24 @@ impl<P, S> PropertyBankProcessor<P, S> {
         let (file, path_key, _) = self.into_parts();
         Self::transition_from_parts(file, path_key, status)
     }
-
-    #[inline]
-    fn persist_raw_property_bank<R: WriteRepository>(
-        &self,
-        repository: &R,
-        bank: &PropertyBank,
-        raw: &RawPropertyBank,
-        content_hash: Blake3Hash,
-    ) -> Result<HashRecord, SchemaLoaderError> {
-        repository
-            .save_property_bank(bank)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        let property_hashes = raw.properties().compute_hashes();
-        let raw_hash = HashRecord::new(content_hash, property_hashes.into());
-        let view = RawPropertyBankView::try_from_raw_with_hashes(
-            raw,
-            self.path_key.clone(),
-            raw_hash.clone(),
-        )
-        .map_err(SchemaLoaderError::Ingestion)?;
-
-        repository
-            .save_raw_property_bank_view(&self.path_key, &view)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        Ok(raw_hash)
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Discovery Stage
+//  Entry Stage
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Entry phase: checking the repository for a cached view.
-#[derive(Debug)]
-pub(crate) struct Discovery;
 
 /// Initial state before any knowledge has been gathered.
 #[derive(Debug)]
 pub(crate) struct Unknown;
 
-/// Result of the Discovery stage, determining the next branch in the pipeline.
-///
-/// This enum fans out the next state for orchestration.
+/// Entry-point stage: processor created from discovery data, not yet compared.
 #[derive(Debug)]
-#[must_use = "branch outcomes must be handled"]
-pub(crate) enum ComparisonBranch {
-    Missing(PropertyBankProcessor<Parsed, Missing>),
-    Present(PropertyBankProcessor<Comparison, Present>),
-}
+pub(crate) struct Init;
 
-/// Entry-state operations that decide whether a cached view exists.
-impl PropertyBankProcessor<Discovery, Unknown> {
+/// Entry-state operations that bootstrap the comparison pipeline.
+impl PropertyBankProcessor<Init, Unknown> {
     #[inline]
-    pub(crate) fn from_fs_file(
+    pub(crate) fn from_discovery(
         file: FsFile,
         root: &DirPath,
     ) -> Result<Self, crate::fs::PathError> {
@@ -258,47 +218,17 @@ pub(crate) struct Comparison;
 
 /// Proven: View does not exist in repository; carries file info.
 #[derive(Debug)]
-pub(crate) struct Missing {
-    metadata: FileMetadata,
-}
-
-impl Missing {
-    #[expect(dead_code, reason = "reserved for future use")]
-    pub(crate) fn metadata(&self) -> &FileMetadata {
-        &self.metadata
-    }
-
-    pub(crate) fn new(metadata: FileMetadata) -> Self {
-        Self {
-            metadata,
-        }
-    }
-}
+pub(crate) struct Missing;
 
 /// Proven: View exists in repository; carries file info and cached view.
 #[derive(Debug)]
 pub(crate) struct Present {
-    metadata: FileMetadata,
     view: RawPropertyBankView,
 }
 
 impl Present {
-    #[expect(dead_code, reason = "reserved for future use")]
-    pub(crate) fn metadata(&self) -> &FileMetadata {
-        &self.metadata
-    }
-
-    #[expect(dead_code, reason = "reserved for future use")]
-    pub(crate) fn view(&self) -> &RawPropertyBankView {
-        &self.view
-    }
-
-    pub(crate) fn new(
-        metadata: FileMetadata,
-        view: RawPropertyBankView,
-    ) -> Self {
+    pub(crate) fn new(view: RawPropertyBankView) -> Self {
         Self {
-            metadata,
             view,
         }
     }
@@ -307,7 +237,6 @@ impl Present {
 /// Proven: binary identity has diverged; carries content for hashing/parsing.
 #[derive(Debug)]
 pub(crate) struct Suspect {
-    metadata: FileMetadata,
     view: RawPropertyBankView,
     content: String,
 }
@@ -316,7 +245,6 @@ pub(crate) struct Suspect {
 /// Transitions to Analysis.
 #[derive(Debug)]
 pub(crate) struct Stale {
-    metadata: FileMetadata,
     content: String,
     content_hash: Blake3Hash,
     view: RawPropertyBankView,
@@ -353,8 +281,8 @@ impl PropertyBankProcessor<Comparison, Present> {
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
         let timestamps_match = status.view.is_timestamp_match(
-            status.metadata.times().created_at(),
-            status.metadata.times().modified_at(),
+            file.metadata().times().created_at(),
+            file.metadata().times().modified_at(),
         );
 
         if timestamps_match {
@@ -370,7 +298,6 @@ impl PropertyBankProcessor<Comparison, Present> {
                 file,
                 path_key,
                 Suspect {
-                    metadata: status.metadata,
                     view: status.view,
                     content,
                 },
@@ -408,7 +335,6 @@ impl PropertyBankProcessor<Comparison, Suspect> {
                 file,
                 path_key,
                 StaleTimestamps {
-                    metadata: status.metadata,
                     view: status.view,
                 },
             ))
@@ -417,7 +343,6 @@ impl PropertyBankProcessor<Comparison, Suspect> {
                 file,
                 path_key,
                 Stale {
-                    metadata: status.metadata,
                     content: status.content,
                     content_hash,
                     view: status.view,
@@ -465,7 +390,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
         source: &FsReader,
     ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
     {
-        let (file, path_key, status) = self.into_parts();
+        let (file, path_key, _status) = self.into_parts();
         let content = source
             .read_to_string(file.path().as_path())
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
@@ -476,7 +401,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_metadata(status.metadata);
+        let raw = raw.with_metadata(file.metadata().clone());
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition_from_parts(file, path_key, New {
@@ -509,7 +434,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw = raw.with_metadata(status.metadata);
+        let raw = raw.with_metadata(file.metadata().clone());
 
         Ok(Self::transition_from_parts(file, path_key, ParsedStale {
             raw,
@@ -588,7 +513,6 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
                 file,
                 path_key,
                 StaleContent {
-                    metadata: raw.metadata().clone(),
                     view,
                     content_hash,
                 },
@@ -618,14 +542,12 @@ pub(crate) struct Refresh;
 /// Proven: content hashes match; only timestamps differ.
 #[derive(Debug)]
 pub(crate) struct StaleTimestamps {
-    metadata: FileMetadata,
     view: RawPropertyBankView,
 }
 
 /// Proven: property hashes match; content hash differs.
 #[derive(Debug)]
 pub(crate) struct StaleContent {
-    metadata: FileMetadata,
     view: RawPropertyBankView,
     content_hash: Blake3Hash,
 }
@@ -644,7 +566,7 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_metadata(self.status.metadata.clone());
+        self.status.view.update_metadata(self.file.metadata().clone());
 
         repository
             .save_raw_property_bank_view(&self.path_key, &self.status.view)
@@ -668,7 +590,7 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
     {
-        self.status.view.update_metadata(self.status.metadata.clone());
+        self.status.view.update_metadata(self.file.metadata().clone());
         self.status
             .view
             .update_content_hash(self.status.content_hash)
@@ -727,34 +649,36 @@ impl PropertyBankProcessor<Construction, New> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
     {
-        let bank = PropertyBank::try_from(self.status.raw.clone()).map_err(
-            |source| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
-                    path: std::path::PathBuf::from("property_bank"),
-                    source,
-                })
-            },
-        )?;
-        self.persist(repository, &bank)?;
+        let (file, path_key, status) = self.into_parts();
 
-        Ok(self.transition(Completed, NewReady {
+        let property_hashes = status.raw.properties().compute_hashes();
+        let raw_hash =
+            HashRecord::new(status.content_hash, property_hashes.into());
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
+            &status.raw,
+            path_key.clone(),
+            raw_hash,
+        )
+        .map_err(SchemaLoaderError::Ingestion)?;
+
+        let bank = PropertyBank::try_from(status.raw).map_err(|source| {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+                path: std::path::PathBuf::from("property_bank"),
+                source,
+            })
+        })?;
+
+        repository
+            .save_property_bank(&bank)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        repository
+            .save_raw_property_bank_view(&path_key, &view)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        Ok(Self::transition_from_parts(file, path_key, NewReady {
             bank,
         }))
-    }
-
-    #[inline]
-    fn persist<R: WriteRepository>(
-        &self,
-        repository: &R,
-        bank: &PropertyBank,
-    ) -> Result<(), SchemaLoaderError> {
-        self.persist_raw_property_bank(
-            repository,
-            bank,
-            &self.status.raw,
-            self.status.content_hash,
-        )
-        .map(|_| ())
     }
 }
 
@@ -775,7 +699,10 @@ impl PropertyBankProcessor<Construction, Changed> {
         repository: &R,
     ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
     {
-        let delta = self.status.delta.clone().into_changed_name_set();
+        let (file, path_key, status) = self.into_parts();
+        let (raw, delta, content_hash) =
+            (status.raw, status.delta, status.content_hash);
+
         let mut bank = repository
             .get_property_bank()
             .map_err(SchemaLoaderError::Repository)?
@@ -785,45 +712,43 @@ impl PropertyBankProcessor<Construction, Changed> {
                 ),
             ))?;
 
-        self.apply_delta(&mut bank);
-        self.persist(repository, &bank)?;
-        Ok(self.transition(Completed, StaleReady {
-            bank,
-            delta,
-        }))
-    }
+        if !delta.is_empty() {
+            let existing = bank.set_properties();
+            let upserts = delta.upserts().clone().with_ids(existing);
+            for (name, property) in upserts {
+                existing.insert(name, property);
+            }
 
-    fn apply_delta(&self, bank: &mut PropertyBank) {
-        if self.status.delta.is_empty() {
-            return;
+            for name in delta.removals() {
+                existing.remove(name);
+            }
+
+            *bank.set_recorded_at() = SystemTime::now();
         }
 
-        let existing = bank.set_properties();
-        let upserts = self.status.delta.upserts().clone().with_ids(existing);
-        for (name, property) in upserts {
-            existing.insert(name, property);
-        }
+        let changed_names = delta.into_changed_name_set();
 
-        for name in self.status.delta.removals() {
-            existing.remove(name);
-        }
-
-        *bank.set_recorded_at() = SystemTime::now();
-    }
-
-    #[inline]
-    fn persist<R: WriteRepository>(
-        &self,
-        repository: &R,
-        bank: &PropertyBank,
-    ) -> Result<(), SchemaLoaderError> {
-        self.persist_raw_property_bank(
-            repository,
-            bank,
-            &self.status.raw,
-            self.status.content_hash,
+        let property_hashes = raw.properties().compute_hashes();
+        let raw_hash = HashRecord::new(content_hash, property_hashes.into());
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
+            &raw,
+            path_key.clone(),
+            raw_hash,
         )
-        .map(|_| ())
+        .map_err(SchemaLoaderError::Ingestion)?;
+
+        repository
+            .save_property_bank(&bank)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        repository
+            .save_raw_property_bank_view(&path_key, &view)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        Ok(Self::transition_from_parts(file, path_key, StaleReady {
+            bank,
+            delta: changed_names,
+        }))
     }
 }
 
@@ -929,6 +854,9 @@ mod tests {
 
         struct Fixture {
             repository: InMemoryRepository,
+            source: FsReader,
+            vault_root: DirPath,
+            _vault_dir: TempDir,
             file: FsFile,
             key: PathKey,
             raw: RawPropertyBank,
@@ -968,6 +896,9 @@ mod tests {
 
             Fixture {
                 repository: InMemoryRepository::new(),
+                source,
+                vault_root,
+                _vault_dir: vault_dir,
                 file,
                 key,
                 raw,
@@ -976,52 +907,45 @@ mod tests {
         }
 
         #[test]
-        fn persists_view_with_rooted_path_key_when_constructing_new_bank() {
-            let vault_dir = TempDir::new().expect("temp dir");
-            let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())
-                .expect("vault root");
-            let relative =
-                std::path::PathBuf::from("schema/property-bank.json");
-            let absolute = vault_dir.path().join(&relative);
-            std::fs::create_dir_all(absolute.parent().expect("parent"))
-                .expect("mkdir");
-            std::fs::write(
-                &absolute,
-                r#"{"$version":"1.0","properties":{"title":{"type":"string"}}}"#,
-            )
-            .expect("write file");
-
-            let source = FsReader::new(vault_dir.path());
-            let file_path = crate::fs::FilePath::try_new(absolute.clone())
-                .expect("file path");
-            let metadata = source
-                .metadata(file_path.as_path())
-                .expect("metadata")
-                .as_file()
-                .cloned()
-                .expect("file metadata");
-            let file = FsFile::new(file_path, metadata.clone());
-
-            let key = file.path().as_key(&vault_root).expect("path key");
-            let repository = InMemoryRepository::new();
+        fn constructs_bank_with_title_property_when_new() {
+            let fixture = make_fixture();
             let pipeline =
-                PropertyBankProcessor::<Discovery, Unknown>::from_fs_file(
-                    file,
-                    &vault_root,
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
                 )
                 .expect("pipeline");
-            let parsed = pipeline.transition(Parsed, Missing::new(metadata));
-            let constructed = parsed.parse(&source).expect("parse");
-            let completed = constructed.create(&repository).expect("create");
+            let parsed = pipeline.transition(Parsed, Missing);
+            let constructed = parsed.parse(&fixture.source).expect("parse");
+            let completed =
+                constructed.create(&fixture.repository).expect("create");
             let bank = completed.into_bank();
 
             assert!(
                 bank.has(&"title".try_into().expect("property name")),
                 "Expected title property in constructed bank"
             );
+        }
 
-            let view =
-                repository.get_raw_property_bank_view(&key).expect("read view");
+        #[test]
+        fn persists_view_with_rooted_path_key_when_constructing_new_bank() {
+            let fixture = make_fixture();
+            let key = fixture.key.clone();
+            let pipeline =
+                PropertyBankProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("pipeline");
+            let parsed = pipeline.transition(Parsed, Missing);
+            let constructed = parsed.parse(&fixture.source).expect("parse");
+            let _completed =
+                constructed.create(&fixture.repository).expect("create");
+
+            let view = fixture
+                .repository
+                .get_raw_property_bank_view(&key)
+                .expect("read view");
             assert!(view.is_some(), "Expected rooted path key to persist view");
         }
 
