@@ -23,7 +23,7 @@ These are operations on full `Schema` aggregates (not just indexes or views) plu
 
 ## Operations to Migrate
 
-### Read Operations (→ `SchemaReadRepository`)
+### Read Operations (→ `ReadRepository`)
 1. **`find_schemas_by_ids(ids: &[SchemaId])`** - Find multiple schemas (returns `Vec<Schema>`, skips missing)
 2. **`list_schemas()`** - List all schema aggregates
 3. **`find_schemas_using_properties(property_names: &[PropertyName])`** - Find schemas that reference given properties
@@ -32,7 +32,7 @@ These are operations on full `Schema` aggregates (not just indexes or views) plu
 - ✅ `find_schema_by_id(id)` - Single schema lookup (from issue 02)
 - ✅ `find_many_schemas_by_id(ids)` - Batch lookup with `Vec<Option<Schema>>` (from issue 03)
 
-### Write Operations (→ `SchemaWriteRepository`)
+### Write Operations (→ `WriteRepository`)
 4. **`delete_schema(id: SchemaId)`** - Delete schema and all its indexes
 
 **Already implemented:**
@@ -90,10 +90,10 @@ These are operations on full `Schema` aggregates (not just indexes or views) plu
 
 ## Acceptance Criteria
 
-- [x] `find_schemas_by_ids(ids)` added to `SchemaReadRepository`
-- [x] `list_schemas()` added to `SchemaReadRepository`
-- [x] `find_schemas_using_properties(property_names)` added to `SchemaReadRepository`
-- [x] `delete_schema(id)` added to `SchemaWriteRepository`
+- [x] `find_schemas_by_ids(ids)` added to `ReadRepository`
+- [x] `list_schemas()` added to `ReadRepository`
+- [x] `find_schemas_using_properties(property_names)` added to `ReadRepository`
+- [x] `delete_schema(id)` added to `WriteRepository`
 - [x] Implementation in `storage_v2/read.rs` and `storage_v2/write.rs`
 - [~] Unit tests verify:
   - `find_schemas_by_ids` skips missing schemas
@@ -141,10 +141,10 @@ Implement issue `04e-remaining-schema-operations` using strict TDD vertical slic
 
 ### Required API additions
 
-1. `SchemaReadRepository::find_schemas_by_ids(ids: &[SchemaId]) -> Result<Vec<Schema>, SchemaStorageV2Error>`
-2. `SchemaReadRepository::list_schemas() -> Result<Vec<Schema>, SchemaStorageV2Error>`
-3. `SchemaReadRepository::find_schemas_using_properties(property_names: &[PropertyName]) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageV2Error>`
-4. `SchemaWriteRepository::delete_schema(id: SchemaId) -> Result<(), SchemaStorageV2Error>`
+1. `ReadRepository::find_schemas_by_ids(ids: &[SchemaId]) -> Result<Vec<Schema>, SchemaStorageV2Error>`
+2. `ReadRepository::list_schemas() -> Result<Vec<Schema>, SchemaStorageV2Error>`
+3. `ReadRepository::find_schemas_using_properties(property_names: &[PropertyName]) -> Result<HashMap<SchemaId, Vec<PropertyName>>, SchemaStorageV2Error>`
+4. `WriteRepository::delete_schema(id: SchemaId) -> Result<(), SchemaStorageV2Error>`
 
 ### Required storage_v2 implementation
 
@@ -181,7 +181,7 @@ atomic operation.
 
 ### Goals
 
-- Keep `SchemaWriteRepository::delete_schema(id)` as the only public delete API.
+- Keep `WriteRepository::delete_schema(id)` as the only public delete API.
 - Decompose write-side internals into private, focused helper methods.
 - Preserve single-transaction semantics and existing behavior.
 
@@ -208,7 +208,7 @@ All helpers execute inside the same write transaction invoked by
 
 ## Implementation Notes (2026-05-13)
 
-- `SchemaReadRepository` now includes `find_schemas_by_ids`, `list_schemas`, and `find_schemas_using_properties`; `SchemaWriteRepository` now includes `delete_schema`.
+- `ReadRepository` now includes `find_schemas_by_ids`, `list_schemas`, and `find_schemas_using_properties`; `WriteRepository` now includes `delete_schema`.
 - `storage_v2/read.rs` implementation:
   - `find_schemas_by_ids` reuses `find_many_schemas_by_id` and filters out missing entries.
   - `list_schemas` iterates `SCHEMAS` in one read transaction and deserializes each aggregate.

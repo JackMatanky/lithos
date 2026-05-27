@@ -49,8 +49,8 @@ This slice is complete when Note read/write and batch behavior are preserved end
 Note persistence uses the legacy v1 repository and storage pattern.
 
 **Desired behavior:**
-1. Define `NoteReadRepository` and `NoteWriteRepository` traits in `note/repository.rs`.
-2. Define `NoteRepository` as a marker trait extending both.
+1. Define `ReadRepository` and `WriteRepository` traits in `note/repository.rs`.
+2. Define `Repository` as a marker trait extending both.
 3. Implement `NoteRedbRepository` split across `note/storage/read.rs` and `note/storage/write.rs`.
 4. Update `testing.rs` in-memory adapter to implement the new segregated traits.
 5. Adopt the shared `db::testing` seam in Note's in-memory adapter:
@@ -59,12 +59,12 @@ Note persistence uses the legacy v1 repository and storage pattern.
    - Map `InMemoryDbError` directly into Note storage errors
 
 **Key interfaces:**
-- `NoteReadRepository` / `NoteWriteRepository`
+- `ReadRepository` / `WriteRepository`
 - `NoteRedbRepository`
-- `NoteRepository` (marker)
+- `Repository` (marker)
 
 **Acceptance criteria:**
-- [ ] `NoteReadRepository` and `NoteWriteRepository` defined in `note/repository.rs`.
+- [ ] `ReadRepository` and `WriteRepository` defined in `note/repository.rs`.
 - [ ] `NoteRedbRepository` implemented split across `read.rs` and `write.rs`.
 - [ ] Note `testing.rs` in-memory Repository Adapter updated and passing tests.
 - [ ] Existing Note behavior tests pass with new storage seam.
@@ -326,7 +326,7 @@ schema/
 ```
 
 **Key Patterns from Schema**:
-1. Traits use generic names (`ReadRepository`, not `SchemaReadRepository`)
+1. Traits use generic names (`ReadRepository`, not `ReadRepository`)
 2. `RedbRepository` uses `Arc<Store>`, not `&Database`
 3. Each impl file (`read.rs`, `write.rs`) uses `store.read(|tx| ...)` / `store.write(|tx| ...)`
 4. No batch adapter structs - call transaction APIs directly
@@ -687,13 +687,13 @@ pub struct InMemoryRepository {
 ```
 - **Verify**: `cargo check`
 
-#### Cycle 18-22: Implement NoteReadRepository for InMemoryRepository
+#### Cycle 18-22: Implement ReadRepository for InMemoryRepository
 - One method per cycle (find_by_id, find_by_path, list, etc.)
 - Use `read_lock()` helper from `db::testing`
 - Inject failure points via harness
 - Tests verify behavior + instrumentation (counters, failures)
 
-#### Cycle 23-25: Implement NoteWriteRepository for InMemoryRepository
+#### Cycle 23-25: Implement WriteRepository for InMemoryRepository
 - Implement save, delete, cache/invalidate methods
 - Use `write_lock()` helper
 - Maintain atomicity semantics (all indexes update or none)
@@ -710,7 +710,7 @@ pub struct InMemoryRepository {
 
 #### Cycle 27: Update VaultProcessor call sites
 - Run GitNexus impact analysis on `VaultProcessor`
-- Update to use new `NoteRepository` trait
+- Update to use new `Repository` trait
 - Verify downstream tests pass
 
 #### Cycle 28: Remove old storage.rs
@@ -721,7 +721,7 @@ pub struct InMemoryRepository {
 
 #### Cycle 29: Remove deprecated Repository trait
 - Delete backwards-compat `Repository` marker trait if no longer needed
-- Update any remaining call sites to use `NoteRepository`
+- Update any remaining call sites to use `Repository`
 - Verify full test suite passes
 
 ### Phase 7: Final Verification

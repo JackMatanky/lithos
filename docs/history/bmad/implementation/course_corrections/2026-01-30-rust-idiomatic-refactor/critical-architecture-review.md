@@ -153,7 +153,7 @@ pub(crate) mod storage { }  // Internal only - compiler enforces
 // src/note.rs
 pub struct Note { }
 
-pub trait NoteRepository {  // ← Co-located with Note
+pub trait Repository {  // ← Co-located with Note
     async fn save(&self, note: &Note) -> Result<()>;
 }
 ```

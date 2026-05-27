@@ -23,7 +23,7 @@ These operations provide efficient lookups by name, path, and ID without loading
 
 ## Operations to Migrate
 
-### Read Operations (→ `SchemaReadRepository`)
+### Read Operations (→ `ReadRepository`)
 1. **`find_schema_id_by_name(name: &SchemaName)`** - Lookup ID by schema name
 2. **`find_schema_id_by_path(path: &RelativePath)`** - Lookup ID by file path
 3. **`find_schema_ids_by_paths(paths: &[RelativePath])`** - Batch lookup IDs by paths
@@ -31,7 +31,7 @@ These operations provide efficient lookups by name, path, and ID without loading
 5. **`list_schema_path_id_pairs()`** - List all path→ID pairs
 6. **`get_schema_index()`** - Get unified index (combines name, path, ID lookups)
 
-### Write Operations (→ `SchemaWriteRepository`)
+### Write Operations (→ `WriteRepository`)
 - **Existing `save_schema()` must be updated** to also write to `SCHEMA_ID_BY_NAME` and `SCHEMA_ID_BY_PATH` indexes
 - **Existing `save_many_schemas()` must be updated** to maintain all three tables atomically
 
@@ -83,12 +83,12 @@ pub const SCHEMA_ID_BY_NAME: PathTable<&[u8]> =
 
 ## Acceptance Criteria
 
-- [x] `find_schema_id_by_name()` added to `SchemaReadRepository`
-- [x] `find_schema_id_by_path()` added to `SchemaReadRepository`
-- [x] `find_schema_ids_by_paths()` added to `SchemaReadRepository`
-- [x] `list_schema_name_id_pairs()` added to `SchemaReadRepository`
-- [x] `list_schema_path_id_pairs()` added to `SchemaReadRepository`
-- [x] `get_schema_index()` added to `SchemaReadRepository`
+- [x] `find_schema_id_by_name()` added to `ReadRepository`
+- [x] `find_schema_id_by_path()` added to `ReadRepository`
+- [x] `find_schema_ids_by_paths()` added to `ReadRepository`
+- [x] `list_schema_name_id_pairs()` added to `ReadRepository`
+- [x] `list_schema_path_id_pairs()` added to `ReadRepository`
+- [x] `get_schema_index()` added to `ReadRepository`
 - [x] `SCHEMA_ID_BY_NAME` table added to `storage_v2/tables.rs`
 - [~] `save_schema()` updated to maintain all three tables atomically *(name/index writes are atomic; path index write deferred to `save_raw_schema_view()` in 04c because `Schema` does not carry file path)*
 - [~] `save_many_schemas()` updated to maintain all three tables atomically *(same path-context constraint as above)*

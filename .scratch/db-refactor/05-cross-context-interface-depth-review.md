@@ -36,7 +36,7 @@ A human architect reviews the Schema context's new repository traits and storage
 Evaluating "seam quality, locality, and leverage" requires subjective architectural judgment, domain knowledge, and qualitative assessment of code maintainability that cannot be effectively delegated to an AFK agent.
 
 **Key interfaces:**
-- `SchemaReadRepository`, `SchemaWriteRepository`, `SchemaRepository` traits
+- `ReadRepository`, `WriteRepository`, `Repository` traits
 - `SchemaRedbRepository` implementation and its `read.rs` / `write.rs` split
 - DB Module interface boundaries
 

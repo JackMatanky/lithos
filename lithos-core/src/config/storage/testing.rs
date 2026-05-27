@@ -29,6 +29,7 @@
 
 // Test-only code: relax pedantic lints for pragmatic test utilities
 #![allow(
+    dead_code,
     clippy::missing_inline_in_public_items,
     clippy::map_err_ignore,
     clippy::significant_drop_tightening,
@@ -59,7 +60,7 @@ use crate::{
 /// This enables fast, deterministic, side-effect-free tests that exercise
 /// the full config pipeline without touching the filesystem.
 #[allow(clippy::type_complexity, reason = "Internal state uses nested maps")]
-pub struct InMemoryRepository {
+pub(crate) struct InMemoryRepository {
     globals: RwLock<Option<Global>>,
     vaults: RwLock<HashMap<VaultId, Vault>>,
     configs: RwLock<HashMap<(VaultId, Version), Config>>,

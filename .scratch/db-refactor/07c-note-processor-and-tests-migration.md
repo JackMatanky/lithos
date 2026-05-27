@@ -77,7 +77,7 @@ All other method names are identical between legacy and new traits:
 
 **Import** (line 25):
 ```rust
-use crate::note::storage_legacy::RedbRepository as NoteRepository;
+use crate::note::storage_legacy::RedbRepository as Repository;
 ```
 
 **Construction** (lines 322, 348): uses `note::storage::RedbRepository::new(Arc::clone(&store))` directly with the shared `Arc<Store>`.

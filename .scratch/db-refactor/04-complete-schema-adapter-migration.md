@@ -31,8 +31,8 @@ This slice is complete when legacy Schema adapter call paths are replaced and Sc
 The tracer bullets (02, 03) cover basic Schema and Raw View operations. Other Schema operations (Property Bank, inheritance trees) still use legacy v1 paths or are not yet implemented in v2.
 
 **Desired behavior:**
-1. Identify all remaining operations in the legacy `SchemaRepository` (v1).
-2. Add these operations to the new segregated traits (`SchemaReadRepository` or `SchemaWriteRepository`).
+1. Identify all remaining operations in the legacy `Repository` (v1).
+2. Add these operations to the new segregated traits (`ReadRepository` or `WriteRepository`).
 3. Implement the operations in the active storage seam (`schema/storage/read.rs` / `schema/storage/write.rs`).
 4. Ensure all operations use the new `db::Store` transaction model and rkyv helpers.
 

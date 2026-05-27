@@ -23,10 +23,10 @@ The topological graph singleton tracks schema inheritance relationships in a DAG
 
 ## Operations to Migrate
 
-### Read Operations (→ `SchemaReadRepository`)
+### Read Operations (→ `ReadRepository`)
 1. **`get_topological_graph()`** - Get the inheritance graph singleton
 
-### Write Operations (→ `SchemaWriteRepository`)
+### Write Operations (→ `WriteRepository`)
 2. **`save_topological_graph(graph: &InheritanceGraph<()>)`** - Save the inheritance graph singleton
 
 ## Tables Required
@@ -63,8 +63,8 @@ pub const SCHEMA_TOPOLOGICAL_GRAPH: SingletonTable<&[u8]> =
 
 ## Acceptance Criteria
 
-- [x] `get_topological_graph()` added to `SchemaReadRepository`
-- [x] `save_topological_graph(graph)` added to `SchemaWriteRepository`
+- [x] `get_topological_graph()` added to `ReadRepository`
+- [x] `save_topological_graph(graph)` added to `WriteRepository`
 - [x] `SCHEMA_TOPOLOGICAL_GRAPH` table added to `storage_v2/tables.rs`
 - [x] Implementation in `storage_v2/read.rs` and `storage_v2/write.rs`
 - [x] Unit tests verify:
@@ -110,8 +110,8 @@ Implement issue `04d-topology-operations` with strict TDD vertical slices.
 
 ### Required API additions
 
-1. `SchemaReadRepository::get_topological_graph() -> Result<Option<InheritanceGraph<()>>, SchemaStorageV2Error>`
-2. `SchemaWriteRepository::save_topological_graph(graph: &InheritanceGraph<()>) -> Result<(), SchemaStorageV2Error>`
+1. `ReadRepository::get_topological_graph() -> Result<Option<InheritanceGraph<()>>, SchemaStorageV2Error>`
+2. `WriteRepository::save_topological_graph(graph: &InheritanceGraph<()>) -> Result<(), SchemaStorageV2Error>`
 
 ### Required storage_v2 additions
 

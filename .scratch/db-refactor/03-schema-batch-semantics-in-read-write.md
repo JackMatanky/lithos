@@ -19,7 +19,7 @@ AFK
 
 Add batch read and batch write semantics to `schema/storage_v2/`.
 
-**REOPENED (2026-05-12)**: Following the segregation of `SchemaRepository` into `SchemaReadRepository` and `SchemaWriteRepository`, batch operations must now be implemented in their respective segregated interfaces within `read.rs` and `write.rs`.
+**REOPENED (2026-05-12)**: Following the segregation of `Repository` into `ReadRepository` and `WriteRepository`, batch operations must now be implemented in their respective segregated interfaces within `read.rs` and `write.rs`.
 
 ## Agent Brief (v2 - 2026-05-12)
 
@@ -27,21 +27,21 @@ Add batch read and batch write semantics to `schema/storage_v2/`.
 **Summary:** Implement batch operations in segregated Read/Write repository traits.
 
 **Current behavior:**
-Batch operations were implemented in a unified `SchemaRepository` trait within a monolithic `core.rs`.
+Batch operations were implemented in a unified `Repository` trait within a monolithic `core.rs`.
 
 **Desired behavior:**
-1. `SchemaReadRepository` gains `find_many_schemas_by_id` and `find_raw_schema_views_by_paths`.
-2. `SchemaWriteRepository` gains `save_many_schemas`.
+1. `ReadRepository` gains `find_many_schemas_by_id` and `find_raw_schema_views_by_paths`.
+2. `WriteRepository` gains `save_many_schemas`.
 3. Implementations must reside in `read.rs` and `write.rs` respectively.
 
 **Key interfaces:**
-- `SchemaReadRepository` / `SchemaWriteRepository` - where methods are added.
+- `ReadRepository` / `WriteRepository` - where methods are added.
 - `SchemaRedbRepository` - the implementation struct.
 
 **Acceptance criteria:**
-- [x] `save_many_schemas` added to `SchemaWriteRepository` in `repository.rs`.
-- [x] `find_many_schemas_by_id` added to `SchemaReadRepository` in `repository.rs`.
-- [x] `find_raw_schema_views_by_paths` added to `SchemaReadRepository` in `repository.rs`.
+- [x] `save_many_schemas` added to `WriteRepository` in `repository.rs`.
+- [x] `find_many_schemas_by_id` added to `ReadRepository` in `repository.rs`.
+- [x] `find_raw_schema_views_by_paths` added to `ReadRepository` in `repository.rs`.
 - [x] Implementations moved to `storage_v2/read.rs` and `storage_v2/write.rs`.
 - [x] Tests in `read.rs` and `write.rs` verify batch semantics and atomicity.
 
@@ -130,10 +130,10 @@ fn find_many_schemas_by_id(&self, ids: &[SchemaId]) -> Result<Vec<Option<Schema>
 - Rollback: failed serialization prevents any writes
 - Persistence: valid batch, reopen store, schemas still retrievable
 
-- [x] `save_many_schemas` method added to `SchemaRepository` trait
+- [x] `save_many_schemas` method added to `Repository` trait
 - [x] Implementation uses single write transaction for all schemas
 - [x] Atomic commit/rollback: if any schema fails to serialize, no schemas are persisted
-- [x] `find_many_schemas_by_id` method added to `SchemaRepository` trait
+- [x] `find_many_schemas_by_id` method added to `Repository` trait
 - [x] Implementation uses single read transaction for all lookups
 - [x] Unit tests verify batch semantics (commit/rollback behavior)
 

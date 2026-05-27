@@ -30,7 +30,7 @@ Following the **Segregated Unified Repository** pattern (ADR 016) and project un
 
 1.  **Grep Audit**: Search for legacy symbols and patterns:
     *   `Database::batch_read` / `Database::batch_write`
-    *   `SchemaReadRepository` (and other prefixed traits) in comments or strings (should be renamed to `ReadRepository`)
+    *   `ReadRepository` (and other prefixed traits) in comments or strings (should be renamed to `ReadRepository`)
     *   `storage_legacy.rs` files
 2.  **Impact Analysis**: Use `gitnexus_impact` on the `Database` struct to identify remaining consumers in `lithos-core`.
 

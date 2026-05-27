@@ -137,7 +137,7 @@ lithos/
 │   │       │   ├── vault.rs
 │   │       │   ├── global.rs
 │   │       │   ├── merge.rs
-│   │       │   ├── ports.rs    # ConfigRepository trait (co-located)
+│   │       │   ├── ports.rs    # Repository trait (co-located)
 │   │       │   ├── error.rs    # ConfigError enum (co-located)
 │   │       │   └── events.rs   # ConfigUpdated event (co-located)
 │   │       │
@@ -147,7 +147,7 @@ lithos/
 │   │       │   ├── frontmatter.rs
 │   │       │   ├── links.rs
 │   │       │   ├── tasks.rs
-│   │       │   ├── ports.rs    # NoteRepository trait (co-located)
+│   │       │   ├── ports.rs    # Repository trait (co-located)
 │   │       │   ├── error.rs    # NoteError enum (co-located)
 │   │       │   └── events.rs   # NoteCreated, NoteUpdated (co-located)
 │   │       │
@@ -156,7 +156,7 @@ lithos/
 │   │       │   ├── property.rs
 │   │       │   ├── property_bank.rs
 │   │       │   ├── resolver.rs
-│   │       │   ├── ports.rs    # SchemaRepository trait (co-located)
+│   │       │   ├── ports.rs    # Repository trait (co-located)
 │   │       │   ├── error.rs    # SchemaError enum (co-located)
 │   │       │   └── events.rs   # SchemaCreated (co-located)
 │   │       │
@@ -164,7 +164,7 @@ lithos/
 │   │       ├── template/       # Private implementation details
 │   │       │   ├── composition.rs
 │   │       │   ├── variables.rs
-│   │       │   ├── ports.rs    # TemplateRepository trait (co-located)
+│   │       │   ├── ports.rs    # Repository trait (co-located)
 │   │       │   ├── error.rs    # TemplateError enum (co-located)
 │   │       │   └── events.rs   # TemplateCreated (co-located)
 │   │       │
@@ -582,7 +582,7 @@ Q: Where is the Config aggregate?
 A: crates/domain/src/config/mod.rs (re-exports)
    -> config/aggregate.rs (actual implementation)
 
-Q: Where is ConfigRepository trait?
+Q: Where is Repository trait?
 A: crates/domain/src/ports/config.rs
 ```
 
@@ -592,7 +592,7 @@ A: crates/domain/src/ports/config.rs
 Q: Where is the Config aggregate?
 A: lithos-core/src/config.rs (direct access - main entry point)
 
-Q: Where is ConfigRepository trait?
+Q: Where is Repository trait?
 A: lithos-core/src/config/ports.rs (co-located with Config context)
 ```
 
@@ -1024,13 +1024,13 @@ impl Note {
 }
 
 // note/ports.rs - OPTIONAL: Define traits for testing/mocking
-pub trait NoteRepository {
+pub trait Repository {
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
     fn save(&self, note: &Note) -> Result<(), NoteError>;
 }
 
 // Blanket impl for Database
-impl NoteRepository for Database {
+impl Repository for Database {
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
         Note::find_by_id(self, id)
     }

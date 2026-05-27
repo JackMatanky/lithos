@@ -142,7 +142,7 @@ runtime no longer depends on legacy schema storage seams.
 ### Phase A - Eliminate discovery compatibility seam
 
 Goal: remove `DiscoveryReadRepository` and make discovery consume only
-`SchemaReadRepository` APIs.
+`ReadRepository` APIs.
 
 #### Slice A1 (RED)
 
@@ -154,7 +154,7 @@ Goal: remove `DiscoveryReadRepository` and make discovery consume only
 #### Slice A1 (GREEN)
 
 1. Change `DiscoveryEngine::run` and internal helpers to depend on
-   `SchemaReadRepository` instead of `DiscoveryReadRepository`.
+   `ReadRepository` instead of `DiscoveryReadRepository`.
 2. Keep local conversion inside discovery:
    - call `find_schema_ids_by_paths(&[RelativePath]) -> Vec<Option<SchemaId>>`
    - zip with input paths
@@ -249,7 +249,7 @@ Final gate:
 ### Definition of done for 04i
 
 - Discovery no longer depends on `DiscoveryReadRepository`; only
-  `SchemaReadRepository` is used.
+  `ReadRepository` is used.
 - Runtime schema orchestration has no active legacy
   `schema::storage::Repository` dependency.
 - Canonical module/naming cleanup completed (`RedbRepository`,
@@ -267,13 +267,13 @@ Final gate:
 
 - Runtime schema orchestration surfaces were moved to segregated read/write
   seams instead of directly binding to legacy `schema::storage::Repository`:
-  - `Builder` now requires only `SchemaReadRepository` +
-    `SchemaWriteRepository` seams.
+  - `Builder` now requires only `ReadRepository` +
+    `WriteRepository` seams.
   - `SchemaProcessor` refresh/construction/completion write paths now bind to
-    `SchemaWriteRepository`, and construction reads bind to
-    `SchemaReadRepository`.
+    `WriteRepository`, and construction reads bind to
+    `ReadRepository`.
   - `PropertyBankProcessor` repository bounds were migrated to
-    `SchemaReadRepository` / `SchemaWriteRepository`.
+    `ReadRepository` / `WriteRepository`.
 - Discovery compatibility seam was fully removed:
   - deleted `DiscoveryReadRepository` trait from `schema/repository.rs`
   - removed `DiscoveryReadRepository` impls from
@@ -342,7 +342,7 @@ read/write seams, while preserving runtime behavior and error semantics.
   - `SchemaStorageV2Error(#[from] DbTxError)`
   - `DbTxError(#[from] DbError)`
   - `From<SchemaStorageV2Error> for SchemaRepositoryError`
-- `SchemaReadRepository` and `SchemaWriteRepository` signatures currently return
+- `ReadRepository` and `WriteRepository` signatures currently return
   `SchemaStorageV2Error`.
 - Implementations in `schema/storage/read.rs`, `schema/storage/write.rs`, and
   `schema/storage/testing.rs` map storage failures through
@@ -362,7 +362,7 @@ read/write seams, while preserving runtime behavior and error semantics.
 
 #### RED
 
-1. Change one `SchemaReadRepository` method signature in
+1. Change one `ReadRepository` method signature in
    `schema/repository.rs` from `SchemaStorageV2Error` to `SchemaStorageError`
    (start with `find_schema_by_id`).
 2. Run targeted compile/test (`cargo test -p lithos-core schema::storage::read`)
@@ -386,7 +386,7 @@ read/write seams, while preserving runtime behavior and error semantics.
 
 #### RED
 
-1. Convert remaining `SchemaReadRepository` signatures in
+1. Convert remaining `ReadRepository` signatures in
    `schema/repository.rs` to `SchemaStorageError`.
 2. Run compile and capture expected breakages in read/testing implementations.
 
@@ -408,7 +408,7 @@ read/write seams, while preserving runtime behavior and error semantics.
 
 #### RED
 
-1. Change one `SchemaWriteRepository` method signature in
+1. Change one `WriteRepository` method signature in
    `schema/repository.rs` from `SchemaStorageV2Error` to `SchemaStorageError`
    (start with `save_schema`).
 2. Run targeted compile/test (`cargo test -p lithos-core schema::storage::write`)
@@ -430,7 +430,7 @@ read/write seams, while preserving runtime behavior and error semantics.
 
 #### RED
 
-1. Convert remaining `SchemaWriteRepository` method signatures to
+1. Convert remaining `WriteRepository` method signatures to
    `SchemaStorageError`.
 2. Run compile and capture remaining write/testing failures.
 

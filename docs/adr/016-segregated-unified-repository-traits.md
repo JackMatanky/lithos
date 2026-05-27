@@ -27,7 +27,7 @@ We will evolve the "Unified Repository Traits" into a **Segregated Unified Repos
     *   `WriteRepository`: Pure write operations (e.g., `save`, `save_many`, `delete`).
     *   `Repository`: A marker trait that extends both `ReadRepository` and `WriteRepository` to maintain the "Unified" capability where needed.
 2.  **Naming Convention**:
-    *   During the transition from v1 to v2 storage, traits will retain context prefixes (e.g., `SchemaReadRepository`).
+    *   During the transition from v1 to v2 storage, traits will retain context prefixes (e.g., `ReadRepository`).
     *   After legacy cleanup, these will move to generic names qualified by their module: `schema::ReadRepository`, `schema::WriteRepository`, and `schema::Repository`.
 3.  **Implementation Splitting**: The implementation struct (e.g., `RedbRepository`) will have its logic split into `read.rs` and `write.rs` within the context's `storage/` directory.
     *   `read.rs` will contain the `impl ReadRepository for RedbRepository` block.
@@ -51,7 +51,7 @@ We considered using separate `Reader` and `Writer` structs that the `Repository`
 The decision was triggered by the implementation of `SchemaRedbRepository` in `storage_v2/core.rs`, which reached 667 lines after implementing basic batch semantics. The split into `read.rs` and `write.rs` using the segregated trait pattern was prototyped and successfully solved the file-size and navigation issues.
 
 ### Benchmarks & Prototypes
-Prototypes confirmed that `impl SchemaReadRepository for SchemaRedbRepository` in a child module works correctly provided the struct fields have internal crate visibility, avoiding orphan rule violations.
+Prototypes confirmed that `impl ReadRepository for SchemaRedbRepository` in a child module works correctly provided the struct fields have internal crate visibility, avoiding orphan rule violations.
 
 ## Consequences
 

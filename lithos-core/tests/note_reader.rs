@@ -40,7 +40,7 @@ mod tests {
         fs::PathKey,
         note::{
             aggregate::Note, repository::ReadRepository as _,
-            storage::RedbRepository as NoteRepository, tag::Tag as NoteTag,
+            storage::RedbRepository, tag::Tag as NoteTag,
         },
         vault::VaultProcessor,
     };
@@ -89,7 +89,7 @@ mod tests {
             .into());
         }
 
-        let repository = NoteRepository::new(Arc::clone(&store));
+        let repository = RedbRepository::new(Arc::clone(&store));
         let notes = repository.list()?;
         let note = notes
             .first()
@@ -144,7 +144,7 @@ mod tests {
             .name_for_symbol(StatusSymbol::try_new('x')?)
             .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
-        let repository = NoteRepository::new(Arc::clone(&fixture.store));
+        let repository = RedbRepository::new(Arc::clone(&fixture.store));
         let mut tasks = Vec::new();
         let notes = repository.list()?;
         for note in notes {
@@ -301,7 +301,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let processor = VaultProcessor::new();
-        let repository = NoteRepository::new(Arc::clone(&store));
+        let repository = RedbRepository::new(Arc::clone(&store));
 
         let first = processor
             .process_full(Arc::clone(&store), &config)
@@ -333,7 +333,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let processor = VaultProcessor::new();
-        let repository = NoteRepository::new(Arc::clone(&store));
+        let repository = RedbRepository::new(Arc::clone(&store));
 
         let _report = processor
             .process_full(Arc::clone(&store), &config)
@@ -385,7 +385,7 @@ mod tests {
         let config = test_config(dir.path().to_path_buf()).expect("config");
         let db_path = dir.path().join("notes.redb");
         let store = Arc::new(Store::open(&db_path).expect("open db"));
-        let repository = NoteRepository::new(Arc::clone(&store));
+        let repository = RedbRepository::new(Arc::clone(&store));
 
         let first = VaultProcessor::new()
             .process_full(Arc::clone(&store), &config)

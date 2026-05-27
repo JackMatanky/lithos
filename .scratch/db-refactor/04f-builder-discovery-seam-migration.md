@@ -19,7 +19,7 @@ AFK
 
 Migrate the runtime schema orchestration seam for `Builder` and `DiscoveryEngine`
 from the legacy `schema::storage::Repository` API to the v2 segregated
-repository seam (`SchemaReadRepository` + `SchemaWriteRepository`) while keeping
+repository seam (`ReadRepository` + `WriteRepository`) while keeping
 schema discovery behavior unchanged.
 
 This slice is complete when discovery and builder flows read cached schema state

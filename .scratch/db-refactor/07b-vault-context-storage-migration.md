@@ -25,7 +25,7 @@ The Vault context currently uses legacy `&'db Database` patterns. This issue bri
 ## Motivation
 
 The Vault processor creates both a vault repository and a note repository. Currently:
-- Vault repository: `VaultRepository::new(db: &'db Database)` — legacy pattern
+- Vault repository: `Repository::new(db: &'db Database)` — legacy pattern
 - Note repository: Needs `Arc<Store>` (from 07a)
 
 Without migrating Vault, we can't provide a clean bridge for the note repository. Both should use `Store`.
@@ -56,7 +56,7 @@ Full vault context storage layer migration:
    - Update `vault/mod.rs` exports
 
 5. **Processor updates** (`vault/processor.rs`):
-   - Use new `VaultRepository` with `Arc<Store>`
+   - Use new `Repository` with `Arc<Store>`
    - Provide bridge method: `Database::to_store() -> Store` or `From<&Database> for Store`
 
 ## Current State
@@ -497,7 +497,7 @@ pub fn process_full(
 #### Test Cycle 52: VaultProcessor Uses Store
 - **RED**: Change signature, update internal repository construction:
   ```rust
-  let vault_repo = VaultRepository::new(Arc::clone(&store));
+  let vault_repo = Repository::new(Arc::clone(&store));
   let note_repo = note::storage::RedbRepository::new(Arc::clone(&store));
   ```
 - **GREEN**: Update all callers (tests) to create `Arc<Store>` instead of `Database`

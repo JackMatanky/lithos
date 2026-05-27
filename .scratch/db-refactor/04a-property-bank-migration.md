@@ -17,7 +17,7 @@ AFK
 
 ## What to build
 
-Migrate Property Bank operations from v1 to the segregated v2 repository (`SchemaReadRepository` / `SchemaWriteRepository`).
+Migrate Property Bank operations from v1 to the segregated v2 repository (`ReadRepository` / `WriteRepository`).
 
 Property Bank is the simplest complete vertical slice because:
 - Only 2 tables: `PROPERTY_BANK` (singleton) and `RAW_PROPERTY_BANK_VIEW` (by path)
@@ -27,11 +27,11 @@ Property Bank is the simplest complete vertical slice because:
 
 ## Operations to Migrate
 
-### Read Operations (→ `SchemaReadRepository`)
+### Read Operations (→ `ReadRepository`)
 1. **`get_property_bank()`** - Get the Property Bank singleton
 2. **`get_raw_property_bank_view(path: &RelativePath)`** - Get raw view by path
 
-### Write Operations (→ `SchemaWriteRepository`)
+### Write Operations (→ `WriteRepository`)
 3. **`save_property_bank(bank: &PropertyBank)`** - Save Property Bank singleton
 4. **`save_raw_property_bank_view(path: &RelativePath, view: &RawPropertyBankView)`** - Save raw view by path
 
@@ -77,10 +77,10 @@ pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
 
 ## Acceptance Criteria
 
-- [x] `get_property_bank()` added to `SchemaReadRepository` trait in `repository.rs`
-- [x] `get_raw_property_bank_view(path)` added to `SchemaReadRepository` trait in `repository.rs`
-- [x] `save_property_bank(bank)` added to `SchemaWriteRepository` trait in `repository.rs`
-- [x] `save_raw_property_bank_view(path, view)` added to `SchemaWriteRepository` trait in `repository.rs`
+- [x] `get_property_bank()` added to `ReadRepository` trait in `repository.rs`
+- [x] `get_raw_property_bank_view(path)` added to `ReadRepository` trait in `repository.rs`
+- [x] `save_property_bank(bank)` added to `WriteRepository` trait in `repository.rs`
+- [x] `save_raw_property_bank_view(path, view)` added to `WriteRepository` trait in `repository.rs`
 - [x] Table constants `PROPERTY_BANK` and `RAW_PROPERTY_BANK_VIEW` added to `storage_v2/tables.rs`
 - [x] Implementations in `storage_v2/read.rs` and `storage_v2/write.rs`
 - [x] Unit tests in `read.rs` and `write.rs` verify:

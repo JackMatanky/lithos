@@ -74,8 +74,8 @@ Implement a single `RedbRepository` struct split across submodules.
 Config persistence uses the legacy v1 repository and storage pattern.
 
 **Desired behavior:**
-1. Define `ConfigReadRepository` and `ConfigWriteRepository` traits in `config/repository.rs`.
-2. Define `ConfigRepository` as a marker trait extending both.
+1. Define `ReadRepository` and `WriteRepository` traits in `config/repository.rs`.
+2. Define `Repository` as a marker trait extending both.
 3. Implement `ConfigRedbRepository` split across `config/storage/read.rs` and `config/storage/write.rs`.
 4. Update `testing.rs` in-memory adapter to implement the new segregated traits.
 5. Adopt the shared `db::testing` seam in Config's in-memory adapter:
@@ -84,12 +84,12 @@ Config persistence uses the legacy v1 repository and storage pattern.
    - Map `InMemoryDbError` directly into Config storage errors
 
 **Key interfaces:**
-- `ConfigReadRepository` / `ConfigWriteRepository`
+- `ReadRepository` / `WriteRepository`
 - `ConfigRedbRepository`
-- `ConfigRepository` (marker)
+- `Repository` (marker)
 
 **Acceptance criteria:**
-- [ ] `ConfigReadRepository` and `ConfigWriteRepository` defined in `config/repository.rs`.
+- [ ] `ReadRepository` and `WriteRepository` defined in `config/repository.rs`.
 - [ ] `ConfigRedbRepository` implemented split across `read.rs` and `write.rs`.
 - [ ] Config `testing.rs` in-memory Repository Adapter updated and passing tests.
 - [ ] Existing Config behavior tests pass with new storage seam.

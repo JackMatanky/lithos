@@ -514,7 +514,7 @@ pub mod domain {
 pub mod ports {
     use super::domain::Schema;
 
-    pub trait SchemaRepository {
+    pub trait Repository {
         fn load(&self, id: &str) -> Result<Schema>;
         fn save(&mut self, schema: &Schema) -> Result<()>;
     }
@@ -522,13 +522,13 @@ pub mod ports {
 
 // Adapters (implementations)
 pub mod adapters {
-    use super::ports::SchemaRepository;
+    use super::ports::Repository;
 
     pub struct FileSchemaRepository {
         base_path: PathBuf,
     }
 
-    impl SchemaRepository for FileSchemaRepository {
+    impl Repository for FileSchemaRepository {
         fn load(&self, id: &str) -> Result<Schema> {
             let path = self.base_path.join(format!("{}.json", id));
             let data = std::fs::read_to_string(path)?;

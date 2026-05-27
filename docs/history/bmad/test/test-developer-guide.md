@@ -325,10 +325,10 @@ Use `no_run` when the code has side effects (file I/O, network calls) that shoul
 /// # Examples
 ///
 /// ```no_run
-/// use lithos_core::note::NoteRepository;
+/// use lithos_core::note::Repository;
 /// use std::path::Path;
 ///
-/// let repo = NoteRepository::open(Path::new("/path/to/vault")).unwrap();
+/// let repo = Repository::open(Path::new("/path/to/vault")).unwrap();
 /// repo.delete("notes/old.md").unwrap();
 /// ```
 pub fn delete(&self, path: &str) -> Result<(), NoteError> {

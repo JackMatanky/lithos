@@ -62,7 +62,7 @@ File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → R
 **Pattern**:
 
 ```rust
-pub trait SchemaRepository {
+pub trait Repository {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
     fn load_from_db(&self, id: SchemaId) -> Result<Option<Schema>, Error>;
     fn save(&self, schema: &Schema) -> Result<(), Error>;
