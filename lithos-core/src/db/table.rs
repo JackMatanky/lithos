@@ -296,7 +296,8 @@ mod tests {
 
             const TABLE: UuidPathTable<TestId> = UuidPathTable::new("test");
 
-            let db = redb::Database::create(":memory:").expect("db");
+            let tmp = tempfile::NamedTempFile::new().expect("tmpfile");
+            let db = redb::Database::create(tmp.path()).expect("db");
             let id = TestId(UuidV7::new());
             let key = PathKey::try_new("notes/test.md").expect("key");
 
