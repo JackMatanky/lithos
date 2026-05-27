@@ -179,6 +179,34 @@ impl<P, S> PropertyBankProcessor<P, S> {
         let (file, path_key, _) = self.into_parts();
         Self::transition_from_parts(file, path_key, status)
     }
+
+    #[inline]
+    fn persist_raw_property_bank<R: WriteRepository>(
+        &self,
+        repository: &R,
+        bank: &PropertyBank,
+        raw: &RawPropertyBank,
+        content_hash: Blake3Hash,
+    ) -> Result<HashRecord, SchemaLoaderError> {
+        repository
+            .save_property_bank(bank)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        let property_hashes = raw.properties().compute_hashes();
+        let raw_hash = HashRecord::new(content_hash, property_hashes.into());
+        let view = RawPropertyBankView::try_from_raw_with_hashes(
+            raw,
+            self.path_key.clone(),
+            raw_hash.clone(),
+        )
+        .map_err(SchemaLoaderError::Ingestion)?;
+
+        repository
+            .save_raw_property_bank_view(&self.path_key, &view)
+            .map_err(SchemaLoaderError::Repository)?;
+
+        Ok(raw_hash)
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -539,7 +567,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
             ));
         };
 
-        let Ok((delta, property_hashes)) =
+        let Ok((delta, _property_hashes)) =
             PropertyDeltaEngine::for_property_bank(
                 &raw,
                 version.hashes().properties(),
@@ -555,8 +583,6 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
                 },
             ));
         };
-        let raw_hash = HashRecord::new(content_hash, property_hashes);
-
         if delta.is_empty() {
             AnalysisBranch::Empty(Self::transition_from_parts(
                 file,
@@ -574,7 +600,7 @@ impl PropertyBankProcessor<Analysis, ParsedStale> {
                 Changed {
                     raw,
                     delta,
-                    raw_hash,
+                    content_hash,
                 },
             ))
         }
@@ -671,13 +697,13 @@ pub(crate) struct New {
     content_hash: Blake3Hash,
 }
 
-/// Proven: property divergence detected; carries raw bank, delta, and raw
-/// hashes.
+/// Proven: property divergence detected; carries raw bank, delta, and content
+/// hash.
 #[derive(Debug)]
 pub(crate) struct Changed {
     raw: RawPropertyBank,
     delta: PropertyDelta,
-    raw_hash: HashRecord,
+    content_hash: Blake3Hash,
 }
 
 /// Proven: identity is fully synchronized; bank can be fetched without rebuild.
@@ -722,24 +748,13 @@ impl PropertyBankProcessor<Construction, New> {
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
-        repository
-            .save_property_bank(bank)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        let property_hashes = self.status.raw.properties().compute_hashes();
-        let raw_hash =
-            HashRecord::new(self.status.content_hash, property_hashes.into());
-
-        let view = RawPropertyBankView::try_from_raw_with_hashes(
+        self.persist_raw_property_bank(
+            repository,
+            bank,
             &self.status.raw,
-            self.path_key.clone(),
-            raw_hash,
+            self.status.content_hash,
         )
-        .map_err(SchemaLoaderError::Ingestion)?;
-
-        repository
-            .save_raw_property_bank_view(&self.path_key, &view)
-            .map_err(SchemaLoaderError::Repository)
+        .map(|_| ())
     }
 }
 
@@ -802,20 +817,13 @@ impl PropertyBankProcessor<Construction, Changed> {
         repository: &R,
         bank: &PropertyBank,
     ) -> Result<(), SchemaLoaderError> {
-        repository
-            .save_property_bank(bank)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        let view = RawPropertyBankView::try_from_raw_with_hashes(
+        self.persist_raw_property_bank(
+            repository,
+            bank,
             &self.status.raw,
-            self.path_key.clone(),
-            self.status.raw_hash.clone(),
+            self.status.content_hash,
         )
-        .map_err(SchemaLoaderError::Ingestion)?;
-
-        repository
-            .save_raw_property_bank_view(&self.path_key, &view)
-            .map_err(SchemaLoaderError::Repository)
+        .map(|_| ())
     }
 }
 
@@ -919,6 +927,54 @@ mod tests {
     mod constructor {
         use super::*;
 
+        struct Fixture {
+            repository: InMemoryRepository,
+            file: FsFile,
+            key: PathKey,
+            raw: RawPropertyBank,
+            content_hash: Blake3Hash,
+        }
+
+        fn make_fixture() -> Fixture {
+            let vault_dir = TempDir::new().expect("temp dir");
+            let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())
+                .expect("vault root");
+            let relative =
+                std::path::PathBuf::from("schema/property-bank.json");
+            let absolute = vault_dir.path().join(&relative);
+            std::fs::create_dir_all(absolute.parent().expect("parent"))
+                .expect("mkdir");
+            let content = r#"{"$version":"1.0","properties":{"title":{"type":"string"}}}"#;
+            std::fs::write(&absolute, content).expect("write file");
+
+            let source = FsReader::new(vault_dir.path());
+            let file_path = crate::fs::FilePath::try_new(absolute.clone())
+                .expect("file path");
+            let metadata = source
+                .metadata(file_path.as_path())
+                .expect("metadata")
+                .as_file()
+                .cloned()
+                .expect("file metadata");
+            let file = FsFile::new(file_path.clone(), metadata.clone());
+            let key = file.path().as_key(&vault_root).expect("path key");
+            let raw: RawPropertyBank = FsReader::parse_structured_from_str::<
+                RawPropertyBank,
+            >(
+                file_path.as_path(), content
+            )
+            .expect("parse raw")
+            .with_metadata(metadata);
+
+            Fixture {
+                repository: InMemoryRepository::new(),
+                file,
+                key,
+                raw,
+                content_hash: Blake3Hash::compute(content.as_bytes()),
+            }
+        }
+
         #[test]
         fn persists_view_with_rooted_path_key_when_constructing_new_bank() {
             let vault_dir = TempDir::new().expect("temp dir");
@@ -967,6 +1023,112 @@ mod tests {
             let view =
                 repository.get_raw_property_bank_view(&key).expect("read view");
             assert!(view.is_some(), "Expected rooted path key to persist view");
+        }
+
+        #[test]
+        fn update_persists_hashes_from_raw_property_bank_when_changed_content_hash_matches()
+         {
+            let fixture = make_fixture();
+            let expected_hashes = HashRecord::new(
+                fixture.content_hash,
+                fixture.raw.properties().compute_hashes().into(),
+            );
+
+            let bank = PropertyBank::try_from(fixture.raw.clone())
+                .expect("property bank");
+            fixture.repository.save_property_bank(&bank).expect("seed bank");
+
+            let changed = PropertyBankProcessor {
+                file: fixture.file,
+                path_key: fixture.key.clone(),
+                status: Changed {
+                    raw: fixture.raw,
+                    delta: PropertyDelta::default(),
+                    content_hash: fixture.content_hash,
+                },
+                _stage: PhantomData::<Construction>,
+            };
+
+            let _ = changed.update(&fixture.repository).expect("update");
+
+            let view = fixture
+                .repository
+                .get_raw_property_bank_view(&fixture.key)
+                .expect("read view")
+                .expect("view exists");
+            let actual_hashes =
+                view.current().expect("current version").hashes();
+
+            assert_eq!(
+                actual_hashes, &expected_hashes,
+                "Changed::persist should derive hashes from RawPropertyBank \
+                 and content hash"
+            );
+        }
+
+        #[test]
+        fn create_and_update_persist_equivalent_hash_view_for_same_raw_property_bank()
+         {
+            let new_fixture = make_fixture();
+            let changed_fixture = make_fixture();
+
+            let new_processor = PropertyBankProcessor {
+                file: new_fixture.file,
+                path_key: new_fixture.key.clone(),
+                status: New {
+                    raw: new_fixture.raw.clone(),
+                    content_hash: new_fixture.content_hash,
+                },
+                _stage: PhantomData::<Construction>,
+            };
+            let _ =
+                new_processor.create(&new_fixture.repository).expect("create");
+
+            let bank = PropertyBank::try_from(changed_fixture.raw.clone())
+                .expect("property bank");
+            changed_fixture
+                .repository
+                .save_property_bank(&bank)
+                .expect("seed bank");
+
+            let changed_processor = PropertyBankProcessor {
+                file: changed_fixture.file,
+                path_key: changed_fixture.key.clone(),
+                status: Changed {
+                    raw: changed_fixture.raw,
+                    delta: PropertyDelta::default(),
+                    content_hash: changed_fixture.content_hash,
+                },
+                _stage: PhantomData::<Construction>,
+            };
+            let _ = changed_processor
+                .update(&changed_fixture.repository)
+                .expect("update");
+
+            let new_hashes = new_fixture
+                .repository
+                .get_raw_property_bank_view(&new_fixture.key)
+                .expect("read new view")
+                .expect("new view exists")
+                .current()
+                .expect("new current")
+                .hashes()
+                .clone();
+            let changed_hashes = changed_fixture
+                .repository
+                .get_raw_property_bank_view(&changed_fixture.key)
+                .expect("read changed view")
+                .expect("changed view exists")
+                .current()
+                .expect("changed current")
+                .hashes()
+                .clone();
+
+            assert_eq!(
+                changed_hashes, new_hashes,
+                "New and Changed persist paths should produce equivalent \
+                 hashes"
+            );
         }
     }
 }

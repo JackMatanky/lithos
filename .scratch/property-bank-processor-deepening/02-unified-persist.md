@@ -21,10 +21,10 @@ Move `persist()` to a generic `impl<P, S> PropertyBankProcessor<P, S>` method th
 
 ## Acceptance criteria
 
-- [ ] `persist()` is generic over any stage — not tied to `New` or `Changed`
-- [ ] `New::persist` and `Changed::persist` both call same `persist()` with `&self.status.raw`
-- [ ] Cache view cannot diverge — same `RawPropertyBank` → same `HashRecord`
-- [ ] Test: `HashRecord` from `New::persist` matches `HashRecord` from `Changed::persist` for same `RawPropertyBank`
+- [x] `persist()` is generic over any stage — not tied to `New` or `Changed`
+- [x] `New::persist` and `Changed::persist` both call same `persist()` with `&self.status.raw`
+- [x] Cache view cannot diverge — same `RawPropertyBank` → same `HashRecord`
+- [x] Test: `HashRecord` from `New::persist` matches `HashRecord` from `Changed::persist` for same `RawPropertyBank`
 
 ## Blocked by
 
@@ -40,6 +40,35 @@ Move `persist()` to a generic `impl<P, S> PropertyBankProcessor<P, S>` method th
 ## Test
 
 One test: `New::persist(raw_property_bank)` and `Changed::persist(raw_property_bank)` produce identical `HashRecord`.
+
+## Implementation outcome
+
+- Implemented in branch `feat/property-bank-unified-persist`
+- Main refactor committed as `a54db184` (`refactor(schema): unify property bank persist hash source`)
+- Shared helper added on generic processor impl: `persist_raw_property_bank(...)`
+- Both `New::persist` and `Changed::persist` delegate to shared helper and pass `&self.status.raw`
+- `Changed` status now carries `content_hash: Blake3Hash` instead of `raw_hash: HashRecord`
+- `HashRecord` remains built with existing algorithm (`HashRecord::new(content_hash, raw.properties().compute_hashes().into())`)
+
+## Files changed
+
+- `lithos-core/src/schema/property_bank_processor.rs`
+
+## Test evidence
+
+- RED -> GREEN slice proved stale changed-hash path no longer controls persisted property hashes
+- Added tests in `property_bank_processor.rs`:
+  - `update_persists_hashes_from_raw_property_bank_when_changed_content_hash_matches`
+  - `create_and_update_persist_equivalent_hash_view_for_same_raw_property_bank`
+- Commands run:
+  - `cargo test -p lithos-core schema::property_bank_processor::tests::constructor`
+  - `cargo test -p lithos-core --test property_bank_processor`
+- Commit hooks also passed `fmt`, `clippy`, and `cargo test`
+
+## Notes
+
+- Scope stayed local to construction/persistence path in `PropertyBankProcessor`
+- No hash algorithm changes and no repository schema changes
 
 ## Triage Notes
 
@@ -71,10 +100,10 @@ Introduce one shared persist helper on generic processor impl that accepts `&Raw
 - `RawPropertyBankView::try_from_raw_with_hashes` remains the persisted view boundary
 
 **Acceptance criteria:**
-- [ ] Shared persist helper exists on generic processor impl and is reused by both construction branches
-- [ ] `New::persist` and `Changed::persist` pass `&self.status.raw` to the same helper
-- [ ] Hash algorithm/output remains unchanged for existing valid inputs; only source unification changes
-- [ ] Regression test proves equivalent `HashRecord`/persisted raw view hashes between create and update flows for same logical raw payload
+- [x] Shared persist helper exists on generic processor impl and is reused by both construction branches
+- [x] `New::persist` and `Changed::persist` pass `&self.status.raw` to the same helper
+- [x] Hash algorithm/output remains unchanged for existing valid inputs; only source unification changes
+- [x] Regression test proves equivalent `HashRecord`/persisted raw view hashes between create and update flows for same logical raw payload
 
 **Out of scope:**
 - Changing hash algorithms (`Blake3Hash`, property hash computation)
