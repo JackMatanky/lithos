@@ -9,5 +9,5 @@
 - Phase 1: Review & Design | completed
 - Phase 2: Consolidate Integration Tests | completed
 - Phase 3: Reduce Visibility | completed
-- Phase 4: Normalize Unit Tests | in_progress
+- Phase 4: Normalize Unit Tests | pending (Design ready, implementation pending)
 - Phase 5: Verification | pending
