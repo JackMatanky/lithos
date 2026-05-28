@@ -50,12 +50,6 @@ use super::{
 /// let entries =
 ///     scanner.entries(DirScanInput::new().with_pattern("**/*.toml")).unwrap();
 /// ```
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "DirScanner in fs::scanner is intentional: it's the primary type \
-              exported from this module and the Dir prefix clarifies its \
-              purpose (directory scanning vs file scanning)."
-)]
 pub struct DirScanner {
     /// Root directory for scanning operations.
     path: PathBuf,
