@@ -78,3 +78,7 @@ Following YAGNI and the project's Test-Driven Development guidelines, this migra
    - Eliminate unnecessary clones in `scan_views` now that `FsEntry` directly owns its typed metadata.
    - Run `cargo clippy --all-targets --all-features -- -D warnings` and fix any warnings.
    - Run `cargo fmt` to adhere to coding styles.
+
+## Risk & Mitigations
+- **Depth Sorting Logic:** Keep the exact same pre-computation map (`(RelativePath, FsDir)`) and sorting comparator (`depth_a.cmp(&depth_b).then_with(|| rel_a.as_path().cmp(rel_b.as_path()))`) to ensure directory iteration order remains identical.
+- **Metadata Extraction:** `FsEntry` directly provides `DirMetadata` and `FileMetadata` via its variants, meaning `.std_metadata()` lookups can be dropped entirely, improving safety and performance.
