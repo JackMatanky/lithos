@@ -2,8 +2,8 @@
 
 **Status**: locked-in-design
 **Created**: 2026-05-25
-**Updated**: 2026-05-28
-**Context**: Architectural blind spots resolved through grilling session
+**Updated**: 2026-05-29
+**Context**: Architectural blind spots resolved, PRD polished and finalized
 
 ---
 
@@ -45,7 +45,7 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 17. As a test author, I want deterministic discovery result classification, so that tests can validate behavior without relying on implementation details.
 18. As a future refactor owner, I want this change staged incrementally from Vault, so that migration risk stays manageable.
 
-## Implementation Decisions
+## Key Decisions & Architecture
 
 ### 1. Architecture & Boundaries
 - **Discovery First**: Discovery remains an incremental refactor from the current Vault module first; full module renaming/re-homing is deferred.
@@ -263,10 +263,50 @@ clear_config_events()?;       // ✅ After dependents
 clear_discovery_events()?;    // ✅ After all
 ```
 
+#### Typestate-Driven Embedded Commits (MVCC)
+
+**Decentralized Parallel Write Strategy**:
+
+Context processors run in **complete parallel isolation** and leverage redb's MVCC by acquiring short-lived write transactions to append to their event logs **immediately upon successful typestate transitions**.
+
+```rust
+impl SchemaProcessor<Parsed, Review> {
+    pub fn analyze(self) -> Result<SchemaProcessor<Analyzed, Review>, Error> {
+        // 1. CPU-bound work (no database lock)
+        let analysis_result = self.analyze_properties()?;
+
+        // 2. Acquire short-lived write transaction
+        let seq = self.event_store.append(&SchemaEvent::Analyzed {
+            file_id: self.file_id,
+            analyzed_at: SystemTime::now(),
+        })?;  // ← Lock acquired, event written, lock released (1-2ms)
+
+        // 3. Typestate transition
+        Ok(SchemaProcessor::new_analyzed(analysis_result))
+    }
+}
+```
+
+**Key Properties**:
+- ✅ **No scatter-gather bottleneck**: Each processor commits independently upon state transition
+- ✅ **redb MVCC handles contention**: Write transactions automatically serialize without deadlock
+- ✅ **Minimal lock duration**: Transactions held for 1-2ms (just event append)
+- ✅ **Natural typestate fit**: Events emitted exactly when state changes, not externalized
+
+**Explicitly Rejected Alternative**: Sequential scatter-gather write coordination. Context processors must NOT accumulate events and coordinate a single batch write at pipeline end. This pattern creates a bottleneck, violates typestate cohesion, and couples independent bounded contexts.
+
+#### Event Store Scope Boundary
+
+**IMPORTANT**: This PRD's scope is strictly limited to introducing the **generic event store infrastructure** (`EventStore<E>` in `db` module) as part of the centralized discovery processor phase.
+
+The full implementation and domain-specific modeling of event stores across all contexts (including complete event type definitions, projector implementations, and compaction strategies) will be handled in a **separate, dedicated PRD**.
+
+This PRD establishes the foundational infrastructure pattern. Future work will expand event sourcing to all contexts using this shared infrastructure.
+
 #### Performance Characteristics
 
 - **Append-only writes**: Lock-free, fast (1-2ms per 100-file batch)
-- **Redb single-writer**: No write contention (sequential by design)
+- **Redb MVCC**: No write contention (automatic serialization, no deadlock)
 - **Log compaction**: Keeps event tables bounded (delete completed/failed)
 - **Rehydration cost**: O(N) where N = pending files (typically small after compaction)
 
@@ -414,7 +454,14 @@ let config = ConfigBuilder::new(vault_root, repository)
 
 **Default**: Freshness checking (metadata comparison via `FileView.recorded_at` + size)
 
-**Full Scan Overrides**:
+**Full Scan Scope Definitions**:
+
+- **Full Vault Scan**: Globally bypass freshness checks across the **entire vault** (treat all files as potentially stale, regardless of metadata)
+- **Full Context Scan**: Bypass freshness checks **only within a targeted directory subtree** (e.g., `SchemaConfigSpec.directory` for schema files only)
+
+**Orchestrator Constraint**: The orchestrator **MUST always prefer** a Full Context Scan over a Full Vault Scan if a configuration boundary change is localized to a specific context. Example: If only `SchemaConfigSpec.directory` changed, trigger Full Context Scan (schema directory only), not Full Vault Scan.
+
+**Full Scan Triggers**:
 
 | Trigger | Scope | Detection | Example |
 |---------|-------|-----------|---------|
@@ -422,7 +469,7 @@ let config = ConfigBuilder::new(vault_root, repository)
 | **Explicit --force** | Vault OR Context | User CLI flag | `lithos index --force` (vault)<br>`lithos schema --force` (context) |
 | **Database Corruption** | Full Vault | Automatic | redb integrity check fails |
 | **Internal Database Migration** | Full Vault | Automatic | Version table mismatch vs binary |
-| **Config Boundary Changes** | Vault OR Context | Automatic | DiscoveryConfigSpec boundary hash changed |
+| **Config Boundary Changes** | Vault OR Context | Automatic | Entry hash changed in `ConfigHashView` |
 
 #### 8.3: Config Processing & Boundary Detection
 
@@ -432,13 +479,13 @@ let config = ConfigBuilder::new(vault_root, repository)
 // NEW: Config-specific views (NOT using vault FileView)
 pub struct GlobalConfigFileView {
     pub location: GlobalConfigLocation,
-    pub metadata: FileMetadata,        // ✅ Shared fs::metadata logic
+    pub metadata: FileMetadata,        // ✅ Directly embedded (NOT FileView)
     pub hash_state: ConfigHashView,    // Embedded hash state
 }
 
 pub struct LocalConfigFileView {
     pub location: LocalConfigLocation,
-    pub metadata: FileMetadata,
+    pub metadata: FileMetadata,        // ✅ Directly embedded (NOT FileView)
     pub hash_state: ConfigHashView,
 }
 
@@ -462,18 +509,25 @@ impl HasContentHash for ConfigHashView { /* ... */ }
 impl HasEntryHashes for ConfigHashView { /* ... */ }
 ```
 
-**Phase 2 Execution**:
-1. Freshness check against `FileMetadata` (timestamp + size)
-2. If stale, parse into `RawGlobalConfig`/`RawVaultConfig`
-3. Hash raw config contents → compare against stored `ConfigHashView`
-4. **Boundary change detection**: Compare `DiscoveryConfigSpec` boundary hashes against specific entry hashes in `ConfigHashView`
-5. If boundaries changed (extensions/exclusions), trigger appropriate Full Scan (Vault or Context)
+**Rationale for Direct FileMetadata Embedding**:
 
-**Rationale**:
-- Global config outside vault → cannot use vault-relative PathKey
-- Embedded FileMetadata → shares filesystem logic without duplication
-- ConfigHashView → granular entry-level change detection
-- Boundary hashes → automatic Full Scan trigger on config changes
+`GlobalConfigFileView` and `LocalConfigFileView` **directly embed** `fs::metadata::FileMetadata` rather than using the standard vault `FileView`.
+
+This is a **load-bearing architectural constraint** necessary to sever global configurations from the vault-relative `PathKey` graph, thereby preventing circular dependencies during initialization:
+- Global config files exist **outside** the vault boundary (e.g., `~/.config/lithos/lithos.toml`)
+- Vault's `FileView` requires a vault-relative `PathKey` (e.g., `"notes/daily/2026.md"`)
+- Using `FileView` for global config would violate vault's path invariants
+- Direct `FileMetadata` embedding shares core filesystem logic (timestamp, size) without coupling to vault's path model
+
+**Phase 2 Execution (Corrected Hash Comparison Flow)**:
+
+1. **Freshness check** against `FileMetadata` (timestamp + size)
+2. **If stale**, parse into `RawGlobalConfig`/`RawVaultConfig` structs
+3. **Hash Raw* struct contents** → compare against stored `ConfigHashView.content_hash`
+4. **Boundary change detection**: Compare specific entry hashes **inside `ConfigHashView`** (e.g., `entry_hashes.get("extensions")`, `entry_hashes.get("exclusions")`) to detect if discovery boundaries changed
+5. **If boundaries changed** (extensions/exclusions), trigger appropriate Full Scan (Vault or Context)
+
+**Critical Clarification**: `DiscoveryConfigSpec` is strictly the **output handoff** passed to the discovery scanner. It is **NOT the target** of hash comparison. Hash comparisons target the **`ConfigHashView` stored in config views**, which tracks granular per-entry hashes of the raw configuration file contents.
 
 #### 8.4: Discovery Scope (Runtime Parameter)
 
@@ -544,7 +598,7 @@ pub trait DiscoveryWriteRepository {
     fn delete_dirs(&self, ids: &[DirId]) -> Result<()>;
 }
 
-// Unified
+// Unified (codebase convention)
 pub trait DiscoveryRepository: DiscoveryReadRepository + DiscoveryWriteRepository {}
 ```
 
@@ -562,8 +616,19 @@ pub trait SchemaWriteRepository {
     fn delete_by_file_id(&self, file_id: FileId) -> Result<()>;
 }
 
+// Unified trait (codebase convention)
 pub trait SchemaRepository: SchemaReadRepository + SchemaWriteRepository {}
 ```
+
+**Repository Trait Unification**:
+
+The codebase follows a consistent pattern where segregated `[Context]ReadRepository` and `[Context]WriteRepository` traits are unified under a single generic trait:
+
+```rust
+pub trait [Context]Repository: [Context]ReadRepository + [Context]WriteRepository {}
+```
+
+This unification trait provides a convenient bound for code that requires both read and write access, while still preserving the segregation benefits (compile-time enforcement of read-only vs write access).
 
 **Ownership Rules**:
 - ✅ Discovery = ONLY writer to FILE_VIEWS, DIR_VIEWS, path indexes, basename/parent/format indexes
