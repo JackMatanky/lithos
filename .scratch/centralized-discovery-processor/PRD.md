@@ -3,7 +3,7 @@
 **Status**: locked-in-design
 **Created**: 2026-05-25
 **Updated**: 2026-05-29
-**Context**: Architectural blind spots resolved, PRD polished and finalized
+**Context**: Comprehensive rewrite with architectural corrections applied
 
 ---
 
@@ -22,16 +22,18 @@ Refactor the existing Vault module into the initial base of a discovery module (
 - Persist only deltas (new, stale metadata updates, deletions) rather than rewriting all records.
 - Return a discovery result contract for context-specific processors.
 
-Context processors (Schema, Note, Template, Config) remain standalone and consume discovery results as their first stage, then continue with context-specific parsing, hashing, validation, and persistence.
+Context processors (Schema, Note, Template) remain standalone and consume discovery results as input to their own pipelines, then continue with context-specific parsing, hashing, validation, and persistence.
+
+**Critical Constraint**: Config is resolved BEFORE discovery runs. Config provides the "lens" (extensions, exclusions) that discovery requires to operate.
 
 ## User Stories
 
 1. As a Lithos maintainer, I want one base discovery engine, so that file discovery behavior is consistent across contexts.
 2. As a Lithos maintainer, I want to avoid duplicate scan code in Schema and Config, so that refactors are safer and faster.
 3. As a Schema processor maintainer, I want discovery to provide canonical file identity, so that SchemaId can be replaced by FileId.
-4. As a Note processor maintainer, I want discovery classifications (new/stale/unchanged/deleted), so that note ingestion can skip unnecessary work.
+4. As a Note processor maintainer, I want discovery classifications (new/stale/fresh/deleted), so that note ingestion can skip unnecessary work.
 5. As a Template processor maintainer, I want indexed file metadata query support, so that template querying can evolve toward Obsidian-like behavior.
-6. As a Config processor maintainer, I want config discovery to run first in orchestrated flows, so that downstream processors use resolved configuration.
+6. As a Config processor maintainer, I want config resolution to run first in orchestrated flows via Ascending Discovery, so that downstream processors (including the discovery engine) use resolved configuration as their prerequisite lens.
 7. As a performance-focused engineer, I want delta persistence in discovery, so that indexing avoids full table rewrites.
 8. As a cross-platform user, I want safe normalized storage keys and valid filesystem read paths, so that indexing works consistently on all OSes.
 9. As an architecture reviewer, I want context processors to stay standalone after discovery, so that downstream stages can vary independently.
@@ -48,15 +50,18 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 ## Key Decisions & Architecture
 
 ### 1. Architecture & Boundaries
-- **Discovery First**: Discovery remains an incremental refactor from the current Vault module first; full module renaming/re-homing is deferred.
+
+- **Config-First Orchestration**: Config is resolved BEFORE discovery runs. Discovery consumes config as a prerequisite lens (extensions, exclusions).
 - **Shared Engine**: The discovery typestate processor lives in the discovery layer and acts as the shared base filesystem discovery engine for all contexts.
 - **Standalone Processors**: Context processors remain standalone and consume discovery results as input to their own pipelines, preserving independent evolution and parallel execution.
 - **Parsing**: Parsing remains context-specific and is not owned by base discovery.
+- **Incremental Refactor**: Discovery remains an incremental refactor from the current Vault module first; full module renaming/re-homing is deferred.
 
 ### 2. Scanning & Classification
-- **Scoped Scans**: Discovery processing is scoped by scan input and should support partial or targeted scans.
-- **Incremental Capabilities**: Incremental change ingestion will be introduced so that indexing does not always require a full directory traversal (e.g., allowing file/directory updates to trigger lean reprocessing).
-- **Freshness Classification**: Discovery includes metadata-based comparison (timestamp AND size) to classify records by freshness; it does not blindly scan-and-write.
+
+- **Scoped Scans**: Discovery processing is scoped by scan input and supports partial or targeted scans.
+- **Built-in Freshness Checking**: Discovery includes metadata-based comparison (timestamp AND size) to classify records by freshness; it does not blindly scan-and-write.
+- **Event-Driven Scans (Future)**: Future file watcher integration will support event-driven scans (processing specific FileEvent lists without directory traversal).
 - **Result Contract**:
   ```rust
   pub struct DiscoveredFile {
@@ -124,11 +129,14 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
   - ✅ KEEP: `FILE_ID_BY_PATH` and `DIR_ID_BY_PATH` (path → ID lookups)
   - Rationale: Path now in `FileView`/`DirView`, so reverse lookup via view fetch (no separate table needed)
 
-### 4. Persistence & Tables
+### 4. Delta Persistence Strategy
+
 - **Delta Persistence**: Discovery persists only deltas (new files, stale metadata updates, deletions) and uses batch repository operations for efficient writes/deletes.
-- **Indices**: The basename index can be removed from general discovery concerns; retained indexes are path, parent, format, and primary views.
+- **Retained Indexes**: path, parent, format, and primary views.
+- **Basename Index**: Removed from general discovery concerns (context-specific if needed).
 
 ### 5. Hashing & Content Staleness
+
 - **Context Ownership**: File-level content hashing is context-owned for freshness checks; discovery will not force file content hashing in `FileView`.
 - **Structured Contexts**: Structured contexts (Schema/Config) require both content hash and entry/property hash indexing in their own view models.
 - **Hash Contracts**: Hash capability contracts are crate-private and based on support hash primitives, utilizing traits: `HasContentHash`, `HasContentHashMut`, `HasEntryHashes`, `HasEntryHashesMut`.
@@ -139,34 +147,82 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 
 **Architecture Pattern**: Event sourcing enables complete pipeline restartability after crashes, preserving all completed work and providing audit trails for debugging.
 
+#### Scope Boundary
+
+**IMPORTANT**: This PRD's scope is strictly limited to introducing the **generic event storage infrastructure** (`EventId`, `EventTable`, `EventStore` trait) as part of the centralized discovery processor phase.
+
+The full implementation and domain-specific modeling of event stores across all contexts (including complete event type definitions, projector implementations, and compaction strategies) will be handled in a **separate, dedicated PRD**.
+
+This PRD establishes the foundational infrastructure pattern. Future work will expand event sourcing to all contexts using this shared infrastructure.
+
 #### Core Components
 
-1. **Generic Event Store** (shared infrastructure in `db` module):
+1. **EventId Newtype** (follows `db/` module pattern):
    ```rust
-   pub struct EventStore<E> {
-       db: Database,
-       table_def: TableDefinition<u64, &'static [u8]>,
-       _event: PhantomData<E>,
+   /// Monotonically increasing event sequence number
+   #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+   pub struct EventId(pub u64);
+
+   impl_redb_key!(EventId);  // Matches UuidTable pattern
+   ```
+
+2. **EventTable Newtype** (follows `db/` module pattern):
+   ```rust
+   /// Type-safe event table wrapper
+   pub struct EventTable<V: Value + 'static> {
+       definition: TableDefinition<'static, EventId, V>,
    }
 
-   impl<E> EventStore<E> {
-       pub fn append(&self, event: &E) -> Result<u64, DbError>;
-       pub fn append_batch(&self, events: &[E]) -> Result<Vec<u64>, DbError>;
-       pub fn load_all(&self) -> Result<Vec<E>, DbError>;
-       pub fn compact(&self, completed_file_ids: &[FileId]) -> Result<(), DbError>;
+   impl<V: Value + 'static> EventTable<V> {
+       pub const fn new(name: &'static str) -> Self {
+           Self {
+               definition: TableDefinition::new(name),
+           }
+       }
+
+       pub fn definition(&self) -> TableDefinition<'static, EventId, V> {
+           self.definition
+       }
    }
    ```
 
-2. **Context-Specific Event Tables** (maintains bounded contexts):
-   - `DISCOVERY_EVENTS` (vault module) - Discovery scan events
-   - `SCHEMA_EVENTS` (schema module) - Schema processing events
-   - `NOTE_EVENTS` (note module) - Note processing events
-   - `TEMPLATE_EVENTS` (template module) - Template processing events
-   - `CONFIG_EVENTS` (config module) - Config processing events
+3. **EventStore Trait** (context repositories implement this):
+   ```rust
+   /// Event storage behavior for context-specific event logs
+   pub trait EventStore {
+       type Event: Archive;
 
-3. **Event Types Per Context** (intermediate typestate transitions):
+       /// Append single event within existing write transaction
+       fn append_event(
+           &self,
+           txn: &mut WriteTransaction,
+           event: &Self::Event,
+       ) -> Result<EventId, DbError>;
+
+       /// Load all events for state rehydration
+       fn load_all_events(&self) -> Result<Vec<Self::Event>, DbError>;
+
+       /// Compact event log (delete completed/failed events)
+       fn compact_events(
+           &self,
+           completed_file_ids: &[FileId],
+       ) -> Result<(), DbError>;
+   }
+   ```
+
+4. **Context-Specific Event Tables** (maintains bounded contexts):
+   - `DISCOVERY_EVENTS: EventTable<&[u8]>` (vault module) - Discovery scan events
+   - `SCHEMA_EVENTS: EventTable<&[u8]>` (schema module) - Schema processing events
+   - `NOTE_EVENTS: EventTable<&[u8]>` (note module) - Note processing events
+   - `TEMPLATE_EVENTS: EventTable<&[u8]>` (template module) - Template processing events
+   - `CONFIG_EVENTS: EventTable<&[u8]>` (config module) - Config processing events
+
+   **Serialization**: All event tables use **rkyv** for zero-copy deserialization. Events are serialized via `rkyv::to_bytes::<_, 256>(event)` and stored as `AlignedVec` byte slices.
+
+5. **Event Types Per Context** (intermediate typestate transitions):
    ```rust
    // Example: Schema events track full pipeline lifecycle
+   #[derive(Archive, Deserialize, Serialize)]
    pub enum SchemaEvent {
        Discovered { file_id: FileId, path: PathKey, discovered_at: SystemTime },
        ParseStarted { file_id: FileId, started_at: SystemTime },
@@ -179,7 +235,7 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
    }
    ```
 
-4. **Projector Pattern** (rehydrates state from events):
+6. **Projector Pattern** (rehydrates state from events):
    ```rust
    pub struct PendingSchemaState {
        pub pending: HashMap<FileId, PathKey>,
@@ -203,13 +259,13 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 **Scenario**: Discovery scans 1000 files → Schema processes 300 files → **CRASH** → Restart
 
 **Recovery Process**:
-1. **Rehydrate State**: Load all `SchemaEvent` from `SCHEMA_EVENTS` table
-2. **Project State**: `PendingSchemaState::from_events()` identifies:
+1. **Rehydrate State**: `let all_events = schema_repo.load_all_events()?;`
+2. **Project State**: `let pending_state = PendingSchemaState::from_events(&all_events);`
    - 300 completed files (via `Completed` events)
    - 700 pending files (via `Discovered` but no `Completed/Failed`)
 3. **Resume Processing**: Process only the 700 pending files
 4. **Emit Events**: Append `Completed/Failed` events as files finish
-5. **Compact Log**: After all files complete, delete events for completed/failed files
+5. **Compact Log**: After all files complete, `schema_repo.compact_events(&completed_file_ids)?;`
 
 **Key Benefits**:
 - ✅ **Zero Work Lost**: All completed work preserved across crashes
@@ -217,27 +273,83 @@ Context processors (Schema, Note, Template, Config) remain standalone and consum
 - ✅ **Bounded Context Isolation**: Schema crash cannot corrupt Note event log
 - ✅ **Natural Typestate Fit**: Events emitted at typestate transitions
 
+#### Typestate-Driven Embedded Commits (MVCC)
+
+**Decentralized Parallel Write Strategy**:
+
+Context processors run in **complete parallel isolation** and leverage redb's MVCC. The insertion of the new typestate (e.g., `SCHEMAS` table) and the appending of the transition event (e.g., `SCHEMA_EVENTS` table) **MUST occur inside the exact same `Store::write(|txn| { ... })` transaction closure**.
+
+```rust
+impl SchemaProcessor<Parsed, Review> {
+    pub fn analyze(self, repo: &impl Repository) -> Result<SchemaProcessor<Analyzed, Review>, Error> {
+        // 1. CPU-bound work (no database lock)
+        let analysis_result = self.analyze_properties()?;
+
+        // 2. Atomic state + event write (single transaction)
+        repo.write(|txn| {
+            // Insert analyzed state
+            txn.save_schema_state(&analysis_result)?;
+
+            // Append event (same transaction)
+            repo.append_event(txn, &SchemaEvent::Analyzed {
+                file_id: self.file_id,
+                analyzed_at: SystemTime::now(),
+            })?;
+
+            Ok(())
+        })?;
+
+        // 3. Typestate transition
+        Ok(SchemaProcessor::new_analyzed(analysis_result))
+    }
+}
+```
+
+**Key Properties**:
+- ✅ **Atomic state + event writes**: Both happen in same transaction (no inconsistency)
+- ✅ **No scatter-gather bottleneck**: Each processor commits independently upon state transition
+- ✅ **redb MVCC handles contention**: Write transactions automatically serialize without deadlock
+- ✅ **Minimal lock duration**: Transactions held for 1-2ms (state insert + event append)
+- ✅ **Natural typestate fit**: Events emitted exactly when state changes, not externalized
+
+**Explicitly Rejected Alternative**: Sequential scatter-gather write coordination. Context processors must NOT accumulate events and coordinate a single batch write at pipeline end. This pattern creates a bottleneck, violates typestate cohesion, couples independent bounded contexts, and breaks atomicity guarantees.
+
 #### Batch Performance
 
 **Discovery**: Batch commits every N=100 files
 ```rust
 const BATCH_SIZE: usize = 100;
 for batch in files.chunks(BATCH_SIZE) {
-    // Atomic: persist views + append events
-    repository.persist_discovery_batch(batch)?;
-    event_store.append_batch(batch_events)?;
+    repo.write(|txn| {
+        // Atomic: persist views + append events
+        repo.persist_discovery_batch(txn, batch)?;
+        for file in batch {
+            repo.append_event(txn, &DiscoveryEvent::Discovered { file_id: file.id })?;
+        }
+        Ok(())
+    })?;
 }
 ```
 
-**Context Processing**: Per-file event logging
+**Context Processing**: Per-file atomic commits
 ```rust
 for file in pending_files {
     match process_schema_file(file) {
-        Ok(_) => {
-            event_store.append(&SchemaEvent::Completed { file_id })?;
+        Ok(schema) => {
+            repo.write(|txn| {
+                repo.save_schema(txn, &schema)?;
+                repo.append_event(txn, &SchemaEvent::Completed { file_id: schema.file_id })?;
+                Ok(())
+            })?;
         }
         Err(e) => {
-            event_store.append(&SchemaEvent::Failed { file_id, error })?;
+            repo.write(|txn| {
+                repo.append_event(txn, &SchemaEvent::Failed {
+                    file_id,
+                    error: e.to_string(),
+                })?;
+                Ok(())
+            })?;
         }
     }
 }
@@ -247,70 +359,32 @@ for file in pending_files {
 
 **Cleanup timing respects context dependencies**:
 ```
-Discovery → Config → {Schema, Note, Template}
+Config → Discovery → {Schema, Note, Template}
 ```
 
 - **Immediate Cleanup**: Schema, Note, Template event logs (independent contexts)
-- **Deferred Cleanup**: Config event log (after all dependents complete)
-- **Final Cleanup**: Discovery events (after ALL contexts complete)
+- **Deferred Cleanup**: Discovery events (after ALL contexts complete)
+- **Final Cleanup**: Config events (after all dependents complete)
 
 ```rust
 // Schema completes
-event_store.compact(&completed_file_ids)?;  // ✅ Immediate
+schema_repo.compact_events(&completed_file_ids)?;  // ✅ Immediate
 
 // All contexts complete
-clear_config_events()?;       // ✅ After dependents
-clear_discovery_events()?;    // ✅ After all
+discovery_repo.compact_events(&all_file_ids)?;     // ✅ After Schema/Note/Template
+config_repo.compact_events(&config_file_ids)?;     // ✅ After Discovery
 ```
-
-#### Typestate-Driven Embedded Commits (MVCC)
-
-**Decentralized Parallel Write Strategy**:
-
-Context processors run in **complete parallel isolation** and leverage redb's MVCC by acquiring short-lived write transactions to append to their event logs **immediately upon successful typestate transitions**.
-
-```rust
-impl SchemaProcessor<Parsed, Review> {
-    pub fn analyze(self) -> Result<SchemaProcessor<Analyzed, Review>, Error> {
-        // 1. CPU-bound work (no database lock)
-        let analysis_result = self.analyze_properties()?;
-
-        // 2. Acquire short-lived write transaction
-        let seq = self.event_store.append(&SchemaEvent::Analyzed {
-            file_id: self.file_id,
-            analyzed_at: SystemTime::now(),
-        })?;  // ← Lock acquired, event written, lock released (1-2ms)
-
-        // 3. Typestate transition
-        Ok(SchemaProcessor::new_analyzed(analysis_result))
-    }
-}
-```
-
-**Key Properties**:
-- ✅ **No scatter-gather bottleneck**: Each processor commits independently upon state transition
-- ✅ **redb MVCC handles contention**: Write transactions automatically serialize without deadlock
-- ✅ **Minimal lock duration**: Transactions held for 1-2ms (just event append)
-- ✅ **Natural typestate fit**: Events emitted exactly when state changes, not externalized
-
-**Explicitly Rejected Alternative**: Sequential scatter-gather write coordination. Context processors must NOT accumulate events and coordinate a single batch write at pipeline end. This pattern creates a bottleneck, violates typestate cohesion, and couples independent bounded contexts.
-
-#### Event Store Scope Boundary
-
-**IMPORTANT**: This PRD's scope is strictly limited to introducing the **generic event store infrastructure** (`EventStore<E>` in `db` module) as part of the centralized discovery processor phase.
-
-The full implementation and domain-specific modeling of event stores across all contexts (including complete event type definitions, projector implementations, and compaction strategies) will be handled in a **separate, dedicated PRD**.
-
-This PRD establishes the foundational infrastructure pattern. Future work will expand event sourcing to all contexts using this shared infrastructure.
 
 #### Performance Characteristics
 
-- **Append-only writes**: Lock-free, fast (1-2ms per 100-file batch)
+- **Append-only writes**: Lock-free, fast (1-2ms per atomic state+event write)
 - **Redb MVCC**: No write contention (automatic serialization, no deadlock)
 - **Log compaction**: Keeps event tables bounded (delete completed/failed)
 - **Rehydration cost**: O(N) where N = pending files (typically small after compaction)
 
 **Reference**: `.scratch/pipeline-restartability-research.md`
+
+---
 
 ### 7. Orchestration Policy
 
@@ -341,7 +415,8 @@ let config = ConfigBuilder::load(vault_root, repository)?;
 
 // Phase 3: State Rehydration (database)
 let db = Database::open(config.db_path())?;
-let pending_state = EventStore::rehydrate_pending_work(&db)?;
+let schema_events = schema_repo.load_all_events()?;
+let pending_state = PendingSchemaState::from_events(&schema_events);
 
 // Phase 4: Filesystem Discovery (uses frozen config)
 let discovery_spec = config.to_discovery_spec();
@@ -354,6 +429,11 @@ rayon::scope(|s| {
     s.spawn(|_| NoteProcessor::process(discovery_result.notes(), config, repository));
     s.spawn(|_| TemplateProcessor::process(discovery_result.templates(), config, repository));
 });
+```
+
+**Dependency Graph**:
+```
+Config → Discovery → {Schema, Note, Template}
 ```
 
 #### 7.3: Config-to-Discovery Handoff
@@ -386,31 +466,8 @@ pub enum DiscoveryScope {
 **Execution**: Schema/Note/Template run in full parallel isolation using redb MVCC.
 
 **Event Logging Pattern** (embedded in typestate transitions):
-```rust
-impl SchemaProcessor<Parsed, Review> {
-    pub fn analyze(self) -> Result<SchemaProcessor<Analyzed, Review>, Error> {
-        // 1. CPU-bound work (no lock)
-        let analysis_result = self.analyze_properties()?;
 
-        // 2. Short-lived write transaction
-        let txn = self.event_store.begin_write()?;
-        txn.append(&SchemaEvent::Analyzed {
-            file_id: self.file_id,
-            analyzed_at: SystemTime::now(),
-        })?;
-        txn.commit()?;  // ← Immediate lock release
-
-        // 3. Typestate transition
-        Ok(SchemaProcessor::new_analyzed(analysis_result))
-    }
-}
-```
-
-**Key Properties**:
-- ✅ No scatter-gather bottleneck
-- ✅ redb MVCC handles write contention
-- ✅ Event log append = single write per transition
-- ✅ Crash recovery via event replay
+See Section 6 "Typestate-Driven Embedded Commits" for complete pattern. All state updates and event appends occur atomically within the same `Store::write(|txn| { ... })` transaction closure.
 
 #### 7.5: Config Error Propagation (Strict Fail-Fast)
 
@@ -438,11 +495,11 @@ let config = ConfigBuilder::new(vault_root, repository)
 
 | Term | Definition |
 |------|------------|
-| **Freshness Checking** | Built-in DirScanner metadata comparison against FILE_VIEWS |
+| **Freshness Checking** | Built-in DirScanner metadata comparison against FILE_VIEWS (timestamp AND size) |
 | **Full Scan (Vault)** | Bypass freshness checks globally across entire vault |
 | **Full Scan (Context)** | Bypass freshness checks within specific context directory |
-| **Targeted Scan** | Scan specific directory subtree (e.g., `notes/daily/`) |
-| **Event-Driven Scan** | Process specific FileEvent list (skip traversal, future file watcher) |
+| **Targeted Scan** | Scan specific directory subtree (e.g., `notes/daily/`) with freshness checking |
+| **Event-Driven Scan** | Process specific FileEvent list from file watcher (skip traversal, future enhancement) |
 
 **Internal Architecture Changes**:
 - **Schema Context Update**: User modifies `.md` schema files → standard processor update
@@ -578,10 +635,12 @@ for input in scan_inputs {
 
 #### 9.1: Segregated Repository Interfaces
 
+**Codebase Convention**: Repositories follow a clean module-local pattern without redundant context prefixes.
+
 **Discovery (Vault Module)**:
 ```rust
 // Read operations (contexts query this)
-pub trait DiscoveryReadRepository {
+pub trait ReadRepository {
     fn find_file_by_path(&self, path: &PathKey) -> Result<Option<FileView>>;
     fn find_file_by_id(&self, id: FileId) -> Result<Option<FileView>>;
     fn find_files_by_basename(&self, name: &str) -> Result<Vec<FileView>>;
@@ -591,49 +650,52 @@ pub trait DiscoveryReadRepository {
 }
 
 // Write operations (ONLY discovery processor)
-pub trait DiscoveryWriteRepository {
-    fn persist_file_views(&self, files: &[FileView]) -> Result<()>;
-    fn persist_dir_views(&self, dirs: &[DirView]) -> Result<()>;
-    fn delete_files(&self, ids: &[FileId]) -> Result<()>;
-    fn delete_dirs(&self, ids: &[DirId]) -> Result<()>;
+pub trait WriteRepository {
+    fn persist_file_views(&self, txn: &mut WriteTransaction, files: &[FileView]) -> Result<()>;
+    fn persist_dir_views(&self, txn: &mut WriteTransaction, dirs: &[DirView]) -> Result<()>;
+    fn delete_files(&self, txn: &mut WriteTransaction, ids: &[FileId]) -> Result<()>;
+    fn delete_dirs(&self, txn: &mut WriteTransaction, ids: &[DirId]) -> Result<()>;
 }
 
 // Unified (codebase convention)
-pub trait DiscoveryRepository: DiscoveryReadRepository + DiscoveryWriteRepository {}
+pub trait Repository: ReadRepository + WriteRepository {}
 ```
 
 **Context Pattern** (Schema/Note/Template):
 ```rust
-pub trait SchemaReadRepository: DiscoveryReadRepository {
+// In schema/repository.rs
+pub trait ReadRepository: vault::ReadRepository {
     fn find_by_file_id(&self, file_id: FileId) -> Result<Option<Schema>>;
     fn find_by_name(&self, name: &str) -> Result<Option<Schema>>;
     // ... context-specific queries
 }
 
-pub trait SchemaWriteRepository {
-    fn save(&self, schema: &Schema, file_id: FileId) -> Result<()>;
-    fn save_many(&self, schemas: &[(Schema, FileId)]) -> Result<()>;
-    fn delete_by_file_id(&self, file_id: FileId) -> Result<()>;
+pub trait WriteRepository {
+    fn save(&self, txn: &mut WriteTransaction, schema: &Schema, file_id: FileId) -> Result<()>;
+    fn save_many(&self, txn: &mut WriteTransaction, schemas: &[(Schema, FileId)]) -> Result<()>;
+    fn delete_by_file_id(&self, txn: &mut WriteTransaction, file_id: FileId) -> Result<()>;
 }
 
 // Unified trait (codebase convention)
-pub trait SchemaRepository: SchemaReadRepository + SchemaWriteRepository {}
+pub trait Repository: ReadRepository + WriteRepository + EventStore {}
 ```
 
 **Repository Trait Unification**:
 
-The codebase follows a consistent pattern where segregated `[Context]ReadRepository` and `[Context]WriteRepository` traits are unified under a single generic trait:
+The codebase follows a consistent pattern where segregated `ReadRepository` and `WriteRepository` traits are unified under a single `Repository` trait **within their respective modules**:
 
 ```rust
-pub trait [Context]Repository: [Context]ReadRepository + [Context]WriteRepository {}
+pub trait Repository: ReadRepository + WriteRepository {}
 ```
 
 This unification trait provides a convenient bound for code that requires both read and write access, while still preserving the segregation benefits (compile-time enforcement of read-only vs write access).
 
+**NO redundant context prefixes**: Traits are NOT named `SchemaReadRepository`, `NoteWriteRepository`, etc. They are simply `ReadRepository`, `WriteRepository`, `Repository` within their module namespace.
+
 **Ownership Rules**:
 - ✅ Discovery = ONLY writer to FILE_VIEWS, DIR_VIEWS, path indexes, basename/parent/format indexes
-- ✅ Contexts = read-only access via DiscoveryReadRepository
-- ✅ Contexts = write their own aggregate tables (SCHEMAS, NOTES, etc.)
+- ✅ Contexts = read-only access to discovery tables via `vault::ReadRepository`
+- ✅ Contexts = write their own aggregate tables (SCHEMAS, NOTES, etc.) via their own `WriteRepository`
 
 #### 9.2: Identity Resolution (FileId as Universal Foreign Key)
 
@@ -646,7 +708,7 @@ This unification trait provides a convenient bound for code that requires both r
 
 ```rust
 // Step 1: Query discovery's path index
-let file_id = discovery_repo.find_file_by_path(&path)?
+let file_id = vault_repo.find_file_by_path(&path)?
     .ok_or(Error::FileNotFound)?
     .id();
 
@@ -697,56 +759,41 @@ pub struct InheritanceGraph {
 **Context-Owned Event Tables**:
 ```rust
 // Discovery (vault module)
-pub const DISCOVERY_EVENTS: Table<u64, &[u8]> = Table::new("discovery_events");
+pub const DISCOVERY_EVENTS: EventTable<&[u8]> = EventTable::new("discovery_events");
 
 // Schema (schema module)
-pub const SCHEMA_EVENTS: Table<u64, &[u8]> = Table::new("schema_events");
+pub const SCHEMA_EVENTS: EventTable<&[u8]> = EventTable::new("schema_events");
 
 // Note (note module)
-pub const NOTE_EVENTS: Table<u64, &[u8]> = Table::new("note_events");
+pub const NOTE_EVENTS: EventTable<&[u8]> = EventTable::new("note_events");
 
 // Template (template module)
-pub const TEMPLATE_EVENTS: Table<u64, &[u8]> = Table::new("template_events");
+pub const TEMPLATE_EVENTS: EventTable<&[u8]> = EventTable::new("template_events");
 
 // Config (config module)
-pub const CONFIG_EVENTS: Table<u64, &[u8]> = Table::new("config_events");
+pub const CONFIG_EVENTS: EventTable<&[u8]> = EventTable::new("config_events");
 ```
 
 **Primary Key Semantics**:
-- **Key Type**: `u64` (monotonically increasing sequence number)
+- **Key Type**: `EventId(u64)` newtype (monotonically increasing sequence number)
 - **Ordering**: Strict chronological ordering for deterministic replay
 - **Uniqueness**: Auto-increment per context (no shared sequence)
 
-**EventStore Generic Implementation**:
-```rust
-pub struct EventStore<E> {
-    db: Database,
-    table_def: TableDefinition<u64, &'static [u8]>,
-    next_seq: AtomicU64,  // ✅ Monotonic sequence generator
-    _event: PhantomData<E>,
-}
-
-impl<E: Serialize + DeserializeOwned> EventStore<E> {
-    pub fn append(&self, event: &E) -> Result<u64, DbError> {
-        let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
-        let bytes = bincode::serialize(event)?;
-
-        self.db.write(|txn| {
-            let mut table = txn.open_table(self.table_def)?;
-            table.insert(seq, bytes.as_slice())?;
-            Ok(seq)
-        })
-    }
-}
-```
+**Serialization Strategy**:
+All event tables use **rkyv** for zero-copy deserialization:
+- Events serialized via `rkyv::to_bytes::<_, 256>(event)?.into_vec()`
+- Stored as `AlignedVec` byte slices (`&[u8]`)
+- Deserialized via `rkyv::from_bytes::<ArchivedSchemaEvent>(bytes)?`
 
 **Reference**: `.scratch/pipeline-restartability-research.md`
+
+---
 
 ## Testing Decisions
 
 - Good tests validate external behavior at module seams (scan/classify/persist/result), not internal implementation detail.
 - Discovery tests should cover:
-  - Correct classification (new/stale/unchanged/deleted).
+  - Correct classification (new/stale/fresh/deleted).
   - Delta persistence (batch save/delete only where needed).
   - Path safety and root scoping guarantees.
   - Deterministic ordering and stable result output where expected.
@@ -755,6 +802,10 @@ impl<E: Serialize + DeserializeOwned> EventStore<E> {
   - Content-only hash record behavior.
   - Entry/property hash diff behavior.
   - Mutating trait behavior consistency.
+- Event store tests should validate:
+  - Atomic state + event writes (same transaction).
+  - Event rehydration and projector pattern.
+  - Compaction behavior (completed/failed events deleted).
 - Prior art in codebase includes typestate processor tests, repository seam tests, and scanner/path validation tests; new tests should follow those conventions.
 
 ## Out of Scope
@@ -764,10 +815,11 @@ impl<E: Serialize + DeserializeOwned> EventStore<E> {
 - Public API exposure of hash traits beyond crate-private boundaries.
 - Immediate removal of all old context discovery code in a single change.
 - Any UI/CLI redesign unrelated to orchestration ordering.
+- **Full domain-specific event modeling** across all contexts (handled in separate PRD).
 
 ## Locked-In Design Summary
 
-### Critical Decisions Resolved (2026-05-28)
+### Critical Decisions Resolved (2026-05-29)
 
 **All architectural blind spots resolved. Design fully locked.**
 
@@ -791,15 +843,17 @@ impl<E: Serialize + DeserializeOwned> EventStore<E> {
 
 4. **Pipeline Restartability** (✅ LOCKED):
    - Context-specific event sourcing (separate tables per context)
-   - Generic `EventStore<E>` infrastructure in `db` module
+   - Generic event infrastructure: `EventId`, `EventTable<V>`, `EventStore` trait
    - Projector pattern for state rehydration
-   - Batch commits (N=100 for discovery, per-file for contexts)
+   - Atomic state + event writes (same transaction, MVCC)
    - Dependency-aware log compaction
-   - Event table primary key: u64 monotonic sequence numbers
+   - Event table primary key: EventId(u64) newtype
+   - Universal rkyv serialization (NO bincode)
 
 5. **Orchestration Policy** (✅ LOCKED):
    - 5-phase pipeline: Context Resolution → Config Hydration → State Rehydration → Discovery → Context Processing
-   - Config is prerequisite lens (NOT discovery consumer)
+   - **Config-first**: Config is prerequisite lens (NOT discovery consumer)
+   - Dependency graph: Config → Discovery → {Schema, Note, Template}
    - Ascending Discovery algorithm for vault root resolution
    - Parallel context processing with MVCC-based decentralized commits
    - Config errors are fatal (strict fail-fast, no fallback)
@@ -807,21 +861,21 @@ impl<E: Serialize + DeserializeOwned> EventStore<E> {
 6. **Reindex Policy** (✅ LOCKED):
    - Default: Freshness checking (metadata comparison)
    - Full Scan triggers: Uninitialized DB, explicit `--force`, DB corruption, Internal Database Migration, config boundary changes
-   - Config-specific identity model (GlobalConfigFileView/LocalConfigFileView with embedded ConfigHashView)
-   - Granular entry-level hash comparison for boundary change detection
+   - Config-specific identity model (GlobalConfigFileView/LocalConfigFileView with embedded FileMetadata)
+   - Granular entry-level hash comparison for boundary change detection (targets ConfigHashView, NOT DiscoveryConfigSpec)
    - Scan terminology: Freshness Checking, Full Scan (Vault/Context), Targeted Scan, Event-Driven Scan
    - DiscoveryScope compiles to DirScanInput (uses existing infrastructure)
 
 7. **Table Ownership** (✅ LOCKED):
    - Discovery owns ALL vault tables (FILE_VIEWS, DIR_VIEWS, path indexes, basename/parent/format indexes)
-   - Contexts are read-only consumers via DiscoveryReadRepository
+   - Contexts are read-only consumers via `vault::ReadRepository`
    - FileId is universal foreign key (NO context-specific path indexes)
-   - Segregated repository pattern: [Context]ReadRepository + [Context]WriteRepository
-   - Event tables: Context-owned with u64 monotonic sequence keys
+   - Repository pattern: `ReadRepository` + `WriteRepository` unified as `Repository` (NO redundant context prefixes)
+   - Event tables: Context-owned with EventId(u64) keys, rkyv serialization
 
 ### ALL ARCHITECTURAL DECISIONS COMPLETE
 
-**Status**: Design fully locked, ready for ADR generation and implementation.
+**Status**: Design fully locked, comprehensively polished, ready for implementation.
 
 ### Reference Documentation
 
