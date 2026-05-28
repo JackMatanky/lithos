@@ -16,8 +16,8 @@ Finalize the decoupling architecture by renaming `FsReader` to `FileReader` glob
 ## Acceptance criteria
 
 - [ ] `FsReader` is renamed to `FileReader` across the entire codebase.
-- [ ] `filter_entries`, `filter_file_paths`, `filter_dir_paths`, etc., are removed from `src/fs/reader.rs`.
-- [ ] `metadata()` is removed from `src/fs/reader.rs`.
+- [ ] `filter_entries`, `filter_file_entries`, `filter_dir_entries`, `filter_paths`, `filter_file_paths`, and `filter_dir_paths` methods are removed from `src/fs/reader.rs`.
+- [ ] `std_metadata()`, `metadata()`, `created_at()`, and `modified_at()` are removed from `src/fs/reader.rs`.
 - [ ] Any redundant unit tests in `reader.rs` testing traversal behavior are deleted.
 - [ ] `mise run verify` passes with 0 errors or warnings.
 
