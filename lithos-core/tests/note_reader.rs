@@ -37,7 +37,6 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         db::Store,
-        fs::PathKey,
         note::{
             aggregate::Note, repository::ReadRepository as _,
             storage::RedbRepository, tag::Tag as NoteTag,
@@ -368,54 +367,6 @@ mod tests {
             second.files_deleted(),
             1,
             "full scan should prune one removed file"
-        );
-    }
-
-    #[test]
-    fn partial_scan_does_not_prune_unscanned_missing_notes() {
-        let dir = TempDir::new().expect("temp dir");
-        let notes_dir = dir.path().join("notes");
-        std::fs::create_dir_all(&notes_dir).expect("create notes dir");
-
-        let keep_path = notes_dir.join("keep.md");
-        let drop_path = notes_dir.join("drop.md");
-        std::fs::write(&keep_path, "# Keep\n").expect("write keep note");
-        std::fs::write(&drop_path, "# Drop\n").expect("write drop note");
-
-        let config = test_config(dir.path().to_path_buf()).expect("config");
-        let db_path = dir.path().join("notes.redb");
-        let store = Arc::new(Store::open(&db_path).expect("open db"));
-        let repository = RedbRepository::new(Arc::clone(&store));
-
-        let first = VaultProcessor::new()
-            .process_full(Arc::clone(&store), &config)
-            .expect("first full scan");
-        assert_eq!(
-            first.markdown_routed(),
-            2,
-            "both notes should route on full scan"
-        );
-
-        std::fs::remove_file(&drop_path).expect("remove drop note");
-
-        let partial_paths = vec![
-            PathKey::try_new("notes/keep.md").expect("partial vault path"),
-        ];
-        let partial = VaultProcessor::new()
-            .process_partial(Arc::clone(&store), &config, &partial_paths)
-            .expect("partial scan");
-
-        assert_eq!(
-            partial.files_deleted(),
-            0,
-            "partial scan must not prune paths outside scan input"
-        );
-
-        let notes = repository.list().expect("list notes");
-        assert_eq!(
-            notes.len(),
-            2,
-            "missing unscanned note remains until next full prune"
         );
     }
 }

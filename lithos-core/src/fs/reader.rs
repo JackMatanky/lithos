@@ -460,6 +460,10 @@ impl Reader {
     ///
     /// Returns [`PathValidationError`] if the path is invalid.
     #[inline]
+    #[allow(
+        dead_code,
+        reason = "Currently unused after removing process_partial"
+    )]
     pub(crate) fn validate_path(
         &self,
         path: &Path,

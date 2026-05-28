@@ -177,6 +177,13 @@ impl FsFile {
     pub const fn metadata(&self) -> &FileMetadata {
         &self.metadata
     }
+
+    /// Consume the entry and return its metadata.
+    #[inline]
+    #[must_use]
+    pub fn into_metadata(self) -> FileMetadata {
+        self.metadata
+    }
 }
 
 /// A directory entry with path and metadata.
@@ -215,6 +222,13 @@ impl FsDir {
     #[must_use]
     pub const fn metadata(&self) -> &DirMetadata {
         &self.metadata
+    }
+
+    /// Consume the entry and return its metadata.
+    #[inline]
+    #[must_use]
+    pub fn into_metadata(self) -> DirMetadata {
+        self.metadata
     }
 }
 

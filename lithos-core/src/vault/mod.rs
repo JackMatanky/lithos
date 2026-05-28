@@ -28,6 +28,6 @@ pub use error::{
     VaultFileError, VaultPathError, VaultProcessError, VaultRepositoryError,
 };
 pub use model::{DirId, DirView, FileId, FileView, FsEntryView};
-pub use processor::{ScanMode, VaultProcessReport, VaultProcessor};
+pub use processor::{VaultProcessReport, VaultProcessor};
 pub use repository::{ReadRepository, Repository, WriteRepository};
 pub use storage::RedbRepository;
