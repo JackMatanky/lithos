@@ -50,6 +50,16 @@ impl FsEntry {
         }
     }
 
+    /// Consume the entry and return the file entry if this is a file.
+    #[inline]
+    #[must_use]
+    pub fn into_file(self) -> Option<FsFile> {
+        match self {
+            Self::File(file) => Some(file),
+            Self::Dir(_) => None,
+        }
+    }
+
     /// Get directory entry if this is a directory.
     #[inline]
     #[must_use]
