@@ -86,15 +86,16 @@ where
 
         // 4. Route to SchemaProcessor based on graph presence
         // Use from_discovery_result constructors to skip duplicate discovery
-        let branch = match discovery.graph() {
+        let graph = discovery.graph.clone();
+        let branch = match graph {
             Some(graph) => {
                 SchemaProcessor::<Discovery, Review>::from_discovery_result(
-                    &discovery, graph,
+                    discovery, &graph,
                 )?
             }
             None => {
                 SchemaProcessor::<Discovery, NeverSeen>::from_discovery_result(
-                    &discovery,
+                    discovery,
                 )?
             }
         };

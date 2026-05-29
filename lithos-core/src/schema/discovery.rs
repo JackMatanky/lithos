@@ -28,23 +28,9 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaCachedState {
     /// Schema ID from previous ingestion.
-    id: SchemaId,
+    pub(crate) id: SchemaId,
     /// Cached view for staleness detection.
-    view: RawSchemaView,
-}
-
-impl SchemaCachedState {
-    /// Returns the schema ID.
-    #[inline]
-    pub(crate) fn id(&self) -> SchemaId {
-        self.id
-    }
-
-    /// Returns the cached view.
-    #[inline]
-    pub(crate) fn view(&self) -> &RawSchemaView {
-        &self.view
-    }
+    pub(crate) view: RawSchemaView,
 }
 
 /// Discovery data for a single schema file.
@@ -53,23 +39,9 @@ impl SchemaCachedState {
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    entry: FsEntry,
+    pub(crate) entry: FsEntry,
     /// Cached state from database (None for new files).
-    cached: Option<SchemaCachedState>,
-}
-
-impl SchemaDiscovery {
-    /// Returns the file entry.
-    #[inline]
-    pub(crate) fn entry(&self) -> &FsEntry {
-        &self.entry
-    }
-
-    /// Returns the cached state, if any.
-    #[inline]
-    pub(crate) fn cached(&self) -> Option<&SchemaCachedState> {
-        self.cached.as_ref()
-    }
+    pub(crate) cached: Option<SchemaCachedState>,
 }
 
 /// Discovery data for the property bank file.
@@ -105,38 +77,20 @@ impl PropertyBankDiscovery {
 #[derive(Debug)]
 pub(crate) struct DiscoveryResult {
     /// Discovered schema files (path → discovery data).
-    schemas: HashMap<PathKey, SchemaDiscovery>,
+    pub(crate) schemas: HashMap<PathKey, SchemaDiscovery>,
     /// Discovered property bank file (if present).
-    property_bank: Option<PropertyBankDiscovery>,
+    pub(crate) property_bank: Option<PropertyBankDiscovery>,
     /// Inheritance graph from database (if exists).
-    graph: Option<InheritanceGraph<()>>,
+    pub(crate) graph: Option<InheritanceGraph<()>>,
     /// Schema IDs that exist in DB but not on filesystem (deleted files).
-    deleted_ids: Vec<SchemaId>,
+    pub(crate) deleted_ids: Vec<SchemaId>,
 }
 
 impl DiscoveryResult {
-    /// Returns the discovered schemas.
-    #[inline]
-    pub(crate) fn schemas(&self) -> &HashMap<PathKey, SchemaDiscovery> {
-        &self.schemas
-    }
-
     /// Returns the discovered property bank, if any.
     #[inline]
     pub(crate) fn property_bank(&self) -> Option<&PropertyBankDiscovery> {
         self.property_bank.as_ref()
-    }
-
-    /// Returns the inheritance graph, if any.
-    #[inline]
-    pub(crate) fn graph(&self) -> Option<&InheritanceGraph<()>> {
-        self.graph.as_ref()
-    }
-
-    /// Returns the deleted schema IDs.
-    #[inline]
-    pub(crate) fn deleted_ids(&self) -> &[SchemaId] {
-        &self.deleted_ids
     }
 
     /// Returns `true` if any schema files were discovered.

@@ -732,23 +732,17 @@ pub(crate) enum DiscoveryBranch {
 type FileState =
     (NewBatch<InitialScan>, HashMap<SchemaId, FoundPayload>, Vec<SchemaId>);
 impl SchemaProcessor<Discovery, NeverSeen> {
-    /// Creates a `DiscoveryBranch` from `DiscoveryResult` (cold start - no
-    /// graph).
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Result wrapping for early return consistency"
-    )]
+    /// Creates a `DiscoveryBranch` from `DiscoveryResult` (fresh graph).
     pub(crate) fn from_discovery_result(
-        discovery: &DiscoveryResult,
+        discovery: DiscoveryResult,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let mut missing = NewBatch::new();
 
-        for (path, schema_discovery) in discovery.schemas() {
+        for (path, schema_discovery) in discovery.schemas {
             let metadata = schema_discovery
-                .entry()
-                .metadata()
-                .as_file()
-                .cloned()
+                .entry
+                .into_file()
+                .map(crate::fs::entry::FsFile::into_metadata)
                 .ok_or_else(|| {
                     SchemaLoaderError::Ingestion(
                         super::error::SchemaIngestionError::File(
@@ -759,12 +753,12 @@ impl SchemaProcessor<Discovery, NeverSeen> {
                         ),
                     )
                 })?;
-            let id = schema_discovery.cached().map_or_else(
-                SchemaId::new,
-                super::discovery::SchemaCachedState::id,
-            );
+            let id = schema_discovery
+                .cached
+                .as_ref()
+                .map_or_else(SchemaId::new, |cached| cached.id);
             missing.insert(id, InitialScan {
-                path: path.clone(),
+                path,
                 metadata,
             });
         }
@@ -787,32 +781,35 @@ impl SchemaProcessor<Discovery, Review> {
         reason = "Result wrapping for early return consistency"
     )]
     pub(crate) fn from_discovery_result(
-        discovery: &DiscoveryResult,
+        discovery: DiscoveryResult,
         graph: &InheritanceGraph<()>,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
-        let files: Vec<PathKey> = discovery.schemas().keys().cloned().collect();
-
-        // Build views_by_path and ids_by_path from DiscoveryResult
         let mut views_by_path: HashMap<PathKey, RawSchemaView> = HashMap::new();
         let mut ids_by_path: HashMap<PathKey, SchemaId> = HashMap::new();
+        let mut metadata_by_path: HashMap<PathKey, FileMetadata> =
+            HashMap::new();
+        let mut files = Vec::new();
 
-        for (path, schema_discovery) in discovery.schemas() {
-            if let Some(cached) = schema_discovery.cached() {
-                views_by_path.insert(path.clone(), cached.view().clone());
-                ids_by_path.insert(path.clone(), cached.id());
+        for (path, schema_discovery) in discovery.schemas {
+            files.push(path.clone());
+            if let Some(fs_file) = schema_discovery.entry.into_file() {
+                metadata_by_path.insert(path.clone(), fs_file.into_metadata());
+            }
+
+            if let Some(cached) = schema_discovery.cached {
+                views_by_path.insert(path.clone(), cached.view);
+                ids_by_path.insert(path.clone(), cached.id);
             }
         }
 
-        let deleted_ids: Vec<SchemaId> = discovery.deleted_ids().to_vec();
+        let deleted_ids: Vec<SchemaId> = discovery.deleted_ids;
 
         let (missing, found, _) = Self::classify_file_state(
             &files,
             views_by_path,
             &ids_by_path,
             Some(graph),
-            // Pass a dummy FsReader since we don't need file info (already
-            // have it)
-            &crate::fs::FsReader::new(std::path::PathBuf::new()),
+            &metadata_by_path,
         );
 
         if found.is_empty() {
@@ -844,17 +841,14 @@ impl SchemaProcessor<Discovery, Review> {
         mut views_by_path: HashMap<PathKey, RawSchemaView>,
         ids_by_path: &HashMap<PathKey, SchemaId>,
         graph: Option<&InheritanceGraph<()>>,
-        source: &FsReader,
+        metadata_by_path: &HashMap<PathKey, FileMetadata>,
     ) -> FileState {
         let mut missing = NewBatch::new();
         let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
 
         for path in files {
-            let metadata = source
-                .metadata(std::path::Path::new(path.as_str()))
-                .ok()
-                .and_then(|m| m.as_file().cloned())
-                .unwrap_or_else(|| {
+            let metadata =
+                metadata_by_path.get(path).cloned().unwrap_or_else(|| {
                     FileMetadata::new(FsTimes::new(None, None), 0, false)
                 });
 
@@ -2898,7 +2892,13 @@ fn stage_variant_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::views::RawPropertyHashIndex;
+    use crate::{
+        fs::FsEntry,
+        schema::{
+            discovery::{SchemaCachedState, SchemaDiscovery},
+            views::RawPropertyHashIndex,
+        },
+    };
 
     #[test]
     fn extends_change_kind_unchanged_can_update() {
@@ -3163,5 +3163,103 @@ mod tests {
             parsed_deleted.payload(),
             PipelinePayload::Deleted(_)
         ));
+    }
+
+    #[test]
+    fn from_discovery_result_review_threads_metadata() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path_str = "schema.toml";
+        let full_path = temp.path().join(path_str);
+        std::fs::write(&full_path, "{}").expect("write succeeds");
+
+        let id = SchemaId::new();
+        let path = PathKey::try_new(path_str).expect("valid schema key");
+
+        let created = UNIX_EPOCH + Duration::from_secs(100);
+        let modified = UNIX_EPOCH + Duration::from_secs(200);
+        let times = FsTimes::new(Some(created), Some(modified));
+        let metadata = FileMetadata::new(times, 1234, false);
+
+        let file_path = crate::fs::path::FilePath::try_new(full_path).unwrap();
+        let fs_file =
+            crate::fs::entry::FsFile::new(file_path, metadata.clone());
+        let entry = FsEntry::File(fs_file);
+
+        let view = make_view("schema", Blake3Hash::new([7u8; 32]));
+
+        let discovery = SchemaDiscovery {
+            entry,
+            cached: Some(SchemaCachedState {
+                id,
+                view,
+            }),
+        };
+
+        let mut schemas = HashMap::new();
+        schemas.insert(path.clone(), discovery);
+
+        let mut inheritance_builder = SchemaGraphBuilder::<()>::new();
+        inheritance_builder.add_node(id, ());
+        let graph =
+            InheritanceGraph::try_from(inheritance_builder.build()).unwrap();
+
+        let discovery_result = DiscoveryResult {
+            schemas,
+            property_bank: None,
+            graph: Some(graph.clone()),
+            deleted_ids: Vec::new(),
+        };
+
+        let branch =
+            SchemaProcessor::<Discovery, Review>::from_discovery_result(
+                discovery_result,
+                &graph,
+            )
+            .expect("from_discovery_result succeeds");
+
+        match branch {
+            DiscoveryBranch::HasPresent(processor) => {
+                let node = processor
+                    .status
+                    .graph
+                    .graph()
+                    .get(id)
+                    .expect("node present");
+                assert!(
+                    matches!(
+                        node.payload(),
+                        PipelinePayload::Present(PresentPayload::Found(_))
+                    ),
+                    "expected Found payload, got {:?}",
+                    node.payload()
+                );
+                if let PipelinePayload::Present(PresentPayload::Found(found)) =
+                    node.payload()
+                {
+                    assert_eq!(
+                        found.metadata.size(),
+                        1234,
+                        "metadata size should match input from discovery \
+                         result (1234), not disk size (2)"
+                    );
+                    assert_eq!(
+                        found.metadata, metadata,
+                        "metadata should match input from discovery result"
+                    );
+                }
+            }
+            DiscoveryBranch::AllMissing(processor) => {
+                let scan = processor
+                    .status
+                    .new_schemas
+                    .get(&id)
+                    .expect("schema in missing");
+                assert_eq!(
+                    scan.metadata, metadata,
+                    "metadata should match input from discovery result"
+                );
+            }
+        }
     }
 }
