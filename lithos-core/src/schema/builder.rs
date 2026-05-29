@@ -90,12 +90,15 @@ where
         let branch = match graph {
             Some(graph) => {
                 SchemaProcessor::<Discovery, Review>::from_discovery_result(
-                    discovery, &graph,
+                    discovery,
+                    &graph,
+                    &self.source,
                 )?
             }
             None => {
                 SchemaProcessor::<Discovery, NeverSeen>::from_discovery_result(
                     discovery,
+                    &self.source,
                 )?
             }
         };
@@ -103,7 +106,7 @@ where
         // 6. Process through pipeline (unchanged)
         match branch {
             DiscoveryBranch::AllMissing(missing) => {
-                let parsed_new = missing.parse(&self.source)?;
+                let parsed_new = missing.parse()?;
                 let new_build = parsed_new.build_new_graph()?;
                 new_build
                     .construct_new_schemas(&self.repository, &property_bank)
@@ -111,7 +114,7 @@ where
             DiscoveryBranch::HasPresent(present) => {
                 let compared = present
                     .compare(&self.source, self.property_bank_delta.as_ref())?;
-                let parsed = compared.parse(&self.source)?;
+                let parsed = compared.parse()?;
                 let graphed = parsed.build_graph()?;
                 let analyzed = graphed.analyze_properties(
                     &self.source,
