@@ -409,6 +409,7 @@ impl Default for DirScanInput<'_> {
         }
     }
 }
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
