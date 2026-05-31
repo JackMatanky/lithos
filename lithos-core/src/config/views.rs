@@ -559,10 +559,6 @@ impl HasContentHash for RawFileVersion {
     fn content_hash(&self) -> &Blake3Hash {
         self.content_hash()
     }
-
-    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
-        self.content_hash() == hash
-    }
 }
 
 impl HasContentHashMut for RawFileVersion {
