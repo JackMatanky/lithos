@@ -41,7 +41,14 @@ Finalize the decoupling architecture by renaming `FsReader` to `FileReader` glob
 `src/fs/reader.rs` contains `filter_entries`, `filter_paths`, `filter_dir_entries`, and `metadata()` along with their associated tests.
 
 **Desired behavior:**
-All of these methods are deleted. The struct `FsReader` is renamed to `FileReader`. `FsError` implementations may need minor adjustments if any variants solely existed for traversal (though ADR 017 already split `ScanError`). The `exists` method must be retained.
+All of these methods are deleted. The `FsReader` alias is replaced with `FileReader` in the public API. `FsError` implementations may need minor adjustments if any variants solely existed for traversal (though ADR 017 already split `ScanError`). The `exists` method must be retained.
+
+## Review Findings (Approved)
+
+- Scope is complete and implementable after blocked issues 01-05.
+- Expected impact is broad textual/API rename plus targeted method/test removals in `fs/reader.rs`.
+- Keep `exists(&self, path: &Path)` in `FileReader`; only traversal and metadata methods are removed.
+- Verification gate remains `mise run verify` with no warnings/errors.
 
 ## TDD Implementation Plan
 
