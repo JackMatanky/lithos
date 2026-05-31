@@ -10,8 +10,9 @@
 //! - **The Store**: The primary entry point ([`Store`]). It manages the
 //!   physical database file and provides scoped, closure-based transactions.
 //! - **Zero-Copy Reads**: Achieved by accessing archived data directly from
-//!   database-mapped memory. Closure-based APIs ([`ReadTx`::`get` | `get_owned`
-//!   ...]) ensure that references to this memory never outlive the transaction.
+//!   database-mapped memory. Closure-based APIs ([`ReadTx::get`],
+//!   [`ReadTx::get_owned`]) ensure that references to this memory never outlive
+//!   the transaction.
 //! - **Type-Safe Tables**: Wrappers like [`UuidTable`] and [`PathTable`]
 //!   enforce consistent key/value patterns across the codebase, preventing
 //!   common bugs like mixing UUID strings and raw bytes.
@@ -45,6 +46,7 @@
 mod codec;
 mod core;
 mod error;
+mod events;
 mod path;
 mod read;
 pub mod retry;
@@ -58,6 +60,7 @@ pub use core::Store;
 
 pub use codec::ArchivedEntity;
 pub use error::{DbError, DbErrorKind};
+pub use events::{EventId, EventIdError};
 pub use read::ReadTx;
 pub use table::{
     PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
