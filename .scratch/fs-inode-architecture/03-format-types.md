@@ -112,7 +112,7 @@ pub enum FileFormat {
 - Migration to new name deferred to Issue 09
 
 **Integration:**
-- Updated `FsReader::classify_path()` to use `FileFormat::from_extension()`
+- Updated `FileReader::classify_path()` to use `FileFormat::from_extension()`
 - Updated non-exhaustive pattern matches in `fs/reader.rs` to handle new variants
 - Fixed test expectations: `Binary` → `Image`/`Pdf` for respective extensions
 

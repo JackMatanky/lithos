@@ -129,7 +129,7 @@ The processor uses the typestate pattern extensively and correctly. Key consider
 ### Chapter 1 — Interface Design
 
 "Prefer `&T` over `.clone()` unless ownership transfer is required."
-- `run(view: Option<&RawPropertyBankView>, source: &FsReader, repository: &R)` follows this — the method borrows all external resources
+- `run(view: Option<&RawPropertyBankView>, source: &FileReader, repository: &R)` follows this — the method borrows all external resources
 - The internal clone for `Present::new(v.clone())` is the only clone, and it's necessary because `Present` owns its data
 
 ### Chapter 3 — Performance

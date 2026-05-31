@@ -94,7 +94,7 @@ Based on external research (rust-analyzer architecture, matklad’s ARCHITECTURE
 
 **Typical ports for file-based systems:**
 
-- `FsReader` (real FS vs in-memory)
+- `FileReader` (real FS vs in-memory)
 - `Repository` (Redb vs fake)
 - `Clock` (real time vs fixed time for tests)
 - `Hasher` (real vs deterministic test)
@@ -287,7 +287,7 @@ From rust-analyzer:
 ## 7. Practical Rules for Lithos (Derived From Research)
 
 1. **Modules are the first boundary.** Start by splitting responsibilities into modules, not traits.
-2. **Ports only for I/O.** Use traits for `FsReader`, `Repository`, and similar boundaries.
+2. **Ports only for I/O.** Use traits for `FileReader`, `Repository`, and similar boundaries.
 3. **Submodules map to pipeline phases.** Raw → Domain → Resolve → Store should each be a file.
 4. **Keep the public API thin.** Re-export from `mod.rs`, hide internals by default.
 5. **Document invariants in one place.** Use ARCHITECTURE.md and context-specific README files.

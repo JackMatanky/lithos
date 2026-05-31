@@ -151,7 +151,7 @@ impl FilePath {
 }
 ```
 
-**Recommended**: Option B. The PRD says these types support "absolute or relative" paths, meaning they should be syntactic wrappers, not filesystem validators. Entry existence checks belong in `FsReader` and `DirScanner`, not path types.
+**Recommended**: Option B. The PRD says these types support "absolute or relative" paths, meaning they should be syntactic wrappers, not filesystem validators. Entry existence checks belong in `FileReader` and `DirScanner`, not path types.
 
 ---
 

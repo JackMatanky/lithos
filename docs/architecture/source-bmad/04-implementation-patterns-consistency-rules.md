@@ -59,11 +59,11 @@ Each phase in our pipeline is **parsing**, not just validation:
 │ - Schema definitions (YAML)                                     │
 │ - Templates (Jinja2)                                            │
 └─────────────────┬───────────────────────────────────────────────┘
-                  │ FsReader (security-validated)
+                  │ FileReader (security-validated)
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ PHASE 1: PARSE SYNTAX (File → Raw)                              │
-│ - Read file contents via FsReader                               │
+│ - Read file contents via FileReader                               │
 │ - Parse with serde (YAML/TOML/JSON)                             │
 │ - Creates Raw* type (syntactically valid, semantically unknown) │
 │ - Location: <context>/ingestor.rs or loader.rs                  │
@@ -156,7 +156,7 @@ For each context (note, schema, template, config):
 - [ ] **Smart constructors** on domain types (`try_new()`, not public fields)
 - [ ] **Repository trait** in `<context>/storage.rs` (get, save, list, with_archived)
 - [ ] **Loader** in `<context>/loader.rs` (orchestrates File → Raw → Domain → Storage)
-- [ ] **FsReader integration** for secure file access
+- [ ] **FileReader integration** for secure file access
 - [ ] **Hash-based staleness** in metadata tables (optional, for optimization)
 - [ ] **No redundant validation** - if domain type exists, it's valid (no re-checking)
 
@@ -254,7 +254,7 @@ pub trait CommandPort { /* ... */ }
 // From any business context (note, schema, template):
 use crate::config::Global;      // Cross-cutting config
 use crate::db::Database;        // Infrastructure
-use crate::fs::FsReader;        // Infrastructure
+use crate::fs::FileReader;        // Infrastructure
 use crate::bounds::Bounds;      // Cross-cutting utility
 
 // Within same context:
@@ -500,7 +500,7 @@ note.rs, schema.rs, loader.rs  // snake_case
 Note, Schema, SchemaId, NoteError  // PascalCase
 
 // Traits
-Repository, FsReader, Validator  // PascalCase, descriptive
+Repository, FileReader, Validator  // PascalCase, descriptive
 
 // Constants
 MAX_DEPTH, DEFAULT_TIMEOUT  // SCREAMING_SNAKE_CASE

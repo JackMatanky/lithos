@@ -710,7 +710,7 @@ function that both delegate to:
 fn read_and_process<R: Repository<Error = NoteRepositoryError>>(
     suspect: NoteProcessor<Analysis, Suspect>,
     repository: &R,
-    source: &FsReader,
+    source: &FileReader,
     task_spec: &TaskConfigSpec,
     frontmatter_spec: &FrontmatterConfigSpec,
 ) -> Result<NoteProcessReport, NoteProcessError> { ... }

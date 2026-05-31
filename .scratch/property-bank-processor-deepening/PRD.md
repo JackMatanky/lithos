@@ -9,7 +9,7 @@ created: 2026-05-27
 
 ## Problem Statement
 
-`PropertyBankProcessor` (`lithos-core/src/schema/property_bank_processor.rs`) implements a dual-typestate pipeline for property bank ingestion. Its status structs carry `FileMetadata` (content freshness data) but **not `FilePath`** (file identity). This forces the caller (`Builder`) to thread `config_path: &Path`, `path_key: &PathKey`, and `source: &FsReader` as three separate arguments through every method — even though `FsFile` already bundles `FilePath` + `FileMetadata` in one compile-time unit.
+`PropertyBankProcessor` (`lithos-core/src/schema/property_bank_processor.rs`) implements a dual-typestate pipeline for property bank ingestion. Its status structs carry `FileMetadata` (content freshness data) but **not `FilePath`** (file identity). This forces the caller (`Builder`) to thread `config_path: &Path`, `path_key: &PathKey`, and `source: &FileReader` as three separate arguments through every method — even though `FsFile` already bundles `FilePath` + `FileMetadata` in one compile-time unit.
 
 `PropertyBankDiscovery` (`lithos-core/src/schema/discovery.rs:79`) carries `FsEntry` (a `File`/`Dir` enum), but the builder must unwrap it with `.metadata().as_file().cloned()` — an extra runtime check that should be a compile-time guarantee.
 

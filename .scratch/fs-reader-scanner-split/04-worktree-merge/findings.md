@@ -4,7 +4,7 @@
 - **Common Ancestor**: `9bb73527eebd18a718cd072b85179f0eee477a50`
 - **Worktree Changes (`refactor-configbuilder-metadata`)**:
     - `lithos-core/src/config/builder.rs`: Threaded metadata from discovery into raw config objects. Updated view persistence logic.
-    - `lithos-core/src/config/discovery.rs`: Migrated vault discovery to `DirScanner` and global discovery to direct `FsMetadata` calls. Eliminated `FsReader` traversal methods.
+    - `lithos-core/src/config/discovery.rs`: Migrated vault discovery to `DirScanner` and global discovery to direct `FsMetadata` calls. Eliminated `FileReader` traversal methods.
 - **Main Branch Changes**:
     - `lithos-core/src/config/views.rs`: Added `HasContentHash` and `HasContentHashMut` trait implementations for `RawFileVersion`.
     - Other changes in `.scratch/`, `lithos-core/src/support/content_hash.rs`, and `lithos-core/src/schema/views/hashes.rs`.

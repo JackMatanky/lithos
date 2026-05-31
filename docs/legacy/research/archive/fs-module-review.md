@@ -38,7 +38,7 @@ Problem:
 
 Solutions:
 
-- Define the pipeline explicitly in `FsReader`:
+- Define the pipeline explicitly in `FileReader`:
   1. `validate_path`
   2. `classify(path)`
   3. `read_bytes` / `read_to_string`
@@ -55,7 +55,7 @@ Problem:
 Solutions:
 
 - Keep Json/Toml/Yaml structs and rely on existing `is_supported(path)` methods.
-- `FsReader::classify(path)` uses the public type-level predicates (e.g., `Json::is_supported(path)`), and each type’s `parse` must call its own `is_supported` guard to prevent mismatches.
+- `FileReader::classify(path)` uses the public type-level predicates (e.g., `Json::is_supported(path)`), and each type’s `parse` must call its own `is_supported` guard to prevent mismatches.
 - Ensure `parse_structured<T>` checks the file type before parsing to prevent mismatches.
 
 ### 4) Parsing should not force context-specific Markdown decisions
@@ -66,11 +66,11 @@ Problem:
 
 Solutions:
 
-- FsReader exposes `read_with<T>(path, f)` where `f` is a closure `(path, text) -> Result<T, ParseError>`.
+- FileReader exposes `read_with<T>(path, f)` where `f` is a closure `(path, text) -> Result<T, ParseError>`.
 - Contexts inject their own Markdown parsing without fs depending on pulldown-cmark.
-- FsReader can still classify Markdown by extension for pipeline dispatch.
+- FileReader can still classify Markdown by extension for pipeline dispatch.
 
-### 5) FsReader/FsWriter split and value beyond std
+### 5) FileReader/FsWriter split and value beyond std
 
 Problem:
 
@@ -78,7 +78,7 @@ Problem:
 
 Solutions:
 
-- Rename `FileSource` to `FsReader` in `reader.rs`.
+- Rename `FileSource` to `FileReader` in `reader.rs`.
 - Introduce `FsWriter` in `writer.rs` with safe write orchestration.
 - Ensure fs adds value beyond std via:
   - root-scoped validated paths for all operations
@@ -143,7 +143,7 @@ Solutions:
 
 ### fs/reader.rs (renamed from source.rs)
 
-- Rename `FileSource` -> `FsReader`.
+- Rename `FileSource` -> `FileReader`.
 - Add pipeline methods: `validate_path`, `classify`, `read_bytes`, `read_to_string`, `parse_structured<T>`.
 - Add convenience `read<T>` that dispatches by file type.
 - Add `read_with<T>` closure hook for Markdown parsing.
@@ -172,10 +172,10 @@ Solutions:
 
 ## Open questions resolved by this review
 
-1. **Format classification**: `FsReader::classify(path)` with type helpers in `types.rs`.
+1. **Format classification**: `FileReader::classify(path)` with type helpers in `types.rs`.
 2. **Convenience read**: provide `read<T>(path)` that dispatches to the correct read/parse path.
 3. **Markdown parsing hook**: use closure-based `read_with<T>` to avoid coupling to pulldown-cmark.
-4. **Public surface**: keep FormatKind internal where possible; prefer `FsReader` as the main entry point.
+4. **Public surface**: keep FormatKind internal where possible; prefer `FileReader` as the main entry point.
 
 ---
 
@@ -277,7 +277,7 @@ pub struct Ingestor<'config> {
 }
 ```
 
-Step 6i then replaces this with `source: S where S: FsReader`, restoring the abstraction.
+Step 6i then replaces this with `source: S where S: FileReader`, restoring the abstraction.
 
 This must be reflected in step 5h and step 6i in the plan.
 
@@ -605,7 +605,7 @@ and `parse` methods. Keep all existing tests, updating module path from
   };
   ```
 - Replace `self.source.list_files(&pattern)` with `glob::glob(&pattern)` inline.
-  This is a **temporary bridge** — the abstraction is restored in step 6i via `FsReader`.
+  This is a **temporary bridge** — the abstraction is restored in step 6i via `FileReader`.
 - Update all call sites in tests to use `Ingestor::new(&config)` (no `source` arg).
   Tests that previously used `InMemoryFileSource` will be rewritten in step 9c.
 
@@ -613,7 +613,7 @@ and `parse` methods. Keep all existing tests, updating module path from
 
 ---
 
-### Step 6 — `source.rs` → `reader.rs`: introduce `FsReader` with full pipeline
+### Step 6 — `source.rs` → `reader.rs`: introduce `FileReader` with full pipeline
 
 **Status:** `[ ]`
 
@@ -622,7 +622,7 @@ and `parse` methods. Keep all existing tests, updating module path from
 6a. Rename the file: `lithos-core/src/fs/source.rs` →
 `lithos-core/src/fs/reader.rs`.
 
-6b. Rename `FileSource` → `FsReader` and `FsFileSource` → `OsFsReader`
+6b. Rename `FileSource` → `FileReader` and `FsFileSource` → `OsFsReader`
 throughout the file. Remove `InMemoryFileSource` entirely
 (its tests are replaced in step 9).
 
@@ -649,10 +649,10 @@ pub struct FileMetadata {
 }
 ```
 
-6e. Add to the `FsReader` trait:
+6e. Add to the `FileReader` trait:
 
 ```rust
-pub trait FsReader: Send + Sync {
+pub trait FileReader: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
 
     // --- existing, kept ---
@@ -766,13 +766,13 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
   and `pub type InMemoryFileSource = source::InMemoryFileSource;`.
 - Add:
   ```rust
-  pub use reader::{FsReader, OsFsReader, FileMetadata};
+  pub use reader::{FileReader, OsFsReader, FileMetadata};
   pub(crate) use reader::FormatKind;
   ```
 
 6i. Update `schema/adapter/ingestor.rs`:
 
-- Restore the generic parameter `S: FsReader` on `Ingestor`:
+- Restore the generic parameter `S: FileReader` on `Ingestor`:
   ```rust
   pub struct Ingestor<'config, S> {
       source: S,
@@ -781,7 +781,7 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
   impl<'config, S> Ingestor<'config, S> {
       pub const fn new(source: S, config: &'config Config) -> Self { ... }
   }
-  impl<S: FsReader<Error = io::Error>> Ingestor<'_, S> {
+  impl<S: FileReader<Error = io::Error>> Ingestor<'_, S> {
       // use self.source.parse_structured(&path)?
   }
   ```
@@ -984,7 +984,7 @@ depending on it while deferring the full move to a follow-up ADR.
 - Document the read pipeline order.
 
 10b2. Update `application/mod.rs` doc comment (line 31): change
-`FileSource` reference to `FsReader`.
+`FileSource` reference to `FileReader`.
 
 10c. Remove `#[expect(clippy::module_name_repetitions)]` crate-wide
 suppression from `mod.rs` if individual suppressions in each file are
@@ -1002,7 +1002,7 @@ Step 2  (validator.rs cleanup)
 Step 3  (validator.rs + mod.rs path helpers)        ← needs step 2
 Step 4  (note/aggregate.rs boundary fix)             ← needs step 3 (re-export)
 Step 5  (parsers.rs → types.rs)                      ← needs step 1
-Step 6  (source.rs → reader.rs FsReader pipeline)    ← needs steps 2, 3, 5
+Step 6  (source.rs → reader.rs FileReader pipeline)    ← needs steps 2, 3, 5
 Step 7  (writer.rs new)                              ← needs step 2
 Step 8  (validator.rs remaining fixes)               ← needs step 3
 Step 9  (tests tempfile migration)                   ← needs step 6
@@ -1019,13 +1019,13 @@ Step 10 (mod.rs + markdown.rs final cleanup)         ← needs all prior steps
 | `lithos-core/src/fs/validator.rs`            | 2, 3, 8     | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed                    |
 | `lithos-core/src/fs/mod.rs`                  | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types                                                                           |
 | `lithos-core/src/fs/parsers.rs` → `types.rs` | 5           | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods                                                                     |
-| `lithos-core/src/fs/source.rs` → `reader.rs` | 6           | Rename; `FileSource` → `FsReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
+| `lithos-core/src/fs/source.rs` → `reader.rs` | 6           | Rename; `FileSource` → `FileReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
 | `lithos-core/src/fs/writer.rs`               | 7           | New file: `FsWriter`, `OsFsWriter`, `atomic_write`                                                                                                                  |
 | `lithos-core/src/fs/markdown.rs`             | 10          | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged                                                                                            |
 | `lithos-core/Cargo.toml`                     | 9           | Remove `walkdir` from `[dependencies]`                                                                                                                              |
 | `lithos-core/src/note/aggregate.rs`          | 4           | Remove `crate::fs` import; inline domain validation                                                                                                                 |
-| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9     | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FsReader` abstraction; step 9: replace in-memory tests with `tempfile`       |
-| `lithos-core/src/application/mod.rs`         | 10          | Doc comment only: `FileSource` → `FsReader`                                                                                                                         |
+| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9     | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FileReader` abstraction; step 9: replace in-memory tests with `tempfile`       |
+| `lithos-core/src/application/mod.rs`         | 10          | Doc comment only: `FileSource` → `FileReader`                                                                                                                         |
 
 ### Files that do NOT need changes despite referencing affected symbols
 

@@ -511,7 +511,7 @@ lithos-core/src/
 │   └── loader.rs        # Schema file loading
 │
 └── fs/
-    ├── source.rs        # FsReader abstraction
+    ├── source.rs        # FileReader abstraction
     └── watcher.rs       # File change detection
 ```
 

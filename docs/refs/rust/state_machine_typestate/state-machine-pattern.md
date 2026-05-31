@@ -452,7 +452,7 @@ The `SchemaLoader` handles the **linear pipeline** from file → resolved schema
 // This IS a state machine - linear phases
 struct SchemaLoader<S> {
     vault_root: PathBuf,
-    fs_reader: Arc<dyn FsReader>,
+    fs_reader: Arc<dyn FileReader>,
     property_bank: Arc<PropertyBank>,
     config: Arc<Config>,
     state: S,
@@ -471,7 +471,7 @@ struct Resolved { schemas: Vec<Schema> }  // Final, ready for storage
 impl SchemaLoader<Discovered> {
     fn discover(
         vault_root: PathBuf,
-        fs_reader: Arc<dyn FsReader>,
+        fs_reader: Arc<dyn FileReader>,
         property_bank: Arc<PropertyBank>,
         config: Arc<Config>,
     ) -> Result<Self, DiscoveryError> {
@@ -591,7 +591,7 @@ The `ConfigLoader` handles the **linear pipeline** from files → validated conf
 // This IS a state machine - linear phases
 struct ConfigLoader<S> {
     figment: Figment,
-    fs_reader: Arc<dyn FsReader>,
+    fs_reader: Arc<dyn FileReader>,
     state: S,
 }
 
@@ -618,7 +618,7 @@ struct Validated {
 impl ConfigLoader<Discovered> {
     fn discover(
         figment: Figment,
-        fs_reader: Arc<dyn FsReader>,
+        fs_reader: Arc<dyn FileReader>,
     ) -> Result<Self, ConfigError> {
         let (global_path, vault_path) = fs_reader.discover_config_files()?;
         Ok(ConfigLoader {

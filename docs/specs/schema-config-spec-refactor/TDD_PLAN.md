@@ -248,7 +248,7 @@ fn builder_load_all_orchestrates_discovery() {
 
     let repo = InMemoryRepository::new();
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     let mut builder = Builder::new(repo, source, &config);
     let result = builder.load_all();

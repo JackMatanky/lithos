@@ -299,7 +299,7 @@ The `Extender` module is drastically simplified:
 **Phase 7: Remove Ingestor**
 
 - Move I/O into state machine transitions
-- Direct Repository and FsReader usage
+- Direct Repository and FileReader usage
 
 ---
 
@@ -382,7 +382,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
    - Compare with `view.file_times()`
    - **If timestamps match** → **FreshTimestamp** path
    - **If timestamps differ**:
-     - Read file content with `FsReader::read_with()`
+     - Read file content with `FileReader::read_with()`
      - Compute `blake3::hash()` of content
      - Compare with `view.hashes().content_hash()`
      - **If hash matches** → **FreshContent** path (timestamp update needed)
@@ -409,8 +409,8 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 - **Input**: `&Path` to property bank file
 - **Output**: `RawPropertyBank` (validated) + `RawPropertyBankView`
 - **Operations**:
-  - Read file with `FsReader::read_with()`
-  - Parse via `FsReader::parse_structured_from_str()` (uses custom `RawPropertyMap<T>` deserializer)
+  - Read file with `FileReader::read_with()`
+  - Parse via `FileReader::parse_structured_from_str()` (uses custom `RawPropertyMap<T>` deserializer)
   - Property names validated during deserialization (guaranteed valid `PropertyName` keys)
   - Version validated separately via `raw.validate_version()`
   - Create `RawPropertyBankView::try_from_with_content()` with all metadata
@@ -495,8 +495,8 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
 - **Input**: `&Path` to property bank file
 - **Output**: `RawPropertyBank` (validated) + `RawPropertyBankView`
 - **Operations**:
-  - Read file with `FsReader::read_with()`
-  - Parse via `FsReader::parse_structured_from_str()` (custom `RawPropertyMap<T>` deserializer)
+  - Read file with `FileReader::read_with()`
+  - Parse via `FileReader::parse_structured_from_str()` (custom `RawPropertyMap<T>` deserializer)
   - Property names validated during deserialization
   - Version validated separately
   - Create `RawPropertyBankView::try_from_with_content()` with all new metadata
@@ -561,7 +561,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
    - If mismatch → proceed to slow path
 
 2. **Slow Path** (single file read): Compare content hash
-   - Read file content with `FsReader::read_with()`
+   - Read file content with `FileReader::read_with()`
    - Compute `blake3::hash(content.as_bytes())`
    - `view.hashes().is_content_match(content_hash)`
    - If match → FreshContent path
@@ -595,7 +595,7 @@ raw.validate()?;  // Caller might forget this step
 
 ```rust
 // Better: Validation happens during deserialization
-let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
+let raw: RawPropertyBank = FileReader::parse_structured_from_str(path, content)?;
 // Properties map keys are guaranteed valid PropertyName instances!
 // Version validation happens separately (needs path context for errors)
 raw.validate_version(&path.to_string_lossy())?;
@@ -863,10 +863,10 @@ Keep:
 **Step 5: Update Ingestor**
 
 ```rust
-// In Ingestor - FsReader handles format detection and parsing
+// In Ingestor - FileReader handles format detection and parsing
 self.source.read_with(path, |path, content| {
     // Deserialize with automatic property name validation
-    let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
+    let raw: RawPropertyBank = FileReader::parse_structured_from_str(path, content)?;
 
     // Separate version validation (needs path for error context)
     raw.validate_version(&path.to_string_lossy())?;
@@ -1633,7 +1633,7 @@ impl PropertyBankPipeline<Discovery> {
 impl PropertyBankPipeline<FileParsed> {
     pub fn parse_file(path: &Path, content: &str) -> Result<Self, Error> {
         // Parse with automatic property name validation (RawPropertyMap deserializer)
-        let raw: RawPropertyBank = FsReader::parse_structured_from_str(path, content)?;
+        let raw: RawPropertyBank = FileReader::parse_structured_from_str(path, content)?;
 
         // Separate version validation (needs path for error context)
         raw.validate_version(&path.to_string_lossy())?;
@@ -2192,7 +2192,7 @@ pub fn load(&self) -> Result<Vec<Schema>, SchemaLoaderError> {
 
 ### 5.1 Data Ownership in State Machines
 
-**Architecture Decision**: Infrastructure (Config, FsReader, Repository) lives in the `Builder` facade and is passed by reference to state transitions. State machine data structs hold **only evolving artifacts**.
+**Architecture Decision**: Infrastructure (Config, FileReader, Repository) lives in the `Builder` facade and is passed by reference to state transitions. State machine data structs hold **only evolving artifacts**.
 
 #### PropertyBankData Structure
 
@@ -2236,7 +2236,7 @@ struct SchemaPipeline<S> {
 ```rust
 pub struct Builder<'config, R> {
     config: &'config Config,
-    source: FsReader,
+    source: FileReader,
     repository: R,
 
     // Mutable state: Set after PropertyBank pipeline completes
@@ -2278,7 +2278,7 @@ impl<'config, R: Repository> Builder<'config, R> {
 impl PropertyBankPipeline<Discovery> {
     pub fn discover(
         path: &Path,
-        source: &impl FsReader,
+        source: &impl FileReader,
         repo: &impl Repository,
     ) -> Result<PropertyBankPath, SchemaIngestionError> {
         // Uses SchemaFileError, SchemaParseError, SchemaStorageError
@@ -2505,7 +2505,7 @@ This allows step-by-step execution while maintaining type safety.
 ```rust
 pub struct Builder<'config, R> {
     config: &'config Config,
-    source: FsReader,
+    source: FileReader,
     repository: R,
 }
 
@@ -2628,7 +2628,7 @@ impl<'config, R: Repository> Builder<'config, R> {
          │
          ├─── Ingestor (file I/O + staleness)
          │      │
-         │      ├─── FsReader (filesystem abstraction)
+         │      ├─── FileReader (filesystem abstraction)
          │      └─── Repository (database operations)
          │
          ├─── RefExpander (property reference expansion)
@@ -2673,7 +2673,7 @@ _Total Pipeline Stages Identified_:
 _Architecture Decisions_:
 
 1. **Builder Mutability**: Mutable Builder holds `property_delta: PropertyDelta` (empty = no changes)
-2. **Infrastructure Separation**: Config, FsReader, Repository live in Builder, passed by reference to state transitions
+2. **Infrastructure Separation**: Config, FileReader, Repository live in Builder, passed by reference to state transitions
 3. **Delta Tracking**: SchemaData holds `ExtendsDelta` (old/new parent) and `ExcludesDelta` (added/removed)
 4. **Inheritance Views**: Redesigned to 3 tables with `SCHEMA_DESCENDANTS` multimap for efficient BFS traversal
 5. **Depth Pre-computation**: Added `depth: usize` to `SchemaInheritanceView` (saves recalculation during merging)

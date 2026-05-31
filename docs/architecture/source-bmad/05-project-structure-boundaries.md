@@ -138,7 +138,7 @@ lithos/
 │       └── fs/                 # FILESYSTEM (OS Integration)
 │           ├── mod.rs          # FS module entry and public type aliases
 │           ├── error.rs        # I/O specific errors (ParseError, PathValidationError)
-│           ├── reader.rs       # Root-scoped file reader (FsReader) with validation
+│           ├── reader.rs       # Root-scoped file reader (FileReader) with validation
 │           ├── writer.rs       # Root-scoped file writer (FsWriter) with atomic-replace
 │           ├── validator.rs    # Security-critical path validation (PathValidator)
 │           └── types.rs        # File type markers and parsing helpers (module-internal)
@@ -245,12 +245,12 @@ lithos/
 
 ### External Integrations
 
-- **Obsidian Vault:** Interfaced via `lithos-core/src/fs/` (e.g., `FsReader`) and parsed via `lithos-core/src/fs/parsers.rs`.
+- **Obsidian Vault:** Interfaced via `lithos-core/src/fs/` (e.g., `FileReader`) and parsed via `lithos-core/src/fs/parsers.rs`.
 - **Hierarchical Config:** Managed by `figment` in `lithos-core/src/config/` (Global -> User -> Project -> Vault -> Env -> Flag).
 
 ### Data Flow
 
-- **Ingestion Pipeline (Write Path):** File Change -> `loader` discovers via `FsReader` -> parses to `Raw*` -> validates via `TryFrom` to Domain -> projects to Redb via `storage`.
+- **Ingestion Pipeline (Write Path):** File Change -> `loader` discovers via `FileReader` -> parses to `Raw*` -> validates via `TryFrom` to Domain -> projects to Redb via `storage`.
 - **Read Path:** CLI -> Application Service/Loader -> Domain Storage implementation (`get`, `list`) -> Database -> Zero-copy Domain or `*View` type.
 
 ## Development Workflow Integration

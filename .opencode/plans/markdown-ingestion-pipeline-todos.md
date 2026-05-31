@@ -506,7 +506,7 @@ fn read_parse_and_persist<R: Repository<Error = NoteRepositoryError>>(
     content: String,
     is_new: bool,
     repository: &R,
-    source: &FsReader,
+    source: &FileReader,
     task_spec: &TaskConfigSpec,
     frontmatter_spec: &FrontmatterConfigSpec,
 ) -> Result<NoteProcessReport, NoteProcessError>

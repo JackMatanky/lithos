@@ -1538,7 +1538,7 @@ mod integration_tests {
         create_test_schemas(&temp);
 
         let config = setup_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
+        let source = FileReader::new(temp.path().to_path_buf());
         let builder = Builder::new(repo, source, &config);
 
         let schemas = builder.load_schemas_v2(&PropertyBank::default()).unwrap();
@@ -1583,7 +1583,7 @@ mod integration_tests {
 
 ### Missing Pieces
 
-1. **FileSource trait**: Abstraction for reading files (FsReader)
+1. **FileSource trait**: Abstraction for reading files (FileReader)
 2. **Schema name resolution**: Convert `SchemaName` to `SchemaId`
 3. **Error types**: Specific errors for each stage
 4. **DagBuilder integration**: Use existing builder from graph.rs

@@ -61,7 +61,7 @@ Implement `FsFile` and `FsDir` structs that compose the new path and metadata ty
 - [ ] Conversion from `std::fs::DirEntry` - **DEFERRED** (requires base path context)
 
 **Out of scope:**
-- Updating `DirScanner` or `FsReader` methods (reserved for Issues 06 and 07)
+- Updating `DirScanner` or `FileReader` methods (reserved for Issues 06 and 07)
 
 ## Implementation Notes
 

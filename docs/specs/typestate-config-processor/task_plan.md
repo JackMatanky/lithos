@@ -208,14 +208,14 @@ User identified that I was mechanically fixing errors without addressing root ca
 - [x] Analyze schema/discovery.rs and config/ingestor.rs patterns
 - [x] Create config/discovery.rs with DiscoveryEngine (320 lines)
   - [x] Define result types (GlobalDiscovery, VaultDiscovery, DiscoveryResult)
-  - [x] Implement filesystem scanning (FsReader.info() not created_at/modified_at)
+  - [x] Implement filesystem scanning (FileReader.info() not created_at/modified_at)
   - [x] Batch DB query stub (TODO: needs Repository trait methods)
   - [x] Return discovery data with FileInfo (enables RawConfigMetadata removal)
   - [x] All 993 tests pass, committed
 - [x] Plug DiscoveryEngine into loader.rs (replace ingestor usage)
   - [x] Analyze loader.rs current usage of ingestor
   - [x] Replace ingestor.global_config() with DiscoveryEngine::run()
-  - [x] Parse configs from FileEntry using FsReader.parse_structured()
+  - [x] Parse configs from FileEntry using FileReader.parse_structured()
   - [x] Extract views from discovery result
   - [x] Remove Ingestor field from Loader struct
   - [x] All 993 tests pass

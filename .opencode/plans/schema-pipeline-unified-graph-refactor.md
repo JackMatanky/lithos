@@ -471,7 +471,7 @@ pub(crate) fn load_schemas_v2(
 pub(crate) fn discover_with_context<R: Repository>(
     self,
     context: DiscoveryContext,
-    source: &FsReader,
+    source: &FileReader,
     repository: &R,
 ) -> Result<
     SchemaTreeProcessor<Comparison, DiscoveryState>,
@@ -546,7 +546,7 @@ fn builder_discovery_loads_graph_from_db() {
     let temp = TempDir::new().unwrap();
     let repo = setup_test_repo_with_graph(&temp);
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     let builder = Builder::new(repo, source, &config);
     let context = builder.discovery().unwrap();
@@ -560,7 +560,7 @@ fn builder_discovery_excludes_property_bank() {
     create_schema_files(&temp, &["schema_a.toml", "property_bank.toml"]);
     let repo = InMemoryRepository::new();
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     let builder = Builder::new(repo, source, &config);
     let context = builder.discovery().unwrap();
@@ -574,7 +574,7 @@ fn builder_discovery_handles_missing_graph() {
     let temp = TempDir::new().unwrap();
     let repo = InMemoryRepository::new();  // Empty DB
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     let builder = Builder::new(repo, source, &config);
     let context = builder.discovery().unwrap();
@@ -590,7 +590,7 @@ fn builder_discovery_handles_missing_graph() {
 ```rust
 use lithos_core::schema::{Builder, InMemoryRepository};
 use lithos_core::config::Config;
-use lithos_core::fs::FsReader;
+use lithos_core::fs::FileReader;
 use tempfile::TempDir;
 
 #[test]
@@ -791,7 +791,7 @@ pub(crate) struct ComparisonState {
 ```rust
 pub(crate) fn compare_files(
     self,
-    source: &FsReader,
+    source: &FileReader,
 ) -> Result<
     SchemaTreeProcessor<TreeGraphed, ComparisonState>,
     SchemaLoaderError,
@@ -1280,7 +1280,7 @@ Integrate PropertyBankDelta checking into the Comparison stage to correctly demo
 ```rust
 pub(crate) fn compare_files(
     self,
-    source: &FsReader,
+    source: &FileReader,
 ) -> Result<
     SchemaTreeProcessor<TreeGraphed, ComparisonState>,
     SchemaLoaderError,
@@ -1291,7 +1291,7 @@ pub(crate) fn compare_files(
 ```rust
 pub(crate) fn compare_files(
     self,
-    source: &FsReader,
+    source: &FileReader,
     property_bank_delta: Option<&HashSet<PropertyName>>,
 ) -> Result<
     SchemaTreeProcessor<TreeGraphed, ComparisonState>,

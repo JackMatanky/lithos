@@ -224,7 +224,7 @@ Helper function to scan schema directory:
 /// # Errors
 /// Returns error if directory read fails or file metadata unavailable.
 fn scan_schema_files(
-    source: &FsReader,
+    source: &FileReader,
     schemas_dir: &Path,
 ) -> Result<Vec<(PathBuf, RawFileTimes)>, SchemaLoaderError> {
     // TODO: Implement
@@ -233,7 +233,7 @@ fn scan_schema_files(
 ```
 
 ### Requirements
-- Use `FsReader::list_files()` or similar
+- Use `FileReader::list_files()` or similar
 - Extract file modified/created times
 - Filter out `property_bank` file
 - Return `(PathBuf, RawFileTimes)` pairs
@@ -430,7 +430,7 @@ Update the signature and implement:
 impl SchemaProcessor<Discovery, Unknown> {
     pub(crate) fn discover<R: Repository>(
         self,
-        source: &FsReader,
+        source: &FileReader,
         repository: &R,
         schemas_dir: &Path,
         property_bank_delta: Option<PropertyBankDelta>,

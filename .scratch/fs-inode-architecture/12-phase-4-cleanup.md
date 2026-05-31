@@ -30,8 +30,8 @@ ONLY after all Phase 3 subphases complete.
 - [x] Delete fs/file.rs (contents moved to name.rs, metadata.rs, entry.rs)
 - [x] Delete fs/types.rs (contents moved to format.rs)
 - [x] Delete old DirScanner.entries() returning Vec<FileEntry>
-- [x] Delete old FsReader.info() method (already absent in current branch)
-- [x] Rename FsReader.metadata_typed() → metadata() (remove "typed" suffix; already complete before this phase)
+- [x] Delete old FileReader.info() method (already absent in current branch)
+- [x] Rename FileReader.metadata_typed() → metadata() (remove "typed" suffix; already complete before this phase)
 - [x] Update all remaining consumers after deletions
 - [x] Run `mise run verify` — build/lint pass; 1 unrelated test failure in vault/storage.rs
 - [x] Tests pass (except unrelated vault test)
@@ -99,7 +99,7 @@ After the rename, `filter_dir()` returns `Result<Vec<FsPath>, FsError>` — iden
 
 ### Critical findings from code review
 
-- `FsReader::metadata_typed()` no longer exists; `FsReader::metadata()` already exists and is the active typed API in `lithos-core/src/fs/reader.rs:476`.
+- `FileReader::metadata_typed()` no longer exists; `FileReader::metadata()` already exists and is the active typed API in `lithos-core/src/fs/reader.rs:476`.
 - `DirScanner::entries()` currently exists as a compatibility alias that forwards to `entries_typed()` in `lithos-core/src/fs/scanner.rs:165` and `lithos-core/src/fs/scanner.rs:212`.
 - `fs/file.rs` still exists and is currently an ergonomic re-export wrapper (`pub use super::name::FileName`) with local tests in `lithos-core/src/fs/file.rs:18`.
 - `fs/types.rs` still exists and currently contains active parsing helpers used by `Reader::parse_structured` via `types::parse_from_format(...)` in `lithos-core/src/fs/reader.rs:613`.
@@ -109,7 +109,7 @@ After the rename, `filter_dir()` returns `Result<Vec<FsPath>, FsError>` — iden
 
 - Overall risk: **HIGH** (breaking API removals + module deletions in foundational FS context).
 - `DirScanner::entries()` removal risk: high; widely documented and used by reader/scanner tests and downstream call sites.
-- `FsReader::info()` removal risk: low-to-none in `fs::Reader` (method not found there), but verify other contexts for similarly named methods to avoid accidental deletions.
+- `FileReader::info()` removal risk: low-to-none in `fs::Reader` (method not found there), but verify other contexts for similarly named methods to avoid accidental deletions.
 - `fs/file.rs` deletion risk: medium; public module removal may break imports at `fs::file::*` paths even if `FileName` survives through `fs::name` / root re-exports.
 - `fs/types.rs` deletion risk: high unless parser internals are first migrated fully into `format.rs` or another internal module and imports updated.
 
@@ -130,12 +130,12 @@ Execute Phase 4 cleanup as a controlled breaking change, only after issues 08-11
 
 1. Remove compatibility APIs:
    - Delete `DirScanner::entries()` alias after all call sites are migrated to `entries_typed()` or finalized replacement API.
-   - Remove `FsReader::info()` only if it still exists in targeted branch (currently not present in inspected `fs::Reader`).
+   - Remove `FileReader::info()` only if it still exists in targeted branch (currently not present in inspected `fs::Reader`).
 2. Remove legacy modules:
    - Delete `lithos-core/src/fs/file.rs`.
    - Delete `lithos-core/src/fs/types.rs` after parser internals are relocated and wired.
 3. Rename/simplify APIs:
-   - Ensure typed metadata access remains under `FsReader::metadata()` only.
+   - Ensure typed metadata access remains under `FileReader::metadata()` only.
 4. Update all imports/re-exports/doc examples:
    - `fs/mod.rs`, reader/scanner docs, context docs, and any public API references.
 
@@ -198,7 +198,7 @@ Use vertical-slice TDD (one behavior at a time), with Rust best-practices constr
 
 ### Slice 2: metadata API cleanup
 
-1. RED: tests assert metadata behavior via `FsReader::metadata()` only.
+1. RED: tests assert metadata behavior via `FileReader::metadata()` only.
 2. GREEN: migrate any legacy alias usage if found.
 3. REFACTOR: remove alias methods and dead docs.
 

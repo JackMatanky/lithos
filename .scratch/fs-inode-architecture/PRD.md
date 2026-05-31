@@ -67,7 +67,7 @@ Consolidate filesystem primitives into fs/ as infrastructure building blocks, an
 - Metadata: `FsTimes`, `FileMetadata`, `DirMetadata` (split from FileInfo)
 - Runtime entities: `FsFile`, `FsDir`, `FsEntry`
 - Format detection: `FileFormat` (refactored from FormatKind, public, rkyv-enabled)
-- Utilities: `FsReader`, `FsWriter`, `DirScanner`, `PathValidator`
+- Utilities: `FileReader`, `FsWriter`, `DirScanner`, `PathValidator`
 
 **vault/ (Domain - inode-based tracking):**
 - Identifiers: `FileId(UuidV7)`, `DirId(UuidV7)`
@@ -85,7 +85,7 @@ lithos-core/src/fs/
 ├── entry.rs        # FsFile, FsDir, FsEntry (unified enum)
 ├── format.rs       # FileFormat (public, expanded from FormatKind) + FileExtensionRef<'a>
 ├── scanner.rs      # DirScanner, DirScanInput (paths()→Vec<FsPath>, entries()→Vec<FsEntry>)
-├── reader.rs       # FsReader (metadata() returns FsMetadata, delete info())
+├── reader.rs       # FileReader (metadata() returns FsMetadata, delete info())
 ├── error.rs        # FsError, ReadError, ScanError, ParseError, PathError, PathValidationError (see ADR 017)
 └── validator.rs    # PathValidator (unchanged)
 ```
@@ -105,8 +105,8 @@ impl DirScanner {
     pub fn entries(&self, input: DirScanInput) -> Result<Vec<FsEntry>, ScanError>;  // File or Dir
 }
 
-// FsReader methods (returns FsError compositor — see ADR 017)
-impl FsReader {
+// FileReader methods (returns FsError compositor — see ADR 017)
+impl FileReader {
     // Path-based filters (returns typed paths)
     pub fn filter_paths(&self, pattern: &str) -> Result<Vec<FsPath>, FsError>;  // Both files and dirs
     pub fn filter_file_paths(&self, pattern: &str) -> Result<Vec<FilePath>, FsError>;  // Files only
@@ -198,7 +198,7 @@ impl FsEntryView {
 pub fn metadata(&self, path: &Path) -> Result<FsMetadata, FsError>;  // Unified File or Dir (ADR 017)
 // Delete info() method entirely
 ```
-- Processor: File discovery pipeline (FsReader → FileView/DirView → save)
+- Processor: File discovery pipeline (FileReader → FileView/DirView → save)
 
 **Deleted types (NO ALIASES - direct replacement):**
 - `vault::VaultPath` → Use `NormalizedPath` for storage keys, `RelativePath` for validation
@@ -427,11 +427,11 @@ impl Repository {
 - Add ParentDir to fs/path.rs
 - Keep old fs/file.rs and fs/types.rs temporarily for backward compat
 
-**Phase 2: Add new methods to DirScanner and FsReader**
+**Phase 2: Add new methods to DirScanner and FileReader**
 - **REVISED**: Add DirScanner.paths_typed() returning Vec<FsPath> (keeps existing paths() during transition)
 - **REVISED**: Add DirScanner.entries_typed() returning Vec<FsEntry> (keeps existing entries() during transition)
-- Add FsReader methods: filter_entries_typed, filter_file_entries_typed, filter_dir_entries_typed, filter_paths_typed, filter_file_paths_typed, filter_dir_paths_typed
-- Add FsReader.metadata_typed(path: &Path) -> Result<FsMetadata, ParseError>
+- Add FileReader methods: filter_entries_typed, filter_file_entries_typed, filter_dir_entries_typed, filter_paths_typed, filter_file_paths_typed, filter_dir_paths_typed
+- Add FileReader.metadata_typed(path: &Path) -> Result<FsMetadata, ParseError>
 - Keep old methods (paths() returning Vec<PathBuf>, entries() returning Vec<FileEntry>, info()) for backward compat during transition
 
 **REVISION 2026-05-12**: Use *_typed() suffix for new methods to avoid breaking existing call sites.
@@ -463,7 +463,7 @@ This allows gradual migration in Phase 3 before removing old methods in Phase 4.
 - More complex: FsEntry is a unified enum (File or Dir), FileEntry was file-only
 - Update DirScanner.entries() to return Vec<FsEntry> (replace old method)
 - Update all consumers to handle FsEntry::File vs FsEntry::Dir variants
-- Update FsReader.list_entries() return type
+- Update FileReader.list_entries() return type
 
 **Phase 4: Delete old files, methods, and rename new methods (breaking change)**
 - ONLY after all Phase 3 subphases complete
@@ -471,12 +471,12 @@ This allows gradual migration in Phase 3 before removing old methods in Phase 4.
 - Delete fs/types.rs (contents moved to format.rs)
 - Delete old DirScanner.paths() returning Vec<PathBuf>
 - Delete old DirScanner.entries() returning Vec<FileEntry>
-- Delete old FsReader.info() method
+- Delete old FileReader.info() method
 - **REVISED**: Rename all *_typed() methods to remove suffix:
   - DirScanner.paths_typed() → paths()
   - DirScanner.entries_typed() → entries()
-  - FsReader.filter_entries_typed() → filter_entries() (and all filter variants)
-  - FsReader.metadata_typed() → metadata()
+  - FileReader.filter_entries_typed() → filter_entries() (and all filter variants)
+  - FileReader.metadata_typed() → metadata()
 - Update all remaining consumers
 - Run `mise run verify` to confirm no broken imports
 
@@ -589,7 +589,7 @@ This allows gradual migration in Phase 3 before removing old methods in Phase 4.
 
 **Processor tests:**
 - Existing: `vault/processor.rs` has typestate transition tests
-- Pattern: Mock FsReader, verify state machine transitions
+- Pattern: Mock FileReader, verify state machine transitions
 - Extend to verify new FileView/DirView creation
 
 ---

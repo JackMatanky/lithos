@@ -21,7 +21,7 @@ Implement the Discovery stage, which is the entry point for the schema pipeline.
 - ✅ Status types: `Unknown`, `Missing`, `Present` defined
 - ✅ Branching enum: `DiscoveryBranch` defined
 - ✅ Repository methods: `find_raw_schema_views_by_paths()` exists
-- ✅ Filesystem abstraction: `FsReader` available
+- ✅ Filesystem abstraction: `FileReader` available
 - ✅ Method signature: `discover()` exists with `todo!()`
 
 ### What's Needed
@@ -92,7 +92,7 @@ pub(crate) struct DiscoveryContext {
 Implement logic to scan the schema directory and collect all schema file paths.
 
 **Requirements**:
-- Use `FsReader` abstraction (already available)
+- Use `FileReader` abstraction (already available)
 - Exclude `property_bank` file
 - Collect file paths and timestamps
 - Handle I/O errors gracefully
@@ -100,7 +100,7 @@ Implement logic to scan the schema directory and collect all schema file paths.
 **Signature**:
 ```rust
 fn scan_schema_files(
-    source: &FsReader,
+    source: &FileReader,
 ) -> Result<Vec<(PathBuf, RawFileTimes)>, SchemaLoaderError>;
 ```
 
@@ -197,7 +197,7 @@ fn branch_schema(
 Orchestrate all the above steps in the main discover method.
 
 **Requirements**:
-- Accept `FsReader` and `Repository` as inputs
+- Accept `FileReader` and `Repository` as inputs
 - Accept optional PropertyBank delta
 - Call scan → query → detect → branch in sequence
 - Return `Vec<DiscoveryBranch>` + `DiscoveryContext`
@@ -207,7 +207,7 @@ Orchestrate all the above steps in the main discover method.
 ```rust
 pub(crate) fn discover<R: Repository>(
     self,
-    source: &FsReader,
+    source: &FileReader,
     repository: &R,
 ) -> Result<DiscoveryBranch, SchemaLoaderError>
 where
@@ -218,7 +218,7 @@ where
 ```rust
 pub(crate) fn discover<R: Repository>(
     self,
-    source: &FsReader,
+    source: &FileReader,
     repository: &R,
     property_bank_delta: Option<PropertyBankDelta>,
 ) -> Result<(Vec<DiscoveryBranch>, DiscoveryContext), SchemaLoaderError>
@@ -318,7 +318,7 @@ Recommended order (each task builds on previous):
 ## Dependencies & Prerequisites
 
 ### External Dependencies (Already Available)
-- `FsReader` - filesystem abstraction
+- `FileReader` - filesystem abstraction
 - `Repository` trait - database operations
 - `RawSchemaView` - cached view structure
 - `SchemaId` - UUID type for schemas
@@ -342,7 +342,7 @@ Recommended order (each task builds on previous):
 - Discovery stage produces correct branches for all schemas
 - Global context includes accurate name_to_id indexes
 - Deleted schemas are correctly identified
-- All file system operations use FsReader abstraction
+- All file system operations use FileReader abstraction
 - All database operations use Repository trait
 
 ✅ **Quality**:

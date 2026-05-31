@@ -2,16 +2,16 @@
 
 **Status**: drafting
 **Created**: 2026-05-26
-**Context**: The `template` and `note` modules require robust parsing to split YAML frontmatter from Markdown bodies. Currently, parsing logic (like `parse_structured` and `classify_path`) is glued to `FsReader`, which mixes pure data transformation with I/O. This PRD outlines the extraction of a pure-data `DocumentParser` seam.
+**Context**: The `template` and `note` modules require robust parsing to split YAML frontmatter from Markdown bodies. Currently, parsing logic (like `parse_structured` and `classify_path`) is glued to `FileReader`, which mixes pure data transformation with I/O. This PRD outlines the extraction of a pure-data `DocumentParser` seam.
 
 ---
 
 ## Problem Statement
 
-File parsing and format classification are currently tightly coupled to `FsReader`. This creates several issues:
+File parsing and format classification are currently tightly coupled to `FileReader`. This creates several issues:
 1. **I/O Coupling**: Pure string parsing cannot easily be done without bringing in the file system reader.
 2. **Missing Markdown Extraction**: The current parser doesn't handle splitting YAML frontmatter from Markdown bodies, which is a hard requirement for the new template architecture (as defined in `.scratch/template-module-refactor/PRD.md`) and the note ingestion pipeline.
-3. **Bloated Reader**: `FsReader` is taking on too many responsibilities, violating the single-responsibility principle.
+3. **Bloated Reader**: `FileReader` is taking on too many responsibilities, violating the single-responsibility principle.
 
 ## Solution
 
@@ -35,7 +35,7 @@ The parser will act as a pure-data seam:
 ## Implementation Decisions
 
 ### Phase 1: Decoupling Existing Parsing
-- Extract `parse_structured`, `parse_structured_from_str`, and `classify_path` from `FsReader`.
+- Extract `parse_structured`, `parse_structured_from_str`, and `classify_path` from `FileReader`.
 - Move format classification logic into a pure module (`src/fs/parser.rs` or `src/parser/`).
 
 ### Phase 2: DocumentParser Implementation
@@ -46,7 +46,7 @@ The parser will act as a pure-data seam:
 
 ## Blast Radius & Impact
 
-- **Direct Callers**: Any component currently calling `FsReader::parse_structured` (e.g., `ConfigBuilder`, `SchemaProcessor`).
+- **Direct Callers**: Any component currently calling `FileReader::parse_structured` (e.g., `ConfigBuilder`, `SchemaProcessor`).
 - **Risk**: LOW/MEDIUM. The parsing logic itself isn't changing for structured formats (JSON/TOML), but the API is moving. The Markdown extraction is net-new functionality that will unblock the template refactor.
 
 ## Testing Strategy

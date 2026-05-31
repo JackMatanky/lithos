@@ -47,7 +47,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **clippy**: Enforces **cognitive complexity < 25** and custom quality lints (via `clippy.toml`).
 - **Definition of Done:**
   - [ ] No file I/O in Repository traits (verify with architecture tests).
-  - [ ] File ingestion uses `FsReader` trait (not direct `std::fs` in domain).
+  - [ ] File ingestion uses `FileReader` trait (not direct `std::fs` in domain).
 - **rustfmt**: Enforces project-wide formatting and import sorting (via `rustfmt.toml`).
 - **nextest**: Optimized test runner for high-performance concurrent execution.
 - **tarpaulin**: Code coverage analysis tool targeting **80%+ coverage**.
@@ -77,7 +77,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
   - **Testability:** Test fakes implement the full `Repository` trait, returning errors or no-ops for unneeded operations.
 - **File Ingestion Rules:**
   - **Repository traits MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
-  - **File ingestion MUST use `FsReader` trait**: Abstract over filesystem for testability.
+  - **File ingestion MUST use `FileReader` trait**: Abstract over filesystem for testability.
   - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Domain → Storage.
   - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → Storage.
 - **Read Model Pattern:**

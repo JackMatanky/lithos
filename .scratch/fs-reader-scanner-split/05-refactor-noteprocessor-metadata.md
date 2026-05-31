@@ -11,11 +11,11 @@ Ref: #40
 
 ## What to build
 
-Refactor `NoteProcessor` to completely eliminate its reliance on `FsReader::metadata()`. It must correctly pass down and utilize the `FsMetadata` embedded inside the `FsEntry` objects produced by `DirScanner` during discovery.
+Refactor `NoteProcessor` to completely eliminate its reliance on `FileReader::metadata()`. It must correctly pass down and utilize the `FsMetadata` embedded inside the `FsEntry` objects produced by `DirScanner` during discovery.
 
 ## Acceptance criteria
 
-- [ ] `NoteProcessor` methods no longer call `FsReader::metadata()`.
+- [ ] `NoteProcessor` methods no longer call `FileReader::metadata()`.
 - [ ] Internal payload structs in `NoteProcessor` are updated to expect metadata injected from the discovery phase.
 - [ ] Integration tests and cache staleness checks continue to correctly process metadata timestamps and sizes.
 
@@ -34,7 +34,7 @@ None - can start immediately
 ## Agent Brief
 
 **Category:** refactoring
-**Summary:** `NoteProcessor` checks `FsReader::metadata()` for file freshness. `VaultProcessor` already generated the `FsEntry` arrays containing metadata.
+**Summary:** `NoteProcessor` checks `FileReader::metadata()` for file freshness. `VaultProcessor` already generated the `FsEntry` arrays containing metadata.
 
 **Current behavior:**
 `note/processor.rs` executes `check_metadata()` by simply checking an `is_stale: bool` flag passed in `NoteFileInfo`. `VaultProcessor` hardcodes this to `true` when routing.
@@ -52,4 +52,4 @@ None - can start immediately
    - Update `NoteFileInfo` in `lithos-core/src/note/processor.rs` to replace `is_stale: bool` with `metadata: FileMetadata`.
    - Update `NoteProcessor::check_metadata` to compare provided metadata with stored `Note.metadata`.
    - Update `VaultProcessor::route` in `lithos-core/src/vault/processor.rs` to pass `FileMetadata` from the scan.
-3. **REFACTOR**: Confirm all `note` module tests pass and ensure no redundant `FsReader::metadata()` calls remain in the pipeline.
+3. **REFACTOR**: Confirm all `note` module tests pass and ensure no redundant `FileReader::metadata()` calls remain in the pipeline.

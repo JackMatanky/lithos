@@ -42,7 +42,7 @@ Create `lithos-core/src/vault/` with the following files:
 - `processor.rs`
   - `VaultProcessor<Stage, Status>`, `ScanMode`, `VaultProcessReport`.
 - `fs.rs` (optional)
-  - Thin wrapper around `FsReader` for scanning and metadata extraction.
+  - Thin wrapper around `FileReader` for scanning and metadata extraction.
 
 ## Vault Domain Types
 
@@ -127,7 +127,7 @@ Batch adapters (mirroring note storage):
 
 ### Public API
 
-- `VaultProcessor<Discovery, Unknown>::new(source: FsReader, repo: &R)`
+- `VaultProcessor<Discovery, Unknown>::new(source: FileReader, repo: &R)`
 - `process_full(&self) -> Result<VaultProcessReport, VaultProcessError>`
 - `process_partial(paths: &[VaultPath]) -> Result<VaultProcessReport, VaultProcessError>`
 
@@ -166,7 +166,7 @@ Batch adapters (mirroring note storage):
 ### Processor Flow
 
 1. `Discovery`
-   - Use `FsReader` to list files and folders.
+   - Use `FileReader` to list files and folders.
    - Validate paths and normalize to `VaultPath`.
    - Build `VaultFile` and `VaultFolder` records.
    - Build `HashSet<VaultPath>` for pruning.
@@ -270,7 +270,7 @@ Batch adapters (mirroring note storage):
    - If mismatch -> `Suspect`.
 
 3. `Analysis`
-   - Read markdown content using `FsReader` (vault root + file path).
+   - Read markdown content using `FileReader` (vault root + file path).
    - Parse via `MarkdownParser` to `RawNote`.
    - Transition to `New` or `Changed`.
 
@@ -311,7 +311,7 @@ Batch adapters (mirroring note storage):
 
 - `VaultProcessor` uses `Config` for vault root and parsing specs.
 - `NoteProcessor` uses `Config` for frontmatter/task specs.
-- Use `FsReader::new(config.vault_metadata().root().as_path())`.
+- Use `FileReader::new(config.vault_metadata().root().as_path())`.
 
 ### Path Mapping
 

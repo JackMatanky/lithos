@@ -24,7 +24,7 @@ Phase 3c: Transition from a file-only struct to a unified file/directory enum. T
 ## Acceptance criteria
 
 - [x] `DirScanner.entries()` returns `Vec<FsEntry>` (replaces `entries()` returning `Vec<FileEntry>`)
-- [x] `FsReader.list_entries()` return type updated to `Vec<FsEntry>`
+- [x] `FileReader.list_entries()` return type updated to `Vec<FsEntry>`
 - [x] `SchemaDiscovery` and `ConfigDiscovery` updated to use `FsEntry`
 - [x] `FsEntry` provides ergonomic accessors to minimize consumer friction
 - [x] `FileEntry` struct deleted from `fs/file.rs`
@@ -78,14 +78,14 @@ Key semantic hazards to explicitly guard:
 - Callers have ergonomic, low-friction read access patterns so migration does not encourage repetitive matching, redundant clones, or lossy metadata fallbacks.
 
 **Key interfaces and contracts:**
-- `DirScanner::entries(...)` and `FsReader::list_entries(...)` should converge on a unified entry type contract that does not regress ordering guarantees.
+- `DirScanner::entries(...)` and `FileReader::list_entries(...)` should converge on a unified entry type contract that does not regress ordering guarantees.
 - Schema discovery entry separation logic should only process `FsEntry::File` as schema candidates; directory entries must be skipped or rejected deterministically.
 - Config discovery for global/vault config should preserve single-file resolution semantics and produce deterministic filename/path metadata behavior.
 - `FsEntry` should expose accessor APIs that support migration ergonomics while remaining explicit about variant-dependent metadata.
 
 **Acceptance criteria (expanded):**
 - [ ] `DirScanner.entries()` returns `Vec<FsEntry>` and preserves path-sorted output behavior.
-- [ ] `FsReader.list_entries()` returns `Vec<FsEntry>` and retains existing glob + ordering semantics.
+- [ ] `FileReader.list_entries()` returns `Vec<FsEntry>` and retains existing glob + ordering semantics.
 - [ ] `SchemaDiscovery` and `PropertyBankDiscovery` consume `FsEntry` and process only file variants for schema materialization.
 - [ ] `ConfigDiscovery` consumes `FsEntry` (or performs explicit file extraction) without behavior changes to global/vault config resolution precedence.
 - [ ] `FsEntry` provides ergonomic accessors needed by migrated callers (including path and metadata access patterns) without forcing direct field-style assumptions.
@@ -120,7 +120,7 @@ Planning constraints from TDD + Rust best-practices:
 - VERIFY: `fs::entry` tests.
 
 **Slice 2 - Scanner/reader contract migration**
-- RED: Introduce/adjust tests so `DirScanner.entries` and `FsReader.list_entries` assert unified return type behavior plus stable ordering guarantees.
+- RED: Introduce/adjust tests so `DirScanner.entries` and `FileReader.list_entries` assert unified return type behavior plus stable ordering guarantees.
 - GREEN: Change return types to `Vec<FsEntry>` and adapt implementation via existing typed pathways where possible to minimize duplicate logic.
 - VERIFY: scanner/reader tests.
 
@@ -155,7 +155,7 @@ mise run verify
 
 - Acceptance criteria review completed against current workspace changes.
 - `DirScanner.entries()` now returns `Vec<FsEntry>` and is wired through typed scanning.
-- `FsReader.list_entries()` now returns `Vec<FsEntry>`.
+- `FileReader.list_entries()` now returns `Vec<FsEntry>`.
 - `SchemaDiscovery`/`PropertyBankDiscovery` and `ConfigDiscovery` now consume `FsEntry` with explicit file-variant handling where required.
 - `FsEntry` ergonomics confirmed (`path`, `path_ref`, `filename`, `metadata`).
 - Legacy `FileEntry` struct removal confirmed from `fs/file.rs` and re-export removal confirmed from `fs/mod.rs`.

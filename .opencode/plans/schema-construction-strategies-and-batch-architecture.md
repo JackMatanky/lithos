@@ -651,7 +651,7 @@ fn discover_and_classify(
 
 ```rust
 impl BatchedPipeline {
-    fn parse(mut self, source: &FsReader) -> Result<Self> {
+    fn parse(mut self, source: &FileReader) -> Result<Self> {
         // Only parse batches that need parsing
         self.stale_full.parse_all(source)?;
         self.new.parse_all(source)?;

@@ -37,7 +37,7 @@
    └─ Returns: PropertyBank
 
 4. SchemaProcessor::<Discovery, Review>::discover() [Lines 752-794]
-   ├─ Input: &FilesContext, &InheritanceGraph, &R, &FsReader
+   ├─ Input: &FilesContext, &InheritanceGraph, &R, &FileReader
    ├─ Calls: Self::fetch_view_maps() [Lines 799-825]
    │   ├─ Queries: repository.find_raw_schema_views_by_paths() (DUPLICATE)
    │   └─ Queries: repository.find_schema_ids_by_paths() (DUPLICATE)
@@ -45,7 +45,7 @@
    └─ Returns: DiscoveryBranch
 
 5. SchemaProcessor::<Discovery, NeverSeen>::discover() [Lines 723-748]
-   ├─ Input: &FilesContext, &FsReader
+   ├─ Input: &FilesContext, &FileReader
    ├─ Creates: NewBatch<InitialScan> with SchemaId::new()
    └─ Returns: DiscoveryBranch::AllMissing
 ```
@@ -526,7 +526,7 @@ impl SchemaProcessor {
     /// Create processor from discovery result (replaces discover() methods).
     pub(crate) fn from_discovery_result(
         result: &DiscoveryResult,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         // Classify schemas by cached state
         let mut found = HashMap::new();
@@ -598,7 +598,7 @@ impl SchemaProcessor<Discovery, Review> {
     pub(crate) fn discover_with_outcome(
         outcome: &DiscoveryOutcome,
         repository: &R,  // Still needed for some operations?
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         // Use outcome.files directly (already has views and IDs)
         // Use outcome.graph directly
