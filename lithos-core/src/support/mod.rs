@@ -10,12 +10,16 @@
 //!   consumers.
 
 /// BLAKE3 hashing utilities and types.
-pub(crate) mod hash;
+pub(crate) mod content_hash;
+pub(crate) mod hash_index;
 
 #[expect(
     unused_imports,
     reason = "crate-private support facade keeps ergonomic internal imports"
 )]
-pub(crate) use hash::{
-    Blake3Hash, Blake3HashIndex, HashInput, hash_structured,
-};
+pub(crate) use content_hash::{Blake3Hash, HashInput, hash_structured};
+#[expect(
+    unused_imports,
+    reason = "crate-private support facade keeps ergonomic internal imports"
+)]
+pub(crate) use hash_index::Blake3HashIndex;

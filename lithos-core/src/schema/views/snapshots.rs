@@ -24,7 +24,7 @@ use crate::{
             hashes::HashRecord,
         },
     },
-    support::hash::Blake3Hash,
+    support::content_hash::Blake3Hash,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -514,7 +514,7 @@ mod tests {
                 false,
             );
             let hashes = crate::schema::views::hashes::HashRecord::new(
-                crate::support::hash::Blake3Hash::new([0; 32]),
+                crate::support::content_hash::Blake3Hash::new([0; 32]),
                 crate::schema::views::RawPropertyHashIndex::default(),
             );
 
@@ -557,7 +557,7 @@ mod tests {
                 false,
             );
             let hashes = crate::schema::views::hashes::HashRecord::new(
-                crate::support::hash::Blake3Hash::new([0; 32]),
+                crate::support::content_hash::Blake3Hash::new([0; 32]),
                 crate::schema::views::RawPropertyHashIndex::default(),
             );
 

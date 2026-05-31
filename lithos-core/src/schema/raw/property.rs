@@ -38,7 +38,10 @@ use crate::{
     schema::{
         error::SchemaError, identifier::SchemaName, property::PropertyName,
     },
-    support::hash::{Blake3Hash, Blake3HashIndex, hash_structured},
+    support::{
+        content_hash::{Blake3Hash, hash_structured},
+        hash_index::Blake3HashIndex,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

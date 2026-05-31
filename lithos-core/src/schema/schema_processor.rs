@@ -83,7 +83,7 @@ use crate::{
             RawViewRead as _, contracts::Version as _,
         },
     },
-    support::hash::Blake3Hash,
+    support::content_hash::Blake3Hash,
 };
 
 fn schema_stem_from_path(

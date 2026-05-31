@@ -102,7 +102,7 @@ use super::HashRecord;
 use crate::{
     fs::metadata::{FileMetadata, FsTimes},
     schema::error::SchemaRepositoryError,
-    support::hash::Blake3Hash,
+    support::content_hash::Blake3Hash,
 };
 
 /// Defines the mutable container contract for versioned raw-file views.
