@@ -126,7 +126,7 @@ use crate::{
     schema::property::PropertyName,
     support::{
         content_hash::{Blake3Hash, HasContentHash, HasContentHashMut},
-        hash_index::Blake3HashIndex,
+        hash_index::{Blake3HashIndex, HasHashIndex, HasHashIndexMut},
     },
 };
 
@@ -262,6 +262,15 @@ impl HasContentHashMut for HashRecord {
     }
 }
 
+impl HasHashIndex for HashRecord {
+    type Key = PropertyName;
+
+    #[inline]
+    fn hash_index(&self) -> &Blake3HashIndex<PropertyName> {
+        self.properties().hash_index()
+    }
+}
+
 impl ArchivedHashRecord {
     /// Returns `true` if the archived content hash matches (zero-copy).
     ///
@@ -387,6 +396,22 @@ impl From<Blake3HashIndex<PropertyName>> for RawPropertyHashIndex {
     }
 }
 
+impl HasHashIndex for RawPropertyHashIndex {
+    type Key = PropertyName;
+
+    #[inline]
+    fn hash_index(&self) -> &Blake3HashIndex<PropertyName> {
+        &self.0
+    }
+}
+
+impl HasHashIndexMut for RawPropertyHashIndex {
+    #[inline]
+    fn hash_index_mut(&mut self) -> &mut Blake3HashIndex<PropertyName> {
+        &mut self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,6 +472,46 @@ mod tests {
                 HashRecord::new(hash1, RawPropertyHashIndex::default());
             record.set_content_hash(hash2);
             assert!(!record.is_content_match(&hash1));
+        }
+    }
+
+    mod has_hash_index {
+        use super::*;
+
+        #[test]
+        fn delegates_to_inner_for_raw_property_hash_index() {
+            let index = RawPropertyHashIndex::default();
+            assert_eq!(index.hash_index(), index.as_inner());
+        }
+
+        #[test]
+        fn delegates_via_properties_for_hash_record() {
+            let mut properties = RawPropertyHashIndex::default();
+            properties.insert(
+                PropertyName::try_new("status")
+                    .expect("status should be valid property name"),
+                Blake3Hash::compute(b"status"),
+            );
+            let record =
+                HashRecord::new(Blake3Hash::compute(b"content"), properties);
+
+            assert_eq!(record.hash_index(), record.properties().as_inner());
+        }
+    }
+
+    mod has_hash_index_mut {
+        use super::*;
+
+        #[test]
+        fn delegates_mutably_to_inner_for_raw_property_hash_index() {
+            let mut index = RawPropertyHashIndex::default();
+            index.hash_index_mut().insert(
+                PropertyName::try_new("title")
+                    .expect("title should be valid property name"),
+                Blake3Hash::compute(b"title"),
+            );
+
+            assert_eq!(index.len(), 1);
         }
     }
 }
