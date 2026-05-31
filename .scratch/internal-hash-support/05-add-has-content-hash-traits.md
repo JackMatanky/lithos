@@ -2,8 +2,9 @@
 title: 05-add-has-content-hash-traits
 category: enhancement
 label: ready-for-agent
-status: triaged
+status: completed
 date_created: 2026-05-31T00:00:00+00:00
+date_completed: 2026-05-31T00:00:00+00:00
 ---
 
 # Add `HasContentHash` / `HasContentHashMut` traits
@@ -32,13 +33,13 @@ Types explicitly NOT implementing the traits (keep existing methods):
 
 ## Acceptance criteria
 
-- [ ] `HasContentHash` trait defined in `content_hash.rs` with `content_hash()` and default `is_content_match()`.
-- [ ] `HasContentHashMut` trait defined in `content_hash.rs` extending `HasContentHash` with `set_content_hash()`.
-- [ ] `Blake3Hash`, `HashRecord`, and `RawFileVersion` implement both traits.
-- [ ] No regressions in existing `is_content_match` call sites.
-- [ ] No changes to `ArchivedHashRecord`, schema view types, or their `is_content_match` methods.
-- [ ] `cargo clippy -p lithos-core --all-targets -- -D warnings` passes.
-- [ ] `cargo test -p lithos-core` passes.
+- [x] `HasContentHash` trait defined in `content_hash.rs` with `content_hash()` and default `is_content_match()`.
+- [x] `HasContentHashMut` trait defined in `content_hash.rs` extending `HasContentHash` with `set_content_hash()`.
+- [x] `Blake3Hash`, `HashRecord`, and `RawFileVersion` implement both traits.
+- [x] No regressions in existing `is_content_match` call sites.
+- [x] No changes to `ArchivedHashRecord`, schema view types, or their `is_content_match` methods.
+- [x] `cargo clippy -p lithos-core --all-targets -- -D warnings` passes.
+- [x] `cargo test -p lithos-core` passes.
 
 ## Blocked by
 
