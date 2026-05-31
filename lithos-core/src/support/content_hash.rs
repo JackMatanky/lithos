@@ -20,6 +20,25 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
+/// Trait for types that carry a content hash.
+#[allow(dead_code, reason = "used through tests and future impls")]
+pub(crate) trait HasContentHash {
+    /// Returns a reference to the content hash.
+    fn content_hash(&self) -> &Blake3Hash;
+
+    /// Returns `true` if this type's content hash matches `hash`.
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.content_hash().is_match(hash)
+    }
+}
+
+/// Mutable extension of [`HasContentHash`].
+#[allow(dead_code, reason = "used through tests and future impls")]
+pub(crate) trait HasContentHashMut: HasContentHash {
+    /// Sets the content hash.
+    fn set_content_hash(&mut self, hash: Blake3Hash);
+}
+
 /// A 32-byte BLAKE3 hash with value semantics (`Copy`).
 ///
 /// Newtype wrapper around `[u8; 32]` to provide type safety and
@@ -108,6 +127,18 @@ impl Blake3Hash {
     #[must_use]
     pub(crate) fn is_match(&self, other: &Self) -> bool {
         self.0 == other.0
+    }
+}
+
+impl HasContentHash for Blake3Hash {
+    fn content_hash(&self) -> &Blake3Hash {
+        self
+    }
+}
+
+impl HasContentHashMut for Blake3Hash {
+    fn set_content_hash(&mut self, hash: Blake3Hash) {
+        self.0 = hash.0;
     }
 }
 
@@ -307,7 +338,7 @@ mod tests {
         }
     }
 
-    mod validation {
+    mod matching {
         use super::*;
 
         #[test]
@@ -324,6 +355,112 @@ mod tests {
                 !hash1.is_match(&hash2),
                 "Different hashes should not match"
             );
+        }
+    }
+
+    mod input {
+        use super::*;
+
+        #[test]
+        fn from_byte_slice() {
+            let data: &[u8] = &[1, 2, 3];
+            let input: HashInput = data.into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![1, 2, 3]));
+        }
+
+        #[test]
+        fn from_byte_array_ref() {
+            let data: &[u8; 3] = &[4, 5, 6];
+            let input: HashInput = data.into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![4, 5, 6]));
+        }
+
+        #[test]
+        fn from_vec_ref() {
+            let data = vec![7u8, 8, 9];
+            let input: HashInput = (&data).into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![7, 8, 9]));
+        }
+
+        #[test]
+        fn from_vec() {
+            let data = vec![10u8, 11, 12];
+            let input: HashInput = data.into();
+            assert!(
+                matches!(input, HashInput::Bytes(v) if v == vec![10, 11, 12])
+            );
+        }
+
+        #[test]
+        fn from_str_ref() {
+            let input: HashInput = "hello".into();
+            assert!(matches!(input, HashInput::Text(v) if v == "hello"));
+        }
+
+        #[test]
+        fn from_string() {
+            let s = "world".to_owned();
+            let input: HashInput = s.into();
+            assert!(matches!(input, HashInput::Text(v) if v == "world"));
+        }
+
+        #[test]
+        fn from_string_ref() {
+            let s = "foo".to_owned();
+            let input: HashInput = (&s).into();
+            assert!(matches!(input, HashInput::Text(v) if v == "foo"));
+        }
+    }
+
+    mod has_content_hash {
+        use super::*;
+
+        #[test]
+        fn returns_hash_from_self() {
+            let hash = Blake3Hash::compute(hash_bytes(b"test data"));
+            assert_eq!(hash.content_hash(), &hash);
+        }
+
+        #[test]
+        fn is_content_match_returns_true_when_identical() {
+            let hash = Blake3Hash::compute(hash_bytes(b"test data"));
+            assert!(hash.is_content_match(&hash));
+        }
+
+        #[test]
+        fn is_content_match_returns_false_when_different() {
+            let hash1 = Blake3Hash::compute(hash_bytes(b"test data"));
+            let hash2 = Blake3Hash::compute(hash_bytes(b"other data"));
+            assert!(!hash1.is_content_match(&hash2));
+        }
+    }
+
+    mod has_content_hash_mut {
+        use super::*;
+
+        #[test]
+        fn set_content_hash_updates_hash() {
+            let mut hash = Blake3Hash::compute(hash_bytes(b"original"));
+            let new = Blake3Hash::compute(hash_bytes(b"updated"));
+            hash.set_content_hash(new);
+            assert_eq!(hash.content_hash(), &new);
+        }
+
+        #[test]
+        fn returns_true_for_new_hash_after_update() {
+            let mut hash = Blake3Hash::compute(hash_bytes(b"original"));
+            let other = Blake3Hash::compute(hash_bytes(b"other"));
+            hash.set_content_hash(other);
+            assert!(hash.is_content_match(&other));
+        }
+
+        #[test]
+        fn returns_false_for_old_hash_after_update() {
+            let mut hash = Blake3Hash::compute(hash_bytes(b"original"));
+            let other = Blake3Hash::compute(hash_bytes(b"other"));
+            let original_clone = hash;
+            hash.set_content_hash(other);
+            assert!(!hash.is_content_match(&original_clone));
         }
     }
 
@@ -377,56 +514,6 @@ mod tests {
             let hash = Blake3Hash::compute(hash_bytes(b"test"));
             let bytes: &[u8; 32] = hash.as_ref();
             assert_eq!(bytes, hash.as_bytes());
-        }
-
-        #[test]
-        fn hash_input_from_byte_slice() {
-            let data: &[u8] = &[1, 2, 3];
-            let input: HashInput = data.into();
-            assert!(matches!(input, HashInput::Bytes(v) if v == vec![1, 2, 3]));
-        }
-
-        #[test]
-        fn hash_input_from_byte_array_ref() {
-            let data: &[u8; 3] = &[4, 5, 6];
-            let input: HashInput = data.into();
-            assert!(matches!(input, HashInput::Bytes(v) if v == vec![4, 5, 6]));
-        }
-
-        #[test]
-        fn hash_input_from_vec_ref() {
-            let data = vec![7u8, 8, 9];
-            let input: HashInput = (&data).into();
-            assert!(matches!(input, HashInput::Bytes(v) if v == vec![7, 8, 9]));
-        }
-
-        #[test]
-        fn hash_input_from_vec() {
-            let data = vec![10u8, 11, 12];
-            let input: HashInput = data.into();
-            assert!(
-                matches!(input, HashInput::Bytes(v) if v == vec![10, 11, 12])
-            );
-        }
-
-        #[test]
-        fn hash_input_from_str_ref() {
-            let input: HashInput = "hello".into();
-            assert!(matches!(input, HashInput::Text(v) if v == "hello"));
-        }
-
-        #[test]
-        fn hash_input_from_string() {
-            let s = "world".to_owned();
-            let input: HashInput = s.into();
-            assert!(matches!(input, HashInput::Text(v) if v == "world"));
-        }
-
-        #[test]
-        fn hash_input_from_string_ref() {
-            let s = "foo".to_owned();
-            let input: HashInput = (&s).into();
-            assert!(matches!(input, HashInput::Text(v) if v == "foo"));
         }
     }
 }
