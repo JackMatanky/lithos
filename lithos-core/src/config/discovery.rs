@@ -4,14 +4,6 @@
 //! both the filesystem and database, consolidating all data needed for
 //! config processing.
 
-#![expect(
-    dead_code,
-    reason = "Discovery engine implementation in progress - will be wired to \
-              loader next"
-)]
-
-use std::path::Path;
-
 use crate::{
     config::{
         error::ConfigIngestError,
@@ -19,9 +11,10 @@ use crate::{
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
     fs::{
-        FsEntry, FsFile, FsReader,
-        metadata::{FileMetadata, FsTimes},
+        FsEntry, FsFile,
+        metadata::{FileMetadata, FsMetadata},
         path::FilePath,
+        scanner::{DirScanInput, DirScanner},
     },
 };
 
@@ -117,13 +110,6 @@ impl DiscoveryResult {
     #[inline]
     pub(crate) fn vault(&self) -> &VaultDiscovery {
         &self.vault
-    }
-
-    /// Returns `true` if both global and vault config files are missing.
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.global.entry.is_none() && self.vault.entry.is_none()
     }
 }
 
@@ -225,17 +211,18 @@ impl DiscoveryEngine {
     ///
     /// Returns the first existing file with its `FileMetadata`.
     fn find_global_config() -> Result<Option<FsEntry>, ConfigIngestError> {
-        let reader = FsReader::from_system_root();
-
         // Try each location in priority order
         for path in Self::global_config_paths() {
-            if reader.exists(&path) {
-                let default_metadata =
-                    FileMetadata::new(FsTimes::new(None, None), 0, false);
-                let info = reader
-                    .metadata(&path)
-                    .map(|m| m.as_file().cloned().unwrap_or(default_metadata))
-                    .map_err(ConfigIngestError::from)?;
+            if let Ok(metadata) = FsMetadata::from_path(&path) {
+                let info = metadata.as_file().cloned().ok_or_else(|| {
+                    ConfigIngestError::Io {
+                        path: path.clone(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "global config path is not a file",
+                        ),
+                    }
+                })?;
 
                 let file_path = FilePath::try_new(path.clone())
                     .map_err(ConfigIngestError::from)?;
@@ -253,28 +240,19 @@ impl DiscoveryEngine {
     fn find_vault_config(
         vault_root: &VaultRoot,
     ) -> Result<Option<FsEntry>, ConfigIngestError> {
-        let reader = FsReader::new(vault_root.as_path());
-        let relative_path = Path::new(".lithos/lithos.toml");
+        let scanner = DirScanner::new(vault_root.as_path());
+        let results = scanner
+            .entries(DirScanInput::new().with_pattern(".lithos/lithos.toml"))
+            .map_err(|error| ConfigIngestError::Io {
+                path: vault_root.as_path().to_path_buf(),
+                source: std::io::Error::other(error.to_string()),
+            })?;
 
-        if !reader.exists(relative_path) {
+        let Some(entry) = results.into_iter().next() else {
             return Ok(None);
-        }
+        };
 
-        let info = reader
-            .metadata(relative_path)
-            .map(|m| {
-                m.as_file().map_or_else(
-                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
-                    std::clone::Clone::clone,
-                )
-            })
-            .map_err(ConfigIngestError::from)?;
-
-        let full_path = vault_root.as_path().join(relative_path);
-        let file_path = FilePath::try_new(full_path.clone())
-            .map_err(ConfigIngestError::from)?;
-
-        Ok(Some(FsEntry::File(FsFile::new(file_path, info))))
+        Ok(Some(entry))
     }
 
     /// Returns the priority-ordered list of global config paths.
