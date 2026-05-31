@@ -189,6 +189,49 @@ impl<K: Clone + Eq + Hash> Blake3HashIndex<K> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// HasHashIndex / HasHashIndexMut traits
+// ---------------------------------------------------------------------------
+
+/// Trait for types that carry a [`Blake3HashIndex`].
+#[allow(dead_code, reason = "used through tests and future impls")]
+pub(crate) trait HasHashIndex {
+    /// The key type of the hash index.
+    type Key: Eq + Hash;
+
+    /// Returns a reference to the underlying hash index.
+    fn hash_index(&self) -> &Blake3HashIndex<Self::Key>;
+}
+
+/// Mutable extension of [`HasHashIndex`].
+#[allow(dead_code, reason = "used through tests and future impls")]
+pub(crate) trait HasHashIndexMut: HasHashIndex {
+    /// Returns a mutable reference to the underlying hash index.
+    fn hash_index_mut(&mut self) -> &mut Blake3HashIndex<Self::Key>;
+}
+
+// ---------------------------------------------------------------------------
+// Trait impls for Blake3HashIndex<K>
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code, reason = "used through tests and future impls")]
+impl<K: Eq + Hash> HasHashIndex for Blake3HashIndex<K> {
+    type Key = K;
+
+    #[inline]
+    fn hash_index(&self) -> &Blake3HashIndex<K> {
+        self
+    }
+}
+
+#[allow(dead_code, reason = "used through tests and future impls")]
+impl<K: Eq + Hash> HasHashIndexMut for Blake3HashIndex<K> {
+    #[inline]
+    fn hash_index_mut(&mut self) -> &mut Blake3HashIndex<K> {
+        self
+    }
+}
+
 impl<K: Eq + Hash> Default for Blake3HashIndex<K> {
     #[inline]
     fn default() -> Self {
@@ -554,6 +597,72 @@ mod tests {
                 !result,
                 "Archived index should not match when lengths differ"
             );
+        }
+    }
+
+    mod has_hash_index {
+        use super::*;
+
+        #[test]
+        fn returns_self_for_blake3_hash_index() {
+            let index = populated_index();
+            let hash_ref: &Blake3HashIndex<String> = index.hash_index();
+            assert_eq!(
+                std::ptr::from_ref(hash_ref),
+                std::ptr::from_ref(&index),
+                "hash_index should return &self"
+            );
+        }
+
+        #[test]
+        fn provides_read_access_via_hash_index() {
+            let index = populated_index();
+            let hash_ref = index.hash_index();
+            assert_eq!(hash_ref.len(), 2);
+            assert!(hash_ref.contains_key(&"a".to_owned()));
+        }
+
+        #[test]
+        fn returns_empty_index_when_empty() {
+            let index: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            let hash_ref = index.hash_index();
+            assert!(hash_ref.is_empty());
+        }
+    }
+
+    mod has_hash_index_mut {
+        use super::*;
+
+        #[test]
+        fn returns_mut_self_for_blake3_hash_index() {
+            let mut index = Blake3HashIndex::<String>::empty();
+            let hash_ref: &mut Blake3HashIndex<String> = index.hash_index_mut();
+            assert_eq!(
+                std::ptr::from_mut(hash_ref),
+                std::ptr::from_mut(&mut index),
+                "hash_index_mut should return &mut self"
+            );
+        }
+
+        #[test]
+        fn provides_write_access_via_hash_index_mut() {
+            let mut index = populated_index();
+            {
+                let hash_ref = index.hash_index_mut();
+                hash_ref.insert("new".to_owned(), make_hash(99));
+            }
+            assert_eq!(index.len(), 3);
+            assert!(index.contains_key(&"new".to_owned()));
+        }
+
+        #[test]
+        fn returns_consistent_behavior_after_mut_write() {
+            let mut index = populated_index();
+            let hash = make_hash(99);
+            index.hash_index_mut().insert("new".to_owned(), hash);
+
+            let read = index.hash_index();
+            assert_eq!(read.get(&"new".to_owned()), Some(&make_hash(99)));
         }
     }
 }

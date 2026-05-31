@@ -119,7 +119,7 @@ impl TryFrom<std::fs::Metadata> for FsMetadata {
 ///
 /// Contains file-specific information including size, timestamps, and symlink
 /// status.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct FileMetadata {
     /// File timestamps.
@@ -187,6 +187,14 @@ impl FileMetadata {
         let other = FsTimes::new(created_at, modified_at);
         self.times.is_match(&other)
     }
+
+    /// Creates a default `FileMetadata` for testing purposes.
+    #[cfg(test)]
+    #[inline]
+    #[must_use]
+    pub fn test_default() -> Self {
+        Self::new(FsTimes::new(None, None), 0, false)
+    }
 }
 
 impl From<&std::fs::Metadata> for FileMetadata {
@@ -251,7 +259,7 @@ impl From<&std::fs::Metadata> for DirMetadata {
 ///
 /// Timestamps are stored as `Option<SystemTime>` because not all filesystems
 /// or platforms provide both creation and modification times reliably.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct FsTimes {
     /// File/directory creation time (if available).

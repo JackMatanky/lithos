@@ -280,11 +280,11 @@ mod tests {
         }
 
         pub(super) fn note() -> Note {
-            Note::new(NoteId::new(), NotePath::try_new("test.md").unwrap())
+            Note::new_test(NoteId::new(), NotePath::try_new("test.md").unwrap())
         }
 
         pub(super) fn note_with_path(path: &str) -> Note {
-            Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+            Note::new_test(NoteId::new(), NotePath::try_new(path).unwrap())
         }
     }
 

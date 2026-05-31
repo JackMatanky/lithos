@@ -262,7 +262,7 @@ mod tests {
         use super::*;
 
         pub(super) fn create_note(path: &str) -> Note {
-            Note::new(NoteId::new(), NotePath::try_new(path).unwrap())
+            Note::new_test(NoteId::new(), NotePath::try_new(path).unwrap())
         }
 
         pub(super) fn repo() -> (tempfile::TempDir, RedbRepository) {

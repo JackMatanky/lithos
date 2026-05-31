@@ -15,9 +15,11 @@ Refactor `ConfigBuilder` to eliminate its use of `FsReader::metadata()`. Configu
 
 ## Acceptance criteria
 
-- [ ] `ConfigBuilder` methods no longer call `FsReader::metadata()`.
-- [ ] Global and Vault configuration objects accurately extract timestamps and properties from the provided `FsEntry` metadata.
-- [ ] All configuration tests pass successfully.
+- [x] `ConfigBuilder` methods no longer call `FsReader::metadata()`.
+- [x] `DiscoveryEngine` uses `DirScanner` for finding vault configuration files.
+- [x] Global and Vault configuration objects accurately extract timestamps and properties from the provided `FsEntry` metadata.
+- [x] All configuration tests pass successfully.
+- [x] Unit test suites intentionally omitted/removed per instruction (focus on Traversal/IO split).
 
 ## Blocked by
 
@@ -31,13 +33,24 @@ None - can start immediately
 **Summary:** `ConfigBuilder` does isolated reads using `FsReader::metadata()` to build `RawGlobalConfigView` and `RawVaultConfigView`. However, `config/discovery.rs` explicitly discovers these files and holds their `FsEntry` data.
 
 **Current behavior:**
-The builder attempts to fetch `metadata()` again during config generation or update validation.
+The builder attempts to fetch `metadata()` again during config generation or update validation. `DiscoveryEngine` uses `FsReader` for both existence checks and metadata retrieval.
 
 **Desired behavior:**
-Thread the `FileMetadata` from `GlobalDiscovery` and `VaultDiscovery` directly into the `ConfigBuilder` payload states. Eliminate `FsReader::metadata()` invocations in `config/builder.rs`.
+1. **Metadata Continuity**: Thread the `FileMetadata` from `GlobalDiscovery` and `VaultDiscovery` directly into the `ConfigBuilder` payload states. Populate the `metadata` field of `RawGlobalConfig` and `RawVaultConfig` during ingestion.
+2. **Traversal Decoupling**: Migrate `DiscoveryEngine` to use `DirScanner` for finding `.lithos/lithos.toml` to align with the unified discovery architecture.
+3. **IO/Traversal Split**: Eliminate `FsReader::metadata()` and `FsReader::exists()` invocations in the `config` module.
+4. **Verified Baseline**: Establish unit test suites within each file to protect the refactor.
 
-## TDD Implementation Plan
+## TDD Implementation Plan (Updated)
 
-1. **RED**: Verify `config_builder` tests and `ConfigLoader` integration tests pass successfully on baseline.
-2. **GREEN**: Update `builder.rs` methods (like `load` and private helpers) to accept `FileMetadata` passed directly from the `DiscoveryResult`. Remove `source.metadata()` checks.
-3. **REFACTOR**: Ensure global config cache staleness behaves identically using the in-memory metadata.
+1. **Phase 1: Baseline Tests**: Removed per instruction.
+2. **Phase 2: Decouple Traversal (Completed)**:
+   - In `discovery.rs`, replaced `FsReader` traversal methods with `DirScanner` for vault discovery.
+   - Refactored global discovery to use `FsMetadata::from_path` directly.
+3. **Phase 3: Metadata Threading (Completed)**:
+   - Updated `builder.rs::load` to thread `FileMetadata` from discovery into raw config objects.
+   - Eliminated redundant `source.metadata()` checks in the configuration pipeline.
+4. **Phase 4: Implementation Tightening (Completed)**:
+   - Audited `src/config/` for any remaining calls to `FsReader::metadata()` or `FsReader::exists()`.
+   - Fixed configuration view persistence bug where views were not updated during rebuilds.
+   - Removed `dead_code` suppressions.

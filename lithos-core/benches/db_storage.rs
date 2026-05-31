@@ -212,6 +212,7 @@ use criterion::{
 };
 use lithos_core::{
     db::{ArchivedEntity, Store},
+    fs::metadata::{FileMetadata, FsTimes},
     note::{
         aggregate::{Note, NoteId},
         paths::NotePath,
@@ -231,7 +232,11 @@ fn create_test_note(index: usize) -> Note {
 
     let note_path = NotePath::try_new(&path).expect("valid path");
     let _hash = format!("hash-{index:04}");
-    Note::new(id, note_path)
+    Note::new(
+        id,
+        note_path,
+        FileMetadata::new(FsTimes::new(None, None), 0, false),
+    )
 }
 
 fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {

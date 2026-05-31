@@ -8,9 +8,10 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     db::Store,
+    fs::metadata::{FileMetadata, FsTimes},
     note::{
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
-        repository::ReadRepository as _,
+        repository::ReadRepository,
         storage::RedbRepository,
     },
 };
@@ -51,7 +52,10 @@ mod tests {
         let note_path =
             lithos_core::note::paths::NotePath::try_new("notes/ingest.md")
                 .expect("note path");
-        let info = NoteFileInfo::new(note_path.clone(), true);
+        let info = NoteFileInfo::new(
+            note_path.clone(),
+            FileMetadata::new(FsTimes::new(None, None), 0, false),
+        );
         let report = NoteProcessor::new()
             .process_file(&repository, &config, &source, info)
             .expect("load markdown");

@@ -100,8 +100,8 @@ pub struct Scanned {
 /// Status after comparison with routing candidates.
 #[derive(Debug)]
 pub struct Compared {
+    markdown_candidates: Vec<ScannedFile>,
     path_set: HashSet<PathKey>,
-    markdown_candidates: Vec<PathKey>,
     report: VaultProcessReport,
 }
 
@@ -119,7 +119,7 @@ pub struct Ready {
 }
 
 struct CompareOutcome {
-    markdown_candidates: Vec<PathKey>,
+    markdown_candidates: Vec<ScannedFile>,
     file_updates: Vec<ScannedFile>,
     dir_updates: Vec<ScannedDir>,
 }
@@ -328,7 +328,7 @@ impl VaultProcessor<Discovery, Unknown> {
     ) -> Result<VaultProcessor<Comparison, Scanned>, VaultProcessError> {
         drop(self);
         let (dirs, files) = Self::scan_views(scanner)?;
-        let mut path_set =
+        let mut path_set: HashSet<PathKey> =
             HashSet::with_capacity(files.len().saturating_add(dirs.len()));
         for file in &files {
             path_set.insert(file.path.clone());
@@ -483,8 +483,8 @@ impl VaultProcessor<Comparison, Scanned> {
         }
 
         Ok(Self::transition(Routing, Compared {
-            path_set: self.status.path_set,
             markdown_candidates: outcome.markdown_candidates,
+            path_set: self.status.path_set,
             report,
         }))
     }
@@ -520,7 +520,7 @@ impl VaultProcessor<Comparison, Scanned> {
                 file_updates.push(file.clone());
             }
             if should_route {
-                markdown_candidates.push(file.path.clone());
+                markdown_candidates.push(file.clone());
             }
         }
 
@@ -550,8 +550,11 @@ impl VaultProcessor<Routing, Compared> {
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
         let mut report = self.status.report;
         for file in &self.status.markdown_candidates {
-            let info = NoteFileInfo::try_from_path(file.as_str(), true)
-                .map_err(NoteProcessError::from)?;
+            let info = NoteFileInfo::try_from_path(
+                file.path.as_str(),
+                file.view.metadata().clone(),
+            )
+            .map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new().process_file(
                 note_repository,
                 config,

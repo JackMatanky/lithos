@@ -75,10 +75,13 @@
 
 use std::{collections::HashSet, marker::PhantomData};
 
-use crate::config::{
-    error::ConfigError,
-    raw::{RawGlobalConfig, RawVaultConfig},
-    views::{RawGlobalConfigView, RawVaultConfigView},
+use crate::{
+    config::{
+        error::ConfigError,
+        raw::{RawGlobalConfig, RawVaultConfig},
+        views::{RawGlobalConfigView, RawVaultConfigView},
+    },
+    support::hash_index::{Blake3HashIndex, HasHashIndex, HasHashIndexMut},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,7 +264,7 @@ impl ConfigType for VaultConfig {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfigFieldHashes {
-    inner: crate::support::hash_index::Blake3HashIndex<ConfigField>,
+    inner: Blake3HashIndex<ConfigField>,
 }
 
 impl ConfigFieldHashes {
@@ -270,7 +273,7 @@ impl ConfigFieldHashes {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            inner: crate::support::hash_index::Blake3HashIndex::default(),
+            inner: Blake3HashIndex::default(),
         }
     }
 
@@ -332,6 +335,22 @@ impl ConfigFieldHashes {
         }
 
         changed
+    }
+}
+
+impl HasHashIndex for ConfigFieldHashes {
+    type Key = ConfigField;
+
+    #[inline]
+    fn hash_index(&self) -> &Blake3HashIndex<ConfigField> {
+        &self.inner
+    }
+}
+
+impl HasHashIndexMut for ConfigFieldHashes {
+    #[inline]
+    fn hash_index_mut(&mut self) -> &mut Blake3HashIndex<ConfigField> {
+        &mut self.inner
     }
 }
 
@@ -968,6 +987,34 @@ mod tests {
 
         // Identical configs = no changes
         assert!(diff.is_empty());
+    }
+
+    mod has_hash_index {
+        use super::*;
+        use crate::support::content_hash::Blake3Hash;
+
+        #[test]
+        fn delegates_read_access_to_inner_index() {
+            let mut hashes = ConfigFieldHashes::new();
+            hashes.insert(ConfigField::Paths, Blake3Hash::compute(b"paths"));
+
+            assert!(hashes.hash_index().contains_key(&ConfigField::Paths));
+        }
+    }
+
+    mod has_hash_index_mut {
+        use super::*;
+        use crate::support::content_hash::Blake3Hash;
+
+        #[test]
+        fn delegates_write_access_to_inner_index() {
+            let mut hashes = ConfigFieldHashes::new();
+            hashes
+                .hash_index_mut()
+                .insert(ConfigField::Task, Blake3Hash::compute(b"task"));
+
+            assert!(hashes.contains(&ConfigField::Task));
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
