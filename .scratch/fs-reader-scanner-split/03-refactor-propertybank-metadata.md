@@ -34,7 +34,15 @@ Unit tests must construct `FileMetadata` manually or source it directly from the
 
 ## TDD Implementation Plan
 
-1. **RED**: Run `cargo test property_bank` to ensure current tests pass.
-2. **GREEN**: Modify `fixtures::make_fixture` in `property_bank_processor.rs` to construct `FileMetadata` without calling `source.metadata()`.
-3. **GREEN**: Modify `run_analysis_delta_path_returns_bank_with_delta` to refresh metadata without calling `fixture.source.metadata()`.
-4. **REFACTOR**: Verify all tests pass and no `source.metadata()` calls remain in the file.
+1. **RED**: Run `cargo test property_bank` to ensure current tests pass. (PASSED)
+2. **GREEN**: Modify `fixtures::make_fixture` in `property_bank_processor.rs` to construct `FileMetadata` without calling `source.metadata()`. (DONE)
+3. **GREEN**: Modify `run_analysis_delta_path_returns_bank_with_delta` to refresh metadata without calling `fixture.source.metadata()`. (DONE)
+4. **REFACTOR**: Verify all tests pass and no `source.metadata()` calls remain in the file. (VERIFIED)
+
+## Implementation Notes
+
+- The refactor focused on the unit test suite where the actual `FsReader::metadata()` calls were located.
+- `fixtures::make_fixture` now uses `crate::fs::metadata::FsMetadata::from_path(file_path.as_path())` instead of the reader.
+- `run_analysis_delta_path_returns_bank_with_delta` now uses `crate::fs::metadata::FsMetadata::from_path(fixture.file.path().as_path())` to reload metadata after modification.
+- Main processing logic in `PropertyBankProcessor` was verified to be already using discovery metadata from `FsFile` and required no structural changes to fulfill the requirement of avoiding redundant I/O.
+- Verified all 45 related tests pass in the dedicated worktree.

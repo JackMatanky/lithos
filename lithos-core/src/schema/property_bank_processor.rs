@@ -989,12 +989,12 @@ mod tests {
             let source = FsReader::new(vault_dir.path());
             let file_path = crate::fs::FilePath::try_new(absolute.clone())
                 .expect("file path");
-            let metadata = source
-                .metadata(file_path.as_path())
-                .expect("metadata")
-                .as_file()
-                .cloned()
-                .expect("file metadata");
+            let metadata =
+                crate::fs::metadata::FsMetadata::from_path(file_path.as_path())
+                    .expect("metadata")
+                    .as_file()
+                    .cloned()
+                    .expect("file metadata");
             let file = FsFile::new(file_path.clone(), metadata.clone());
             let key = file.path().as_key(&vault_root).expect("path key");
             let raw: RawPropertyBank = FsReader::parse_structured_from_str::<
@@ -1200,13 +1200,13 @@ mod tests {
                 .expect("seed bank");
 
             // Reload file metadata after modification
-            let modified_metadata = fixture
-                .source
-                .metadata(fixture.file.path().as_path())
-                .expect("metadata")
-                .as_file()
-                .cloned()
-                .expect("file metadata");
+            let modified_metadata = crate::fs::metadata::FsMetadata::from_path(
+                fixture.file.path().as_path(),
+            )
+            .expect("metadata")
+            .as_file()
+            .cloned()
+            .expect("file metadata");
             fixture.file =
                 FsFile::new(fixture.file.path().clone(), modified_metadata);
 
