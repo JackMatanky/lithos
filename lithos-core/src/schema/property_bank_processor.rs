@@ -108,7 +108,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{DirPath, FsFile, FsReader, PathKey},
+    fs::{DirPath, FileReader, FsFile, PathKey},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -242,7 +242,7 @@ impl PropertyBankProcessor<Init, Unknown> {
     pub(crate) fn run<R: Repository>(
         self,
         view: Option<&RawPropertyBankView>,
-        source: &FsReader,
+        source: &FileReader,
         repository: &R,
     ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         if let Some(view) = view {
@@ -259,7 +259,7 @@ impl PropertyBankProcessor<Init, Unknown> {
     /// Internal helper for the present path (view exists).
     fn run_present<R: Repository>(
         processor: PropertyBankProcessor<Comparison, Present>,
-        source: &FsReader,
+        source: &FileReader,
         repository: &R,
     ) -> Result<PropertyBankResolution, SchemaLoaderError> {
         match processor.check_timestamps(source)? {
@@ -373,7 +373,7 @@ enum TimestampBranch {
 impl PropertyBankProcessor<Comparison, Present> {
     /// Checks if file timestamps match the cached view.
     ///
-    /// Reads the file content internally using the provided `FsReader` and
+    /// Reads the file content internally using the provided `FileReader` and
     /// path. Content is only retained on mismatch to avoid unnecessary
     /// allocation.
     ///
@@ -384,7 +384,7 @@ impl PropertyBankProcessor<Comparison, Present> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn check_timestamps(
         self,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
         let timestamps_match = status.view.is_timestamp_match(
@@ -494,7 +494,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn parse(
         self,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
     {
         let (file, path_key, _status) = self.into_parts();
@@ -502,7 +502,7 @@ impl PropertyBankProcessor<Parsed, Missing> {
             .read_to_string(file.path().as_path())
             .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
-        let raw: RawPropertyBank = FsReader::parse_structured_from_str(
+        let raw: RawPropertyBank = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &content,
         )
@@ -535,7 +535,7 @@ impl PropertyBankProcessor<Parsed, Stale> {
     ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaLoaderError>
     {
         let (file, path_key, status) = self.into_parts();
-        let raw: RawPropertyBank = FsReader::parse_structured_from_str(
+        let raw: RawPropertyBank = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &status.content,
         )
@@ -965,7 +965,7 @@ mod tests {
 
         pub(super) struct Fixture {
             pub(super) repository: InMemoryRepository,
-            pub(super) source: FsReader,
+            pub(super) source: FileReader,
             pub(super) vault_root: DirPath,
             pub(super) _vault_dir: TempDir,
             pub(super) file: FsFile,
@@ -986,7 +986,7 @@ mod tests {
             let content = r#"{"$version":"1.0","properties":{"title":{"type":"string"}}}"#;
             std::fs::write(&absolute, content).expect("write file");
 
-            let source = FsReader::new(vault_dir.path());
+            let source = FileReader::new(vault_dir.path());
             let file_path = crate::fs::FilePath::try_new(absolute.clone())
                 .expect("file path");
             let metadata =
@@ -997,7 +997,7 @@ mod tests {
                     .expect("file metadata");
             let file = FsFile::new(file_path.clone(), metadata.clone());
             let key = file.path().as_key(&vault_root).expect("path key");
-            let raw: RawPropertyBank = FsReader::parse_structured_from_str::<
+            let raw: RawPropertyBank = FileReader::parse_structured_from_str::<
                 RawPropertyBank,
             >(
                 file_path.as_path(), content

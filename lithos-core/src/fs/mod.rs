@@ -9,7 +9,7 @@
 //! - **Directory scanning** — configurable traversal with glob patterns,
 //!   extension filters, and depth control via [`DirScanner`].
 //! - **Root-scoped file access** — deterministic discovery, read pipelines, and
-//!   metadata access via [`FsReader`].
+//!   metadata access via [`FileReader`].
 //! - **Safe write orchestration** — atomic replace semantics via [`FsWriter`].
 //! - **Structured data parsing** — JSON/TOML/YAML parsing with explicit format
 //!   detection and validation.
@@ -21,7 +21,7 @@
 //! | Validate a vault path string     | [`PathValidator::validate_vault_path`]           |
 //! | Validate an arbitrary path       | [`PathValidator::new_flexible`] + `.validate()`  |
 //! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries()` |
-//! | Read files from a vault root     | [`FsReader::new`]                                |
+//! | Read files from a vault root     | [`FileReader::new`]                                |
 //! | Write files to a vault root      | [`FsWriter::new`]                                |
 //!
 //! # Security note
@@ -73,11 +73,6 @@ pub use name::{
 pub use path::{
     AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, PathKey, RelativePath,
 };
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "FsReader alias clarifies this is the filesystem reader in \
-              re-exports"
-)]
-pub use reader::{FileTimestamp, Reader as FsReader};
+pub use reader::{FileReader, FileTimestamp};
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;

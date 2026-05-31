@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 
 use crate::{
     config::aggregate::Config,
-    fs::{FsReader, metadata::FileMetadata},
+    fs::{FileReader, metadata::FileMetadata},
     note::{
         aggregate::{Note, NoteId},
         error::{NoteError, NoteFileError, NoteIngestError, NoteProcessError},
@@ -296,7 +296,7 @@ impl NoteProcessor<Discovery, Unknown> {
         self,
         repository: &R,
         config: &Config,
-        source: &FsReader,
+        source: &FileReader,
         info: NoteFileInfo,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let frontmatter_spec = config.to_frontmatter_spec();
@@ -414,7 +414,7 @@ impl NoteProcessor<Comparison, Missing> {
     fn load_content(
         self,
         repository: &impl Repository,
-        source: &FsReader,
+        source: &FileReader,
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
@@ -434,7 +434,7 @@ impl NoteProcessor<Analysis, Suspect> {
     fn load_content(
         self,
         repository: &impl Repository,
-        source: &FsReader,
+        source: &FileReader,
         task_spec: &crate::config::task::TaskConfigSpec,
         frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
@@ -586,7 +586,7 @@ fn read_and_persist(
     info: NoteFileInfo,
     is_new: bool,
     repository: &impl Repository,
-    source: &FsReader,
+    source: &FileReader,
     task_spec: &crate::config::task::TaskConfigSpec,
     frontmatter_spec: &crate::config::frontmatter::FrontmatterConfigSpec,
 ) -> Result<NoteProcessReport, NoteProcessError> {

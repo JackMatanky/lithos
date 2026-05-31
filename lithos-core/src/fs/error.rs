@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 /// Module-level public error that composes all filesystem operation errors.
 ///
-/// This is the primary error type returned by `FsReader` methods. It acts as a
-/// pure compositor with no direct variants - all errors flow through child
+/// This is the primary error type returned by `FileReader` methods. It acts as
+/// a pure compositor with no direct variants - all errors flow through child
 /// types.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

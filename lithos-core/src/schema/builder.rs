@@ -5,7 +5,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     config::aggregate::Config,
-    fs::FsReader,
+    fs::FileReader,
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
@@ -20,7 +20,7 @@ use crate::{
 /// Schema loader — orchestrates the full schema ingestion pipeline.
 pub struct Builder<'config, R> {
     config: &'config Config,
-    source: FsReader,
+    source: FileReader,
     repository: R,
     property_bank_delta: Option<HashSet<PropertyName>>,
 }
@@ -34,7 +34,7 @@ where
     #[must_use]
     pub fn new(
         repository: R,
-        source: FsReader,
+        source: FileReader,
         config: &'config Config,
     ) -> Self {
         Self {
@@ -177,7 +177,7 @@ mod tests {
     use crate::{
         config::{aggregate::Config, paths::SchemaConfigSpec},
         fs::{
-            DirPath, FsFile, FsReader,
+            DirPath, FileReader, FsFile,
             path::{RelativeDirPath, RelativeFilePath},
         },
         schema::{
@@ -225,7 +225,7 @@ description = "Test schema"
     fn builder_constructs() {
         let temp = TempDir::new().unwrap();
         let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
+        let source = FileReader::new(temp.path().to_path_buf());
         let repo = InMemoryRepository::new();
 
         let _builder = Builder::new(repo, source, &config);
@@ -237,7 +237,7 @@ description = "Test schema"
         create_schema_files(&temp, &["schema_a.toml"]);
         let repo = InMemoryRepository::new();
         let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
+        let source = FileReader::new(temp.path().to_path_buf());
 
         let mut builder = Builder::new(repo, source, &config);
         let result = builder.load_all();
@@ -256,7 +256,7 @@ description = "Test schema"
 
     #[test]
     fn builder_new_accepts_repository_trait() {
-        fn assert_builder_new<R>(repo: R, source: FsReader, config: &Config)
+        fn assert_builder_new<R>(repo: R, source: FileReader, config: &Config)
         where
             R: Repository,
         {
@@ -265,7 +265,7 @@ description = "Test schema"
 
         let temp = TempDir::new().unwrap();
         let config = setup_test_config(&temp);
-        let source = FsReader::new(temp.path().to_path_buf());
+        let source = FileReader::new(temp.path().to_path_buf());
         let repo = InMemoryRepository::new();
 
         assert_builder_new(repo, source, &config);

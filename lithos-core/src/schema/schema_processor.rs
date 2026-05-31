@@ -60,7 +60,7 @@ use std::{
 pub(crate) use crate::schema::delta::{ExcludesDelta, PropertyDelta};
 use crate::{
     fs::{
-        FsReader, PathKey,
+        FileReader, PathKey,
         metadata::{FileMetadata, FsTimes},
     },
     graph::{GraphNode, GraphNodeMut},
@@ -725,7 +725,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     /// Creates a `DiscoveryBranch` from `DiscoveryResult` (fresh graph).
     pub(crate) fn from_discovery_result(
         discovery: DiscoveryResult,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let mut missing = NewBatch::new();
 
@@ -782,7 +782,7 @@ impl SchemaProcessor<Discovery, Review> {
     pub(crate) fn from_discovery_result(
         discovery: DiscoveryResult,
         graph: &InheritanceGraph<()>,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryBranch, SchemaLoaderError> {
         let mut views_by_path: HashMap<PathKey, RawSchemaView> = HashMap::new();
         let mut ids_by_path: HashMap<PathKey, SchemaId> = HashMap::new();
@@ -847,7 +847,7 @@ impl SchemaProcessor<Discovery, Review> {
         ids_by_path: &HashMap<PathKey, SchemaId>,
         graph: Option<&InheritanceGraph<()>>,
         metadata_by_path: &HashMap<PathKey, FileMetadata>,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<FileState, SchemaLoaderError> {
         let mut missing = NewBatch::new();
         let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
@@ -960,7 +960,7 @@ impl SchemaProcessor<Comparison, Present> {
     )]
     pub(crate) fn compare(
         self,
-        source: &FsReader,
+        source: &FileReader,
         property_bank_delta: Option<&HashSet<PropertyName>>,
     ) -> Result<SchemaProcessor<FileParsed, Compared>, SchemaLoaderError> {
         let Present {
@@ -1099,7 +1099,7 @@ impl SchemaProcessor<Comparison, Present> {
 
     fn check_timestamps(
         payload: FoundPayload,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let timestamps_match = payload.view.is_timestamp_match(
             payload.metadata.times().created_at(),
@@ -1189,7 +1189,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
 
             let schema_name =
                 schema_stem_from_path(std::path::Path::new(path.as_str()))?;
-            let raw = FsReader::parse_structured_from_str::<RawSchema>(
+            let raw = FileReader::parse_structured_from_str::<RawSchema>(
                 std::path::Path::new(path.as_str()),
                 &content_str,
             )
@@ -1251,7 +1251,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 std::path::Path::new(payload.path.as_str()),
                             )?;
                             let metadata_for_raw = payload.metadata.clone();
-                            let raw = FsReader::parse_structured_from_str::<
+                            let raw = FileReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
                                 std::path::Path::new(payload.path.as_str()),
@@ -1285,7 +1285,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                                 std::path::Path::new(payload.path.as_str()),
                             )?;
                             let metadata_for_raw = payload.metadata.clone();
-                            let raw = FsReader::parse_structured_from_str::<
+                            let raw = FileReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
                                 std::path::Path::new(payload.path.as_str()),
@@ -1369,7 +1369,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                 read.path.as_str(),
             ))?;
             let metadata_for_raw = read.metadata.clone();
-            let raw = FsReader::parse_structured_from_str::<RawSchema>(
+            let raw = FileReader::parse_structured_from_str::<RawSchema>(
                 std::path::Path::new(read.path.as_str()),
                 &read.content_str,
             )
@@ -1710,7 +1710,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
     )]
     pub(crate) fn analyze_properties(
         self,
-        source: &FsReader,
+        source: &FileReader,
         property_bank: &PropertyBank,
         property_bank_delta: Option<&HashSet<PropertyName>>,
     ) -> Result<SchemaProcessor<Refresh, Analyzed>, SchemaLoaderError> {
@@ -1760,7 +1760,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 schema_stem_from_path(
                                     std::path::Path::new(payload.path.as_str()),
                                 )?;
-                            let raw = FsReader::parse_structured_from_str::<
+                            let raw = FileReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
                                 std::path::Path::new(payload.path.as_str()),
@@ -1816,7 +1816,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 schema_stem_from_path(
                                     std::path::Path::new(payload.path.as_str()),
                                 )?;
-                            let raw = FsReader::parse_structured_from_str::<
+                            let raw = FileReader::parse_structured_from_str::<
                                 RawSchema,
                             >(
                                 std::path::Path::new(payload.path.as_str()),
@@ -2993,7 +2993,7 @@ mod tests {
     #[test]
     fn compare_transitions_present_to_compared_fresh_payload() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let source = FsReader::new(temp.path());
+        let source = FileReader::new(temp.path());
         let id = SchemaId::new();
         let path = PathKey::try_new("schema.toml").expect("valid schema key");
 
@@ -3044,7 +3044,7 @@ mod tests {
     #[test]
     fn compare_staleness_ignores_file_size_when_timestamps_match() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let source = FsReader::new(temp.path());
+        let source = FileReader::new(temp.path());
         let id = SchemaId::new();
         let path = PathKey::try_new("schema.toml").expect("valid schema key");
 
@@ -3095,7 +3095,7 @@ mod tests {
     #[test]
     fn deleted_nodes_pass_through_compare_and_parse() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let source = FsReader::new(temp.path());
+        let source = FileReader::new(temp.path());
         let deleted_id = SchemaId::new();
 
         let mut builder = SchemaGraphBuilder::new();
@@ -3147,7 +3147,7 @@ mod tests {
     fn from_discovery_result_review_threads_metadata() {
         use std::time::{Duration, UNIX_EPOCH};
         let temp = tempfile::tempdir().expect("tempdir");
-        let source = FsReader::new(temp.path());
+        let source = FileReader::new(temp.path());
         let path_str = "schema.toml";
         let full_path = temp.path().join(path_str);
         std::fs::write(&full_path, "{}").expect("write succeeds");
@@ -3246,7 +3246,7 @@ mod tests {
     #[test]
     fn analyze_properties_rebuild_from_fresh_avoids_io() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let source = FsReader::new(temp.path());
+        let source = FileReader::new(temp.path());
         let id = SchemaId::new();
         let path_str = "schema.toml";
         let path = PathKey::try_new(path_str).expect("valid schema key");

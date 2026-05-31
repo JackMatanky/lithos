@@ -17,8 +17,8 @@ use crate::{
     config::aggregate::Config,
     db::Store,
     fs::{
-        DirName, DirScanInput, DirScanner, FileFormat, FileName, FsEntry,
-        FsReader, PathKey,
+        DirName, DirScanInput, DirScanner, FileFormat, FileName, FileReader,
+        FsEntry, PathKey,
     },
     note::{
         error::NoteProcessError,
@@ -308,7 +308,7 @@ impl VaultProcessor<Discovery, Unknown> {
         config: &Config,
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let scanner = DirScanner::new(config.vault_metadata().root().as_path());
-        let source = FsReader::new(config.vault_metadata().root().as_path());
+        let source = FileReader::new(config.vault_metadata().root().as_path());
         let repository = vault_storage::RedbRepository::new(Arc::clone(&store));
         let note_repository = note_storage::RedbRepository::new(store);
 
@@ -546,7 +546,7 @@ impl VaultProcessor<Routing, Compared> {
         self,
         note_repository: &impl note_repository::Repository,
         config: &Config,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
         let mut report = self.status.report;
         for file in &self.status.markdown_candidates {

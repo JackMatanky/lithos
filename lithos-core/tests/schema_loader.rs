@@ -5,7 +5,7 @@
 //!   pipeline.
 //! - Covers initial loading, reference resolution, inheritance, incremental
 //!   updates, and error handling.
-//! - Tests boundaries: File system reads via `FsReader`, property bank
+//! - Tests boundaries: File system reads via `FileReader`, property bank
 //!   expansion, schema inheritance, staleness detection.
 //! - Exclusions: Unit-level validation (tested in domain modules),
 //!   database-only operations (tested in `schema_storage.rs`).
@@ -13,7 +13,7 @@
 //! # Setup
 //! - Uses `TempDir` for isolated filesystem fixtures per test.
 //! - `TestDb` provides fresh redb instances for each test.
-//! - `FsReader` abstracts filesystem operations for testability.
+//! - `FileReader` abstracts filesystem operations for testability.
 //! - Helper functions: `write_file()`, `test_config()`.
 //!
 //! # Data Model
@@ -56,7 +56,7 @@ use lithos_core::{
         builder,
         vault::{VaultId, VaultRoot},
     },
-    fs::{DirPath, FsReader},
+    fs::{DirPath, FileReader},
     schema::{
         builder::Builder, property::PropertyName,
         repository::ReadRepository as _,
@@ -110,7 +110,7 @@ mod initial_loading {
     /// - task.json: Schema with `$ref` references to `property_bank` entries.
     ///
     /// # Expected Behavior
-    /// - Loader ingests both files from filesystem via `FsReader`.
+    /// - Loader ingests both files from filesystem via `FileReader`.
     /// - References are expanded: `{"$ref": "#property_bank/title"}` →
     ///   `{"type": "string"}`.
     /// - Resolved schema persisted to storage with 2 concrete properties.
@@ -149,7 +149,7 @@ mod initial_loading {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         let resolved = loader.load_all()?;
@@ -210,7 +210,7 @@ mod initial_loading {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         let resolved = loader.load_all()?;
@@ -278,7 +278,7 @@ mod initial_loading {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         let resolved = loader.load_all()?;
@@ -336,7 +336,7 @@ mod initial_loading {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         // Load should process property bank
@@ -427,7 +427,7 @@ mod inheritance {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         let resolved = loader.load_all()?;
@@ -516,7 +516,7 @@ mod incremental_loading {
         // FIRST LOAD: Both schemas should be NEW
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
         let first = loader.load_all()?;
         assert_eq!(first.len(), 2, "First load: 2 schemas");
@@ -540,7 +540,7 @@ mod incremental_loading {
 
         // SECOND LOAD: Only task.json should be re-resolved
         let repository2 = setup_repository(test_db.store());
-        let source2 = FsReader::new(vault_dir.path());
+        let source2 = FileReader::new(vault_dir.path());
         let mut loader2 = Builder::new(repository2, source2, &config);
         let second = loader2.load_all()?;
 
@@ -609,7 +609,7 @@ mod incremental_loading {
         // FIRST SESSION: Load schemas
         {
             let repository = setup_repository(test_db.store());
-            let source = FsReader::new(vault_dir.path());
+            let source = FileReader::new(vault_dir.path());
             let mut loader = Builder::new(repository, source, &config);
             let first = loader.load_all()?;
             assert_eq!(first.len(), 1);
@@ -624,7 +624,7 @@ mod incremental_loading {
         // SECOND SESSION: Load again without file changes
         let second = {
             let repository2 = setup_repository(test_db.store());
-            let source2 = FsReader::new(vault_dir.path());
+            let source2 = FileReader::new(vault_dir.path());
             let mut loader2 = Builder::new(repository2, source2, &config);
             loader2.load_all()?
         };
@@ -698,7 +698,7 @@ mod incremental_loading {
         // FIRST LOAD
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
         let first = loader.load_all()?;
         assert_eq!(first.len(), 1);
@@ -738,7 +738,7 @@ mod incremental_loading {
 
         // SECOND LOAD: Schema should be re-resolved with new property
         let repository2 = setup_repository(test_db.store());
-        let source2 = FsReader::new(vault_dir.path());
+        let source2 = FileReader::new(vault_dir.path());
         let mut loader2 = Builder::new(repository2, source2, &config);
         let second = loader2.load_all()?;
 
@@ -818,7 +818,7 @@ mod error_handling {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         // Should return error for missing reference
@@ -872,7 +872,7 @@ mod error_handling {
 
         let config = test_config(vault_dir.path())?;
         let repository = setup_repository(test_db.store());
-        let source = FsReader::new(vault_dir.path());
+        let source = FileReader::new(vault_dir.path());
         let mut loader = Builder::new(repository, source, &config);
 
         // Should return error for circular inheritance

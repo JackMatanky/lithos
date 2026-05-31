@@ -40,7 +40,7 @@ use crate::{
         vault::{VaultId, VaultRoot},
         views::{RawFileVersion, RawGlobalConfigView, RawVaultConfigView},
     },
-    fs::FsReader,
+    fs::FileReader,
 };
 
 /// Build validated config from layered raw sources.
@@ -211,7 +211,7 @@ where
 
         // Step 4: Parse raw configs from discovered files
         let global_raw = if let Some(entry) = discovery.global().entry() {
-            let reader = FsReader::from_system_root();
+            let reader = FileReader::from_system_root();
             let entry_path = entry.path();
             let mut raw = reader
                 .parse_structured::<RawGlobalConfig>(entry_path.as_path())
@@ -224,7 +224,7 @@ where
         };
 
         let vault_raw = if let Some(_entry) = discovery.vault().entry() {
-            let reader = FsReader::new(vault_root.as_path());
+            let reader = FileReader::new(vault_root.as_path());
             let relative_path = std::path::Path::new(".lithos/lithos.toml");
             let mut raw = reader
                 .parse_structured::<RawVaultConfig>(relative_path)
