@@ -576,6 +576,20 @@ mod tests {
     use super::*;
     use crate::fs::metadata::FsTimes;
 
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 is safe on 64-bit systems (test code)"
+    )]
+    fn make_version(content: &[u8]) -> RawFileVersion {
+        let metadata = FileMetadata::new(
+            FsTimes::new(None, Some(SystemTime::now())),
+            content.len() as u64,
+            false,
+        );
+        RawFileVersion::new(content, metadata)
+            .expect("version creation should succeed")
+    }
+
     #[test]
     fn raw_global_config_view_new() {
         let view = RawGlobalConfigView::new("/path/to/global.toml".into());
@@ -712,18 +726,9 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize to u64 is safe on 64-bit systems (test code)"
-        )]
         fn returns_content_hash() {
             let content = b"vault_path = \"/vault\"";
-            let metadata = FileMetadata::new(
-                FsTimes::new(None, Some(SystemTime::now())),
-                content.len() as u64,
-                false,
-            );
-            let version = RawFileVersion::new(content, metadata).unwrap();
+            let version = make_version(content);
             assert_eq!(
                 HasContentHash::content_hash(&version),
                 &Blake3Hash::compute(content)
@@ -731,35 +736,17 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize to u64 is safe on 64-bit systems (test code)"
-        )]
         fn is_content_match_returns_true_when_match() {
             let content = b"vault_path = \"/vault\"";
-            let metadata = FileMetadata::new(
-                FsTimes::new(None, Some(SystemTime::now())),
-                content.len() as u64,
-                false,
-            );
-            let version = RawFileVersion::new(content, metadata).unwrap();
+            let version = make_version(content);
             let hash = Blake3Hash::compute(content);
             assert!(HasContentHash::is_content_match(&version, &hash));
         }
 
         #[test]
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize to u64 is safe on 64-bit systems (test code)"
-        )]
         fn is_content_match_returns_false_when_mismatch() {
             let content = b"vault_path = \"/vault\"";
-            let metadata = FileMetadata::new(
-                FsTimes::new(None, Some(SystemTime::now())),
-                content.len() as u64,
-                false,
-            );
-            let version = RawFileVersion::new(content, metadata).unwrap();
+            let version = make_version(content);
             assert!(!HasContentHash::is_content_match(
                 &version,
                 &Blake3Hash::compute(b"other")
@@ -771,18 +758,9 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize to u64 is safe on 64-bit systems (test code)"
-        )]
         fn set_content_hash_updates_hash() {
             let content = b"vault_path = \"/vault\"";
-            let metadata = FileMetadata::new(
-                FsTimes::new(None, Some(SystemTime::now())),
-                content.len() as u64,
-                false,
-            );
-            let mut version = RawFileVersion::new(content, metadata).unwrap();
+            let mut version = make_version(content);
             let new_hash = Blake3Hash::compute(b"new content");
             version.set_content_hash(new_hash);
             assert_eq!(
@@ -792,22 +770,21 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize to u64 is safe on 64-bit systems (test code)"
-        )]
-        fn set_content_hash_changes_match_behavior() {
+        fn returns_true_for_new_hash_after_update() {
             let content = b"vault_path = \"/vault\"";
-            let metadata = FileMetadata::new(
-                FsTimes::new(None, Some(SystemTime::now())),
-                content.len() as u64,
-                false,
-            );
-            let mut version = RawFileVersion::new(content, metadata).unwrap();
-            let old_hash = Blake3Hash::compute(content);
+            let mut version = make_version(content);
             let new_hash = Blake3Hash::compute(b"new content");
             version.set_content_hash(new_hash);
             assert!(HasContentHash::is_content_match(&version, &new_hash));
+        }
+
+        #[test]
+        fn returns_false_for_old_hash_after_update() {
+            let content = b"vault_path = \"/vault\"";
+            let mut version = make_version(content);
+            let old_hash = Blake3Hash::compute(content);
+            let new_hash = Blake3Hash::compute(b"new content");
+            version.set_content_hash(new_hash);
             assert!(!HasContentHash::is_content_match(&version, &old_hash));
         }
     }

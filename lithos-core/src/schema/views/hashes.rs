@@ -391,15 +391,6 @@ impl From<Blake3HashIndex<PropertyName>> for RawPropertyHashIndex {
 mod tests {
     use super::*;
 
-    #[test]
-    fn hash_record_content_matches() {
-        let hash = Blake3Hash::compute(b"test");
-        let record = HashRecord::new(hash, RawPropertyHashIndex::default());
-
-        assert!(record.is_content_match(&hash));
-        assert!(!record.is_content_match(&Blake3Hash::compute(b"other")));
-    }
-
     mod has_content_hash {
         use super::*;
 
@@ -439,13 +430,22 @@ mod tests {
         }
 
         #[test]
-        fn set_content_hash_changes_match_behavior() {
+        fn returns_true_for_new_hash_after_update() {
             let hash1 = Blake3Hash::compute(b"test1");
             let hash2 = Blake3Hash::compute(b"test2");
             let mut record =
                 HashRecord::new(hash1, RawPropertyHashIndex::default());
             record.set_content_hash(hash2);
             assert!(record.is_content_match(&hash2));
+        }
+
+        #[test]
+        fn returns_false_for_old_hash_after_update() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            let mut record =
+                HashRecord::new(hash1, RawPropertyHashIndex::default());
+            record.set_content_hash(hash2);
             assert!(!record.is_content_match(&hash1));
         }
     }
