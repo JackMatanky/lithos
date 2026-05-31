@@ -36,94 +36,6 @@ pub enum FileFormat {
     Unknown,
 }
 
-/// Discovery selector for structured file formats.
-///
-/// This keeps extension-level distinctions used by discovery/candidate
-/// resolution while allowing parse-time handoff into [`FileFormat`].
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub enum StructuredFileFormat {
-    /// TOML format (`.toml`).
-    Toml,
-    /// JSON format (`.json`).
-    Json,
-    /// YAML format (`.yaml`).
-    Yaml,
-    /// YAML format via `.yml` extension.
-    Yml,
-}
-
-impl StructuredFileFormat {
-    /// Stable precedence used by deterministic candidate selection.
-    pub const PRECEDENCE: [Self; 4] =
-        [Self::Toml, Self::Json, Self::Yaml, Self::Yml];
-
-    /// Canonical extension (without leading dot).
-    #[inline]
-    #[must_use]
-    pub const fn extension(self) -> &'static str {
-        match self {
-            Self::Toml => "toml",
-            Self::Json => "json",
-            Self::Yaml => "yaml",
-            Self::Yml => "yml",
-        }
-    }
-
-    /// Stable precedence rank where lower is higher priority.
-    #[inline]
-    #[must_use]
-    pub const fn precedence_rank(self) -> usize {
-        match self {
-            Self::Toml => 0,
-            Self::Json => 1,
-            Self::Yaml => 2,
-            Self::Yml => 3,
-        }
-    }
-
-    /// Converts a file extension into a structured selector variant.
-    #[inline]
-    #[must_use]
-    pub fn from_extension(extension: &str) -> Option<Self> {
-        if extension.eq_ignore_ascii_case("toml") {
-            return Some(Self::Toml);
-        }
-        if extension.eq_ignore_ascii_case("json") {
-            return Some(Self::Json);
-        }
-        if extension.eq_ignore_ascii_case("yaml") {
-            return Some(Self::Yaml);
-        }
-        if extension.eq_ignore_ascii_case("yml") {
-            return Some(Self::Yml);
-        }
-        None
-    }
-
-    /// Detects selector variant from a path's extension.
-    #[inline]
-    #[must_use]
-    pub fn from_path(path: &Path) -> Option<Self> {
-        path.extension().and_then(OsStr::to_str).and_then(Self::from_extension)
-    }
-}
-
-impl From<StructuredFileFormat> for FileFormat {
-    #[inline]
-    fn from(value: StructuredFileFormat) -> Self {
-        match value {
-            StructuredFileFormat::Toml => Self::Toml,
-            StructuredFileFormat::Json => Self::Json,
-            StructuredFileFormat::Yaml | StructuredFileFormat::Yml => {
-                Self::Yaml
-            }
-        }
-    }
-}
-
 impl FileFormat {
     /// Detect format from file extension.
     #[inline]
@@ -178,11 +90,119 @@ impl FileFormat {
     }
 }
 
+/// Discovery selector for structured file formats.
+///
+/// This keeps extension-level distinctions used by discovery/candidate
+/// resolution while allowing parse-time handoff into [`FileFormat`].
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub enum StructuredFileFormat {
+    /// TOML format (`.toml`).
+    Toml,
+    /// JSON format (`.json`).
+    Json,
+    /// YAML format (`.yaml`).
+    Yaml,
+    /// YAML format via `.yml` extension.
+    Yml,
+}
+
+impl StructuredFileFormat {
+    /// Stable precedence used by deterministic candidate selection.
+    pub const PRECEDENCE: [Self; 4] =
+        [Self::Toml, Self::Json, Self::Yaml, Self::Yml];
+
+    /// Canonical extension (without leading dot).
+    #[inline]
+    #[must_use]
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Toml => "toml",
+            Self::Json => "json",
+            Self::Yaml => "yaml",
+            Self::Yml => "yml",
+        }
+    }
+
+    /// Stable rank where lower is higher priority.
+    #[inline]
+    #[must_use]
+    pub const fn rank(self) -> usize {
+        match self {
+            Self::Toml => 0,
+            Self::Json => 1,
+            Self::Yaml => 2,
+            Self::Yml => 3,
+        }
+    }
+
+    /// Converts a file extension into a structured selector variant.
+    #[inline]
+    #[must_use]
+    pub fn from_extension(extension: &str) -> Option<Self> {
+        if extension.eq_ignore_ascii_case("toml") {
+            return Some(Self::Toml);
+        }
+        if extension.eq_ignore_ascii_case("json") {
+            return Some(Self::Json);
+        }
+        if extension.eq_ignore_ascii_case("yaml") {
+            return Some(Self::Yaml);
+        }
+        if extension.eq_ignore_ascii_case("yml") {
+            return Some(Self::Yml);
+        }
+        None
+    }
+
+    /// Detects selector variant from a path's extension.
+    #[inline]
+    #[must_use]
+    pub fn from_path(path: &Path) -> Option<Self> {
+        path.extension().and_then(OsStr::to_str).and_then(Self::from_extension)
+    }
+}
+
+impl From<StructuredFileFormat> for FileFormat {
+    #[inline]
+    fn from(value: StructuredFileFormat) -> Self {
+        match value {
+            StructuredFileFormat::Toml => Self::Toml,
+            StructuredFileFormat::Json => Self::Json,
+            StructuredFileFormat::Yaml | StructuredFileFormat::Yml => {
+                Self::Yaml
+            }
+        }
+    }
+}
+
 #[inline]
 fn extension_is_supported(path: &Path, extensions: &[&str]) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
         extensions.iter().any(|candidate| ext.eq_ignore_ascii_case(candidate))
     })
+}
+
+/// Borrowed extension view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FileExtensionRef<'a>(pub(crate) &'a OsStr);
+
+impl FileExtensionRef<'_> {
+    /// Get the format for this extension.
+    #[inline]
+    #[must_use]
+    pub fn format(&self) -> FileFormat {
+        FileFormat::from_extension(self.0)
+    }
+
+    /// Get the extension as a string slice if valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.to_str()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -347,191 +367,225 @@ pub(crate) fn parse_from_format<T: DeserializeOwned>(
     }
 }
 
-/// Borrowed extension view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FileExtensionRef<'a>(pub(crate) &'a OsStr);
-
-impl FileExtensionRef<'_> {
-    /// Get the format for this extension.
-    #[inline]
-    #[must_use]
-    pub fn format(&self) -> FileFormat {
-        FileFormat::from_extension(self.0)
-    }
-
-    /// Get the extension as a string slice if valid UTF-8.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.to_str()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
     use super::*;
 
-    #[test]
-    fn structured_file_format_precedence_is_stable() {
-        assert_eq!(
-            StructuredFileFormat::PRECEDENCE[0],
-            StructuredFileFormat::Toml
-        );
-        assert_eq!(
-            StructuredFileFormat::PRECEDENCE[1],
-            StructuredFileFormat::Json
-        );
-        assert_eq!(
-            StructuredFileFormat::PRECEDENCE[2],
-            StructuredFileFormat::Yaml
-        );
-        assert_eq!(
-            StructuredFileFormat::PRECEDENCE[3],
-            StructuredFileFormat::Yml
-        );
-        assert!(
-            StructuredFileFormat::Toml.precedence_rank()
-                < StructuredFileFormat::Json.precedence_rank()
-        );
-        assert!(
-            StructuredFileFormat::Json.precedence_rank()
-                < StructuredFileFormat::Yaml.precedence_rank()
-        );
-        assert!(
-            StructuredFileFormat::Yaml.precedence_rank()
-                < StructuredFileFormat::Yml.precedence_rank()
-        );
+    mod structured_file_format {
+        use super::*;
+
+        mod integrity {
+            use super::*;
+
+            #[test]
+            fn returns_rank_ordered_by_precedence() {
+                assert_eq!(StructuredFileFormat::PRECEDENCE, [
+                    StructuredFileFormat::Toml,
+                    StructuredFileFormat::Json,
+                    StructuredFileFormat::Yaml,
+                    StructuredFileFormat::Yml,
+                ]);
+                assert!(
+                    StructuredFileFormat::Toml.rank()
+                        < StructuredFileFormat::Json.rank()
+                );
+                assert!(
+                    StructuredFileFormat::Json.rank()
+                        < StructuredFileFormat::Yaml.rank()
+                );
+                assert!(
+                    StructuredFileFormat::Yaml.rank()
+                        < StructuredFileFormat::Yml.rank()
+                );
+            }
+        }
+
+        mod lookup {
+            use super::*;
+
+            #[test]
+            fn returns_selector_when_extension_matches_case_insensitively() {
+                assert_eq!(
+                    StructuredFileFormat::from_extension("TOML"),
+                    Some(StructuredFileFormat::Toml)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_extension("Json"),
+                    Some(StructuredFileFormat::Json)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_extension("YAML"),
+                    Some(StructuredFileFormat::Yaml)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_extension("YmL"),
+                    Some(StructuredFileFormat::Yml)
+                );
+            }
+
+            #[test]
+            fn returns_none_when_extension_is_not_structured() {
+                assert_eq!(StructuredFileFormat::from_extension("md"), None);
+            }
+
+            #[test]
+            fn returns_selector_when_path_extension_matches() {
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema.toml")),
+                    Some(StructuredFileFormat::Toml)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema.JSON")),
+                    Some(StructuredFileFormat::Json)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema.yaml")),
+                    Some(StructuredFileFormat::Yaml)
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema.YML")),
+                    Some(StructuredFileFormat::Yml)
+                );
+            }
+
+            #[test]
+            fn returns_none_when_path_has_unknown_or_missing_extension() {
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema.md")),
+                    None
+                );
+                assert_eq!(
+                    StructuredFileFormat::from_path(Path::new("schema")),
+                    None
+                );
+            }
+        }
+
+        mod conversions {
+            use super::*;
+
+            #[test]
+            fn returns_file_format_yaml_when_converting_yml() {
+                assert_eq!(
+                    FileFormat::from(StructuredFileFormat::Yml),
+                    FileFormat::Yaml
+                );
+            }
+
+            #[test]
+            fn returns_matching_file_format_for_non_yml_variants() {
+                assert_eq!(
+                    FileFormat::from(StructuredFileFormat::Toml),
+                    FileFormat::Toml
+                );
+                assert_eq!(
+                    FileFormat::from(StructuredFileFormat::Json),
+                    FileFormat::Json
+                );
+                assert_eq!(
+                    FileFormat::from(StructuredFileFormat::Yaml),
+                    FileFormat::Yaml
+                );
+            }
+        }
     }
 
-    #[test]
-    fn structured_file_format_maps_extensions_case_insensitively() {
-        assert_eq!(
-            StructuredFileFormat::from_extension("TOML"),
-            Some(StructuredFileFormat::Toml)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_extension("Json"),
-            Some(StructuredFileFormat::Json)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_extension("YAML"),
-            Some(StructuredFileFormat::Yaml)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_extension("YmL"),
-            Some(StructuredFileFormat::Yml)
-        );
-        assert_eq!(StructuredFileFormat::from_extension("md"), None);
+    mod file_format {
+        use super::*;
+
+        mod lookup {
+            use super::*;
+
+            #[test]
+            fn returns_expected_format_when_extension_is_known() {
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("md")),
+                    FileFormat::Markdown
+                );
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("PNG")),
+                    FileFormat::Image
+                );
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("pdf")),
+                    FileFormat::Pdf
+                );
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("txt")),
+                    FileFormat::Document
+                );
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("zip")),
+                    FileFormat::Archive
+                );
+            }
+
+            #[test]
+            fn returns_unknown_when_extension_is_unrecognized() {
+                assert_eq!(
+                    FileFormat::from_extension(OsStr::new("unknown")),
+                    FileFormat::Unknown
+                );
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn returns_true_when_format_is_structured() {
+                assert!(FileFormat::Json.is_structured());
+                assert!(FileFormat::Toml.is_structured());
+                assert!(FileFormat::Yaml.is_structured());
+            }
+
+            #[test]
+            fn returns_false_when_format_is_not_structured() {
+                assert!(!FileFormat::Markdown.is_structured());
+                assert!(!FileFormat::Image.is_structured());
+            }
+        }
     }
 
-    #[test]
-    fn structured_file_format_maps_paths_and_unknowns() {
-        assert_eq!(
-            StructuredFileFormat::from_path(Path::new("schema.toml")),
-            Some(StructuredFileFormat::Toml)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_path(Path::new("schema.JSON")),
-            Some(StructuredFileFormat::Json)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_path(Path::new("schema.yaml")),
-            Some(StructuredFileFormat::Yaml)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_path(Path::new("schema.YML")),
-            Some(StructuredFileFormat::Yml)
-        );
-        assert_eq!(
-            StructuredFileFormat::from_path(Path::new("schema.md")),
-            None
-        );
-        assert_eq!(StructuredFileFormat::from_path(Path::new("schema")), None);
-    }
+    mod parse {
+        use super::*;
 
-    #[test]
-    fn structured_file_format_converts_to_parse_format() {
-        assert_eq!(
-            FileFormat::from(StructuredFileFormat::Toml),
-            FileFormat::Toml
-        );
-        assert_eq!(
-            FileFormat::from(StructuredFileFormat::Json),
-            FileFormat::Json
-        );
-        assert_eq!(
-            FileFormat::from(StructuredFileFormat::Yaml),
-            FileFormat::Yaml
-        );
-        assert_eq!(
-            FileFormat::from(StructuredFileFormat::Yml),
-            FileFormat::Yaml
-        );
-    }
+        #[test]
+        fn returns_structured_format_when_content_signature_matches() {
+            assert_eq!(
+                sniff_structured_format("{\"k\":1}"),
+                Some(FileFormat::Json)
+            );
+            assert_eq!(
+                sniff_structured_format("name: test\nvalue: 42"),
+                Some(FileFormat::Yaml)
+            );
+            assert_eq!(
+                sniff_structured_format("name = \"test\""),
+                Some(FileFormat::Toml)
+            );
+        }
 
-    #[test]
-    fn should_detect_various_formats() {
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("md")),
-            FileFormat::Markdown
-        );
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("PNG")),
-            FileFormat::Image
-        );
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("pdf")),
-            FileFormat::Pdf
-        );
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("txt")),
-            FileFormat::Document
-        );
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("zip")),
-            FileFormat::Archive
-        );
-        assert_eq!(
-            FileFormat::from_extension(OsStr::new("unknown")),
-            FileFormat::Unknown
-        );
-    }
+        #[test]
+        fn returns_none_when_content_is_not_structured() {
+            assert_eq!(sniff_structured_format("plain text"), None);
+        }
 
-    #[test]
-    fn should_identify_structured_formats() {
-        assert!(FileFormat::Json.is_structured());
-        assert!(FileFormat::Toml.is_structured());
-        assert!(FileFormat::Yaml.is_structured());
-        assert!(!FileFormat::Markdown.is_structured());
-        assert!(!FileFormat::Image.is_structured());
-    }
-
-    #[test]
-    fn should_sniff_structured_format_by_content() {
-        assert_eq!(
-            sniff_structured_format("{\"k\":1}"),
-            Some(FileFormat::Json)
-        );
-        assert_eq!(
-            sniff_structured_format("name: test\nvalue: 42"),
-            Some(FileFormat::Yaml)
-        );
-        assert_eq!(
-            sniff_structured_format("name = \"test\""),
-            Some(FileFormat::Toml)
-        );
-        assert_eq!(sniff_structured_format("plain text"), None);
-    }
-
-    #[test]
-    fn parse_from_format_rejects_unsupported_format() {
-        let result: Result<serde_json::Value, ParseError> = parse_from_format(
-            Path::new("note.md"),
-            "# title",
-            FileFormat::Markdown,
-        );
-        assert!(matches!(result, Err(ParseError::UnsupportedFormat { .. })));
+        #[test]
+        fn returns_unsupported_format_error_when_parse_format_is_not_structured()
+         {
+            let result: Result<serde_json::Value, ParseError> =
+                parse_from_format(
+                    Path::new("note.md"),
+                    "# title",
+                    FileFormat::Markdown,
+                );
+            assert!(
+                matches!(result, Err(ParseError::UnsupportedFormat { .. })),
+                "expected unsupported format error, got: {result:?}"
+            );
+        }
     }
 }
