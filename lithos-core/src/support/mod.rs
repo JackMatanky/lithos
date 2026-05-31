@@ -22,4 +22,4 @@ pub(crate) use content_hash::{Blake3Hash, HashInput, hash_structured};
     unused_imports,
     reason = "crate-private support facade keeps ergonomic internal imports"
 )]
-pub(crate) use hash_index::Blake3HashIndex;
+pub(crate) use hash_index::{Blake3HashIndex, HasHashIndex, HasHashIndexMut};
