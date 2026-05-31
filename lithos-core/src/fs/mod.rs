@@ -65,7 +65,7 @@ pub use entry::{FsDir, FsEntry, FsFile};
 pub use error::{
     FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
 };
-pub use format::{FileExtensionRef, FileFormat};
+pub use format::{FileExtensionRef, FileFormat, StructuredFileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
 pub use name::{
     BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef,

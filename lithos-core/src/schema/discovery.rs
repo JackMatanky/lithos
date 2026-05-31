@@ -8,7 +8,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     config::paths::SchemaConfigSpec,
-    fs::{DirScanInput, DirScanner, FsEntry, FsFile, PathKey},
+    fs::{
+        DirScanInput, DirScanner, FsEntry, FsFile, PathKey,
+        StructuredFileFormat,
+    },
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         identifier::SchemaId,
@@ -183,7 +186,10 @@ impl DiscoveryEngine {
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
     ) -> Result<Vec<FsEntry>, SchemaLoaderError> {
-        const SCHEMA_EXTENSIONS: [&str; 4] = ["json", "toml", "yaml", "yml"];
+        let structured_extensions: Vec<&str> = StructuredFileFormat::PRECEDENCE
+            .iter()
+            .map(|format| format.extension())
+            .collect();
 
         // Use relative schema directory path for pattern matching
         let pattern = format!("{}/**/*", spec.directory_relative().as_str());
@@ -194,7 +200,7 @@ impl DiscoveryEngine {
             .entries(
                 DirScanInput::new()
                     .with_pattern(&pattern)
-                    .with_extensions(&SCHEMA_EXTENSIONS),
+                    .with_extensions(&structured_extensions),
             )
             .map_err(|e| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::File(
@@ -673,5 +679,43 @@ mod tests {
         assert!(!result.has_schemas());
         assert_eq!(repo.raw_views_by_paths_calls.load(Ordering::Relaxed), 0);
         assert_eq!(repo.ids_by_paths_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn run_keeps_configured_property_bank_path_as_absolute_winner() {
+        use crate::fs::{
+            DirPath,
+            path::{RelativeDirPath, RelativeFilePath},
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let schema_dir = root.path().join("schemas");
+        std::fs::create_dir_all(&schema_dir).unwrap();
+
+        let configured_bank = schema_dir.join("property_bank.json");
+        std::fs::write(&configured_bank, "{}").unwrap();
+        let competing_bank = schema_dir.join("property_bank.yaml");
+        std::fs::write(&competing_bank, "name: title").unwrap();
+
+        let vault_root = DirPath::try_from(root.path().to_path_buf())
+            .expect("temp root should convert to DirPath");
+        let dir_rel = RelativeDirPath::try_from("schemas").unwrap();
+        let bank_rel =
+            RelativeFilePath::try_from("schemas/property_bank.json").unwrap();
+        let spec = SchemaConfigSpec::new(vault_root, dir_rel, bank_rel);
+
+        let repo = InMemoryRepository::new();
+        let result = DiscoveryEngine::run(&spec, &repo).unwrap();
+
+        let discovered_bank = result
+            .property_bank
+            .as_ref()
+            .expect("property bank exists")
+            .entry()
+            .path()
+            .as_path()
+            .to_path_buf();
+        assert_eq!(discovered_bank, configured_bank);
+        assert_eq!(result.schemas.len(), 1);
     }
 }
