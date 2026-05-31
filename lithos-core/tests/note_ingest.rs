@@ -4,19 +4,14 @@ use std::sync::Arc;
 
 use lithos_core::{
     config::{
-        aggregate::Config,
         builder,
         vault::{VaultId, VaultRoot},
     },
     db::Store,
-    fs::{
-        FsReader,
-        metadata::{FileMetadata, FsTimes},
-    },
+    fs::metadata::{FileMetadata, FsTimes},
     note::{
-        ReadRepository, Repository,
-        paths::NotePath,
         processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
+        repository::ReadRepository,
         storage::RedbRepository,
     },
 };

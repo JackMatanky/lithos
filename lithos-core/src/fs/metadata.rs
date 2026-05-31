@@ -190,6 +190,7 @@ impl FileMetadata {
 
     /// Creates a default `FileMetadata` for testing purposes.
     #[cfg(test)]
+    #[inline]
     #[must_use]
     pub fn test_default() -> Self {
         Self::new(FsTimes::new(None, None), 0, false)

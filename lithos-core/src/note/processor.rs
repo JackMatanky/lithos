@@ -183,7 +183,7 @@ pub enum ComparisonBranch {
     /// Note missing in repository.
     Missing(NoteProcessor<Comparison, Missing>),
     /// Note present in repository.
-    Present(NoteProcessor<Comparison, Present>),
+    Present(Box<NoteProcessor<Comparison, Present>>),
 }
 
 /// Result of metadata comparison.
@@ -361,13 +361,13 @@ impl NoteProcessor<Discovery, Unknown> {
     ) -> Result<ComparisonBranch, NoteProcessError> {
         let stored = repository.find_by_path(info.path())?;
         if let Some(note) = stored {
-            Ok(ComparisonBranch::Present(Self::transition(
+            Ok(ComparisonBranch::Present(Box::new(Self::transition(
                 Comparison,
                 Present {
                     info,
                     note,
                 },
-            )))
+            ))))
         } else {
             Ok(ComparisonBranch::Missing(Self::transition(
                 Comparison,

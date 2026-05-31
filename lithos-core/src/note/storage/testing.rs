@@ -27,7 +27,6 @@ use crate::{
         DbError,
         testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
     },
-    fs::metadata::FileMetadata,
     note::{
         aggregate::{Note, NoteId},
         error::NoteRepositoryError,
