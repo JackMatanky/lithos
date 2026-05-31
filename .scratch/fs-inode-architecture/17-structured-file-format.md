@@ -27,13 +27,13 @@ This slice must make structured candidate selection deterministic for `.toml`, `
 
 ## Acceptance criteria
 
-- [ ] `StructuredFileFormat` exists in `fs/format.rs` with variants: `Toml`, `Json`, `Yaml`, `Yml`.
-- [ ] `StructuredFileFormat::PRECEDENCE` is defined and ordered `Toml > Json > Yaml > Yml`.
-- [ ] `StructuredFileFormat` exposes `extension()`, `precedence_rank()`, `from_extension(&str)`, and `from_path(&Path)` helpers.
-- [ ] `from_extension(&str)` and `from_path(&Path)` return `Option<StructuredFileFormat>`.
-- [ ] Selector matching is ASCII case-insensitive for extension inputs.
-- [ ] `From<StructuredFileFormat> for FileFormat` is implemented with `Yml -> FileFormat::Yaml`.
-- [ ] Tests verify precedence rank ordering, extension mapping, and conversion semantics.
+- [x] `StructuredFileFormat` exists in `fs/format.rs` with variants: `Toml`, `Json`, `Yaml`, `Yml`.
+- [x] `StructuredFileFormat::PRECEDENCE` is defined and ordered `Toml > Json > Yaml > Yml`.
+- [x] `StructuredFileFormat` exposes `extension()`, `rank()`, `from_extension(&str)`, and `from_path(&Path)` helpers.
+- [x] `from_extension(&str)` and `from_path(&Path)` return `Option<StructuredFileFormat>`.
+- [x] Selector matching is ASCII case-insensitive for extension inputs.
+- [x] `From<StructuredFileFormat> for FileFormat` is implemented with `Yml -> FileFormat::Yaml`.
+- [x] Tests verify precedence/rank ordering, extension mapping, and conversion semantics.
 
 ## Blocked by
 
@@ -58,7 +58,7 @@ None - can start immediately.
 ## TDD execution plan
 
 1. Add/adjust unit tests for `StructuredFileFormat` in `fs/format.rs`:
-   - precedence ordering and `precedence_rank()`
+   - precedence ordering and `rank()`
    - extension mapping and case-insensitive lookup
    - path mapping for known, unknown, and missing extensions
    - one-way conversion semantics into `FileFormat`
@@ -66,3 +66,18 @@ None - can start immediately.
 3. Add discovery tests proving configured property bank path remains absolute winner.
 4. Integrate selector use into discovery candidate resolution without changing parse dispatch contracts.
 5. Run unit and quality checks.
+
+## Implementation status (2026-05-31)
+
+- Implemented `StructuredFileFormat` and selector helpers in `lithos-core/src/fs/format.rs`.
+- Selector rank helper was finalized as `rank()` (renamed from `precedence_rank()`).
+- Added `From<StructuredFileFormat> for FileFormat` with `Yml -> FileFormat::Yaml`.
+- Discovery extension filtering now derives from `StructuredFileFormat::PRECEDENCE`.
+- Added regression coverage ensuring configured property bank path remains absolute winner.
+- Normalized `fs/format.rs` unit suite to Structure A with canonical modules (`integrity`, `lookup`, `conversions`, `validation`, `parse`) and verb-first test names.
+- Unit + lint + formatting checks pass in the dedicated worktree.
+
+## Implementation commits
+
+- `1d6ddc74` `feat(fs): add structured file format selector`
+- `73bd5947` `test(fs): normalize format suite and rename rank`
