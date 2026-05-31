@@ -28,7 +28,7 @@ use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
-use crate::{fs::metadata::FileMetadata, support::hash::Blake3Hash};
+use crate::{fs::metadata::FileMetadata, support::content_hash::Blake3Hash};
 
 fn hash_raw_global(raw: &crate::config::raw::RawGlobalConfig) -> Blake3Hash {
     let serialized = toml::to_string(raw).unwrap_or_default();

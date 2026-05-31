@@ -117,7 +117,7 @@ impl ConfigType for GlobalConfig {
 
     #[inline]
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
-        use crate::support::hash::Blake3Hash;
+        use crate::support::content_hash::Blake3Hash;
 
         let mut hashes = ConfigFieldHashes::new();
 
@@ -183,7 +183,7 @@ impl ConfigType for VaultConfig {
 
     #[inline]
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
-        use crate::support::hash::Blake3Hash;
+        use crate::support::content_hash::Blake3Hash;
 
         let mut hashes = ConfigFieldHashes::new();
 
@@ -252,7 +252,7 @@ impl ConfigType for VaultConfig {
 /// ```rust,ignore
 /// use lithos_core::{
 ///     config::processor::{ConfigField, ConfigFieldHashes},
-///     support::hash::Blake3Hash,
+///     support::content_hash::Blake3Hash,
 /// };
 ///
 /// let mut hashes = ConfigFieldHashes::default();
@@ -261,7 +261,7 @@ impl ConfigType for VaultConfig {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfigFieldHashes {
-    inner: crate::support::hash::Blake3HashIndex<ConfigField>,
+    inner: crate::support::hash_index::Blake3HashIndex<ConfigField>,
 }
 
 impl ConfigFieldHashes {
@@ -270,7 +270,7 @@ impl ConfigFieldHashes {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            inner: crate::support::hash::Blake3HashIndex::default(),
+            inner: crate::support::hash_index::Blake3HashIndex::default(),
         }
     }
 
@@ -279,7 +279,7 @@ impl ConfigFieldHashes {
     pub(crate) fn insert(
         &mut self,
         field: ConfigField,
-        hash: crate::support::hash::Blake3Hash,
+        hash: crate::support::content_hash::Blake3Hash,
     ) {
         let _previous = self.inner.insert(field, hash);
     }
@@ -294,7 +294,7 @@ impl ConfigFieldHashes {
     pub(crate) fn get(
         &self,
         field: &ConfigField,
-    ) -> Option<&crate::support::hash::Blake3Hash> {
+    ) -> Option<&crate::support::content_hash::Blake3Hash> {
         self.inner.get(field)
     }
 
@@ -309,8 +309,9 @@ impl ConfigFieldHashes {
     #[inline]
     pub(crate) fn iter(
         &self,
-    ) -> impl Iterator<Item = (&ConfigField, &crate::support::hash::Blake3Hash)>
-    {
+    ) -> impl Iterator<
+        Item = (&ConfigField, &crate::support::content_hash::Blake3Hash),
+    > {
         self.inner.iter()
     }
 

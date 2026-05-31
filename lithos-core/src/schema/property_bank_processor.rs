@@ -123,7 +123,7 @@ use crate::{
             contracts::Version as _,
         },
     },
-    support::hash::Blake3Hash,
+    support::content_hash::Blake3Hash,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

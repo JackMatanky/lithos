@@ -25,7 +25,7 @@ use crate::{
         },
         views::RawPropertyHashIndex,
     },
-    support::hash::{Blake3Hash, hash_structured},
+    support::content_hash::{Blake3Hash, hash_structured},
 };
 
 /// Delta for schema-level `excludes` lists.

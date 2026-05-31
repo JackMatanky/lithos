@@ -24,7 +24,7 @@ use crate::{
             },
         },
     },
-    support::hash::Blake3Hash,
+    support::content_hash::Blake3Hash,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
