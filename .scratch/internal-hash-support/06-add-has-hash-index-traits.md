@@ -2,7 +2,7 @@
 title: 06-add-has-hash-index-traits
 category: enhancement
 label: ready-for-agent
-status: approved
+status: completed
 date_created: 2026-05-31T00:00:00+00:00
 date_approved: 2026-05-31T00:00:00+00:00
 ---
@@ -57,6 +57,24 @@ Types explicitly NOT implementing the traits:
 - [ ] Tests for each trait implementation follow `has_content_hash` / `has_content_hash_mut` submodule pattern.
 - [ ] `cargo clippy -p lithos-core --all-targets -- -D warnings` passes.
 - [ ] `cargo test -p lithos-core` passes.
+
+## Implementation notes (2026-05-31)
+
+- [x] `HasHashIndex` added in `support/hash_index.rs` with associated `Key` and `hash_index(&self)`.
+- [x] `HasHashIndexMut` added in `support/hash_index.rs` extending `HasHashIndex` with `hash_index_mut(&mut self)`.
+- [x] `Blake3HashIndex<K>` implements both traits.
+- [x] `RawPropertyHashIndex` implements both traits.
+- [x] `ConfigFieldHashes` implements both traits.
+- [x] `HashRecord` implements `HasHashIndex` only (read-only), per approved scope.
+- [x] `support/mod.rs` re-exports updated: `HasHashIndex`, `HasHashIndexMut`.
+- [x] Tests added in `has_hash_index` / `has_hash_index_mut` submodules across touched modules.
+- [x] Validation passed: `cargo test -p lithos-core`, `cargo clippy -p lithos-core --all-targets -- -D warnings`, `cargo fmt`.
+
+### Lint nuance: dead_code annotations
+
+- Trait-level `#[allow(dead_code)]` on `HasHashIndex` and `HasHashIndexMut` are currently required for strict clippy in `lib` builds.
+- Reason: non-test code currently defines impls but does not yet consume the traits via trait bounds/dynamic dispatch/generic trait-based call sites.
+- Impl-level `#[allow(dead_code)]` on `impl HasHashIndex for Blake3HashIndex<K>` and `impl HasHashIndexMut for Blake3HashIndex<K>` is not required.
 
 ## Blocked by
 
