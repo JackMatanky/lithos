@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
     config::{
         aggregate::{Config, Version},
-        discovery::DiscoveryEngine,
+        discovery::{DiscoveryEngine, DiscoveryResult},
         error::{ConfigError, ConfigIngestError},
         frontmatter::Frontmatter,
         logging::Logging,
@@ -38,7 +38,7 @@ use crate::{
         repository::Repository,
         task::Task,
         vault::{VaultId, VaultRoot},
-        views::RawFileVersion,
+        views::{RawFileVersion, RawGlobalConfigView, RawVaultConfigView},
     },
     fs::FsReader,
 };
@@ -213,12 +213,12 @@ where
         let global_raw = if let Some(entry) = discovery.global().entry() {
             let reader = FsReader::from_system_root();
             let entry_path = entry.path();
-            Some(
-                reader
-                    .parse_structured::<RawGlobalConfig>(entry_path.as_path())
-                    .map_err(ConfigIngestError::from)
-                    .map_err(ConfigError::from)?,
-            )
+            let mut raw = reader
+                .parse_structured::<RawGlobalConfig>(entry_path.as_path())
+                .map_err(ConfigIngestError::from)
+                .map_err(ConfigError::from)?;
+            raw.metadata = discovery.global().info().cloned();
+            Some(raw)
         } else {
             None
         };
@@ -226,12 +226,12 @@ where
         let vault_raw = if let Some(_entry) = discovery.vault().entry() {
             let reader = FsReader::new(vault_root.as_path());
             let relative_path = std::path::Path::new(".lithos/lithos.toml");
-            Some(
-                reader
-                    .parse_structured::<RawVaultConfig>(relative_path)
-                    .map_err(ConfigIngestError::from)
-                    .map_err(ConfigError::from)?,
-            )
+            let mut raw = reader
+                .parse_structured::<RawVaultConfig>(relative_path)
+                .map_err(ConfigIngestError::from)
+                .map_err(ConfigError::from)?;
+            raw.metadata = discovery.vault().info().cloned();
+            Some(raw)
         } else {
             None
         };
@@ -268,14 +268,16 @@ where
         // Step 7: Resolve outcomes, then execute persistence/build plan
         let resolver = ConfigResolver::new();
         let plan = resolver.resolve(global_outcome, vault_outcome)?;
-        self.execute_plan(vault_id, &vault_root, plan)
+        self.execute_plan(vault_id, &vault_root, plan, &discovery)
     }
 
+    #[allow(clippy::too_many_arguments, reason = "Internal execution pipeline")]
     fn execute_plan(
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
         plan: ResolutionPlan,
+        discovery: &DiscoveryResult,
     ) -> Result<Config, ConfigError> {
         match plan {
             ResolutionPlan::UseCached => self.load_cached_config(vault_id),
@@ -284,10 +286,32 @@ where
                 vault,
             } => {
                 if let Some(global) = global {
-                    self.update_global_view(&global)?;
+                    let path = discovery
+                        .global()
+                        .entry()
+                        .map(|e| {
+                            e.path().as_path().to_string_lossy().into_owned()
+                        })
+                        .ok_or(ConfigError::ValidationFailed {
+                            field: "global_path".into(),
+                            message: "missing file path for global view update"
+                                .into(),
+                        })?;
+                    self.update_global_view(&global, &path)?;
                 }
                 if let Some(vault) = vault {
-                    self.update_vault_view(vault_id, &vault)?;
+                    let path = discovery
+                        .vault()
+                        .entry()
+                        .map(|e| {
+                            e.path().as_path().to_string_lossy().into_owned()
+                        })
+                        .ok_or(ConfigError::ValidationFailed {
+                            field: "vault_path".into(),
+                            message: "missing file path for vault view update"
+                                .into(),
+                        })?;
+                    self.update_vault_view(vault_id, &vault, &path)?;
                 }
                 self.load_cached_config(vault_id)
             }
@@ -299,6 +323,7 @@ where
                 vault_root,
                 global.as_ref(),
                 vault.as_ref(),
+                discovery,
             ),
         }
     }
@@ -328,16 +353,13 @@ where
     fn update_global_view(
         &self,
         raw: &RawGlobalConfig,
+        file_path: &str,
     ) -> Result<(), ConfigError> {
         let mut view = self
             .repository
             .get_raw_global_view()
             .map_err(Into::<ConfigError>::into)?
-            .ok_or(ConfigError::ValidationFailed {
-                field: "global_view".into(),
-                message: "expected cached global view for metadata-only update"
-                    .into(),
-            })?;
+            .unwrap_or_else(|| RawGlobalConfigView::new(file_path.into()));
 
         let version = Self::raw_global_to_version(raw)?;
         view.push_version(version);
@@ -350,16 +372,13 @@ where
         &self,
         vault_id: VaultId,
         raw: &RawVaultConfig,
+        file_path: &str,
     ) -> Result<(), ConfigError> {
         let mut view = self
             .repository
             .get_raw_vault_view(vault_id)
             .map_err(Into::<ConfigError>::into)?
-            .ok_or(ConfigError::ValidationFailed {
-                field: "vault_view".into(),
-                message: "expected cached vault view for metadata-only update"
-                    .into(),
-            })?;
+            .unwrap_or_else(|| RawVaultConfigView::new(file_path.into()));
 
         let version = Self::raw_vault_to_version(raw)?;
         view.push_version(version);
@@ -368,12 +387,14 @@ where
             .map_err(Into::<ConfigError>::into)
     }
 
+    #[allow(clippy::too_many_arguments, reason = "Internal execution pipeline")]
     fn rebuild_with_configs(
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
         global: Option<&RawGlobalConfig>,
         vault: Option<&RawVaultConfig>,
+        discovery: &DiscoveryResult,
     ) -> Result<Config, ConfigError> {
         let next_version = self
             .repository
@@ -394,6 +415,33 @@ where
         self.repository
             .save_config(vault_id, &config)
             .map_err(Into::<ConfigError>::into)?;
+
+        if let Some(global) = global {
+            let path = discovery
+                .global()
+                .entry()
+                .map(|e| e.path().as_path().to_string_lossy().into_owned())
+                .ok_or(ConfigError::ValidationFailed {
+                    field: "global_path".into(),
+                    message: "missing file path for global view update during \
+                              rebuild"
+                        .into(),
+                })?;
+            self.update_global_view(global, &path)?;
+        }
+        if let Some(vault) = vault {
+            let path = discovery
+                .vault()
+                .entry()
+                .map(|e| e.path().as_path().to_string_lossy().into_owned())
+                .ok_or(ConfigError::ValidationFailed {
+                    field: "vault_path".into(),
+                    message: "missing file path for vault view update during \
+                              rebuild"
+                        .into(),
+                })?;
+            self.update_vault_view(vault_id, vault, &path)?;
+        }
 
         Ok(config)
     }
