@@ -2,8 +2,9 @@
 title: 04-split-hash-rs-into-content-hash-and-hash-index
 category: enhancement
 label: ready-for-agent
-status: draft
+status: completed
 date_created: 2026-05-31T00:00:00+00:00
+date_completed: 2026-05-31T00:00:00+00:00
 ---
 
 # Split `hash.rs` into `content_hash.rs` and `hash_index.rs`
@@ -21,11 +22,11 @@ Update all import paths across the workspace that currently reference `support::
 
 ## Acceptance criteria
 
-- [ ] `hash.rs` removed; `content_hash.rs` and `hash_index.rs` exist under `support/`.
-- [ ] `support/mod.rs` facade re-exports the same symbols with updated paths; no public API change.
-- [ ] All callers updated: `support::hash::Blake3Hash` → `support::content_hash::Blake3Hash`, `support::hash::Blake3HashIndex` → `support::hash_index::Blake3HashIndex`, etc.
-- [ ] `cargo clippy -p lithos-core --all-targets -- -D warnings` passes.
-- [ ] `cargo test -p lithos-core` passes with no regressions.
+- [x] `hash.rs` removed; `content_hash.rs` and `hash_index.rs` exist under `support/`.
+- [x] `support/mod.rs` facade re-exports the same symbols with updated paths; no public API change.
+- [x] All callers updated: `support::hash::Blake3Hash` → `support::content_hash::Blake3Hash`, `support::hash::Blake3HashIndex` → `support::hash_index::Blake3HashIndex`, etc.
+- [x] `cargo clippy -p lithos-core --all-targets -- -D warnings` passes.
+- [x] `cargo test -p lithos-core` passes with no regressions.
 
 ## Blocked by
 

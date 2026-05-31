@@ -124,7 +124,10 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
     schema::property::PropertyName,
-    support::{content_hash::Blake3Hash, hash_index::Blake3HashIndex},
+    support::{
+        content_hash::{Blake3Hash, HasContentHash, HasContentHashMut},
+        hash_index::Blake3HashIndex,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,6 +245,20 @@ impl HashRecord {
     #[must_use]
     pub(crate) fn is_content_match(&self, hash: &Blake3Hash) -> bool {
         self.content.is_match(hash)
+    }
+}
+
+impl HasContentHash for HashRecord {
+    #[inline]
+    fn content_hash(&self) -> &Blake3Hash {
+        self.content()
+    }
+}
+
+impl HasContentHashMut for HashRecord {
+    #[inline]
+    fn set_content_hash(&mut self, hash: Blake3Hash) {
+        self.content = hash;
     }
 }
 
@@ -374,12 +391,62 @@ impl From<Blake3HashIndex<PropertyName>> for RawPropertyHashIndex {
 mod tests {
     use super::*;
 
-    #[test]
-    fn hash_record_content_matches() {
-        let hash = Blake3Hash::compute(b"test");
-        let record = HashRecord::new(hash, RawPropertyHashIndex::default());
+    mod has_content_hash {
+        use super::*;
 
-        assert!(record.is_content_match(&hash));
-        assert!(!record.is_content_match(&Blake3Hash::compute(b"other")));
+        #[test]
+        fn returns_content_hash() {
+            let hash = Blake3Hash::compute(b"test");
+            let record = HashRecord::new(hash, RawPropertyHashIndex::default());
+            assert_eq!(record.content_hash(), &hash);
+        }
+
+        #[test]
+        fn is_content_match_returns_true_when_match() {
+            let hash = Blake3Hash::compute(b"test");
+            let record = HashRecord::new(hash, RawPropertyHashIndex::default());
+            assert!(record.is_content_match(&hash));
+        }
+
+        #[test]
+        fn is_content_match_returns_false_when_mismatch() {
+            let hash = Blake3Hash::compute(b"test");
+            let record = HashRecord::new(hash, RawPropertyHashIndex::default());
+            assert!(!record.is_content_match(&Blake3Hash::compute(b"other")));
+        }
+    }
+
+    mod has_content_hash_mut {
+        use super::*;
+
+        #[test]
+        fn set_content_hash_updates_hash() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            let mut record =
+                HashRecord::new(hash1, RawPropertyHashIndex::default());
+            record.set_content_hash(hash2);
+            assert_eq!(record.content_hash(), &hash2);
+        }
+
+        #[test]
+        fn returns_true_for_new_hash_after_update() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            let mut record =
+                HashRecord::new(hash1, RawPropertyHashIndex::default());
+            record.set_content_hash(hash2);
+            assert!(record.is_content_match(&hash2));
+        }
+
+        #[test]
+        fn returns_false_for_old_hash_after_update() {
+            let hash1 = Blake3Hash::compute(b"test1");
+            let hash2 = Blake3Hash::compute(b"test2");
+            let mut record =
+                HashRecord::new(hash1, RawPropertyHashIndex::default());
+            record.set_content_hash(hash2);
+            assert!(!record.is_content_match(&hash1));
+        }
     }
 }
