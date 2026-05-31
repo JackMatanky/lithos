@@ -50,6 +50,7 @@ None - can start immediately.
   - `TryFrom<u64>` (rejects `0`)
   - `TryFrom<&[u8]>` for redb/byte boundary compatibility (rejects wrong length or `0`)
   - `From<NonZeroU64>` (trusted constructor)
+- `EventId::MIN` should be defined directly from `NonZeroU64::MIN` to make the non-zero invariant explicit.
 - Do not add permissive string parsing by default (`FromStr`) unless required by a concrete boundary in this slice.
 
 ## Typed error contract (best-practice baseline)

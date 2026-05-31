@@ -1,45 +1,75 @@
 //! Event identifier primitives and redb contracts.
 
+use std::num::NonZeroU64;
+
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(dead_code, reason = "Foundation type used in upcoming slices")]
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// Canonical event-log identifier.
 ///
 /// `EventId` is a strictly monotonic, positive sequence value within a single
 /// context event stream. Gaps are allowed.
-pub struct EventId(u64);
+pub(crate) struct EventId(NonZeroU64);
 
+#[allow(dead_code, reason = "Foundation API used in upcoming slices")]
 impl EventId {
-    #[cfg(test)]
-    fn new_unchecked(value: u64) -> Self {
-        Self(value)
-    }
+    /// Minimum possible event identifier.
+    pub(crate) const MIN: Self = Self(NonZeroU64::MIN);
 
     #[inline]
     #[must_use]
     /// Returns the numeric event identifier.
-    pub fn as_u64(self) -> u64 {
-        self.0
+    pub(crate) fn get(self) -> u64 {
+        self.0.get()
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-/// Parse and conversion errors for [`EventId`].
-pub enum EventIdError {
-    /// Input byte slice is empty.
-    #[error("event id bytes cannot be empty")]
-    EmptyBytes,
-    /// Input byte slice length differs from the required fixed width.
-    #[error("invalid event id length: expected {expected}, got {got}")]
-    InvalidLength {
-        /// Required byte width.
-        expected: usize,
-        /// Actual byte width provided.
-        got: usize,
-    },
-    /// Zero is reserved and cannot represent a committed event.
-    #[error("event id zero is not allowed")]
-    ZeroNotAllowed,
+    /// Returns the next strictly monotonic [`EventId`].
+    ///
+    /// # Errors
+    /// Returns [`EventIdError::Overflow`] if the sequence exceeds `u64::MAX`.
+    pub(crate) fn next_after(
+        current_max: Option<Self>,
+    ) -> Result<Self, EventIdError> {
+        let next_value = match current_max {
+            None => 1,
+            Some(id) => {
+                id.get().checked_add(1).ok_or(EventIdError::Overflow)?
+            }
+        };
+
+        Self::try_from_raw(next_value)
+    }
+
+    /// Parses a raw numeric value into an [`EventId`].
+    ///
+    /// # Errors
+    /// Returns [`EventIdError::Zero`] if the value is zero.
+    pub(crate) fn try_from_raw(raw: u64) -> Result<Self, EventIdError> {
+        NonZeroU64::new(raw).map(Self).ok_or(EventIdError::Zero)
+    }
+
+    /// Parses and validates monotonicity in a single functional step.
+    ///
+    /// # Errors
+    /// - [`EventIdError::Zero`] if raw is zero.
+    /// - [`EventIdError::NotStrictlyMonotonic`] if candidate is not after
+    ///   previous.
+    pub(crate) fn try_after(
+        previous: Option<Self>,
+        raw: u64,
+    ) -> Result<Self, EventIdError> {
+        let candidate = Self::try_from_raw(raw)?;
+        if let Some(prev) = previous
+            && candidate <= prev
+        {
+            return Err(EventIdError::NotStrictlyMonotonic {
+                previous: prev,
+                candidate,
+            });
+        }
+        Ok(candidate)
+    }
 }
 
 impl TryFrom<u64> for EventId {
@@ -47,11 +77,14 @@ impl TryFrom<u64> for EventId {
 
     #[inline]
     fn try_from(value: u64) -> Result<Self, Self::Error> {
-        if value == 0 {
-            return Err(EventIdError::ZeroNotAllowed);
-        }
+        Self::try_from_raw(value)
+    }
+}
 
-        Ok(Self(value))
+impl From<NonZeroU64> for EventId {
+    #[inline]
+    fn from(value: NonZeroU64) -> Self {
+        Self(value)
     }
 }
 
@@ -124,7 +157,7 @@ impl redb::Value for EventId {
         Self: 'a,
         Self: 'b,
     {
-        value.0.to_be_bytes()
+        value.get().to_be_bytes()
     }
 
     #[inline]
@@ -140,6 +173,72 @@ impl redb::Key for EventId {
     }
 }
 
+#[allow(dead_code, reason = "Foundation error type used in upcoming slices")]
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+/// Parse and conversion errors for [`EventId`].
+pub(crate) enum EventIdError {
+    /// Input byte slice is empty.
+    #[error("event id bytes cannot be empty")]
+    EmptyBytes,
+    /// Input byte slice length differs from the required fixed width.
+    #[error("invalid event id length: expected {expected}, got {got}")]
+    InvalidLength {
+        /// Required byte width.
+        expected: usize,
+        /// Actual byte width provided.
+        got: usize,
+    },
+    /// Zero is reserved and cannot represent a committed event.
+    #[error("event id zero is not allowed")]
+    Zero,
+    /// Sequence violation (monotonicity).
+    #[error(
+        "sequence violation: candidate {candidate:?} is not after {previous:?}"
+    )]
+    NotStrictlyMonotonic {
+        /// The previous valid identifier.
+        previous: EventId,
+        /// The invalid candidate identifier.
+        candidate: EventId,
+    },
+    /// Sequence value exceeded `u64::MAX`.
+    #[error("event id overflow")]
+    Overflow,
+}
+
+#[allow(dead_code, reason = "Foundation allocator used in upcoming slices")]
+#[derive(Clone, Debug)]
+/// In-memory monotonic allocator for [`EventId`].
+pub(crate) struct EventIdAllocator {
+    last_issued: Option<EventId>,
+}
+
+#[allow(dead_code, reason = "Foundation allocator API used in upcoming slices")]
+impl EventIdAllocator {
+    /// Creates a new allocator with no issued identifiers.
+    #[must_use]
+    pub(crate) const fn new() -> Self {
+        Self {
+            last_issued: None,
+        }
+    }
+
+    /// Returns the next strictly monotonic [`EventId`].
+    ///
+    /// # Errors
+    /// Returns [`EventIdError::Overflow`] if the sequence exceeds `u64::MAX`.
+    pub(crate) fn next(&mut self) -> Result<EventId, EventIdError> {
+        let id = EventId::next_after(self.last_issued)?;
+        self.last_issued = Some(id);
+        Ok(id)
+    }
+
+    /// Sets allocator cursor to the maximum persisted event id.
+    pub(crate) fn reserve_after(&mut self, persisted_max: Option<EventId>) {
+        self.last_issued = persisted_max;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use redb::{Key, Value};
@@ -150,10 +249,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn rejects_zero_when_constructed_from_u64() {
-            let result = EventId::try_from(0_u64);
+        fn rejects_zero_when_constructed_from_raw() {
+            let result = EventId::try_from_raw(0_u64);
 
-            assert!(matches!(result, Err(EventIdError::ZeroNotAllowed)));
+            assert!(matches!(result, Err(EventIdError::Zero)));
+        }
+
+        #[test]
+        fn rejects_non_monotonic_candidate() {
+            let previous = EventId::try_from_raw(10).expect("valid id");
+
+            let result = EventId::try_after(Some(previous), 10);
+
+            assert!(matches!(
+                result,
+                Err(EventIdError::NotStrictlyMonotonic { .. })
+            ));
         }
 
         #[test]
@@ -178,13 +289,24 @@ mod tests {
     }
 
     mod constructor {
+        use std::num::NonZeroU64;
+
         use super::*;
 
         #[test]
         fn returns_event_id_for_positive_u64() {
-            let result = EventId::try_from(42_u64);
+            let result = EventId::try_from_raw(42_u64);
 
-            assert_eq!(result, Ok(EventId::new_unchecked(42)));
+            assert_eq!(result.map(super::super::EventId::get), Ok(42));
+        }
+
+        #[test]
+        fn returns_event_id_from_non_zero_u64() {
+            let non_zero = NonZeroU64::new(7).expect("non-zero literal");
+
+            let event_id = EventId::from(non_zero);
+
+            assert_eq!(event_id.get(), 7);
         }
     }
 
@@ -193,17 +315,19 @@ mod tests {
 
         #[test]
         fn preserves_strict_monotonic_ordering_with_gaps_allowed() {
-            let previous = EventId::try_from(1_u64).expect("valid event id");
+            let previous =
+                EventId::try_from_raw(1_u64).expect("valid event id");
             let next_with_gap =
-                EventId::try_from(10_u64).expect("valid event id");
+                EventId::try_from_raw(10_u64).expect("valid event id");
 
             assert!(next_with_gap > previous);
         }
 
         #[test]
         fn returns_less_when_comparing_smaller_key_bytes() {
-            let smaller = EventId::try_from(2_u64).expect("valid event id");
-            let larger = EventId::try_from(200_u64).expect("valid event id");
+            let smaller = EventId::try_from_raw(2_u64).expect("valid event id");
+            let larger =
+                EventId::try_from_raw(200_u64).expect("valid event id");
 
             let result = EventId::compare(
                 &EventId::as_bytes(&smaller),
@@ -226,7 +350,8 @@ mod tests {
 
         #[test]
         fn preserves_value_across_redb_roundtrip() {
-            let original = EventId::try_from(99_u64).expect("valid event id");
+            let original =
+                EventId::try_from_raw(99_u64).expect("valid event id");
             let bytes = EventId::as_bytes(&original);
 
             let decoded = EventId::from_bytes(&bytes);
@@ -246,6 +371,77 @@ mod tests {
         #[test]
         fn returns_stable_redb_type_name() {
             assert_eq!(EventId::type_name().name(), "lithos::EventId");
+        }
+    }
+
+    mod allocator {
+        use super::*;
+
+        mod state {
+            use super::*;
+
+            #[test]
+            fn returns_first_id_when_uninitialized() {
+                let mut allocator = EventIdAllocator::new();
+
+                let first =
+                    allocator.next().expect("first allocation succeeds");
+
+                assert_eq!(first.get(), 1);
+            }
+
+            #[test]
+            fn returns_next_id_after_previous() {
+                let mut allocator = EventIdAllocator::new();
+                let _ = allocator.next().expect("first allocation succeeds");
+
+                let second =
+                    allocator.next().expect("second allocation succeeds");
+
+                assert_eq!(second.get(), 2);
+            }
+
+            #[test]
+            fn reserves_after_persisted_max_before_next() {
+                let mut allocator = EventIdAllocator::new();
+                let persisted =
+                    EventId::try_from_raw(10_u64).expect("valid id");
+                allocator.reserve_after(Some(persisted));
+
+                let next = allocator.next().expect("allocation succeeds");
+
+                assert_eq!(next.get(), 11);
+            }
+        }
+
+        mod validation {
+            use super::*;
+
+            #[test]
+            fn returns_error_when_next_would_overflow() {
+                let mut allocator = EventIdAllocator::new();
+                let max_id =
+                    EventId::try_from_raw(u64::MAX).expect("max id valid");
+                allocator.reserve_after(Some(max_id));
+
+                let result = allocator.next();
+
+                assert!(matches!(result, Err(EventIdError::Overflow)));
+            }
+        }
+
+        mod next_after {
+            use super::*;
+
+            #[test]
+            fn returns_overflow_error_when_incrementing_max() {
+                let max_id =
+                    EventId::try_from_raw(u64::MAX).expect("max id valid");
+
+                let result = EventId::next_after(Some(max_id));
+
+                assert!(matches!(result, Err(EventIdError::Overflow)));
+            }
         }
     }
 }

@@ -60,7 +60,11 @@ pub use core::Store;
 
 pub use codec::ArchivedEntity;
 pub use error::{DbError, DbErrorKind};
-pub use events::{EventId, EventIdError};
+#[expect(
+    unused_imports,
+    reason = "Re-exported for internal consumers landing in subsequent slices"
+)]
+pub(crate) use events::{EventId, EventIdAllocator, EventIdError};
 pub use read::ReadTx;
 pub use table::{
     PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
