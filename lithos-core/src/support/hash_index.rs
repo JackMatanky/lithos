@@ -121,7 +121,10 @@ impl<K: Eq + Hash> Blake3HashIndex<K> {
     }
 }
 
-#[expect(dead_code, reason = "Diff helpers are not yet wired into all paths")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Diff helpers are staged for upcoming wiring")
+)]
 impl<K: Clone + Eq + Hash> Blake3HashIndex<K> {
     /// Returns keys that are new or whose hashes differ from `old`.
     #[inline]
@@ -226,12 +229,51 @@ impl<K: Eq + Hash> From<HashMap<K, Blake3Hash>> for Blake3HashIndex<K> {
 mod tests {
     use super::{super::content_hash::hash_structured, *};
 
-    mod index {
+    fn make_hash(k: u8) -> Blake3Hash {
+        Blake3Hash::compute(vec![k])
+    }
+
+    fn populated_index() -> Blake3HashIndex<String> {
+        let mut map = HashMap::new();
+        map.insert("a".to_owned(), make_hash(1));
+        map.insert("b".to_owned(), make_hash(2));
+        Blake3HashIndex::new(map)
+    }
+
+    mod constructor {
         use super::*;
 
         #[test]
-        fn should_compute_index_from_hashable_values() {
-            let mut map = std::collections::HashMap::new();
+        fn empty_creates_empty_index() {
+            let index: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            assert!(index.is_empty());
+            assert_eq!(index.len(), 0);
+        }
+
+        #[test]
+        fn new_creates_index_from_map() {
+            let index = populated_index();
+            assert_eq!(index.len(), 2);
+        }
+
+        #[test]
+        fn default_creates_empty_index() {
+            let index: Blake3HashIndex<String> = Blake3HashIndex::default();
+            assert!(index.is_empty());
+        }
+
+        #[test]
+        fn from_hashmap_creates_index() {
+            let mut map = HashMap::new();
+            map.insert("x".to_owned(), make_hash(9));
+            let index = Blake3HashIndex::from(map);
+            assert_eq!(index.len(), 1);
+            assert!(index.contains_key(&"x".to_owned()));
+        }
+
+        #[test]
+        fn compute_returns_populated_index() {
+            let mut map = HashMap::new();
             map.insert("a".to_owned(), hash_structured(&vec![1i32, 2i32]));
             map.insert("b".to_owned(), hash_structured(&vec![3i32, 4i32]));
 
@@ -240,6 +282,245 @@ mod tests {
             assert_eq!(index.len(), 2);
             assert!(index.contains_key(&"a".to_owned()));
             assert!(index.contains_key(&"b".to_owned()));
+        }
+    }
+
+    mod lookup {
+        use super::*;
+
+        #[test]
+        fn get_returns_hash_when_key_exists() {
+            let index = populated_index();
+            assert_eq!(index.get(&"a".to_owned()), Some(&make_hash(1)));
+        }
+
+        #[test]
+        fn get_returns_none_when_key_missing() {
+            let index = populated_index();
+            assert_eq!(index.get(&"missing".to_owned()), None);
+        }
+
+        #[test]
+        fn contains_key_returns_true_when_key_exists() {
+            let index = populated_index();
+            assert!(index.contains_key(&"a".to_owned()));
+        }
+
+        #[test]
+        fn contains_key_returns_false_when_key_missing() {
+            let index = populated_index();
+            assert!(!index.contains_key(&"missing".to_owned()));
+        }
+
+        #[test]
+        fn len_returns_correct_count() {
+            let index = populated_index();
+            assert_eq!(index.len(), 2);
+        }
+
+        #[test]
+        fn len_returns_zero_for_empty_index() {
+            let index: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            assert_eq!(index.len(), 0);
+        }
+
+        #[test]
+        fn is_empty_returns_true_when_empty() {
+            let index: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            assert!(index.is_empty());
+        }
+
+        #[test]
+        fn is_empty_returns_false_when_populated() {
+            let index = populated_index();
+            assert!(!index.is_empty());
+        }
+    }
+
+    mod update {
+        use super::*;
+
+        #[test]
+        fn insert_adds_key_and_returns_none_for_new_key() {
+            let mut index = Blake3HashIndex::empty();
+            let result = index.insert("k".to_owned(), make_hash(7));
+            assert_eq!(result, None);
+            assert_eq!(index.get(&"k".to_owned()), Some(&make_hash(7)));
+        }
+
+        #[test]
+        fn insert_replaces_existing_hash() {
+            let mut index = populated_index();
+            let new_hash = make_hash(99);
+            let old = index.insert("a".to_owned(), new_hash);
+            assert_eq!(old, Some(make_hash(1)));
+            assert_eq!(index.get(&"a".to_owned()), Some(&new_hash));
+        }
+    }
+
+    mod diff {
+        use super::*;
+
+        #[test]
+        fn changed_keys_returns_empty_when_identical() {
+            let index = populated_index();
+            let changed = index.changed_keys(&index);
+            assert!(
+                changed.is_empty(),
+                "Identical indices should have no changes"
+            );
+        }
+
+        #[test]
+        fn changed_keys_detects_new_keys() {
+            let old = populated_index();
+            let mut new = populated_index();
+            new.insert("c".to_owned(), make_hash(3));
+
+            let changed = new.changed_keys(&old);
+            assert!(changed.contains("c"), "New key should be in changed set");
+        }
+
+        #[test]
+        fn changed_keys_detects_modified_values() {
+            let old = populated_index();
+            let mut new = populated_index();
+            new.insert("a".to_owned(), make_hash(99));
+
+            let changed = new.changed_keys(&old);
+            assert!(
+                changed.contains("a"),
+                "Modified key should be in changed set"
+            );
+            assert_eq!(changed.len(), 1, "Only 'a' should be changed");
+        }
+
+        #[test]
+        fn changed_keys_does_not_include_keys_removed_from_self() {
+            let old = populated_index();
+            let mut new = Blake3HashIndex::empty();
+            new.insert("c".to_owned(), make_hash(3));
+
+            let changed = new.changed_keys(&old);
+            assert!(
+                !changed.contains("a"),
+                "Key removed from self should not appear in changed_keys"
+            );
+            assert!(!changed.contains("b"));
+        }
+
+        #[test]
+        fn changed_keys_returns_empty_when_both_empty() {
+            let a: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            let b: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            assert!(a.changed_keys(&b).is_empty());
+        }
+
+        #[test]
+        fn removed_keys_returns_keys_in_old_not_in_self() {
+            let old = populated_index();
+            let mut new = populated_index();
+            new.insert("c".to_owned(), make_hash(3));
+            // Remove "a" by rebuilding without it
+            let mut map = HashMap::new();
+            map.insert("b".to_owned(), make_hash(2));
+            map.insert("c".to_owned(), make_hash(3));
+            new = Blake3HashIndex::new(map);
+
+            let removed = new.removed_keys(&old);
+            assert!(
+                removed.contains("a"),
+                "Key in old but not in new should be removed"
+            );
+            assert_eq!(removed.len(), 1);
+        }
+
+        #[test]
+        fn removed_keys_returns_empty_when_superset() {
+            let old = populated_index();
+            let mut new = populated_index();
+            new.insert("c".to_owned(), make_hash(3));
+
+            let removed = new.removed_keys(&old);
+            assert!(removed.is_empty(), "Superset should have no removed keys");
+        }
+
+        #[test]
+        fn removed_keys_returns_empty_when_both_empty() {
+            let a: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            let b: Blake3HashIndex<String> = Blake3HashIndex::empty();
+            assert!(a.removed_keys(&b).is_empty());
+        }
+    }
+
+    mod borrowing {
+        use super::*;
+
+        #[test]
+        fn archived_is_match_by_returns_true_when_identical() {
+            let index = populated_index();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&index)
+                .expect("Failed to serialize");
+            let archived: &ArchivedBlake3HashIndex<String> =
+                rkyv::access::<
+                    ArchivedBlake3HashIndex<String>,
+                    rkyv::rancor::Error,
+                >(&bytes)
+                .expect("Failed to access archived index");
+
+            let result = archived
+                .is_match_by(&index, |archived_key, key| archived_key == key);
+            assert!(result, "Archived index should match identical source");
+        }
+
+        #[test]
+        fn archived_is_match_by_returns_false_when_different_value() {
+            let index = populated_index();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&index)
+                .expect("Failed to serialize");
+            let archived: &ArchivedBlake3HashIndex<String> =
+                rkyv::access::<
+                    ArchivedBlake3HashIndex<String>,
+                    rkyv::rancor::Error,
+                >(&bytes)
+                .expect("Failed to access archived index");
+
+            let mut modified = populated_index();
+            modified.insert("a".to_owned(), make_hash(99));
+
+            let result = archived
+                .is_match_by(&modified, |archived_key, key| {
+                    archived_key == key
+                });
+            assert!(!result, "Archived index should not match modified source");
+        }
+
+        #[test]
+        fn archived_is_match_by_returns_false_when_different_length() {
+            let index = populated_index();
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&index)
+                .expect("Failed to serialize");
+            let archived: &ArchivedBlake3HashIndex<String> =
+                rkyv::access::<
+                    ArchivedBlake3HashIndex<String>,
+                    rkyv::rancor::Error,
+                >(&bytes)
+                .expect("Failed to access archived index");
+
+            let bigger = {
+                let mut map = HashMap::new();
+                map.insert("a".to_owned(), make_hash(1));
+                map.insert("b".to_owned(), make_hash(2));
+                map.insert("c".to_owned(), make_hash(3));
+                Blake3HashIndex::new(map)
+            };
+
+            let result = archived
+                .is_match_by(&bigger, |archived_key, key| archived_key == key);
+            assert!(
+                !result,
+                "Archived index should not match when lengths differ"
+            );
         }
     }
 }

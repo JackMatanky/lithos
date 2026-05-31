@@ -189,18 +189,30 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_create_from_bytes() {
+        fn creates_from_raw_bytes() {
             let bytes = [1u8; 32];
             let hash = Blake3Hash::new(bytes);
             assert_eq!(hash.as_bytes(), &bytes, "Hash bytes mismatch");
         }
+
+        #[test]
+        fn creates_from_arbitrary_data() {
+            let data = b"hello world";
+            let hash = Blake3Hash::from_bytes(data);
+            let expected = blake3::hash(data);
+            assert_eq!(
+                hash.as_bytes(),
+                expected.as_bytes(),
+                "from_bytes hash mismatch"
+            );
+        }
     }
 
-    mod builders {
+    mod compute {
         use super::*;
 
         #[test]
-        fn should_compute_from_data() {
+        fn returns_correct_hash_from_bytes() {
             let data = b"hello world";
             let hash = Blake3Hash::compute(hash_bytes(data));
             let expected = blake3::hash(data);
@@ -212,7 +224,7 @@ mod tests {
         }
 
         #[test]
-        fn should_compute_from_hashable_value() {
+        fn returns_correct_hash_from_structured() {
             let value = vec![1i32, 2i32, 3i32];
             let hash = Blake3Hash::compute(hash_structured(&value));
 
@@ -221,19 +233,31 @@ mod tests {
 
             assert_eq!(hash, expected, "JSON hash mismatch");
         }
+
+        #[test]
+        fn returns_correct_hash_from_text() {
+            let text = "hello world";
+            let hash = Blake3Hash::compute(text);
+            let expected = blake3::hash(text.as_bytes());
+            assert_eq!(
+                hash.as_bytes(),
+                expected.as_bytes(),
+                "Text hash mismatch"
+            );
+        }
     }
 
     mod validation {
         use super::*;
 
         #[test]
-        fn is_match_should_return_true_when_identical() {
+        fn returns_true_when_hashes_match() {
             let hash = Blake3Hash::compute(hash_bytes(b"test"));
             assert!(hash.is_match(&hash), "Identical hashes should match");
         }
 
         #[test]
-        fn is_match_should_return_false_when_different() {
+        fn returns_false_when_hashes_differ() {
             let hash1 = Blake3Hash::compute(hash_bytes(b"test1"));
             let hash2 = Blake3Hash::compute(hash_bytes(b"test2"));
             assert!(
@@ -247,7 +271,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn archived_is_match_should_return_true_when_identical() {
+        fn returns_true_when_archived_matches_source() {
             let hash = Blake3Hash::compute(hash_bytes(b"test"));
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash)
                 .expect("Failed to serialize");
@@ -262,7 +286,7 @@ mod tests {
         }
 
         #[test]
-        fn archived_is_match_should_return_false_when_different() {
+        fn returns_false_when_archived_matches_different_source() {
             let hash1 = Blake3Hash::compute(hash_bytes(b"test1"));
             let hash2 = Blake3Hash::compute(hash_bytes(b"test2"));
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&hash1)
@@ -282,17 +306,67 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_convert_from_array() {
+        fn converts_from_byte_array() {
             let bytes = [7u8; 32];
             let hash: Blake3Hash = bytes.into();
             assert_eq!(hash.as_bytes(), &bytes);
         }
 
         #[test]
-        fn should_support_as_ref_array() {
+        fn supports_as_ref_to_byte_array() {
             let hash = Blake3Hash::compute(hash_bytes(b"test"));
             let bytes: &[u8; 32] = hash.as_ref();
             assert_eq!(bytes, hash.as_bytes());
+        }
+
+        #[test]
+        fn hash_input_from_byte_slice() {
+            let data: &[u8] = &[1, 2, 3];
+            let input: HashInput = data.into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![1, 2, 3]));
+        }
+
+        #[test]
+        fn hash_input_from_byte_array_ref() {
+            let data: &[u8; 3] = &[4, 5, 6];
+            let input: HashInput = data.into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![4, 5, 6]));
+        }
+
+        #[test]
+        fn hash_input_from_vec_ref() {
+            let data = vec![7u8, 8, 9];
+            let input: HashInput = (&data).into();
+            assert!(matches!(input, HashInput::Bytes(v) if v == vec![7, 8, 9]));
+        }
+
+        #[test]
+        fn hash_input_from_vec() {
+            let data = vec![10u8, 11, 12];
+            let input: HashInput = data.into();
+            assert!(
+                matches!(input, HashInput::Bytes(v) if v == vec![10, 11, 12])
+            );
+        }
+
+        #[test]
+        fn hash_input_from_str_ref() {
+            let input: HashInput = "hello".into();
+            assert!(matches!(input, HashInput::Text(v) if v == "hello"));
+        }
+
+        #[test]
+        fn hash_input_from_string() {
+            let s = "world".to_owned();
+            let input: HashInput = s.into();
+            assert!(matches!(input, HashInput::Text(v) if v == "world"));
+        }
+
+        #[test]
+        fn hash_input_from_string_ref() {
+            let s = "foo".to_owned();
+            let input: HashInput = (&s).into();
+            assert!(matches!(input, HashInput::Text(v) if v == "foo"));
         }
     }
 }
