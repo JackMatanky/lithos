@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 
 use crate::{
     config::aggregate::Config,
-    fs::FsReader,
+    fs::{FsReader, metadata::FileMetadata},
     note::{
         aggregate::{Note, NoteId},
         error::{NoteError, NoteFileError, NoteIngestError, NoteProcessError},
@@ -93,7 +93,7 @@ pub struct Missing {
 #[derive(Debug)]
 pub struct Present {
     info: NoteFileInfo,
-    note_id: NoteId,
+    note: Note,
 }
 
 /// Status for suspected changes with loaded content.
@@ -109,6 +109,7 @@ pub struct Suspect {
 pub struct New {
     raw: RawNote<'static>,
     path: NotePath,
+    metadata: FileMetadata,
     source: Box<str>,
 }
 
@@ -117,6 +118,7 @@ pub struct New {
 pub struct Changed {
     raw: RawNote<'static>,
     path: NotePath,
+    metadata: FileMetadata,
     source: Box<str>,
 }
 
@@ -130,18 +132,17 @@ pub struct Ready {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteFileInfo {
     path: NotePath,
-    /// Indicates whether the vault detected this note as stale.
-    is_stale: bool,
+    metadata: FileMetadata,
 }
 
 impl NoteFileInfo {
     /// Creates a new note file info record.
     #[inline]
     #[must_use]
-    pub const fn new(path: NotePath, is_stale: bool) -> Self {
+    pub const fn new(path: NotePath, metadata: FileMetadata) -> Self {
         Self {
             path,
-            is_stale,
+            metadata,
         }
     }
 
@@ -153,10 +154,10 @@ impl NoteFileInfo {
     #[inline]
     pub fn try_from_path(
         path: &str,
-        is_stale: bool,
+        metadata: FileMetadata,
     ) -> Result<Self, NoteError> {
         let note_path = NotePath::try_new(path)?;
-        Ok(Self::new(note_path, is_stale))
+        Ok(Self::new(note_path, metadata))
     }
 
     /// Returns the note path.
@@ -166,11 +167,11 @@ impl NoteFileInfo {
         &self.path
     }
 
-    /// Returns whether the vault marked this note as stale.
+    /// Returns the file metadata.
     #[inline]
     #[must_use]
-    pub const fn is_stale(&self) -> bool {
-        self.is_stale
+    pub const fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 }
 
@@ -364,7 +365,7 @@ impl NoteProcessor<Discovery, Unknown> {
                 Comparison,
                 Present {
                     info,
-                    note_id: note.id(),
+                    note,
                 },
             )))
         } else {
@@ -388,21 +389,21 @@ impl Default for NoteProcessor<Discovery, Unknown> {
 impl NoteProcessor<Comparison, Present> {
     #[inline]
     fn check_metadata(self) -> MetadataBranch {
-        if self.status.info.is_stale() {
+        if self.status.note.metadata() == &self.status.info.metadata {
+            MetadataBranch::Fresh(Self::transition(Completed, Ready {
+                report: NoteProcessReport {
+                    note_id: Some(self.status.note.id()),
+                    path: self.status.info.path.clone(),
+                    action: NoteProcessAction::Unchanged,
+                    reason: NoteProcessReason::Fresh,
+                },
+            }))
+        } else {
             let info = self.status.info;
             MetadataBranch::Stale(Self::transition(Analysis, Suspect {
                 info,
                 content: String::new(),
                 is_new: false,
-            }))
-        } else {
-            MetadataBranch::Fresh(Self::transition(Completed, Ready {
-                report: NoteProcessReport {
-                    note_id: Some(self.status.note_id),
-                    path: self.status.info.path.clone(),
-                    action: NoteProcessAction::Unchanged,
-                    reason: NoteProcessReason::Fresh,
-                },
             }))
         }
     }
@@ -455,12 +456,14 @@ impl NoteProcessor<Analysis, Suspect> {
         let raw = MarkdownParser::parse(&self.status.content, task_spec)
             .map(RawNote::into_owned)?;
         let path = self.status.info.path.clone();
+        let metadata = self.status.info.metadata.clone();
         let source = self.status.content.into_boxed_str();
 
         if self.status.is_new {
             Ok(AnalysisBranch::New(Self::transition(Construction, New {
                 raw,
                 path,
+                metadata,
                 source,
             })))
         } else {
@@ -469,6 +472,7 @@ impl NoteProcessor<Analysis, Suspect> {
                 Changed {
                     raw,
                     path,
+                    metadata,
                     source,
                 },
             )))
@@ -493,6 +497,7 @@ impl NoteProcessor<Construction, New> {
             self.status.source.as_ref(),
             &path,
             note_id,
+            self.status.metadata,
             frontmatter_spec,
             task_spec,
         ))?;
@@ -532,6 +537,7 @@ impl NoteProcessor<Construction, Changed> {
             self.status.source.as_ref(),
             &path,
             note_id,
+            self.status.metadata,
             frontmatter_spec,
             task_spec,
         ))?;
@@ -608,5 +614,67 @@ fn read_and_persist(
         AnalysisBranch::Changed(state) => {
             state.persist(repository, frontmatter_spec, task_spec)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, SystemTime};
+
+    use super::*;
+    use crate::fs::metadata::{FileMetadata, FsTimes};
+
+    #[test]
+    fn check_metadata_identifies_stale_note() {
+        let path = NotePath::try_new("test.md").unwrap();
+        let now = SystemTime::now();
+
+        // Stored metadata
+        let stored_times = FsTimes::new(None, Some(now));
+        let stored_meta = FileMetadata::new(stored_times, 100, false);
+
+        // Injected metadata (different modified time)
+        let injected_times =
+            FsTimes::new(None, Some(now + Duration::from_secs(1)));
+        let injected_meta = FileMetadata::new(injected_times, 100, false);
+
+        let note = Note::new(NoteId::new(), path.clone(), stored_meta);
+        let info = NoteFileInfo::new(path, injected_meta);
+
+        let processor = NoteProcessor::<Comparison, Present>::transition(
+            Comparison,
+            Present {
+                info,
+                note,
+            },
+        );
+
+        let branch = processor.check_metadata();
+
+        assert!(matches!(branch, MetadataBranch::Stale(_)));
+    }
+
+    #[test]
+    fn check_metadata_identifies_fresh_note() {
+        let path = NotePath::try_new("test.md").unwrap();
+        let now = SystemTime::now();
+
+        let times = FsTimes::new(None, Some(now));
+        let meta = FileMetadata::new(times, 100, false);
+
+        let note = Note::new(NoteId::new(), path.clone(), meta.clone());
+        let info = NoteFileInfo::new(path, meta);
+
+        let processor = NoteProcessor::<Comparison, Present>::transition(
+            Comparison,
+            Present {
+                info,
+                note,
+            },
+        );
+
+        let branch = processor.check_metadata();
+
+        assert!(matches!(branch, MetadataBranch::Fresh(_)));
     }
 }

@@ -231,7 +231,7 @@ fn create_test_note(index: usize) -> Note {
 
     let note_path = NotePath::try_new(&path).expect("valid path");
     let _hash = format!("hash-{index:04}");
-    Note::new(id, note_path)
+    Note::new_test(id, note_path)
 }
 
 fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {

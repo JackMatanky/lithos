@@ -33,6 +33,7 @@ use super::{
 };
 use crate::{
     config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec},
+    fs::metadata::FileMetadata,
     utils::UuidV7,
 };
 
@@ -142,6 +143,7 @@ impl TryFrom<Uuid> for NoteId {
 pub struct Note {
     id: NoteId,
     path: NotePath,
+    metadata: FileMetadata,
     frontmatter: Option<Frontmatter>,
     frontmatter_links: Box<[FrontmatterLink]>,
     tags: Box<[Tag]>,
@@ -185,6 +187,7 @@ impl Note {
     >(
         id: NoteId,
         path: NotePath,
+        metadata: FileMetadata,
         frontmatter: Option<Frontmatter>,
         frontmatter_links: FLinks,
         tags: Tags,
@@ -210,6 +213,7 @@ impl Note {
         Self {
             id,
             path,
+            metadata,
             frontmatter,
             frontmatter_links: frontmatter_links.into(),
             tags: tags.into(),
@@ -229,10 +233,11 @@ impl Note {
     /// fully ingested or when performing lightweight operations.
     #[inline]
     #[must_use]
-    pub fn new(id: NoteId, path: NotePath) -> Self {
+    pub fn new(id: NoteId, path: NotePath, metadata: FileMetadata) -> Self {
         Self {
             id,
             path,
+            metadata,
             frontmatter: None,
             frontmatter_links: Box::new([]),
             tags: Box::new([]),
@@ -244,6 +249,14 @@ impl Note {
             tasks: Box::new([]),
             inline_fields: Box::new([]),
         }
+    }
+
+    /// Creates a minimal `Note` shell for testing purposes.
+    #[cfg(test)]
+    #[inline]
+    #[must_use]
+    pub fn new_test(id: NoteId, path: NotePath) -> Self {
+        Self::new(id, path, FileMetadata::test_default())
     }
 
     /// Returns the stable identifier for this note.
@@ -266,6 +279,13 @@ impl Note {
     #[must_use]
     pub fn path(&self) -> &NotePath {
         &self.path
+    }
+
+    /// Returns the file metadata of the note.
+    #[inline]
+    #[must_use]
+    pub const fn metadata(&self) -> &FileMetadata {
+        &self.metadata
     }
 
     /// Returns this note paired with vault file timestamps.
@@ -631,6 +651,7 @@ impl<'source>
         &'source str,
         &NotePath,
         NoteId,
+        FileMetadata,
         &FrontmatterConfigSpec,
         &TaskConfigSpec,
     )> for Note
@@ -639,11 +660,12 @@ impl<'source>
 
     #[inline]
     fn try_from(
-        (raw, source, path, id, frontmatter_spec, task_spec): (
+        (raw, source, path, id, metadata, frontmatter_spec, task_spec): (
             RawNote<'source>,
             &'source str,
             &NotePath,
             NoteId,
+            FileMetadata,
             &FrontmatterConfigSpec,
             &TaskConfigSpec,
         ),
@@ -689,6 +711,7 @@ impl<'source>
         Ok(Self::from_parts(
             id,
             path,
+            metadata,
             frontmatter,
             frontmatter_links,
             tags,

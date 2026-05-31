@@ -27,6 +27,7 @@ use crate::{
         DbError,
         testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
     },
+    fs::metadata::FileMetadata,
     note::{
         aggregate::{Note, NoteId},
         error::NoteRepositoryError,
@@ -445,7 +446,7 @@ mod tests {
         #[test]
         fn returns_note_when_id_exists() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("roundtrip.md").unwrap(),
             );
@@ -460,7 +461,7 @@ mod tests {
         #[test]
         fn returns_note_when_path_exists() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("by-path.md").unwrap(),
             );
@@ -476,10 +477,14 @@ mod tests {
         #[test]
         fn skips_missing_and_preserves_order() {
             let repo = InMemoryRepository::new();
-            let note1 =
-                Note::new(NoteId::new(), NotePath::try_new("one.md").unwrap());
-            let note2 =
-                Note::new(NoteId::new(), NotePath::try_new("two.md").unwrap());
+            let note1 = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("one.md").unwrap(),
+            );
+            let note2 = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("two.md").unwrap(),
+            );
             let id1 = repo.save(&note1).unwrap();
             let id2 = repo.save(&note2).unwrap();
             let missing = NoteId::new();
@@ -494,7 +499,7 @@ mod tests {
         #[test]
         fn increments_read_counter() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("counter.md").unwrap(),
             );
@@ -523,12 +528,14 @@ mod tests {
         #[test]
         fn returns_all_persisted_notes() {
             let repo = InMemoryRepository::new();
-            let note1 = Note::new(
+            let note1 = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("alpha.md").unwrap(),
             );
-            let note2 =
-                Note::new(NoteId::new(), NotePath::try_new("beta.md").unwrap());
+            let note2 = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("beta.md").unwrap(),
+            );
             let id1 = repo.save(&note1).unwrap();
             let id2 = repo.save(&note2).unwrap();
 
@@ -549,7 +556,7 @@ mod tests {
         #[test]
         fn persists_note_and_path_index() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("save-me.md").unwrap(),
             );
@@ -566,11 +573,11 @@ mod tests {
         #[test]
         fn persists_all_notes_in_batch() {
             let repo = InMemoryRepository::new();
-            let note1 = Note::new(
+            let note1 = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("batch-a.md").unwrap(),
             );
-            let note2 = Note::new(
+            let note2 = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("batch-b.md").unwrap(),
             );
@@ -593,10 +600,14 @@ mod tests {
         #[test]
         fn rejects_duplicate_path() {
             let repo = InMemoryRepository::new();
-            let note1 =
-                Note::new(NoteId::new(), NotePath::try_new("dup.md").unwrap());
-            let note2 =
-                Note::new(NoteId::new(), NotePath::try_new("dup.md").unwrap());
+            let note1 = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("dup.md").unwrap(),
+            );
+            let note2 = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("dup.md").unwrap(),
+            );
 
             repo.save(&note1).unwrap();
             let result = repo.save(&note2);
@@ -610,13 +621,13 @@ mod tests {
         #[test]
         fn allows_update_with_same_id_and_path() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("stable.md").unwrap(),
             );
             let id = repo.save(&note).unwrap();
             let updated =
-                Note::new(id, NotePath::try_new("stable.md").unwrap());
+                Note::new_test(id, NotePath::try_new("stable.md").unwrap());
 
             let id2 = repo.save(&updated).unwrap();
 
@@ -628,7 +639,7 @@ mod tests {
         #[test]
         fn increments_write_counter() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("counter.md").unwrap(),
             );
@@ -643,8 +654,10 @@ mod tests {
         fn returns_storage_error_when_before_write_injected() {
             let harness = InMemoryHarness::with_injector(Box::new(FailOnWrite));
             let repo = InMemoryRepository::with_harness(harness);
-            let note =
-                Note::new(NoteId::new(), NotePath::try_new("fail.md").unwrap());
+            let note = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("fail.md").unwrap(),
+            );
 
             let result = repo.save(&note);
 
@@ -658,7 +671,7 @@ mod tests {
         #[test]
         fn removes_note_and_path_mapping() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("delete-me.md").unwrap(),
             );
@@ -685,11 +698,11 @@ mod tests {
         #[test]
         fn removes_all_notes_in_batch() {
             let repo = InMemoryRepository::new();
-            let note1 = Note::new(
+            let note1 = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("batch-del-a.md").unwrap(),
             );
-            let note2 = Note::new(
+            let note2 = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("batch-del-b.md").unwrap(),
             );
@@ -717,8 +730,10 @@ mod tests {
         #[test]
         fn persists_and_retrieves_view() {
             let repo = InMemoryRepository::new();
-            let note =
-                Note::new(NoteId::new(), NotePath::try_new("view.md").unwrap());
+            let note = Note::new_test(
+                NoteId::new(),
+                NotePath::try_new("view.md").unwrap(),
+            );
             let id = repo.save(&note).unwrap();
             let view = ListView::from_note_items(id, note.list_items());
 
@@ -732,7 +747,7 @@ mod tests {
         #[test]
         fn removes_cached_view() {
             let repo = InMemoryRepository::new();
-            let note = Note::new(
+            let note = Note::new_test(
                 NoteId::new(),
                 NotePath::try_new("del-view.md").unwrap(),
             );
