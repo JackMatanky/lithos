@@ -1,8 +1,26 @@
 //! Content hashing primitives for the Lithos core library.
+//!
+//! Provides the [`Blake3Hash`] newtype, its archived variant, and the
+//! [`HashInput`] strategy enum for flexible content hashing.
+//!
+//! # Exports
+//!
+//! * [`Blake3Hash`] — 32-byte BLAKE3 content hash (Copy, rkyv-serializable).
+//! * [`Blake3Hash::compute`] — Hash from any [`HashInput`] strategy.
+//! * [`HashInput`] — Enum selecting Bytes, Text, or Structured hashing.
+//! * [`hash_structured`] — Convenience wrapper for serde-serializable values.
+//!
+//! # Invariants
+//!
+//! * All hashes use BLAKE3 exclusively — the algorithm is fixed at compile
+//!   time.
+//! * [`Blake3Hash`] is a 32-byte newtype with value semantics (`Copy`).
+//! * Archived variants use element-wise comparison because rkyv archived types
+//!   do not guarantee `PartialEq` across archive/owned boundaries.
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-/// A 32-byte BLAKE3 hash.
+/// A 32-byte BLAKE3 hash with value semantics (`Copy`).
 ///
 /// Newtype wrapper around `[u8; 32]` to provide type safety and
 /// centralised hashing policy across the project.
@@ -10,6 +28,15 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// This type uses BLAKE3 for its performance and cryptographic strength,
 /// serving as the primary content-addressing and staleness detection
 /// primitive in Lithos.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // crate-private — illustrative only
+/// let data: &[u8] = b"hello world";
+/// let hash = Blake3Hash::compute(data);
+/// assert_eq!(hash.as_bytes().len(), 32);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -27,7 +54,10 @@ use rkyv::{Archive, Deserialize, Serialize};
 pub(crate) struct Blake3Hash([u8; 32]);
 
 impl Blake3Hash {
-    /// Creates a new hash from raw bytes.
+    /// Creates a hash directly from 32 raw bytes (test-only).
+    ///
+    /// Use [`from_bytes`](Self::from_bytes) or [`compute`](Self::compute)
+    /// in production code to obtain a properly-computed hash.
     #[inline]
     #[must_use]
     #[cfg(test)]
@@ -42,7 +72,16 @@ impl Blake3Hash {
         Self(*blake3::hash(bytes).as_bytes())
     }
 
-    /// Computes a BLAKE3 hash using the provided input strategy.
+    /// Computes a BLAKE3 hash from any [`HashInput`] strategy.
+    ///
+    /// Accepts any type that implements `Into<HashInput>`, including:
+    /// * `&[u8]`, `Vec<u8>`, `&[u8; N]` — hashed as raw bytes
+    /// * `&str`, `String` — hashed as UTF-8 text
+    /// * [`hash_structured`] return values — serialized then hashed
+    ///
+    /// # Panics
+    ///
+    /// Does not panic. The input conversion is infallible.
     #[inline]
     #[must_use]
     pub(crate) fn compute<I>(input: I) -> Self
@@ -73,7 +112,10 @@ impl Blake3Hash {
 }
 
 impl ArchivedBlake3Hash {
-    /// Check if archived hash matches (for zero-copy staleness checks).
+    /// Check if archived hash matches an owned [`Blake3Hash`].
+    ///
+    /// Uses element-wise comparison because rkyv archived types do not
+    /// derive `PartialEq` across the archive/owned boundary.
     #[inline]
     #[must_use]
     pub(crate) fn is_match(&self, hash: &Blake3Hash) -> bool {
@@ -98,7 +140,16 @@ impl AsRef<[u8; 32]> for Blake3Hash {
     }
 }
 
-/// Hash input strategy for [`Blake3Hash::compute`].
+/// Input strategy for [`Blake3Hash::compute`].
+///
+/// Selects how raw data is fed into the BLAKE3 hasher.
+/// See the `From` impls on this type for the full set of automatic conversions.
+///
+/// | Variant                               | Source               | Use case                       |
+/// | ------------------------------------- | -------------------- | ------------------------------ |
+/// | [`Bytes`](HashInput::Bytes)           | Raw byte vectors     | Binary data, serialised output |
+/// | [`Text`](HashInput::Text)             | UTF-8 strings        | Frontmatter, note content      |
+/// | [`Structured`](HashInput::Structured) | Pre-serialised bytes | [`hash_structured`] output     |
 pub(crate) enum HashInput {
     /// Hash raw bytes without transformation.
     Bytes(Vec<u8>),
@@ -157,7 +208,10 @@ impl From<String> for HashInput {
     }
 }
 
-/// Creates a byte-hash input strategy.
+/// Wraps a byte slice as [`HashInput::Bytes`] (test-only helper).
+///
+/// Convenience wrapper that avoids spelling `HashInput::Bytes(bytes.to_vec())`
+/// in test assertions.
 #[inline]
 #[must_use]
 #[cfg(test)]
@@ -165,9 +219,15 @@ pub(crate) fn hash_bytes(bytes: &[u8]) -> HashInput {
     HashInput::Bytes(bytes.to_vec())
 }
 
-/// Creates a structured-hash input strategy.
+/// Creates a [`HashInput::Structured`] from a serializable value.
 ///
-/// Uses JSON serialization and falls back to debug formatting.
+/// Attempts JSON serialization first via [`serde_json::to_vec`].
+/// Falls back to [`Debug`] formatting when serialization fails.
+///
+/// # Type requirements
+///
+/// * `T: Serialize` — for the primary JSON path.
+/// * `T: Debug` — for the serialization fallback.
 #[inline]
 #[must_use]
 pub(crate) fn hash_structured<T>(value: &T) -> HashInput

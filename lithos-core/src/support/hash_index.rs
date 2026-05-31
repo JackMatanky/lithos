@@ -1,4 +1,23 @@
 //! Keyed hash map for change detection.
+//!
+//! Provides [`Blake3HashIndex<K>`], a `HashMap<K, Blake3Hash>` wrapper that
+//! tracks per-key hash values for efficient staleness and diff computation.
+//!
+//! # Exports
+//!
+//! * [`Blake3HashIndex<K>`] — Hash-indexed map (requires `K: Eq + Hash`).
+//! * [`Blake3HashIndex::changed_keys`] — Keys added or modified since a prior
+//!   snapshot.
+//! * [`Blake3HashIndex::removed_keys`] — Keys present in a prior snapshot but
+//!   absent now.
+//!
+//! # Invariants
+//!
+//! * Key type `K` must satisfy `Eq + Hash` (the standard `HashMap` bounds).
+//! * Hash values are [`Blake3Hash`](crate::support::content_hash::Blake3Hash) —
+//!   always 32 bytes.
+//! * Empty and default indices are equivalent: `Blake3HashIndex::empty() ==
+//!   Blake3HashIndex::default()`.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -9,10 +28,22 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::content_hash::Blake3Hash;
 
-/// Hash index for keyed values.
+/// Hash-indexed map for per-key change detection.
 ///
-/// This wraps `HashMap<K, Blake3Hash>` so call sites can use a domain-specific
-/// type with helper methods for change detection.
+/// Wraps `HashMap<K, Blake3Hash>` so call sites use a domain-specific
+/// type with diff helpers instead of managing raw hash maps.
+///
+/// The key type `K` must satisfy the standard `HashMap` bounds (`Eq + Hash`).
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // crate-private — illustrative only
+/// let mut idx = Blake3HashIndex::default();
+/// let value: &[u8] = b"value";
+/// idx.insert("key".to_owned(), Blake3Hash::compute(value));
+/// assert_eq!(idx.len(), 1);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub(crate) struct Blake3HashIndex<K: Eq + Hash>(HashMap<K, Blake3Hash>);
 
@@ -53,10 +84,11 @@ impl<K: Eq + Hash> Blake3HashIndex<K> {
         Self(HashMap::new())
     }
 
-    /// Computes a hash index from keyed values.
+    /// Builds a full index by hashing every value in `map`.
     ///
-    /// Values are converted into [`HashInput`] and hashed via
-    /// [`Blake3Hash::compute`].
+    /// Each value is converted into
+    /// [`HashInput`](super::content_hash::HashInput) and hashed via
+    /// [`Blake3Hash::compute`](super::content_hash::Blake3Hash::compute).
     #[inline]
     #[must_use]
     pub(crate) fn compute<V>(map: HashMap<K, V>) -> Self
@@ -184,10 +216,11 @@ where
         self.0.is_empty()
     }
 
-    /// Checks whether this archived index matches an owned index.
+    /// Checks whether this archived index matches an owned [`Blake3HashIndex`].
     ///
-    /// The caller provides key comparison logic because archived key types are
-    /// not always directly comparable with their owned source types.
+    /// The caller provides key comparison logic because rkyv archived key types
+    /// are not always directly comparable with their owned source types
+    /// (e.g. `ArchivedString` vs `String`).
     #[inline]
     #[must_use]
     pub(crate) fn is_match_by<F>(
