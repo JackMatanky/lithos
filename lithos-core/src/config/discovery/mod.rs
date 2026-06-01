@@ -21,6 +21,7 @@ use crate::{
     },
 };
 
+pub(crate) mod candidates;
 pub(crate) mod contracts;
 pub(crate) mod location;
 
