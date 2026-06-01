@@ -10,7 +10,7 @@
 use redb::{Key, MultimapTableDefinition, TableDefinition, Value};
 
 use super::UuidV7DbType;
-use crate::fs::path::PathKey;
+use crate::{db::EventId, fs::path::PathKey};
 
 /// Table with UUID keys implementing [`UuidV7DbType`].
 ///
@@ -243,6 +243,42 @@ impl<K: Key + 'static, V: Value + 'static> Table<K, V> {
     }
 }
 
+/// Table with [`EventId`] keys.
+///
+/// Infrastructure primitive for event-log table definitions keyed by
+/// monotonic event identifiers.
+#[allow(
+    dead_code,
+    reason = "Infrastructure wrapper consumed in upcoming slices"
+)]
+pub(crate) struct EventTable<V: Value + 'static> {
+    definition: TableDefinition<'static, EventId, V>,
+}
+
+#[allow(
+    dead_code,
+    reason = "Infrastructure wrapper API consumed in upcoming slices"
+)]
+impl<V: Value + 'static> EventTable<V> {
+    /// Create a new event-id keyed table definition.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn new(name: &'static str) -> Self {
+        Self {
+            definition: TableDefinition::new(name),
+        }
+    }
+
+    /// Get the underlying redb table definition.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn definition(
+        &self,
+    ) -> TableDefinition<'static, EventId, V> {
+        self.definition
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +412,51 @@ mod tests {
             const _STR_TABLE: Table<&str, &str> = Table::new("strings");
             const _U64_TABLE: Table<u64, &str> = Table::new("by_id");
             // If these compile, generic types work correctly
+        }
+    }
+
+    mod event_table {
+        use super::*;
+        use crate::db::EventId;
+
+        #[test]
+        fn constructor_returns_eventid_keyed_table_definition() {
+            const EVENTS: EventTable<u64> = EventTable::new("events");
+
+            let _definition: TableDefinition<'static, EventId, u64> =
+                EVENTS.definition();
+        }
+
+        #[test]
+        fn constructor_supports_const_construction() {
+            const EVENTS: EventTable<&str> = EventTable::new("events");
+
+            let _definition = EVENTS.definition();
+        }
+
+        #[test]
+        fn definition_supports_eventid_keyed_integration_flow() {
+            use redb::ReadableDatabase;
+
+            const EVENTS: EventTable<&str> = EventTable::new("events");
+
+            let temp = tempfile::NamedTempFile::new().expect("tmpfile");
+            let db = redb::Database::create(temp.path()).expect("db");
+            let event_id = EventId::try_from_raw(1).expect("event id");
+
+            let write_tx = db.begin_write().expect("tx");
+            {
+                let mut table =
+                    write_tx.open_table(EVENTS.definition()).expect("open");
+                table.insert(&event_id, &"created").expect("insert");
+            }
+            write_tx.commit().expect("commit");
+
+            let read_tx = db.begin_read().expect("tx");
+            let table = read_tx.open_table(EVENTS.definition()).expect("open");
+            let stored = table.get(&event_id).expect("get").expect("value");
+
+            assert_eq!(stored.value(), "created");
         }
     }
 }
