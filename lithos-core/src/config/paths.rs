@@ -1,8 +1,12 @@
 //! Validated path configuration management.
 //!
 //! This module defines how Lithos manages its filesystem locations (cache,
-//! schemas, templates). It distinguishes between the fully-resolved [`Paths`]
-//! and the partial overrides used during construction.
+//! schemas, templates). Configuration values use **declarative path types**
+//! ([`crate::fs::path::RelativeDirPath`] and
+//! [`crate::fs::path::RelativeFilePath`]) which are platform-agnostic
+//! and only lexically validated. They must be resolved against a vault root
+//! into Filesystem I/O types ([`crate::fs::DirPath`], [`crate::fs::FilePath`])
+//! before use.
 //!
 //! # Always Valid Invariants
 //! - **Relative Paths**: Most paths must be vault-relative and cannot use `..`
