@@ -59,10 +59,10 @@ pub struct SchemaVersion {
     /// rkyv derives on Raw* types.
     version: Box<str>,
 
-    /// Parent schema name from the `extends` field, if any.
+    /// Parent schema names from the `extends` field.
     ///
     /// Validated and stored as typed field for efficient querying.
-    extends: Option<SchemaName>,
+    extends: Vec<SchemaName>,
 
     /// Property names excluded from the parent (from `excludes` field).
     ///
@@ -116,7 +116,7 @@ impl SchemaVersion {
     ) -> Result<Self, SchemaIngestionError> {
         // extends and excludes are already validated during deserialization
         // (custom Deserialize impls ensure type safety)
-        let extends = raw.extends().cloned();
+        let extends = raw.extends().to_vec();
         let excludes = raw.excludes().to_vec();
 
         // Property names are already validated via RawPropertyMap
@@ -152,11 +152,11 @@ impl SchemaVersion {
         &self.metadata
     }
 
-    /// Returns the parent schema name from `extends`, if any.
+    /// Returns parent schema names from `extends`.
     #[inline]
     #[must_use]
-    pub fn extends(&self) -> Option<&SchemaName> {
-        self.extends.as_ref()
+    pub fn extends(&self) -> &[SchemaName] {
+        &self.extends
     }
 
     /// Returns excluded property names from the `excludes` field.
@@ -477,7 +477,7 @@ mod tests {
             let raw = RawSchema {
                 version: crate::schema::raw::RawSchemaVersion::default(),
                 name: "Test".into(),
-                extends: None,
+                extends: vec![],
                 excludes: vec![],
                 properties: {
                     let mut map = std::collections::HashMap::new();
@@ -524,6 +524,7 @@ mod tests {
             assert_eq!(version.version(), "1.0");
             assert_eq!(version.metadata().size(), 100);
             assert_eq!(version.hashes().content(), hashes.content());
+            assert!(version.extends().is_empty());
 
             let prop_name: crate::schema::property::PropertyName =
                 "prop1".try_into().unwrap();
@@ -532,6 +533,36 @@ mod tests {
             assert_eq!(
                 version.bank_references().get(&prop_name),
                 Some(&target_name)
+            );
+        }
+
+        #[test]
+        fn new_preserves_all_parent_names_from_raw_schema() {
+            let raw: RawSchema = serde_json::from_str(
+                r#"{"extends":["base","shared"],"properties":{},"excludes":[]}"#,
+            )
+            .unwrap();
+
+            let metadata = crate::fs::metadata::FileMetadata::new(
+                crate::fs::metadata::FsTimes::new(None, None),
+                100,
+                false,
+            );
+            let hashes = crate::schema::views::hashes::HashRecord::new(
+                crate::support::content_hash::Blake3Hash::new([0; 32]),
+                crate::schema::views::RawPropertyHashIndex::default(),
+            );
+
+            let version = SchemaVersion::new(metadata, hashes, &raw).unwrap();
+
+            assert_eq!(version.extends().len(), 2);
+            assert_eq!(
+                version.extends().first().map(SchemaName::as_str),
+                Some("base")
+            );
+            assert_eq!(
+                version.extends().get(1).map(SchemaName::as_str),
+                Some("shared")
             );
         }
     }

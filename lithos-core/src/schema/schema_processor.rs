@@ -1468,19 +1468,22 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 }
             };
 
-            let new_parent = match file_parsed {
+            let new_parents: Vec<SchemaId> = match file_parsed {
                 FileParsedBranch::StaleParsed(stale) => stale
                     .raw
                     .extends()
-                    .and_then(|name| index.get_id_by_name(name)),
+                    .iter()
+                    .filter_map(|name| index.get_id_by_name(name))
+                    .collect(),
                 FileParsedBranch::Fresh(_)
                 | FileParsedBranch::StaleTimestamps(_) => {
-                    old_parents.get(&id).and_then(|p| p.first().copied())
+                    old_parents.get(&id).cloned().unwrap_or_default()
                 }
             };
 
             let old_parent =
                 old_parents.get(&id).and_then(|p| p.first().copied());
+            let new_parent = new_parents.first().copied();
             let change_kind = match (old_parent, new_parent) {
                 (None, None) => ExtendsChangeKind::Unchanged,
                 (None, Some(_)) => ExtendsChangeKind::RootToChild,
@@ -1511,7 +1514,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 ),
             );
 
-            if let Some(parent_id) = new_parent {
+            for parent_id in new_parents {
                 builder.add_parent(id, parent_id);
             }
         }
@@ -1521,8 +1524,12 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 continue;
             };
 
-            let new_parent =
-                new.raw.extends().and_then(|name| index.get_id_by_name(name));
+            let new_parents: Vec<SchemaId> = new
+                .raw
+                .extends()
+                .iter()
+                .filter_map(|name| index.get_id_by_name(name))
+                .collect();
 
             builder.add_node(
                 *id,
@@ -1540,7 +1547,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 ),
             );
 
-            if let Some(parent_id) = new_parent {
+            for parent_id in new_parents {
                 builder.add_parent(*id, parent_id);
             }
         }
@@ -1671,10 +1678,11 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             reason = "Order not relevant for edge construction"
         )]
         for (id, payload) in &node_data {
-            if let Some(parent_id) = payload
+            for parent_id in payload
                 .raw
                 .extends()
-                .and_then(|extends| index.get_id_by_name(extends))
+                .iter()
+                .filter_map(|extends| index.get_id_by_name(extends))
             {
                 builder.add_parent(*id, parent_id);
             }
@@ -2988,6 +2996,58 @@ mod tests {
             PathKey::try_new(path.as_str()).expect("valid schema key"),
             version,
         )
+    }
+
+    #[test]
+    fn build_new_graph_adds_all_resolvable_parents_from_extends_list() {
+        let base_id = SchemaId::new();
+        let shared_id = SchemaId::new();
+        let child_id = SchemaId::new();
+
+        let mut base_raw = make_raw_schema("base");
+        base_raw.extends = vec![];
+        let mut shared_raw = make_raw_schema("shared");
+        shared_raw.extends = vec![];
+        let mut child_raw = make_raw_schema("child");
+        child_raw.extends = vec![
+            SchemaName::try_new("base").unwrap(),
+            SchemaName::try_new("shared").unwrap(),
+        ];
+
+        let metadata = FileMetadata::new(FsTimes::new(None, None), 0, false);
+        let mut new_schemas = NewBatch::new();
+        new_schemas.insert(base_id, InitialParsed {
+            path: PathKey::try_new("schemas/base.toml").unwrap(),
+            metadata: metadata.clone(),
+            content_hash: Blake3Hash::new([1; 32]),
+            raw: base_raw,
+        });
+        new_schemas.insert(shared_id, InitialParsed {
+            path: PathKey::try_new("schemas/shared.toml").unwrap(),
+            metadata: metadata.clone(),
+            content_hash: Blake3Hash::new([2; 32]),
+            raw: shared_raw,
+        });
+        new_schemas.insert(child_id, InitialParsed {
+            path: PathKey::try_new("schemas/child.toml").unwrap(),
+            metadata,
+            content_hash: Blake3Hash::new([3; 32]),
+            raw: child_raw,
+        });
+
+        let processor = SchemaProcessor::<InheritanceGraphed, NewParsed> {
+            status: NewParsed {
+                new_schemas,
+            },
+            _stage: PhantomData,
+        };
+
+        let graphed = processor.build_new_graph().unwrap();
+        let parents = graphed.status.graph.graph().parents_of(child_id);
+
+        assert_eq!(parents.len(), 2);
+        assert!(parents.contains(&base_id));
+        assert!(parents.contains(&shared_id));
     }
 
     #[test]

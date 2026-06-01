@@ -389,7 +389,7 @@ mod tests {
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
                 name: "Note".into(),
-                extends: None,
+                extends: vec![],
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
                 metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
@@ -423,7 +423,7 @@ mod tests {
             let raw = RawSchema {
                 version: RawSchemaVersion::default(),
                 name: "Note".into(),
-                extends: None,
+                extends: vec![],
                 excludes: vec![],
                 properties: RawPropertyMap::new(),
                 metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),

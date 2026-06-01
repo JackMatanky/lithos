@@ -23,7 +23,7 @@ use crate::{
 ///
 /// - `version`: Schema format version (defaults to "1.0").
 /// - `name`: Derived from filename, not file content.
-/// - `extends`: Optional parent schema for inheritance.
+/// - `extends`: Parent schema list for inheritance.
 /// - `excludes`: Properties to exclude from parent.
 /// - `properties`: Map of property definitions.
 /// - `metadata`: File metadata for staleness detection.
@@ -40,7 +40,7 @@ use crate::{
 /// let raw = RawSchema {
 ///     version: "1.0".into(),
 ///     name: "User".into(),
-///     extends: None,
+///     extends: vec![],
 ///     excludes: vec![],
 ///     properties: RawPropertyMap::new(),
 ///     metadata: FileMetadata::new(FsTimes::new(None, None), 0, false),
@@ -63,10 +63,12 @@ pub struct RawSchema {
     #[serde(skip)]
     pub name: Box<str>,
 
-    /// Optional parent schema name for inheritance.
-    /// Validated during deserialization via `SchemaName`'s custom Deserialize
-    /// impl.
-    pub extends: Option<SchemaName>,
+    /// Parent schema names for inheritance.
+    ///
+    /// Accepts both legacy single-string input and list input during
+    /// deserialization.
+    #[serde(default, deserialize_with = "deserialize_extends")]
+    pub extends: Vec<SchemaName>,
 
     /// Property names to exclude from parent schema.
     /// Validated during deserialization via `PropertyName`'s custom
@@ -104,11 +106,11 @@ impl RawSchema {
         &self.name
     }
 
-    /// Returns the parent schema name (if present).
+    /// Returns parent schema names.
     #[inline]
     #[must_use]
-    pub fn extends(&self) -> Option<&SchemaName> {
-        self.extends.as_ref()
+    pub fn extends(&self) -> &[SchemaName] {
+        &self.extends
     }
 
     /// Returns the excluded property names.
@@ -180,5 +182,78 @@ impl RawSchema {
         // (custom Deserialize impls ensure type safety)
 
         Ok(self)
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum ExtendsInput {
+    Single(SchemaName),
+    Multiple(Vec<SchemaName>),
+}
+
+fn deserialize_extends<'de, D>(
+    deserializer: D,
+) -> Result<Vec<SchemaName>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <Option<ExtendsInput> as serde::Deserialize>::deserialize(
+        deserializer,
+    )?;
+    Ok(match value {
+        None => Vec::new(),
+        Some(ExtendsInput::Single(parent)) => vec![parent],
+        Some(ExtendsInput::Multiple(parents)) => parents,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod deserialization {
+        use super::*;
+
+        #[test]
+        fn returns_empty_extends_when_field_missing() {
+            let raw: RawSchema =
+                serde_json::from_str(r#"{"properties":{},"excludes":[]}"#)
+                    .unwrap();
+
+            assert!(raw.extends().is_empty());
+        }
+
+        #[test]
+        fn returns_single_parent_when_extends_is_string() {
+            let raw: RawSchema = serde_json::from_str(
+                r#"{"extends":"base","properties":{},"excludes":[]}"#,
+            )
+            .unwrap();
+
+            assert_eq!(raw.extends().len(), 1);
+            assert_eq!(
+                raw.extends().first().map(SchemaName::as_str),
+                Some("base")
+            );
+        }
+
+        #[test]
+        fn returns_all_parents_when_extends_is_list() {
+            let raw: RawSchema = serde_json::from_str(
+                r#"{"extends":["base","shared"],"properties":{},"excludes":[]}"#,
+            )
+            .unwrap();
+
+            assert_eq!(raw.extends().len(), 2);
+            assert_eq!(
+                raw.extends().first().map(SchemaName::as_str),
+                Some("base")
+            );
+            assert_eq!(
+                raw.extends().get(1).map(SchemaName::as_str),
+                Some("shared")
+            );
+        }
     }
 }
