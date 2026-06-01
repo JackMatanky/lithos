@@ -31,7 +31,7 @@ This slice must eliminate the circular bootstrap dependency by producing vault r
 - [ ] Explicit and env-provided paths are validated eagerly and fail fast when path is missing or not a directory.
 - [ ] Ascending walk checks recognized local marker patterns and short-circuits on first match.
 - [ ] Ascending walk maintains visited canonical-path set to detect symlink loops safely.
-- [ ] `LITHOS_CEILING` termination is supported for boundary-limited traversal.
+- [ ] `LITHOS_CEILING_DIRS` termination is supported for boundary-limited traversal.
 - [ ] Not-found is represented as typed `VaultRootResolution::NotFound` and is propagated for contextual handling.
 - [ ] Unit/integration tests cover explicit, env, ascending success, ceiling termination, symlink traversal, and not-found behavior.
 
@@ -54,7 +54,7 @@ environment override, then ascending walk from canonicalized CWD.
 **Key interfaces:**
 - `VaultRootResolution`
 - Root resolution function accepting explicit/env/CWD context
-- Ceiling handling via `LITHOS_CEILING`
+- Ceiling handling via `LITHOS_CEILING_DIRS`
 - Loop safety via canonical visited-path set
 
 **Acceptance criteria:**
