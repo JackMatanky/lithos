@@ -3,6 +3,9 @@
 //! Provides the [`DiscoveryEngine`] which performs a single atomic scan of
 //! both the filesystem and database, consolidating all data needed for
 //! config processing.
+//!
+//! The `location` and `contracts` submodules expose typed discovery interfaces
+//! used by downstream configuration orchestration.
 
 use crate::{
     config::{
@@ -17,6 +20,9 @@ use crate::{
         scanner::{DirScanInput, DirScanner},
     },
 };
+
+pub(crate) mod contracts;
+pub(crate) mod location;
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Discovery Result Types
