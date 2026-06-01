@@ -1,12 +1,15 @@
 ---
 title: 04-compaction-safety-and-crash-model-verification
 category: enhancement
-label: ready-for-agent
-status: open
+label: needs-triage
+status: postponed
 date_created: 2026-05-31T00:00:00+00:00
 ---
 
 # Compaction safety + crash model verification
+
+**Postponed (2026-06-01):** This foundational verification is postponed until a concrete context-repository implementation (e.g., Discovery or Note) is available to provide a realistic "failure surface" for the redb adapter. Verifying the crash model in a vacuum using mocks provides insufficient value compared to testing against the first actual event-sourced consumer.
+
 
 ## What to build
 
