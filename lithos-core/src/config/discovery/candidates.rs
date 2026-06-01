@@ -258,7 +258,8 @@ mod tests {
                 format: StructuredFileFormat::Toml,
             };
 
-            let got = select_config_candidate(vec![candidate], None).unwrap();
+            let got = select_config_candidate(vec![candidate], None)
+                .expect("expected a candidate to be selected");
 
             assert_eq!(got.warning, None);
             assert_eq!(got.candidate.format, StructuredFileFormat::Toml);
@@ -290,7 +291,7 @@ mod tests {
                 vec![toml_candidate, json_candidate],
                 Some(StructuredFileFormat::Json),
             )
-            .unwrap();
+            .expect("expected a candidate to be selected");
 
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
             assert_eq!(got.candidate.path, base.join("lithos.json"));
@@ -332,7 +333,7 @@ mod tests {
                 vec![yaml_candidate, json_candidate],
                 Some(StructuredFileFormat::Toml),
             )
-            .unwrap();
+            .expect("expected a candidate to be selected");
 
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
             assert_eq!(got.candidate.path, base.join("lithos.json"));
