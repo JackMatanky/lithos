@@ -118,3 +118,18 @@ Follow RED -> GREEN vertical slices and unit-test standards in
    cutoff semantics at the API boundary.
 3. Keep this slice implementation-free beyond test fixtures needed to validate
    trait contracts.
+
+## Implementation notes (2026-06-01)
+
+- Implemented `EventStore<E>` trait in `lithos-core/src/db/events.rs`.
+- Trait payload generic is constrained to `ArchivedEntity`.
+- Added contract-level tests in `db/events.rs` under
+  `tests::event_store_contract` to validate trait/API boundary shape.
+- Explicitly removed concrete adapter implementation from this slice:
+  `lithos-core/src/db/event_store.rs` deleted.
+- `lithos-core/src/db/mod.rs` now re-exports `EventStore` from `events`.
+
+### Follow-up required
+
+- Concrete redb-backed adapter implementation should land in a separate issue
+  after this trait/API slice is merged.
