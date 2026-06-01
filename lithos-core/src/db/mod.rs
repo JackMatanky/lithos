@@ -64,7 +64,7 @@ pub use error::{DbError, DbErrorKind};
     unused_imports,
     reason = "Re-exported for internal consumers landing in subsequent slices"
 )]
-pub(crate) use events::{EventId, EventIdAllocator, EventIdError};
+pub(crate) use events::{EventId, EventIdAllocator, EventIdError, EventStore};
 pub use read::ReadTx;
 #[expect(
     unused_imports,

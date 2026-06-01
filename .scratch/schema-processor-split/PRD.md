@@ -23,7 +23,7 @@ The processor cannot be meaningfully refactored because its stages mix file-leve
 Introduce **BaseSchema** as an intermediate domain type between `RawSchema` (syntax-validated input) and `Schema` (fully resolved aggregate with inheritance applied). BaseSchema represents a **self-contained, file-local schema** with:
 
 - Resolved `PropertyMap` (all `$ref` entries expanded to domain `Property` types)
-- Validated schema name, extends list (`Vec<SchemaName>` to pave the way for multiple inheritance), and excludes list
+- Validated schema name plus extends/excludes collections (stored as boxed slices in BaseSchema to keep persisted domain state compact)
 - No cross-schema dependencies resolved (inheritance not applied)
 
 Split schema processing into **two independent processors**:
@@ -119,7 +119,7 @@ This architecture enables:
 **Background**:
 - Final `Schema` aggregate: `parents: Vec<SchemaId>` (supports multiple inheritance)
 - Current intermediate types: `extends: Option<SchemaName>` (single only)
-- This creates a capability mismatch that must be resolved before BaseSchema can use `Vec<SchemaName>`
+- This creates a capability mismatch that must be resolved before BaseSchema can use multi-parent extends storage
 
 **Files to Modify**:
 1. **`lithos-core/src/schema/raw/aggregate.rs`**
@@ -164,7 +164,7 @@ This architecture enables:
 **Deliverables**:
 - `BaseSchema` domain type with persisted state (id, name, properties, extends, excludes)
 - `BaseSchemaProcessor` typestate pipeline mirroring PropertyBankProcessor pattern
-- `ExtendsDelta` type for name-based inheritance change tracking
+- `ExtendsDelta` aggregate delta (`added`/`removed`) for name-based inheritance change tracking
 - `BaseSchemaChange` handoff envelope (Fresh/New/Stale/Deleted lifecycle events)
 - Repository methods for BaseSchema persistence
 - Unit, component, and integration tests
@@ -274,7 +274,7 @@ The codebase has three main persisted view types for schema processing:
 |-----------|---------|--------|
 | `RawSchemaView` | Version history, path → identity mapping | **Stays** |
 | `SchemaVersion` | Per-version metadata, `bank_references` mapping, staleness detection | **Stays (Phase 0: extends → Vec)** |
-| `BaseSchema` | Domain-level intermediate type: `SchemaId`, expanded `PropertyMap`, `Vec<SchemaName>` extends | **NEW (Phase 1)** |
+| `BaseSchema` | Domain-level intermediate type: `SchemaId`, expanded `PropertyMap`, boxed extends/excludes collections | **NEW (Phase 1)** |
 | `Schema` | Final aggregate: full inheritance applied | **Stays** |
 | `BasePropertiesView` | Property cache | **Removed (Phase 3)** |
 
@@ -308,8 +308,8 @@ The codebase has three main persisted view types for schema processing:
 - Full rebuild escalation only for: parse failures, incoherent deltas, structural ref conflicts
 
 ### TypeState Pattern
-- Mirror PropertyBankProcessor exactly for consistency
-- Stages: Discovery, Comparison, Parsed, Analysis, Refresh, Construction, Completed
+- Mirror current PropertyBankProcessor orchestration for consistency
+- Stages: Init, Comparison, Parsed, Analysis, Refresh, Construction, Completed
 - Additional status: StaleReferences (orthogonal to file staleness)
 
 ### Dependency Direction
@@ -328,7 +328,7 @@ The codebase has three main persisted view types for schema processing:
 
 ## Risk Mitigation
 
-**Three-phase delivery reduces risk**:
+**Four-phase delivery reduces risk**:
 - Phase 1: new infrastructure coexists with old, no behavior change, easy to verify correctness
 - Phase 2: isolated rewrite of inheritance logic, old processor still present for comparison/fallback
 - Phase 3: behavioral migration is minimal (swap processor calls in Builder), easy to revert if issues arise
