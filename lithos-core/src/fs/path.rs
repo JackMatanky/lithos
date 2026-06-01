@@ -1,21 +1,37 @@
-//! Validated path types for the Lithos core library.
+//! Three-tier path taxonomy for the Lithos core library.
 //!
 //! This module provides a hierarchy of type-safe path wrappers that enforce
-//! filesystem invariants and security policies (e.g., vault-root scoping).
+//! filesystem invariants and security policies. The path system is organized
+//! into three distinct tiers based on their purpose and validation rules.
 //!
-//! # Type Hierarchy
+//! # Path Taxonomy
 //!
-//! - **Rooted Paths**: [`FilePath`] and [`DirPath`] represent paths that exist
-//!   on the local filesystem. They wrap `PathBuf` and validate that the path
-//!   actually refers to the expected file/directory type.
-//! - **Vault-Relative Paths**: [`RelativePath`] represents a path relative to a
-//!   vault root. It is platform-agnostic in logic but uses platform-specific
-//!   separators internally.
-//! - **Storage Keys**: [`PathKey`] is a normalized, UTF-8 encoded,
-//!   vault-relative path using forward slashes (`/`). It is intended for
-//!   database keys and serialization.
-//! - **Unified Views**: [`FsPath`] and [`FsPathRef`] provide enums for
-//!   operations that can apply to either files or directories.
+//! | Tier | Types | Where | Example |
+//! |------|-------|-------|---------|
+//! | **Filesystem I/O** | [`FsPath`], [`FilePath`], [`DirPath`] | Scanner, reader, writer, vault processor | `DirPath::append_file(&rel_file)` |
+//! | **Display / Config** | [`RelativePath`] enum, `Relative*Path` | CLI display, config values, serialization | `RelativeDirPath::try_new("schemas")` |
+//! | **Storage Keys** | [`PathKey`] | Repository traits, DB tables | `fn find_file_view_by_path(&PathKey)` |
+//!
+//! # Type Choice Guidance
+//!
+//! - **Use FS I/O types** when performing actual filesystem operations (read,
+//!   write, metadata).
+//! - **Use Display/Config types** for values coming from configuration files,
+//!   CLI arguments, or when sending paths to a UI. The [`RelativePath`] enum
+//!   specifically is intended for display and serialization — it is NOT for
+//!   filesystem I/O, and NOT for storage keys.
+//! - **Use Storage Keys** for database indices, serialized metadata, or
+//!   cross-platform identifiers.
+//!
+//! # Conversion Seams
+//!
+//! | Source → Target | Method | Fallible? |
+//! |----------------|--------|-----------|
+//! | Config value → FS path | [`DirPath::append_dir(&RelativeDirPath)`][DirPath::append_dir] | Yes |
+//! | Config value → FS path | [`DirPath::append_file(&RelativeFilePath)`][DirPath::append_file] | Yes |
+//! | FS path → Storage key | `file_path.as_key(root)` / `dir_path.as_key(root)` | Yes |
+//! | FS path → Display | `file_path.as_relative(base) → RelativePath::File(...)` | Yes |
+//! | FS path → Display | `dir_path.as_relative(base) → RelativePath::Dir(...)` | Yes |
 //!
 //! # Examples
 //!
@@ -672,11 +688,13 @@ impl From<DirPath> for PathBuf {
     }
 }
 
-/// A validated vault-relative path (file or directory).
+/// Unified view of a declarative relative path.
 ///
-/// This type distinguishes between file and directory relative paths at the
-/// type level. Construct via [`RelativePath::File`] or [`RelativePath::Dir`],
-/// or use `as_relative()` on [`FilePath`], [`DirPath`], or [`FsPath`].
+/// This enum is intended for **Display** and **Configuration** purposes. It
+/// provides a platform-agnostic way to represent paths before they are resolved
+/// against a filesystem root.
+///
+/// For filesystem operations, use [`FsPath`]. For storage, use [`PathKey`].
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
