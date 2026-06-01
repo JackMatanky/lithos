@@ -73,6 +73,6 @@ pub use name::{
 pub use path::{
     AbsolutePath, DirPath, FilePath, FsPath, FsPathRef, PathKey, RelativePath,
 };
-pub use reader::{FileReader, FileTimestamp};
+pub use reader::FileReader;
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;

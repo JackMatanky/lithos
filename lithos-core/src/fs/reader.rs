@@ -36,10 +36,7 @@
 //! # Ok::<(), lithos_core::fs::FsError>(())
 //! ```
 
-use std::{
-    path::{Path, PathBuf},
-    time::SystemTime,
-};
+use std::path::{Path, PathBuf};
 
 use super::{
     error::{FsError, PathValidationError},
@@ -294,15 +291,6 @@ impl FileReader {
         FileFormat::Unknown
     }
 }
-
-/// File system timestamp type alias.
-///
-/// This is now a direct alias to [`SystemTime`] since we use rkyv's
-/// `AsUnixTime` wrapper for serialization instead of manual conversion.
-///
-/// The filesystem methods [`FileReader::created_at`] and
-/// [`FileReader::modified_at`] return `Option<SystemTime>` directly.
-pub type FileTimestamp = SystemTime;
 
 #[cfg(test)]
 #[expect(
