@@ -66,6 +66,11 @@ pub use error::{DbError, DbErrorKind};
 )]
 pub(crate) use events::{EventId, EventIdAllocator, EventIdError};
 pub use read::ReadTx;
+#[expect(
+    unused_imports,
+    reason = "Re-exported for internal consumers landing in subsequent slices"
+)]
+pub(crate) use table::EventTable;
 pub use table::{
     PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
 };
