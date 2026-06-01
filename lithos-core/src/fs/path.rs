@@ -6,11 +6,11 @@
 //!
 //! # Path Taxonomy
 //!
-//! | Tier | Types | Where | Example |
-//! |------|-------|-------|---------|
-//! | **Filesystem I/O** | [`FsPath`], [`FilePath`], [`DirPath`] | Scanner, reader, writer, vault processor | `DirPath::append_file(&rel_file)` |
+//! | Tier                 | Types                                  | Where                                     | Example                               |
+//! | -------------------- | -------------------------------------- | ----------------------------------------- | ------------------------------------- |
+//! | **Filesystem I/O**   | [`FsPath`], [`FilePath`], [`DirPath`]  | Scanner, reader, writer, vault processor  | `DirPath::append_file(&rel_file)`     |
 //! | **Display / Config** | [`RelativePath`] enum, `Relative*Path` | CLI display, config values, serialization | `RelativeDirPath::try_new("schemas")` |
-//! | **Storage Keys** | [`PathKey`] | Repository traits, DB tables | `fn find_file_view_by_path(&PathKey)` |
+//! | **Storage Keys**     | [`PathKey`]                            | Repository traits, DB tables              | `fn find_file_view_by_path(&PathKey)` |
 //!
 //! # Type Choice Guidance
 //!
@@ -25,13 +25,13 @@
 //!
 //! # Conversion Seams
 //!
-//! | Source → Target | Method | Fallible? |
-//! |----------------|--------|-----------|
-//! | Config value → FS path | [`DirPath::append_dir(&RelativeDirPath)`][DirPath::append_dir] | Yes |
-//! | Config value → FS path | [`DirPath::append_file(&RelativeFilePath)`][DirPath::append_file] | Yes |
-//! | FS path → Storage key | `file_path.as_key(root)` / `dir_path.as_key(root)` | Yes |
-//! | FS path → Display | `file_path.as_relative(base) → RelativePath::File(...)` | Yes |
-//! | FS path → Display | `dir_path.as_relative(base) → RelativePath::Dir(...)` | Yes |
+//! | Source → Target        | Method                                                            | Fallible? |
+//! | ---------------------- | ----------------------------------------------------------------- | --------- |
+//! | Config value → FS path | [`DirPath::append_dir(&RelativeDirPath)`][DirPath::append_dir]    | Yes       |
+//! | Config value → FS path | [`DirPath::append_file(&RelativeFilePath)`][DirPath::append_file] | Yes       |
+//! | FS path → Storage key  | `file_path.as_key(root)` / `dir_path.as_key(root)`                | Yes       |
+//! | FS path → Display      | `file_path.as_relative(base) → RelativePath::File(...)`           | Yes       |
+//! | FS path → Display      | `dir_path.as_relative(base) → RelativePath::Dir(...)`             | Yes       |
 //!
 //! # Examples
 //!
