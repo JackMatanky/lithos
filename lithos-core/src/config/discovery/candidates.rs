@@ -83,11 +83,7 @@ pub(crate) fn select_config_candidate(
                 .map_or(0, |(idx, _)| idx)
         });
 
-    let candidate = if selected_idx < candidates.len() {
-        candidates.swap_remove(selected_idx)
-    } else {
-        candidates.swap_remove(0)
-    };
+    let candidate = candidates.swap_remove(selected_idx);
 
     Some(ConfigSelectionResult {
         candidate,
