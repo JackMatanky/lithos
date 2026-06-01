@@ -22,9 +22,14 @@ Key changes:
 2. Make all filesystem→key conversions root-scoped and fallible via `PathKey::from_rooted_path(root, path)` and convenience `as_key(root)` methods
 3. Redesign `SchemaConfigSpec` to be execution-facing: store typed filesystem paths (`DirPath`, `FilePath`), derive `PathKey` only at repository call boundaries
 4. Hard-cut repository trait signatures from `RelativePath` to `PathKey` per context (schema → vault → note/template)
-5. Remove `AbsolutePath` and `RelativePath` after migration, with short-lived deprecated aliases and architecture test enforcement
+5. **Redesign `RelativePath` as a unified enum** (`RelativePath::File(RelativeFilePath)` / `RelativePath::Dir(RelativeDirPath)`) instead of removing it — preserves expressiveness for display paths and OS-specific path strings while retiring the old `PathBuf`-backed struct
+6. Migrate config types (`Schema`, `Template`, `Cache`) from `RelativePath` to precise `RelativeDirPath`/`RelativeFilePath`
+7. Remove `AbsolutePath` and `NormalizedPath` alias after migration, with short-lived deprecated aliases and architecture test enforcement
 
-This separates concerns cleanly, eliminates conversion churn, and makes path semantics explicit at every boundary.
+This enforces a **three-tier path taxonomy**:
+- **Filesystem operations** → `FsPath`, `FilePath`, `DirPath` (validated against real FS)
+- **Display / OS-specific strings** → `RelativePath` enum + `RelativeDirPath`/`RelativeFilePath` (declarative, no FS check)
+- **DB/storage keys** → `PathKey` (normalized, `Box<str>`, forward slashes only)
 
 ## User Stories
 
@@ -41,7 +46,7 @@ This separates concerns cleanly, eliminates conversion churn, and makes path sem
 11. As a vault storage developer, I want the same `PathKey` type used for vault file/directory keys, so that path handling is uniform across all contexts
 12. As a note/template developer, I want repository boundaries to use `PathKey` for persistence, so that filesystem operations and database keys are clearly separated
 13. As a developer adding new repository methods, I want compiler enforcement that filesystem paths cannot be used directly as keys, so that I cannot accidentally introduce semantic drift
-14. As a migration owner, I want a transitional architecture test module, so that I can enforce phased deprecation and prevent `RelativePath`/`AbsolutePath` from spreading during migration
+14. As a migration owner, I want a transitional architecture test module, so that I can enforce phased migration and prevent stale types from spreading
 15. As a developer, I want `PathKey` conversions to return `Result<PathKey, PathError>` for outside-root cases, so that boundary violations are explicit and mappable to context-specific errors
 16. As a test author, I want clear prior art for `PathKey` normalization tests, so that I can verify slash handling, traversal rejection, and UTF-8 enforcement comprehensively
 17. As a config author, I want `SchemaConfigSpec::new()` to accept `DirPath`/`FilePath` directly, so that path validation happens at config construction instead of at repository call time
@@ -49,10 +54,13 @@ This separates concerns cleanly, eliminates conversion churn, and makes path sem
 19. As a developer reading discovery code, I want to see `entry.as_key(root)` instead of manual `strip_prefix` logic, so that the boundary conversion is obvious and auditable
 20. As a repository trait user, I want `get_raw_property_bank_view(&PathKey)` instead of `get_raw_property_bank_view(&RelativePath)`, so that the key type matches table storage semantics
 21. As a codebase maintainer, I want `NormalizedPath` to exist only as a short-lived deprecated alias, so that new code cannot accidentally use the old name
-22. As a CI/test author, I want architecture tests to fail if new code introduces `RelativePath` in repository signatures, so that regressions are caught immediately
+22. As a CI/test author, I want architecture tests to enforce the three-tier path taxonomy, so that regressions are caught immediately
 23. As a developer working on schema, vault, or note contexts, I want phased migration with clear exit criteria per context, so that I can complete one context fully before starting the next
 24. As a schema discovery developer, I want `DiscoveryEngine::scan_filesystem` to return `Vec<FsEntry>` unchanged but convert to `PathKey` only at repository query boundaries, so that filesystem scanning and persistence logic are decoupled
 25. As a builder developer, I want `load_property_bank` to call `entry.path().as_key(root)` for the repository lookup key, so that conversion is explicit and error-handling is correct
+26. As a config developer, I want config types to use `RelativeDirPath`/`RelativeFilePath` instead of `RelativePath`, so that the type system enforces whether a config value refers to a file or a directory
+27. As a developer working with `as_relative()`, I want the return type to be the `RelativePath` enum (`File(RelativeFilePath)` / `Dir(RelativeDirPath)`), so that I can match on it rather than getting an undifferentiated `PathBuf`-backed type
+28. As a developer using paths for display or serialization, I want `RelativePath` to remain available as a lightweight declarative type, so that I don't need `PathBuf` when I just need a path string
 
 ## Implementation Decisions
 
@@ -366,6 +374,34 @@ pub enum PathError {
 - Enforce strict invariants: UTF-8 only, forward slashes, no `.`/`..`, no empty, structural normalization (dedupe/trailing separators)
 - Make `PathKey` shape-agnostic: no file-vs-dir encoding; kind is enforced at filesystem-facing APIs
 
+### RelativePath Enum Redesign
+
+`RelativePath` evolves from a `PathBuf`-backed struct into a unified enum that embeds the existing declarative types:
+
+```rust
+/// Unified relative path: either a file or directory.
+///
+/// Use this for display, serialization, and OS-specific path strings
+/// where no filesystem I/O is needed. For filesystem operations use
+/// `FsPath`/`FilePath`/`DirPath`. For storage keys use `PathKey`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub enum RelativePath {
+    File(RelativeFilePath),
+    Dir(RelativeDirPath),
+}
+```
+
+This preserves the name while:
+- Cutting the `PathBuf` dependency (`RelativeFilePath`/`RelativeDirPath` already use `Box<str>`)
+- Letting `FilePath::as_relative(base)` return `RelativePath::File(...)`
+- Letting `DirPath::as_relative(base)` return `RelativePath::Dir(...)`
+- Letting `FsPath::as_relative(base)` return the appropriate variant
+- Providing `AsRef<Path>`, `Display`, and `rkyv` support by delegating to the inner variant
+
+The old `TryFrom<RelativePath> for FilePath` / `DirPath` conversions are replaced by `DirPath::append_file()` / `DirPath::append_dir()` which is the correct filesystem boundary seam.
+
 ### Conversion API
 
 - Low-level primitive: `PathKey::from_rooted_path(root: &DirPath, path: &Path) -> Result<PathKey, PathError>`
@@ -383,9 +419,15 @@ pub enum PathError {
 - Replace `directory_relative()` / `property_bank_relative()` accessors with `directory_key()` / `property_bank_key()` computed via `as_key(root)`
 - Convert `VaultRoot` from raw `PathBuf` wrapper to thin newtype over `DirPath`
 - Convert `TrustedVaultPath` from `AbsolutePath` wrapper to thin newtype over `DirPath`
+- **Migrate config path types to precise relative types:**
+  - `Schema.schemas_dir: RelativePath` → `RelativeDirPath`
+  - `Template.templates_dir: RelativePath` → `RelativeDirPath`
+  - `Cache.cache_dir: RelativePath` → `RelativeDirPath`
+  - `default_relative_path()` helper → per-type defaults
 - Split config path parsing by usage semantics:
   - Filesystem-target settings (vault root, trusted vaults) parse to `DirPath`
   - Persisted/indexed keys derive `PathKey` only at repository boundaries
+  - Declarative config paths (relative dir/file refs) parse to `RelativeDirPath`/`RelativeFilePath`
 
 ### Repository Layer Hard Cuts
 
@@ -407,19 +449,37 @@ pub enum PathError {
 2. **Vault context second**: same pattern applied to vault repository/storage
 3. **Note/template contexts third**: ensure uniform `PathKey` usage at all persistence boundaries
 4. **Config context fourth**: finalize `SchemaConfigSpec`, `VaultRoot`, `TrustedVaultPath` thin-wrapper conversions
+5. **RelativePath enum + config migration**: convert `RelativePath` to enum, update config types to `RelativeDirPath`/`RelativeFilePath`, update `as_relative()` return types
+6. **Architecture enforcement + cleanup**: finalize tests, remove `NormalizedPath` alias, remove `AbsolutePath`
 
 ### Deprecation and Enforcement
 
 - Create short-lived deprecated type alias: `pub type NormalizedPath = PathKey` with `#[deprecated(note = "...")]`
 - Remove `AbsolutePath` from all production code paths after `DirPath` migration
-- Mark `RelativePath` deprecated with phase-based removal plan
+- **`RelativePath` is NOT deprecated** — it evolves into the unified enum. The old `PathBuf`-backed struct is replaced by the enum; no `#[deprecated]` needed.
 - Create transitional architecture test module (`lithos-core/tests/path_migration_architecture.rs`) with:
   - Phase 1: forbid `AbsolutePath` outside FS module
-  - Phase 2: forbid `RelativePath` in schema repository signatures
-  - Phase 3: forbid `RelativePath` in vault repository signatures
-  - Phase 4: forbid `RelativePath` in note/template repository signatures
+  - Phase 2: forbid old `RelativePath` struct import (replace with enum)
+  - Phase 3: enforce `RelativeDirPath`/`RelativeFilePath` in config types
+  - Phase 4: enforce `PathKey` at repository boundaries
   - Phase 5: forbid `NormalizedPath` alias usage entirely
 - Each phase has explicit exit criteria: no banned types in scoped modules
+
+### Three-Tier Enforcement Rules
+
+The architecture tests enforce these boundary rules post-migration:
+
+| Tier | Types | Where | Example |
+|------|-------|-------|---------|
+| **Filesystem I/O** | `FsPath`, `FilePath`, `DirPath` | Scanner, reader, writer, vault processor | `DirPath::append_file(&rel_file)` |
+| **Display / Config** | `RelativePath` enum, `Relative*Path` | CLI display, config values, serialization | `RelativeDirPath::try_new("schemas")` |
+| **Storage Keys** | `PathKey` | Repository traits, DB tables | `fn find_file_view_by_path(&PathKey)` |
+
+Conversion seams:
+- Config value → filesystem: `DirPath::append_dir(&RelativeDirPath)`
+- Config value → key: `DirPath::append_dir(&RelativeDirPath)?.as_key(root)`
+- Filesystem path → key: `file_path.as_key(root) -> PathKey`
+- Filesystem path → relative: `file_path.as_relative(base) -> RelativePath::File(...)`
 
 ### Error Handling
 
@@ -476,13 +536,14 @@ pub enum PathError {
 - Unicode normalization (e.g., NFC) — deferred for future ADR if needed
 - Case-folding or case-insensitive key matching — preserve exact casing
 - Filesystem I/O path validation beyond current `FilePath`/`DirPath` invariants
-- Migration of non-repository path usage (e.g., CLI display paths, user-facing messages)
+- Migration of non-repository path usage (e.g., CLI display paths, user-facing messages) — addressed by `RelativePath` enum redesign
 - Conversion of existing persisted keys in database (migration assumes key format is forward-compatible)
 - Performance optimization of `PathKey` normalization (functional correctness first)
 
 ## Further Notes
 
 - This migration is a prerequisite for completing the `SchemaConfigSpec` redesign blocked in `.scratch/fs-inode-architecture/01-path-types.md` and `.scratch/fs-inode-architecture/02-name-types.md`
-- The architectural decision (single canonical repository boundary type, root-scoped conversions, deprecate `RelativePath`/`AbsolutePath`) will be captured in a separate system-level ADR
+- The architectural decision (single canonical repository boundary type, root-scoped conversions, three-tier path taxonomy) will be captured in a separate system-level ADR
 - The transitional architecture test module should be retired after all phases complete and the deprecated alias is removed
 - Exit criteria per phase ensure monotonic progress and prevent regression of path-type coupling
+- `RelativePath` is *evolved* not *removed*: the old `PathBuf`-backed struct becomes a `RelativeFilePath`/`RelativeDirPath`-backed enum, preserving the name and its expressiveness for non-I/O path use
