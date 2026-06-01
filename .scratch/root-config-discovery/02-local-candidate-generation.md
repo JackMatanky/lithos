@@ -51,7 +51,14 @@ existing candidates by location and structured format precedence.
 
 **Key interfaces:**
 - `LocalConfigLocation::candidate_path(root, format) -> PathBuf`
-- `find_local_config_candidates(root, location) -> Vec<DiscoveredConfigFile>`
+- `find_local_config_candidates(root, location) -> Result<Vec<DiscoveredConfigFile>, std::io::Error>`
+
+**Refined Implementation Details:**
+- **Location:** Implement `find_local_config_candidates` in a new module `lithos-core/src/config/discovery/candidates.rs`.
+- **Pathing:** All returned `DiscoveredConfigFile` paths MUST be absolute. Use `root.canonicalize()` or ensure `root` is absolute before joining.
+- **Ordering:** The returned `Vec` MUST follow the order defined in `StructuredFileFormat::PRECEDENCE`.
+- **Base Directory:** The `base` field in `DiscoveredConfigFile` should be the `root` passed to the function.
+- **Error Handling:** Return `std::io::Error` for genuine I/O failures. Do not use `ConfigIngestError` as this is discovery-specific.
 
 **Acceptance criteria:**
 - [ ] Candidate paths are deterministic for all local location variants.
@@ -62,6 +69,30 @@ existing candidates by location and structured format precedence.
 - Choosing the winning candidate among multiple formats
 - Global config source resolution
 - Root resolution traversal
+
+## Approved TDD Plan
+
+Follow vertical-slice TDD with behavior-first tests over public interfaces. Use Structure A (submodules) in `lithos-core/src/config/discovery/candidates.rs`.
+
+1. **Empty Discovery:**
+   - RED: `lookup::returns_empty_vec_when_no_files_exist`
+   - GREEN: Implement `find_local_config_candidates` to return empty `Vec` if no candidates exist.
+
+2. **Single Hit:**
+   - RED: `lookup::returns_single_candidate_when_one_format_exists`
+   - GREEN: Update implementation to check for existence of one candidate.
+
+3. **Multi-Hit Precedence:**
+   - RED: `lookup::returns_multiple_candidates_ordered_by_precedence`
+   - GREEN: Update implementation to iterate `StructuredFileFormat::PRECEDENCE` and collect existing files.
+
+4. **Location Variants:**
+   - RED: `lookup::returns_correct_paths_for_all_location_variants` (Root, Hidden, ConfigDir)
+   - GREEN: Ensure all `LocalConfigLocation` variants are supported.
+
+5. **Absolute Paths:**
+   - RED: `lookup::returns_absolute_paths_when_root_is_relative`
+   - GREEN: Ensure paths are absolute in `DiscoveredConfigFile`.
 
 ## Blocked by
 
