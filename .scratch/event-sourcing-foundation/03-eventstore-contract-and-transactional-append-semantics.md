@@ -37,6 +37,9 @@ This slice must enforce:
 - Contract shape is infrastructure-only (`db` context) and generic over a typed
   event payload requiring `ArchivedEntity`; no domain event enums inside the
   shared contract.
+- Contract location is explicitly `lithos-core/src/db/events.rs`.
+- This slice defines trait/API + contract tests only; no concrete redb
+  EventStore adapter implementation in this issue.
 - Append returns the allocated `EventId` from the same write transaction that
   persists the event record.
 - Allocation source is per-context sequence state (for example, one sequence key
@@ -72,8 +75,8 @@ sequence state remains owned by each context repository with no global
 cross-context sequence ownership.
 
 **Key interfaces:**
-- Shared EventStore trait(s) in infrastructure (`db`) with append/load/compact
-  operations and typed error surfaces.
+- Shared EventStore trait(s) in infrastructure (`db/events.rs`) with
+  append/load/compact operations and typed error surfaces.
 - Append operation contract that returns allocated `EventId` and enforces
   atomic allocate+persist behavior.
 - Per-context sequence-state representation and repository-owned persistence
@@ -100,6 +103,8 @@ cross-context sequence ownership.
 - Event replay projections and subscriber dispatch.
 - Migrating existing context repositories to event-sourced storage in this
   slice.
+- Introducing concrete EventStore adapter implementations (tracked in follow-up
+  issue).
 
 ## Approved TDD plan
 
@@ -107,11 +112,9 @@ Follow RED -> GREEN vertical slices and unit-test standards in
 `docs/engineering/testing/unit.md` and
 `docs/engineering/testing/unit-naming.md`.
 
-1. Add contract-level tests for append atomicity (allocate+persist in one
-   transaction; failure rolls back both).
-2. Add deterministic load-order tests (ascending `EventId`, independent from
-   insertion sequence artifacts).
-3. Add per-context isolation tests (independent sequence cursors/namespaces).
-4. Add compact behavior tests for prefix compaction invariants and non-reuse of
-   historical IDs.
-5. Implement minimum infrastructure code to satisfy each test slice in order.
+1. Add contract/API tests for append/load/compact trait shape and payload
+   generic constraints in `db/events.rs`.
+2. Verify contract signatures encode deterministic load ordering and compaction
+   cutoff semantics at the API boundary.
+3. Keep this slice implementation-free beyond test fixtures needed to validate
+   trait contracts.
