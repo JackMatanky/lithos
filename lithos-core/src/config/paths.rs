@@ -22,18 +22,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::ConfigError;
 use crate::fs::{
-    DirPath, FileName, FilePath, PathKey, RelativePath,
+    DirPath, FileName, FilePath, PathKey,
     path::{RelativeDirPath, RelativeFilePath},
 };
-
-#[expect(
-    clippy::expect_used,
-    reason = "Static defaults are compile-time literals expected to remain \
-              valid"
-)]
-fn default_relative_path(value: &'static str) -> RelativePath {
-    RelativePath::try_from(value).expect("default path literal must be valid")
-}
 
 // ----------------------------------------------------------- //
 //                   Resolved Path Aggregate                   //
@@ -91,7 +82,8 @@ impl Paths {
     #[inline]
     #[must_use]
     pub fn property_bank_path(&self) -> PathBuf {
-        self.schema.schemas_dir().as_path().join(self.property_bank.as_str())
+        std::path::Path::new(self.schema.schemas_dir().as_str())
+            .join(self.property_bank.as_str())
     }
 }
 
@@ -119,7 +111,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Cache::try_new(PathBuf::from(s)).map_err(|e| {
+                Cache::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "cache_dir".into(),
                         message: format!("invalid cache_dir: {e}").into(),
@@ -134,7 +126,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                Template::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "templates_dir".into(),
                         message: format!("invalid templates_dir: {e}").into(),
@@ -149,7 +141,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                Schema::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "schemas_dir".into(),
                         message: format!("invalid schemas_dir: {e}").into(),
@@ -191,14 +183,19 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
 #[non_exhaustive]
 pub struct Schema {
     /// Directory containing schema files.
-    schemas_dir: RelativePath,
+    schemas_dir: RelativeDirPath,
 }
 
 impl Default for Schema {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Default directory literal is guaranteed valid"
+    )]
     fn default() -> Self {
         Self {
-            schemas_dir: default_relative_path("schemas"),
+            schemas_dir: RelativeDirPath::try_new("schemas")
+                .expect("default path literal must be valid"),
         }
     }
 }
@@ -207,7 +204,7 @@ impl Schema {
     /// Create schema configuration.
     #[inline]
     #[must_use]
-    pub const fn new(schemas_dir: RelativePath) -> Self {
+    pub const fn new(schemas_dir: RelativeDirPath) -> Self {
         Self {
             schemas_dir,
         }
@@ -219,9 +216,13 @@ impl Schema {
     /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
     /// empty, or contains parent directory traversal.
     #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+    pub fn try_new(path: &std::path::Path) -> Result<Self, ConfigError> {
+        let s = path.to_str().ok_or_else(|| ConfigError::ValidationFailed {
+            field: "schemas_dir".into(),
+            message: "Non-UTF-8 path".into(),
+        })?;
         Ok(Self {
-            schemas_dir: RelativePath::try_from(path).map_err(|e| {
+            schemas_dir: RelativeDirPath::try_new(s).map_err(|e| {
                 ConfigError::ValidationFailed {
                     field: "schemas_dir".into(),
                     message: e.to_string().into(),
@@ -233,7 +234,7 @@ impl Schema {
     /// Return the schemas directory.
     #[inline]
     #[must_use]
-    pub const fn schemas_dir(&self) -> &RelativePath {
+    pub const fn schemas_dir(&self) -> &RelativeDirPath {
         &self.schemas_dir
     }
 }
@@ -246,14 +247,19 @@ impl Schema {
 #[non_exhaustive]
 pub struct Template {
     /// Directory containing template files.
-    pub templates_dir: RelativePath,
+    pub templates_dir: RelativeDirPath,
 }
 
 impl Default for Template {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Default directory literal is guaranteed valid"
+    )]
     fn default() -> Self {
         Self {
-            templates_dir: default_relative_path("templates"),
+            templates_dir: RelativeDirPath::try_new("templates")
+                .expect("default path literal must be valid"),
         }
     }
 }
@@ -262,7 +268,7 @@ impl Template {
     /// Create template configuration.
     #[inline]
     #[must_use]
-    pub const fn new(templates_dir: RelativePath) -> Self {
+    pub const fn new(templates_dir: RelativeDirPath) -> Self {
         Self {
             templates_dir,
         }
@@ -274,9 +280,13 @@ impl Template {
     /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
     /// empty, or contains parent directory traversal.
     #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+    pub fn try_new(path: &std::path::Path) -> Result<Self, ConfigError> {
+        let s = path.to_str().ok_or_else(|| ConfigError::ValidationFailed {
+            field: "templates_dir".into(),
+            message: "Non-UTF-8 path".into(),
+        })?;
         Ok(Self {
-            templates_dir: RelativePath::try_from(path).map_err(|e| {
+            templates_dir: RelativeDirPath::try_new(s).map_err(|e| {
                 ConfigError::ValidationFailed {
                     field: "templates_dir".into(),
                     message: e.to_string().into(),
@@ -288,7 +298,7 @@ impl Template {
     /// Return the templates directory.
     #[inline]
     #[must_use]
-    pub const fn templates_dir(&self) -> &RelativePath {
+    pub const fn templates_dir(&self) -> &RelativeDirPath {
         &self.templates_dir
     }
 }
@@ -301,14 +311,19 @@ impl Template {
 #[non_exhaustive]
 pub struct Cache {
     /// Directory containing cache files.
-    pub cache_dir: RelativePath,
+    pub cache_dir: RelativeDirPath,
 }
 
 impl Default for Cache {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Default directory literal is guaranteed valid"
+    )]
     fn default() -> Self {
         Self {
-            cache_dir: default_relative_path(".cache"),
+            cache_dir: RelativeDirPath::try_new(".cache")
+                .expect("default path literal must be valid"),
         }
     }
 }
@@ -317,7 +332,7 @@ impl Cache {
     /// Create cache configuration.
     #[inline]
     #[must_use]
-    pub const fn new(cache_dir: RelativePath) -> Self {
+    pub const fn new(cache_dir: RelativeDirPath) -> Self {
         Self {
             cache_dir,
         }
@@ -329,9 +344,13 @@ impl Cache {
     /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
     /// empty, or contains parent directory traversal.
     #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+    pub fn try_new(path: &std::path::Path) -> Result<Self, ConfigError> {
+        let s = path.to_str().ok_or_else(|| ConfigError::ValidationFailed {
+            field: "cache_dir".into(),
+            message: "Non-UTF-8 path".into(),
+        })?;
         Ok(Self {
-            cache_dir: RelativePath::try_from(path).map_err(|e| {
+            cache_dir: RelativeDirPath::try_new(s).map_err(|e| {
                 ConfigError::ValidationFailed {
                     field: "cache_dir".into(),
                     message: e.to_string().into(),
@@ -343,7 +362,7 @@ impl Cache {
     /// Return the cache directory.
     #[inline]
     #[must_use]
-    pub const fn cache_dir(&self) -> &RelativePath {
+    pub const fn cache_dir(&self) -> &RelativeDirPath {
         &self.cache_dir
     }
 }
@@ -352,7 +371,7 @@ impl ArchivedCache {
     /// Return the cache directory.
     #[inline]
     #[must_use]
-    pub const fn cache_dir(&self) -> &rkyv::Archived<RelativePath> {
+    pub const fn cache_dir(&self) -> &rkyv::Archived<RelativeDirPath> {
         &self.cache_dir
     }
 }
@@ -593,12 +612,10 @@ impl SchemaConfigSpec {
 #[cfg(test)]
 mod tests {
     mod fixtures {
-        use std::path::PathBuf;
-
         use super::super::{PropertyBank, Schema};
 
         pub fn sample_schema() -> Schema {
-            Schema::try_new(PathBuf::from("schemas"))
+            Schema::try_new(std::path::Path::new("schemas"))
                 .expect("valid dir for fixture")
         }
 
@@ -642,8 +659,7 @@ mod tests {
         /// Priority: P0.
         #[test]
         fn schema_rejects_empty_paths() {
-            let schemas_dir =
-                RelativePath::try_from(std::path::PathBuf::from(""));
+            let schemas_dir = RelativeDirPath::try_new("");
             let file_name = FileName::try_from(std::path::Path::new(""));
             assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");

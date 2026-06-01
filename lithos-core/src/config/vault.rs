@@ -521,8 +521,6 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
     /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
     #[inline]
     fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
-        use std::path::PathBuf;
-
         use super::{
             error::ConfigError,
             paths::{Cache, PropertyBank, Schema, Template},
@@ -534,7 +532,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Cache::try_new(PathBuf::from(s)).map_err(|e| {
+                Cache::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "cache_dir".into(),
                         message: format!("invalid cache_dir: {e}").into(),
@@ -549,7 +547,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                Template::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "templates_dir".into(),
                         message: format!("invalid templates_dir: {e}").into(),
@@ -564,7 +562,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                Schema::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "schemas_dir".into(),
                         message: format!("invalid schemas_dir: {e}").into(),
@@ -851,8 +849,8 @@ mod tests {
         #[test]
         fn cache_dir_rejects_empty() {
             // GIVEN: empty cache_dir
-            use crate::fs::RelativePath;
-            let result = RelativePath::try_from(PathBuf::from(""));
+            use crate::fs::path::RelativeDirPath;
+            let result = RelativeDirPath::try_new("");
 
             // THEN: validation fails for cache_dir
             assert!(
@@ -878,18 +876,16 @@ mod tests {
     }
 
     mod validation {
-        use super::*;
-        use crate::fs::RelativePath;
-
         #[test]
         fn templates_dir_rejects_absolute() {
             // GIVEN: invalid template dir (absolute)
-            let result = RelativePath::try_from(PathBuf::from("/abs"));
+            use crate::fs::path::RelativeDirPath;
+            let result = RelativeDirPath::try_new("/abs");
 
             // THEN: it fails
             assert!(
                 result.is_err(),
-                "RelativePath should reject absolute paths"
+                "RelativeDirPath should reject absolute paths"
             );
         }
     }
