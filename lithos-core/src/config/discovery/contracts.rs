@@ -92,6 +92,19 @@ pub(crate) struct ConfigDiscoveryResult {
     pub(crate) warnings: Vec<DiscoveryWarning>,
 }
 
+/// Result of selecting a single candidate from multiple discovered formats.
+#[allow(
+    dead_code,
+    reason = "Phase-2 contracts are defined before full pipeline integration"
+)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ConfigSelectionResult {
+    /// The selected candidate.
+    pub(crate) candidate: DiscoveredConfigFile,
+    /// Any warning generated during selection.
+    pub(crate) warning: Option<DiscoveryWarning>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -221,6 +234,25 @@ mod tests {
 
             assert!(result.global.is_some());
             assert!(result.local.is_some());
+        }
+
+        #[test]
+        fn returns_candidate_when_constructing_config_selection_result() {
+            let candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::ConfigDirectoryFile,
+                ),
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/.lithos/config.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+
+            let result = ConfigSelectionResult {
+                candidate,
+                warning: None,
+            };
+
+            assert!(result.warning.is_none());
         }
     }
 
