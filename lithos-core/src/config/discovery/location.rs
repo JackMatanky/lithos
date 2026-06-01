@@ -15,7 +15,7 @@ use crate::fs::format::StructuredFileFormat;
     dead_code,
     reason = "Phase-1 contracts are defined before full pipeline integration"
 )]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GlobalConfigLocation {
     /// Explicit path from `--config`.
     ExplicitOverride(PathBuf),
@@ -81,7 +81,7 @@ impl LocalConfigLocation {
     dead_code,
     reason = "Phase-1 contracts are defined before full pipeline integration"
 )]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ConfigLocation {
     Global(GlobalConfigLocation),
     Local(LocalConfigLocation),
@@ -90,6 +90,39 @@ pub(crate) enum ConfigLocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod validation {
+        use super::*;
+
+        #[test]
+        fn returns_true_when_comparing_equal_explicit_override_locations() {
+            let first = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
+                "/tmp/lithos.toml",
+            ));
+            let second = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
+                "/tmp/lithos.toml",
+            ));
+            assert_eq!(first, second);
+        }
+
+        #[test]
+        fn returns_true_when_comparing_equal_environment_override_locations() {
+            let first = GlobalConfigLocation::EnvironmentOverride(
+                PathBuf::from("/env/lithos.toml"),
+            );
+            let second = GlobalConfigLocation::EnvironmentOverride(
+                PathBuf::from("/env/lithos.toml"),
+            );
+            assert_eq!(first, second);
+        }
+
+        #[test]
+        fn returns_local_config_location_when_wrapping_local_variant() {
+            let wrapped =
+                ConfigLocation::Local(LocalConfigLocation::ConfigDirectoryFile);
+            assert!(matches!(wrapped, ConfigLocation::Local(_)));
+        }
+    }
 
     mod lookup {
         use super::*;
@@ -122,6 +155,14 @@ mod tests {
                 StructuredFileFormat::Yaml,
             );
             assert_eq!(got, PathBuf::from("/vault/.lithos/config.yaml"));
+        }
+
+        #[test]
+        fn returns_hidden_root_config_file_path_when_location_is_hidden_root_and_format_is_yml()
+         {
+            let got = LocalConfigLocation::HiddenRootConfigFile
+                .candidate_path(Path::new("/vault"), StructuredFileFormat::Yml);
+            assert_eq!(got, PathBuf::from("/vault/.lithos.yml"));
         }
     }
 }

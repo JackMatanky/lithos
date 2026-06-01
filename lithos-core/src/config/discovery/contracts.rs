@@ -133,6 +133,34 @@ mod tests {
             };
             assert!(matches!(warning, DiscoveryWarning::CaseCorrection { .. }));
         }
+
+        #[test]
+        fn returns_format_ambiguity_variant_when_constructing_format_ambiguity_warning()
+         {
+            let warning = DiscoveryWarning::FormatAmbiguity {
+                base: PathBuf::from("/vault/.lithos"),
+                candidates: vec![
+                    PathBuf::from("/vault/.lithos/config.toml"),
+                    PathBuf::from("/vault/.lithos/config.json"),
+                ],
+            };
+            assert!(matches!(
+                warning,
+                DiscoveryWarning::FormatAmbiguity { .. }
+            ));
+        }
+
+        #[test]
+        fn returns_local_ambiguity_variant_when_constructing_local_ambiguity_warning()
+         {
+            let warning = DiscoveryWarning::LocalAmbiguity {
+                candidates: vec![
+                    PathBuf::from("/vault/lithos.toml"),
+                    PathBuf::from("/vault/.lithos/config.toml"),
+                ],
+            };
+            assert!(matches!(warning, DiscoveryWarning::LocalAmbiguity { .. }));
+        }
     }
 
     mod constructor {
@@ -161,6 +189,38 @@ mod tests {
                 }],
             };
             assert_eq!(result.warnings.len(), 1);
+        }
+
+        #[test]
+        fn returns_global_and_local_when_constructing_config_discovery_result_with_discovered_files()
+         {
+            let global = DiscoveredConfigFile {
+                location: ConfigLocation::Global(
+                    GlobalConfigLocation::EnvironmentOverride(PathBuf::from(
+                        "/env/lithos.toml",
+                    )),
+                ),
+                base: PathBuf::from("/env"),
+                path: PathBuf::from("/env/lithos.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+            let local = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::ConfigDirectoryFile,
+                ),
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/.lithos/config.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+
+            let result = ConfigDiscoveryResult {
+                global: Some(global),
+                local: Some(local),
+                warnings: Vec::new(),
+            };
+
+            assert!(result.global.is_some());
+            assert!(result.local.is_some());
         }
     }
 
