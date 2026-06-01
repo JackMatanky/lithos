@@ -19,21 +19,21 @@ pub(crate) fn find_local_config_candidates(
     root: &Path,
     location: LocalConfigLocation,
 ) -> io::Result<Vec<DiscoveredConfigFile>> {
-    let mut candidates = Vec::new();
-
-    for format in StructuredFileFormat::PRECEDENCE {
-        let path = location.candidate_path(root, format);
-        if path.exists() {
-            candidates.push(DiscoveredConfigFile {
+    StructuredFileFormat::PRECEDENCE
+        .into_iter()
+        .filter_map(|format| {
+            let path = location.candidate_path(root, format);
+            path.exists().then_some((format, path))
+        })
+        .map(|(format, path)| {
+            path.canonicalize().map(|canonical| DiscoveredConfigFile {
                 location: ConfigLocation::Local(location),
                 base: root.to_path_buf(),
-                path: path.canonicalize()?,
+                path: canonical,
                 format,
-            });
-        }
-    }
-
-    Ok(candidates)
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
