@@ -46,6 +46,7 @@
 mod codec;
 mod core;
 mod error;
+mod event_store;
 mod events;
 mod path;
 mod read;
@@ -64,12 +65,13 @@ pub use error::{DbError, DbErrorKind};
     unused_imports,
     reason = "Re-exported for internal consumers landing in subsequent slices"
 )]
-pub(crate) use events::{EventId, EventIdAllocator, EventIdError};
-pub use read::ReadTx;
+pub(crate) use event_store::{EventStore, RedbEventStore};
 #[expect(
     unused_imports,
     reason = "Re-exported for internal consumers landing in subsequent slices"
 )]
+pub(crate) use events::{EventId, EventIdAllocator, EventIdError};
+pub use read::ReadTx;
 pub(crate) use table::EventTable;
 pub use table::{
     PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
