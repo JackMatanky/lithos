@@ -5,7 +5,7 @@
 
 #![expect(
     clippy::module_name_repetitions,
-    reason = "RelativePath and AbsolutePath are canonical names"
+    reason = "RelativePath is a canonical name"
 )]
 
 use std::path::{Component, Path, PathBuf};
@@ -1233,124 +1233,6 @@ impl std::fmt::Display for RelativePath {
     }
 }
 
-/// A validated absolute path.
-///
-/// This type ensures that paths are fully resolved and absolute on the
-/// filesystem.
-///
-/// # Invariants
-///
-/// - Must be an absolute path.
-/// - Must not be empty.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct AbsolutePath(
-    /// Internal path storage.
-    #[rkyv(with = AsString)]
-    PathBuf,
-);
-
-impl AbsolutePath {
-    /// Return the inner path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-
-    /// Returns the underlying path as a UTF-8 string slice if it is valid
-    /// UTF-8.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.to_str()
-    }
-
-    /// Returns the filename component of this path if it exists.
-    #[inline]
-    #[must_use]
-    pub fn filename(&self) -> Option<FileName> {
-        self.try_filename().ok().flatten()
-    }
-
-    /// Returns the filename component of this path if it exists.
-    ///
-    /// # Errors
-    /// Returns an error when a filename exists but cannot be represented as
-    /// valid UTF-8.
-    #[inline]
-    pub fn try_filename(&self) -> Result<Option<FileName>, super::PathError> {
-        match self.0.file_name() {
-            Some(_) => FileName::try_from(self.0.as_path()).map(Some),
-            None => Ok(None),
-        }
-    }
-
-    fn validate(path: &Path) -> Result<(), super::PathError> {
-        if path.as_os_str().is_empty() {
-            return Err(super::PathError::Empty);
-        }
-        if !path.is_absolute() {
-            return Err(super::PathError::NotAbsolute(path.to_path_buf()));
-        }
-        Ok(())
-    }
-}
-
-impl TryFrom<PathBuf> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Self::try_from(path.as_path())
-    }
-}
-
-impl TryFrom<&Path> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        Self::validate(path)?;
-        Ok(Self(path.to_path_buf()))
-    }
-}
-
-impl TryFrom<&str> for AbsolutePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_from(Path::new(value))
-    }
-}
-
-impl AsRef<Path> for AbsolutePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
-impl ArchivedAbsolutePath {
-    /// Return the inner path as a standard library [`Path`].
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        Path::new(self.0.as_str())
-    }
-}
-
-impl std::fmt::Display for AbsolutePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1739,84 +1621,6 @@ mod tests {
                         .expect("valid file path should construct");
                 assert_eq!(dir.as_str(), "schemas/cache");
                 assert_eq!(file.as_str(), "schemas/property_bank.json");
-            }
-        }
-    }
-
-    mod absolute {
-        use super::*;
-
-        mod validation {
-            use super::*;
-
-            #[test]
-            fn rejects_empty_path() {
-                let result = AbsolutePath::try_from(PathBuf::from(""));
-                assert!(result.is_err(), "expected error for empty path");
-            }
-
-            #[test]
-            fn rejects_relative_path() {
-                let result = AbsolutePath::try_from(PathBuf::from("rel"));
-                assert!(result.is_err(), "expected error for relative path");
-            }
-
-            #[test]
-            fn accepts_valid_absolute_path() {
-                let result = AbsolutePath::try_from(PathBuf::from("/a/b/c"));
-                assert!(result.is_ok(), "expected valid absolute path");
-            }
-        }
-
-        mod accessors {
-            use super::*;
-
-            #[test]
-            fn returns_filename_when_present() {
-                let path =
-                    AbsolutePath::try_from(PathBuf::from("/a/b/file.txt"))
-                        .expect("path should be valid");
-                let filename = path.filename().expect("filename should exist");
-                assert_eq!(filename.as_str(), "file.txt");
-            }
-
-            #[test]
-            fn returns_filename_from_try_filename_when_present() {
-                let path =
-                    AbsolutePath::try_from(PathBuf::from("/a/b/file.txt"))
-                        .expect("path should be valid");
-                let filename = path
-                    .try_filename()
-                    .expect("try_filename should succeed")
-                    .expect("filename should exist");
-                assert_eq!(filename.as_str(), "file.txt");
-            }
-
-            #[cfg(unix)]
-            #[test]
-            fn returns_invalid_data_when_try_filename_is_non_utf8() {
-                use std::os::unix::ffi::OsStringExt as _;
-
-                let path = PathBuf::from("/tmp")
-                    .join(std::ffi::OsString::from_vec(vec![0x66, 0x6f, 0x80]));
-
-                let absolute =
-                    AbsolutePath::try_from(path).expect("path should be valid");
-                let error = absolute
-                    .try_filename()
-                    .expect_err("expected invalid utf-8 filename error");
-                assert!(matches!(error, crate::fs::PathError::InvalidUtf8(_)));
-            }
-        }
-
-        mod conversions {
-            use super::*;
-
-            #[test]
-            fn accepts_try_from_str_when_valid_absolute() {
-                let path = AbsolutePath::try_from("/a/b/file.txt")
-                    .expect("string path should convert");
-                assert_eq!(path.as_path(), Path::new("/a/b/file.txt"));
             }
         }
     }
