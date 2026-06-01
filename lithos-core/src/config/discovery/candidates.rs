@@ -75,12 +75,11 @@ pub(crate) fn select_config_candidate(
 
     // Consume the remaining candidates to build the warning without redundant
     // clones
-    let base = candidate.base.clone();
     let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
     paths.push(candidate.path.clone());
 
     let warning = DiscoveryWarning::FormatAmbiguity {
-        base,
+        base: candidate.base.clone(),
         candidates: paths,
     };
 
