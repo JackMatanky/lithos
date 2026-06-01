@@ -2,9 +2,9 @@
 title: "Issue 10: Document three-tier path taxonomy (ADR + doc comments)"
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-06-01
-date_completed: null
+date_completed: 2026-06-01
 ---
 
 # Issue 10: Document three-tier path taxonomy
@@ -84,11 +84,11 @@ Update module-level doc comments in:
 
 ## Acceptance criteria
 
-- [ ] `docs/adr/020-three-tier-path-taxonomy.md` exists with context, decision, taxonomy table, and conversion seams
-- [ ] `lithos-core/src/fs/path.rs` module doc explains the taxonomy and type choice guidance with clarity and precision
-- [ ] `lithos-core/src/config/paths.rs` module doc mentions declarative path types
-- [ ] `lithos-core/src/fs/CONTEXT.md` updated with taxonomy reference without mentioning NormalizedPath removal
-- [ ] All doc comments pass `cargo doc` without warnings
+- [x] `docs/adr/020-three-tier-path-taxonomy.md` exists with context, decision, taxonomy table, and conversion seams
+- [x] `lithos-core/src/fs/path.rs` module doc explains the taxonomy and type choice guidance with clarity and precision
+- [x] `lithos-core/src/config/paths.rs` module doc mentions declarative path types
+- [x] `lithos-core/src/fs/CONTEXT.md` updated with taxonomy reference without mentioning NormalizedPath removal
+- [x] All doc comments pass `cargo doc` without warnings
 
 ### Blocked by
 

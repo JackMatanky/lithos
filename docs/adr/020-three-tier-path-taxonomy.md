@@ -4,18 +4,22 @@ status: accepted
 date_proposed: 2026-06-01
 date_decided: 2026-06-01
 date_implemented: 2026-06-01
-stakeholders: [Architecture Team]
+stakeholders: [Core Team]
 ---
 
 # ADR 020: Three-Tier Path Taxonomy
 
 ## Context
-The project has evolved its path handling logic to resolve ambiguity between filesystem operations, storage representation, and user-facing configuration. Previously, `RelativePath` (struct) and `NormalizedPath` served multiple roles, leading to confusion and potential security risks regarding path scoping and normalization.
+
+Path handling across the application has historically been a source of ambiguity and fragility. The existence of `NormalizedPath` alongside multiple platform-specific and logical path types led to confusion regarding which type should be used at different architectural boundaries. Specifically, there was a migration from the `RelativePath` struct to a `RelativePath` enum, and configuration types were tightened to `RelativeDirPath` and `RelativeFilePath`. At the same time, `PathKey` was established as the sole repository boundary type, replacing the overly generic `NormalizedPath`.
+
+Without a clear taxonomy, developers often face type confusion or unnecessary path conversions across the filesystem I/O boundary, the display/configuration boundary, and the persistent storage boundary. We need a definitive, documented structure mapping path types to these specific domain contexts to ensure type safety and explicit conversions.
 
 ## Decision
-We have formalized a three-tier path taxonomy that distinguishes between Filesystem I/O, Display/Configuration, and Storage Keys.
 
-### Taxonomy Reference
+We will adopt a formal Three-Tier Path Taxonomy that groups our path types into three distinct domains with clear boundary rules and conversion seams.
+
+### Three-Tier Path Taxonomy
 
 | Tier | Types | Where | Example |
 |------|-------|-------|---------|
@@ -24,6 +28,8 @@ We have formalized a three-tier path taxonomy that distinguishes between Filesys
 | **Storage Keys** | `PathKey` | Repository traits, DB tables | `fn find_file_view_by_path(&PathKey)` |
 
 ### Conversion Seams
+
+To prevent ambiguous casts, conversions between these tiers are explicit and typically fallible where system boundaries are crossed:
 
 | Source → Target | Method | Fallible? |
 |----------------|--------|-----------|
@@ -35,34 +41,31 @@ We have formalized a three-tier path taxonomy that distinguishes between Filesys
 
 ## Alternatives Considered
 
-### Alternative 1: Unified Path Type
-- **Pros**: Fewer types for developers to learn.
-- **Cons**: Failed to enforce boundary security at the type level; normalization was inconsistent across platform boundaries.
+### Alternative 1: Single Universal Path Type
+- **Pros**: Reduces the number of types; simpler to pass a single type around.
+- **Cons**: Conflates concerns (I/O, presentation, storage). Fails to leverage the compiler to enforce correctness (e.g., trying to write to a declarative, platform-agnostic config path). A universal type usually acts like a string, leading to "stringly-typed" architecture flaws.
 
-### Alternative 2: Structural Subtyping (Traits)
-- **Pros**: Flexible polymorphism.
-- **Cons**: Increased generic complexity; lacked the strict validation guarantees provided by concrete newtypes like `PathKey` and `DirPath`.
+### Alternative 2: Maintaining NormalizedPath
+- **Pros**: Minimal refactoring required, relies on existing patterns.
+- **Cons**: `NormalizedPath` was ambiguous. It was unclear if it was an on-disk relative path, an abstract key, or a display path. Removing it forces correct boundary mapping.
 
 ## Technical Validation
 
 ### Research Findings
-- The three-tier system mirrors successful patterns in large-scale asset pipelines where declarative paths are separated from resolved FS handles.
-- Security audits of the previous `NormalizedPath` showed potential for confusion between storage keys and relative FS paths.
+- Using distinct, zero-cost types for different domains pushes path resolution errors to the boundaries (e.g., during config load or DB read) rather than deep within core logic.
 
 ### Benchmarks & Prototypes
-- Prototyped in `lithos-core::fs` showing that the compiler now catches incorrect path usage at repository boundaries.
+- The migration to `PathKey` and the `RelativePath` enum has been verified through architectural unit tests, confirming that these tight boundaries prevent cross-domain path leakage.
 
 ## Consequences
 
 - **Positive**:
-    - Type-level enforcement of path purpose.
-    - Clear boundaries for where filesystem validation occurs.
-    - Simplified auditing of security-critical path scoping.
-    - Consistent storage format (`PathKey`).
+  - The type system strictly enforces correct usage of paths; developers rely on compiler errors and the taxonomy table rather than debugging runtime CI failures.
+  - Clarity on where paths map to external representations (JSON configs vs. SQLite keys vs. OS File descriptors).
 - **Negative**:
-    - Increased type count in `lithos-core::fs`.
-    - Explicit conversions required at context boundaries.
+  - Higher cognitive load initially to learn the distinct types and the specific methods required to convert between them.
+- **Risks**:
+  - Misuse of `as_key()` or `as_relative()` with the wrong base directory can still lead to logical bugs, even though the type signatures align.
 
 ## References
 - [Issue 10: Document three-tier path taxonomy](.scratch/pathkey-migration/10-three-tier-path-taxonomy-documentation.md)
-- [ADR 019: PathKey as Repository Boundary Type](019-pathkey-repository-boundary-type.md)

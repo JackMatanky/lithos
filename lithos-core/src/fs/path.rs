@@ -6,28 +6,32 @@
 //!
 //! # Path Taxonomy
 //!
-//! | Tier | Types | Purpose | Validation |
-//! |------|-------|---------|------------|
-//! | **Filesystem I/O** | [`FsPath`], [`FilePath`], [`DirPath`] | Rooted, platform-native paths for direct I/O. | Exist on disk, scoped to vault. |
-//! | **Display / Config** | [`RelativePath`], [`RelativeDirPath`], [`RelativeFilePath`] | Declarative, platform-agnostic paths for config. | Lexical validation, no I/O. |
-//! | **Storage Keys** | [`PathKey`] | Normalized, forward-slash keys for DB storage. | Forward-slash only, UTF-8. |
+//! | Tier | Types | Where | Example |
+//! |------|-------|-------|---------|
+//! | **Filesystem I/O** | [`FsPath`], [`FilePath`], [`DirPath`] | Scanner, reader, writer, vault processor | `DirPath::append_file(&rel_file)` |
+//! | **Display / Config** | [`RelativePath`] enum, `Relative*Path` | CLI display, config values, serialization | `RelativeDirPath::try_new("schemas")` |
+//! | **Storage Keys** | [`PathKey`] | Repository traits, DB tables | `fn find_file_view_by_path(&PathKey)` |
 //!
 //! # Type Choice Guidance
 //!
 //! - **Use FS I/O types** when performing actual filesystem operations (read,
 //!   write, metadata).
 //! - **Use Display/Config types** for values coming from configuration files,
-//!   CLI arguments, or when sending paths to a UI.
+//!   CLI arguments, or when sending paths to a UI. The [`RelativePath`] enum
+//!   specifically is intended for display and serialization — it is NOT for
+//!   filesystem I/O, and NOT for storage keys.
 //! - **Use Storage Keys** for database indices, serialized metadata, or
 //!   cross-platform identifiers.
 //!
 //! # Conversion Seams
 //!
-//! | Source → Target | Method | Description |
-//! |----------------|--------|-------------|
-//! | Config → FS path | [`DirPath::append_dir(&RelativeDirPath)`] | Resolves a declarative path against a rooted dir. |
-//! | FS path → Key | [`FsPath::as_key(root)`] | Normalizes a rooted path into a storage key. |
-//! | FS path → Display | [`FsPath::as_relative(base)`] | Converts a rooted path back to a relative view. |
+//! | Source → Target | Method | Fallible? |
+//! |----------------|--------|-----------|
+//! | Config value → FS path | [`DirPath::append_dir(&RelativeDirPath)`][DirPath::append_dir] | Yes |
+//! | Config value → FS path | [`DirPath::append_file(&RelativeFilePath)`][DirPath::append_file] | Yes |
+//! | FS path → Storage key | `file_path.as_key(root)` / `dir_path.as_key(root)` | Yes |
+//! | FS path → Display | `file_path.as_relative(base) → RelativePath::File(...)` | Yes |
+//! | FS path → Display | `dir_path.as_relative(base) → RelativePath::Dir(...)` | Yes |
 //!
 //! # Examples
 //!

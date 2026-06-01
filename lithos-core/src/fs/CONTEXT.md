@@ -24,6 +24,7 @@ The path system follows a three-tier taxonomy:
 3. **Storage Keys**: [`PathKey`] (normalized, forward-slash).
 Use [`PathKey`] for database keys and serialized path storage.
 Use [`FsPath`], [`DirPath`], and [`FilePath`] for filesystem operations.
+Use [`RelativePath`] strictly for display presentation and serialization across boundaries, not for storage keys or disk access.
 _Avoid_: platform-specific path, absolute storage key
 
 ## Invariants
