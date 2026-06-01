@@ -29,6 +29,10 @@ _Avoid_: raw config, partial config
 A context-facing config contract that exposes only the values needed by a specific downstream context.
 _Avoid_: raw settings map, generic config blob
 
+**Declarative Paths**:
+Configuration values use declarative relative paths ([`RelativeDirPath`], [`RelativeFilePath`][RelativeFilePath]) which represent intended locations without requiring they exist on disk at configuration time.
+_Avoid_: FS-validated path, storage key in config
+
 ## Invariants
 
 - The precedence chain is deterministic: Environment Config < Local (Vault) Config.

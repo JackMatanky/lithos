@@ -18,6 +18,10 @@ _Avoid_: best-effort check, loose validation
 
 **Normalized Path**:
 A vault-relative path normalized to forward slashes for cross-platform storage keys.
+The path system follows a three-tier taxonomy:
+1. **Filesystem I/O**: [`FsPath`], [`DirPath`], [`FilePath`] (rooted, validated).
+2. **Display/Config**: [`RelativePath`] (enum), [`RelativeDirPath`], [`RelativeFilePath`] (declarative).
+3. **Storage Keys**: [`PathKey`] (normalized, forward-slash).
 Use [`PathKey`] for database keys and serialized path storage.
 Use [`FsPath`], [`DirPath`], and [`FilePath`] for filesystem operations.
 _Avoid_: platform-specific path, absolute storage key
