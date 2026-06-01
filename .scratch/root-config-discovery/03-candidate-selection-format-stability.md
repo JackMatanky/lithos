@@ -2,7 +2,7 @@
 title: 03-candidate-selection-format-stability
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-06-01
 ---
 
@@ -27,12 +27,12 @@ This slice defines the winner-selection seam for multiple candidates at the same
 
 ## Acceptance criteria
 
-- [ ] `select_config_candidate(candidates, persisted_format)` exists and returns `None` for empty input.
-- [ ] When one candidate exists, that candidate is selected.
-- [ ] When multiple candidates exist and `persisted_format` matches an existing candidate, the matching format is selected regardless of precedence rank.
-- [ ] When multiple candidates exist and no persisted match exists, strict precedence selects `toml > json > yaml > yml`.
-- [ ] Selection emits typed warnings for multi-format ambiguity.
-- [ ] Unit tests cover all selection branches, including stability and precedence fallback.
+- [x] `select_config_candidate(candidates, persisted_format)` exists and returns `None` for empty input.
+- [x] When one candidate exists, that candidate is selected.
+- [x] When multiple candidates exist and `persisted_format` matches an existing candidate, the matching format is selected regardless of precedence rank.
+- [x] When multiple candidates exist and no persisted match exists, strict precedence selects `toml > json > yaml > yml`.
+- [x] Selection emits typed warnings for multi-format ambiguity.
+- [x] Unit tests cover all selection branches, including stability and precedence fallback.
 
 ## Agent Brief
 
@@ -56,10 +56,10 @@ persisted format when available, otherwise strict precedence.
 - `DiscoveryWarning::MultipleFormats` emission on ambiguity
 
 **Acceptance criteria:**
-- [ ] Empty, single, persisted-match, and precedence-fallback branches are
+- [x] Empty, single, persisted-match, and precedence-fallback branches are
       all covered by tests.
-- [ ] No panics/unwraps in production path; failures are typed outcomes.
-- [ ] Warning emission is deterministic and test-assertable.
+- [x] No panics/unwraps in production path; failures are typed outcomes.
+- [x] Warning emission is deterministic and test-assertable.
 
 **Out of scope:**
 - Filesystem existence checks
@@ -69,3 +69,13 @@ persisted format when available, otherwise strict precedence.
 ## Blocked by
 
 - `.scratch/root-config-discovery/02-local-candidate-generation.md`
+
+## Implementation Notes
+
+- Implemented `ConfigSelectionResult` and `DiscoveryWarning::FormatAmbiguity` in `contracts.rs`.
+- Implemented `select_config_candidate` with O(1) extraction and zero-waste path ownership transfer in `candidates.rs`.
+- Refactored unit tests to replace `unwrap()` with descriptive `expect()` calls for better diagnostic context.
+- Improved module and item documentation with expanded examples and selection strategy details.
+- Verified all 1463 tests pass via `mise run test:unit`.
+- Selection logic implements a two-tier strategy: exact `persisted_format` match (stability) takes priority over `rank()` (precedence).
+- Uses `swap_remove` and `into_iter` to transfer ownership without cloning for warning generation.

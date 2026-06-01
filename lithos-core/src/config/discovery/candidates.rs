@@ -1,16 +1,30 @@
-//! Local config candidate discovery.
+//! Local config candidate discovery and deterministic selection.
+//!
+//! This module provides tools for finding existing configuration files across
+//! supported formats and selecting a single winner based on precedence and
+//! format stability rules.
 
 use std::{io, path::Path};
 
 use super::{
-    contracts::DiscoveredConfigFile,
+    contracts::{
+        ConfigSelectionResult, DiscoveredConfigFile, DiscoveryWarning,
+    },
     location::{ConfigLocation, LocalConfigLocation},
 };
 use crate::fs::format::StructuredFileFormat;
 
-/// Finds all existing local config candidates for a location.
+/// Finds all existing local config candidates for a logical location.
 ///
-/// Enumerates candidates by iterating through structured format precedence.
+/// This function probes the filesystem for all supported structured formats
+/// at the specified [`LocalConfigLocation`]. It returns a list of all files
+/// that exist, ordered by the precedence defined in
+/// [`StructuredFileFormat::PRECEDENCE`].
+///
+/// # Errors
+///
+/// Returns [`io::Result`] if path canonicalization fails for any discovered
+/// file.
 #[allow(
     dead_code,
     reason = "Phase-2 seam introduced before full pipeline integration"
@@ -34,6 +48,86 @@ pub(crate) fn find_local_config_candidates(
             })
         })
         .collect()
+}
+
+/// Selects a single config candidate using precedence and format-stability.
+///
+/// This is a deterministic decision function that chooses the final candidate
+/// from a list of discovered files.
+///
+/// ### Selection Strategy
+///
+/// 1. **Stability**: If `persisted_format` is provided and a candidate with
+///    that exact format exists, it is selected regardless of precedence rank.
+/// 2. **Precedence**: If no persisted match exists, the candidate with the
+///    highest precedence rank (defined by [`StructuredFileFormat::rank`]) is
+///    selected.
+///
+/// ### Ambiguity Handling
+///
+/// If multiple candidates are present, a [`DiscoveryWarning::FormatAmbiguity`]
+/// is generated and emitted via `tracing::warn!`, even if a successful
+/// selection is made. This warning is also returned inside the
+/// [`ConfigSelectionResult`] for deterministic testing and CLI reporting.
+///
+/// # Examples
+///
+/// ```ignore
+/// let result = select_config_candidate(candidates, Some(StructuredFileFormat::Json));
+/// if let Some(selection) = result {
+///     assert_eq!(selection.candidate.format, StructuredFileFormat::Json);
+/// }
+/// ```
+#[allow(
+    dead_code,
+    reason = "Phase-2 seam introduced before full pipeline integration"
+)]
+pub(crate) fn select_config_candidate(
+    mut candidates: Vec<DiscoveredConfigFile>,
+    persisted_format: Option<StructuredFileFormat>,
+) -> Option<ConfigSelectionResult> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if candidates.len() == 1 {
+        return candidates.pop().map(|candidate| ConfigSelectionResult {
+            candidate,
+            warning: None,
+        });
+    }
+
+    let selected_idx = persisted_format
+        .and_then(|fmt| candidates.iter().position(|c| c.format == fmt))
+        .unwrap_or_else(|| {
+            candidates
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, c)| c.format.rank())
+                .map_or(0, |(idx, _)| idx)
+        });
+
+    let candidate = candidates.swap_remove(selected_idx);
+
+    // Consume the remaining candidates to build the warning without redundant
+    // clones
+    let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
+    paths.push(candidate.path.clone());
+
+    let warning = DiscoveryWarning::FormatAmbiguity {
+        base: candidate.base.clone(),
+        candidates: paths,
+    };
+
+    tracing::warn!(
+        ?warning,
+        "Multiple configuration formats discovered for the same location."
+    );
+
+    Some(ConfigSelectionResult {
+        candidate,
+        warning: Some(warning),
+    })
 }
 
 #[cfg(test)]
@@ -175,6 +269,119 @@ mod tests {
                 got.first().unwrap().path,
                 config_path.canonicalize().unwrap()
             );
+        }
+    }
+
+    mod selection {
+        use std::path::PathBuf;
+
+        use super::*;
+
+        #[test]
+        fn returns_none_when_candidates_are_empty() {
+            let got = select_config_candidate(vec![], None);
+            assert!(got.is_none());
+        }
+
+        #[test]
+        fn returns_candidate_when_single_candidate_exists() {
+            let candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/lithos.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+
+            let got = select_config_candidate(vec![candidate], None)
+                .expect("expected a candidate to be selected");
+
+            assert_eq!(got.warning, None);
+            assert_eq!(got.candidate.format, StructuredFileFormat::Toml);
+        }
+
+        #[test]
+        fn returns_persisted_match_with_warning_when_multiple_candidates_exist()
+        {
+            let base = PathBuf::from("/vault");
+            let toml_candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: base.clone(),
+                path: base.join("lithos.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+            let json_candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: base.clone(),
+                path: base.join("lithos.json"),
+                format: StructuredFileFormat::Json,
+            };
+
+            // json is lower precedence than toml, but we pass json as persisted
+            let got = select_config_candidate(
+                vec![toml_candidate, json_candidate],
+                Some(StructuredFileFormat::Json),
+            )
+            .expect("expected a candidate to be selected");
+
+            assert_eq!(got.candidate.format, StructuredFileFormat::Json);
+            assert_eq!(got.candidate.path, base.join("lithos.json"));
+
+            let expected_warning = DiscoveryWarning::FormatAmbiguity {
+                base,
+                candidates: vec![
+                    PathBuf::from("/vault/lithos.toml"),
+                    PathBuf::from("/vault/lithos.json"),
+                ],
+            };
+            assert_eq!(got.warning, Some(expected_warning));
+        }
+
+        #[test]
+        fn returns_highest_precedence_with_warning_when_no_persisted_match_exists()
+         {
+            let base = PathBuf::from("/vault");
+            let yaml_candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: base.clone(),
+                path: base.join("lithos.yaml"),
+                format: StructuredFileFormat::Yaml,
+            };
+            let json_candidate = DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: base.clone(),
+                path: base.join("lithos.json"),
+                format: StructuredFileFormat::Json,
+            };
+
+            // yaml has rank 2, json has rank 1. So json wins. No persisted
+            // match (or matches neither).
+            let got = select_config_candidate(
+                vec![yaml_candidate, json_candidate],
+                Some(StructuredFileFormat::Toml),
+            )
+            .expect("expected a candidate to be selected");
+
+            assert_eq!(got.candidate.format, StructuredFileFormat::Json);
+            assert_eq!(got.candidate.path, base.join("lithos.json"));
+
+            let expected_warning = DiscoveryWarning::FormatAmbiguity {
+                base,
+                candidates: vec![
+                    PathBuf::from("/vault/lithos.yaml"),
+                    PathBuf::from("/vault/lithos.json"),
+                ],
+            };
+            assert_eq!(got.warning, Some(expected_warning));
         }
     }
 }
