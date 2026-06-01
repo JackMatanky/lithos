@@ -67,12 +67,16 @@ Update module-level doc comments in:
 **Key Task:** Update all architectural and module documentation to reflect this taxonomy and provide a clear conversion reference for developers.
 
 ## TDD PLAN
-1. **ADR Creation**: Generate `docs/adr/020-three-tier-path-taxonomy.md` using the taxonomy and conversion tables provided in the issue. Use `docs/adr/template.md`.
+1. **ADR Creation**: Generate `docs/adr/020-three-tier-path-taxonomy.md` using the taxonomy and conversion tables provided in the issue.
+    - **CRITICAL**: Must use `docs/adr/template.md`.
+    - Provide thorough detail in the Context, Decision, and Consequences sections.
 2. **Module Doc Updates**:
-    - `lithos-core/src/fs/path.rs`: Module-level docs with taxonomy table and conversion reference. Improve existing doc comments for clarity and precision.
+    - `lithos-core/src/fs/path.rs`: Review and improve existing module-level docs. Add the taxonomy table and conversion reference for greater clarity and precision.
     - `lithos-core/src/config/paths.rs`: Module-level docs mentioning declarative path types.
 3. **Context Alignment**:
-    - `lithos-core/src/fs/CONTEXT.md`: Update "Normalized Path" language entry to reference the taxonomy and clarify roles. Do NOT mention removal of `NormalizedPath`.
+    - `lithos-core/src/fs/CONTEXT.md`: Update "Normalized Path" language entry to reference the taxonomy and clarify roles.
+    - **CRITICAL**: Do NOT mention removal of `NormalizedPath`.
+    - **CRITICAL**: Only update `fs/CONTEXT.md`. Do NOT update `config/CONTEXT.md`.
 4. **Verification**:
     - `cargo doc --no-deps` to ensure no documentation warnings or broken links.
     - `cargo test --doc` to verify code examples.
@@ -81,10 +85,9 @@ Update module-level doc comments in:
 ## Acceptance criteria
 
 - [ ] `docs/adr/020-three-tier-path-taxonomy.md` exists with context, decision, taxonomy table, and conversion seams
-- [ ] `lithos-core/src/fs/path.rs` module doc explains the taxonomy and type choice guidance
+- [ ] `lithos-core/src/fs/path.rs` module doc explains the taxonomy and type choice guidance with clarity and precision
 - [ ] `lithos-core/src/config/paths.rs` module doc mentions declarative path types
-- [ ] `lithos-core/src/fs/CONTEXT.md` updated with taxonomy reference
-- [ ] `lithos-core/src/config/CONTEXT.md` updated with declarative path types note
+- [ ] `lithos-core/src/fs/CONTEXT.md` updated with taxonomy reference without mentioning NormalizedPath removal
 - [ ] All doc comments pass `cargo doc` without warnings
 
 ### Blocked by
