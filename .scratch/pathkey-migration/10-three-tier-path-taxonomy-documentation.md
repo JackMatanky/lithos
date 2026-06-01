@@ -55,7 +55,30 @@ Update module-level doc comments in:
 - **`lithos-core/src/fs/CONTEXT.md`**: Update "Normalized Path" language entry to reference the taxonomy and clarify the role of `RelativePath` enum.
 - **`lithos-core/src/config/CONTEXT.md`**: Add note about config using `RelativeDirPath`/`RelativeFilePath` for declarative path values.
 
-### Acceptance criteria
+## AGENT-BRIEF
+**Category:** enhancement
+**Summary:** Document the three-tier path taxonomy (FS I/O, Display/Config, Storage Keys).
+
+**Context:** The codebase has moved away from `NormalizedPath` towards a clearer three-tier system:
+1. **Filesystem I/O**: `FsPath`, `FilePath`, `DirPath` (rooted, exist on disk)
+2. **Display / Config**: `RelativePath`, `Relative*Path` (declarative, platform-agnostic)
+3. **Storage Keys**: `PathKey` (normalized, forward-slash, DB-ready)
+
+**Key Task:** Update all architectural and module documentation to reflect this taxonomy and provide a clear conversion reference for developers.
+
+## TDD PLAN
+1. **ADR Creation**: Generate `docs/adr/020-three-tier-path-taxonomy.md` using the taxonomy and conversion tables provided in the issue. Use `docs/adr/template.md`.
+2. **Module Doc Updates**:
+    - `lithos-core/src/fs/path.rs`: Module-level docs with taxonomy table and conversion reference. Improve existing doc comments for clarity and precision.
+    - `lithos-core/src/config/paths.rs`: Module-level docs mentioning declarative path types.
+3. **Context Alignment**:
+    - `lithos-core/src/fs/CONTEXT.md`: Update "Normalized Path" language entry to reference the taxonomy and clarify roles. Do NOT mention removal of `NormalizedPath`.
+4. **Verification**:
+    - `cargo doc --no-deps` to ensure no documentation warnings or broken links.
+    - `cargo test --doc` to verify code examples.
+    - `mise run test:unit` for sanity check.
+
+## Acceptance criteria
 
 - [ ] `docs/adr/020-three-tier-path-taxonomy.md` exists with context, decision, taxonomy table, and conversion seams
 - [ ] `lithos-core/src/fs/path.rs` module doc explains the taxonomy and type choice guidance
