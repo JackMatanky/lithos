@@ -4,6 +4,8 @@ use std::num::NonZeroU64;
 
 use thiserror::Error;
 
+use crate::db::{ArchivedEntity, DbError};
+
 #[allow(dead_code, reason = "Foundation type used in upcoming slices")]
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// Canonical event-log identifier.
@@ -239,6 +241,22 @@ impl EventIdAllocator {
     }
 }
 
+#[allow(dead_code, reason = "Contract consumed by upcoming repository slices")]
+/// Infrastructure contract for append/load/compact event-log behavior.
+pub(crate) trait EventStore<E>
+where
+    E: ArchivedEntity,
+{
+    /// Append an event atomically and return the allocated event id.
+    fn append(&self, event: &E) -> Result<EventId, DbError>;
+
+    /// Load all events in deterministic ascending [`EventId`] order.
+    fn load_all_events(&self) -> Result<Vec<(EventId, E)>, DbError>;
+
+    /// Compact all events with id strictly less than `cutoff`.
+    fn compact_before(&self, cutoff: EventId) -> Result<u64, DbError>;
+}
+
 #[cfg(test)]
 mod tests {
     use redb::{Key, Value};
@@ -442,6 +460,73 @@ mod tests {
 
                 assert!(matches!(result, Err(EventIdError::Overflow)));
             }
+        }
+    }
+
+    mod event_store_contract {
+        use rkyv::{Archive, Deserialize, Serialize};
+
+        use super::*;
+
+        #[derive(
+            Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq,
+        )]
+        #[rkyv(derive(Debug, PartialEq, Eq))]
+        struct TestEvent {
+            name: String,
+        }
+
+        struct FixtureStore;
+
+        impl EventStore<TestEvent> for FixtureStore {
+            fn append(&self, _event: &TestEvent) -> Result<EventId, DbError> {
+                Ok(EventId::MIN)
+            }
+
+            fn load_all_events(
+                &self,
+            ) -> Result<Vec<(EventId, TestEvent)>, DbError> {
+                Ok(vec![(EventId::MIN, TestEvent {
+                    name: "fixture".to_owned(),
+                })])
+            }
+
+            fn compact_before(&self, _cutoff: EventId) -> Result<u64, DbError> {
+                Ok(0)
+            }
+        }
+
+        #[test]
+        fn accepts_archived_entity_payload_type() {
+            let store = FixtureStore;
+            let event = TestEvent {
+                name: "append".to_owned(),
+            };
+
+            let appended = store.append(&event).expect("append");
+
+            assert_eq!(appended.get(), 1);
+        }
+
+        #[test]
+        fn returns_events_in_event_id_pairs_for_load_all_events() {
+            let store = FixtureStore;
+
+            let loaded = store.load_all_events().expect("load all");
+
+            assert_eq!(loaded.len(), 1);
+            let (id, payload) = loaded.first().expect("one fixture event");
+            assert_eq!(id.get(), 1);
+            assert_eq!(payload.name, "fixture");
+        }
+
+        #[test]
+        fn returns_u64_count_for_compact_before() {
+            let store = FixtureStore;
+
+            let removed = store.compact_before(EventId::MIN).expect("compact");
+
+            assert_eq!(removed, 0);
         }
     }
 }
