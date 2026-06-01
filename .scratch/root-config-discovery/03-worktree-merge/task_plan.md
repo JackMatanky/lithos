@@ -25,21 +25,21 @@ Merge the completed work from `.worktrees/03-candidate-selection-format-stabilit
 - **Status:** `complete`
 
 ### Phase 3: Execution
-- [ ] Stage and commit planning artifacts.
-- [ ] Execute merge (likely a `git merge` or `git rebase` into a temporary branch first).
-- [ ] Resolve conflicts manually if they arise.
-- **Status:** `pending`
+- [x] Stage and commit planning artifacts.
+- [x] Execute merge (likely a `git merge` or `git rebase` into a temporary branch first).
+- [x] Resolve conflicts manually if they arise.
+- **Status:** `complete`
 
 ### Phase 4: Validation
-- [ ] Run full test suite (`mise run test`).
-- [ ] Run quality gates (`mise run quality`).
-- [ ] Verify specific functionality of `select_config_candidate`.
-- **Status:** `pending`
+- [x] Run full test suite (`mise run test`).
+- [x] Run quality gates (`mise run quality`).
+- [x] Verify specific functionality of `select_config_candidate`.
+- **Status:** `complete`
 
 ### Phase 5: Finalization
-- [ ] Commit merged state.
+- [x] Commit merged state.
 - [ ] Cleanup worktree (optional, based on instructions).
-- **Status:** `pending`
+- **Status:** `in_progress`
 
 ## Decisions
 | Decision | Rationale |
