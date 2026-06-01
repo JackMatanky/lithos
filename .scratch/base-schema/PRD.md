@@ -24,7 +24,7 @@ This Phase 1 PRD focuses on introducing the missing intermediate layer: **BaseSc
 Introduce **BaseSchema** as a persisted intermediate domain type representing a **self-contained, file-local schema**:
 
 - Resolved `PropertyMap` (all `$ref` entries expanded to domain `Property` types)
-- Validated schema name, extends reference (name-based), and excludes list
+- Validated schema name plus extends/excludes collections (name-based)
 - No cross-schema dependencies resolved (inheritance not applied)
 
 Implement **BaseSchemaProcessor** using the proven typestate pattern from `property_bank_processor`:
@@ -71,30 +71,28 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 ### Core Types
 
 **BaseSchema Domain Type**
-- Location: `lithos-core/src/schema/base_schema.rs` (new file)
+- Location: `lithos-core/src/schema/base.rs` (new file)
 - Fields:
   - `id: SchemaId` (explicit identity, avoids key/payload ambiguity)
   - `name: SchemaName` (validated)
   - `properties: PropertyMap` (fully expanded, domain `Property` types)
-  - `extends: Vec<SchemaName>` (name-based, not ID-based)
-    - Uses `Vec` to align with final `Schema.parents: Vec<SchemaId>` capability
-    - Raw parsing currently only supports `Option<SchemaName>`; BaseSchema paves the way for multiple inheritance
-  - `excludes: Vec<PropertyName>`
+  - `extends: Box<[SchemaName]>` (name-based, not ID-based)
+    - Uses boxed slices for compact immutable storage while aligning with final `Schema.parents: Vec<SchemaId>` capability
+    - Phase 0 migrates raw/snapshot extends to `Vec<SchemaName>`; BaseSchema stores an immutable boxed view of that list
+  - `excludes: Box<[PropertyName]>`
 - Persistence: per-ID table via repository adapter
 - Archived with `rkyv` for efficient serialization
 
 **ExtendsDelta Type**
 - Location: `lithos-core/src/schema/delta.rs` (extend existing module)
-- Enum variants designed for multiple inheritance support:
-  - `Unchanged`
-  - `Added(SchemaName)`
-  - `Removed(SchemaName)`
-  - `Rewired { from: SchemaName, to: SchemaName }`
-- Note: Can operate on individual parents within the `Vec<SchemaName>`; batch operations handled by applying multiple deltas
+- Shape designed for multiple inheritance support:
+  - `ExtendsDelta { added: Box<[SchemaName]>, removed: Box<[SchemaName]> }`
+  - `is_empty()` denotes unchanged state
+- Supports single-parent and multi-parent updates uniformly
 - Name-based (not ID-based) to keep BaseSchemaProcessor file-local
 
 **BaseSchemaChange Handoff Envelope**
-- Location: `lithos-core/src/schema/base_schema_processor.rs` (export from processor module)
+- Location: `lithos-core/src/schema/base_processor.rs` (export from processor module)
 - Enum variants:
   - `Fresh { schema_id: SchemaId }` (unchanged, Phase 2 can fetch if needed)
   - `New { schema_id: SchemaId, base_schema: BaseSchema }` (newly created)
@@ -105,10 +103,11 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 
 ### BaseSchemaProcessor Architecture
 
-**Typestate Pipeline** (mirrors `property_bank_processor` exactly)
-- Stages: `Discovery`, `Comparison`, `Parsed`, `Analysis`, `Refresh`, `Construction`, `Completed`
+**Typestate Pipeline** (mirrors current `property_bank_processor` architecture)
+- Stages: `Init`, `Comparison`, `Parsed`, `Analysis`, `Refresh`, `Construction`, `Completed`
 - Statuses: `Unknown`, `Missing`, `Present`, `Suspect`, `Stale`, `ParsedStale`, `StaleTimestamps`, `StaleContent`, `StaleReferences`, `New`, `Changed`, `Fresh`, `FreshReady`, `NewReady`, `StaleReady`
-- Location: `lithos-core/src/schema/base_schema_processor.rs` (new file, ~800-1000 lines)
+- Entry API follows `Init::from_discovery(...).run(...)` style from `property_bank_processor`
+- Location: `lithos-core/src/schema/base_processor.rs` (new file, ~800-1000 lines)
 
 **StaleReferences Handling**
 - **Underlying mechanism**: `SchemaVersion.bank_references: HashMap<PropertyName, PropertyName>`
@@ -133,9 +132,9 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 - Otherwise always incremental
 
 **Terminal Outputs**
-- `FreshReady { base_schema }` → `.into_base_schema()`
-- `NewReady { base_schema }` → `.into_base_schema()`
-- `StaleReady { base_schema, property_delta, excludes_delta, extends_delta }` → `.into_base_schema_with_changes()`
+- `FreshReady { base_schema }` → `.into_base()`
+- `NewReady { base_schema }` → `.into_base()`
+- `StaleReady { base_schema, property_delta, excludes_delta, extends_delta }` → `.into_base_with_changes()`
 - All deltas carried explicitly (no `Option` for sparse representation)
 
 ### Repository Adapter Changes
@@ -163,7 +162,7 @@ The `BaseSchemaChange` enum serves as the contract between BaseSchemaProcessor (
 - Deterministic emission order (sorted by `SchemaId`)
 - Complete coverage (every schema in source produces exactly one event)
 - Semantic normalization (metadata-only changes emit `Fresh`, not `Stale`)
-- Explicit deltas in `Stale` variant (all three deltas always present, using Unchanged/Empty variants)
+- Explicit deltas in `Stale` variant (all three deltas always present, using empty deltas to denote no-op)
 
 **Phase 2 expectations:**
 - `Fresh` schemas: fetch from repository if needed for inheritance graph
@@ -190,14 +189,14 @@ Avoid:
 
 ### Unit/Component Tests (Colocated)
 
-**Location**: `#[cfg(test)] mod tests` inside `base_schema_processor.rs`
+**Location**: `#[cfg(test)] mod tests` inside `base_processor.rs`
 
 **Scope**: typestate transitions, delta classification, staleness detection
 
 **Doubles**: `InMemoryRepository` (default), custom fakes only for error injection
 
 **Coverage**:
-- Each stage → status branch (e.g., `Discovery → Missing`, `Discovery → Present`)
+- Entry branches via `Init::run(...)` (`view == None` for missing path, `view == Some(...)` for present path)
 - `StaleReferences` cross-cases (`Fresh + StaleReferences`, `StaleTimestamps + StaleReferences`, `Stale + StaleReferences`)
 - Incremental re-expand with `PropertyId` preservation
 - Full rebuild fallback triggers (corruption, incoherent delta, ref conflict)
@@ -208,11 +207,11 @@ Avoid:
 
 ### Integration Tests
 
-**Location**: `lithos-core/tests/base_schema_processor.rs`
+**Location**: `lithos-core/tests/base_processor.rs`
 
 **Scope**: end-to-end with real `FileReader`, repository adapter, fixture files
 
-**Prior art**: `lithos-core/tests/property_bank_processor.rs` (replicate pattern)
+**Prior art**: `lithos-core/src/schema/property_bank_processor.rs` module tests (current source of truth)
 
 **Fixtures**: in-file or `lithos-core/tests/common/`
 
@@ -241,27 +240,27 @@ Avoid:
 
 ### New Files
 
-1. **`lithos-core/src/schema/base_schema.rs`** (~150 lines)
+1. **`lithos-core/src/schema/base.rs`** (~150 lines)
    - `BaseSchema` struct + accessors
    - Persistence trait implementations (`Archive`, `Serialize`, `Deserialize`)
 
-2. **`lithos-core/src/schema/base_schema_processor.rs`** (~800-1000 lines)
-   - Typestate stages + statuses (mirror `property_bank_processor`)
-   - Branch enums (`ComparisonBranch`, `TimestampBranch`, `ContentBranch`, `AnalysisBranch`)
+2. **`lithos-core/src/schema/base_processor.rs`** (~800-1000 lines)
+   - Typestate stages + statuses (mirror current `property_bank_processor`)
+   - Entry + branch orchestration (`Init::run`, `TimestampBranch`, `ContentBranch`, `AnalysisBranch`)
    - `BaseSchemaChange` handoff envelope
-   - Terminal `.into_base_schema()` / `.into_base_schema_with_changes()` APIs
+   - Terminal `.into_base()` / `.into_base_with_changes()` APIs
 
-3. **`lithos-core/tests/base_schema_processor.rs`** (~200-300 lines)
+3. **`lithos-core/tests/base_processor.rs`** (~200-300 lines)
    - Integration tests mirroring `property_bank_processor` flow
    - Fixture setup in common/
 
 ### Modified Files
 
 1. **`lithos-core/src/schema/delta.rs`** (~40 lines added)
-   - Add `ExtendsDelta` enum (ExcludesDelta already exists in this module)
+   - Add `ExtendsDelta` aggregate delta type (ExcludesDelta already exists in this module)
 
 2. **`lithos-core/src/schema/mod.rs`** (~10 lines)
-   - Export `base_schema`, `base_schema_processor`
+   - Export `base`, `base_processor`
 
 3. **`lithos-core/src/schema/repository.rs`** (~40 lines)
    - Add `save_base_schema`, `get_base_schema`, `find_base_schemas_by_ids`, `delete_base_schema` to trait
@@ -283,7 +282,7 @@ Avoid:
 
 ### Typestate Transition Tests (~15 tests)
 
-- **Discovery branches**:
+- **Init/run branches**:
   - Missing view → parsed new path
   - Present view → comparison path
 

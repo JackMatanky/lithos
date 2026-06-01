@@ -1118,13 +1118,27 @@ pub enum ConfigLocation {
 /// Concrete configuration file selected or discovered during config discovery.
 ///
 /// - `location`: Why was this path searched?
+/// - `base`: In which directory was the file found?
 /// - `path`: Which file was found?
 /// - `format`: How should it be parsed?
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfigDiscoveryResult {
+pub struct DiscoveredConfigFile {
     pub location: ConfigLocation,
+    pub base: PathBuf,
     pub path: PathBuf,
     pub format: StructuredFileFormat,
+}
+
+/// Outcome of the config discovery pipeline
+///
+/// - `global`: the selected Environment Config file (if any)
+/// - `local`: the selected local (vault) config file (if any)
+/// - `warnings`: any ambiguity or diagnostic warnings
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigDiscoveryResult {
+    pub global: Option<DiscoveredConfigFile>,
+    pub local: Option<DiscoveredConfigFile>,
+    pub warnings: Vec<DiscoveryWarning>,
 }
 
 // NEW: Config-specific views (NOT using vault FileView)
@@ -1187,12 +1201,12 @@ This is a **load-bearing architectural constraint** necessary to sever global co
 pub fn find_local_config_candidates(
     root: &Path,
     location: LocalConfigLocation,
-) -> Vec<ConfigDiscoveryResult> {
+) -> Vec<DiscoveredConfigFile> {
     StructuredFileFormat::PRECEDENCE
         .into_iter()
         .filter_map(|format| {
             let path = location.candidate_path(root, format);
-            path.exists().then(|| ConfigDiscoveryResult {
+            path.exists().then(|| DiscoveredConfigFile {
                 location: ConfigLocation::Local(location),
                 path,
                 format,
@@ -1203,9 +1217,9 @@ pub fn find_local_config_candidates(
 
 /// Selects the final config file when multiple formats exist.
 pub fn select_config_candidate(
-    mut candidates: Vec<ConfigDiscoveryResult>,
+    mut candidates: Vec<DiscoveredConfigFile>,
     persisted_format: Option<StructuredFileFormat>,
-) -> Option<ConfigDiscoveryResult> {
+) -> Option<DiscoveredConfigFile> {
     match candidates.len() {
         0 => None,
         1 => candidates.pop(),
