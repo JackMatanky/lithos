@@ -31,3 +31,87 @@ This slice must enforce:
 
 - `.scratch/event-sourcing-foundation/01-eventid-core-type-and-redb-contract.md`
 - `.scratch/event-sourcing-foundation/02-eventtable-wrapper-and-typed-table-integration.md`
+
+## Approved clarifications
+
+- Contract shape is infrastructure-only (`db` context) and generic over a typed
+  event payload requiring `ArchivedEntity`; no domain event enums inside the
+  shared contract.
+- Append returns the allocated `EventId` from the same write transaction that
+  persists the event record.
+- Allocation source is per-context sequence state (for example, one sequence key
+  per repository stream/table namespace), not a global cross-context allocator
+  table.
+- Deterministic loading requires explicit ascending `EventId` iteration and
+  tests that fail if insertion order differs from load order.
+- **Compaction semantic for this slice:** prefix compaction by cutoff
+  (`compact_through` / `compact_before`) that removes old events up to a bound,
+  never rewrites surviving `EventId` values, never reuses historical IDs, and
+  never moves sequence state backward.
+- Slice scope is strictly contract + infrastructure + tests only (no consumer
+  migrations in this issue).
+- Outbox/event-bus dispatch and cross-context fan-out are out of scope.
+
+## Agent Brief
+
+**Category:** enhancement
+**Summary:** Define a shared EventStore append/load/compact contract with
+transactional append semantics and per-context sequence isolation.
+
+**Current behavior:**
+`EventId` and `EventTable<V>` primitives exist, but there is no shared
+EventStore contract for repository adapters. Existing repositories implement
+context-specific write/read behavior with atomic transactions, but event-log
+append/load semantics are not standardized across contexts.
+
+**Desired behavior:**
+Repository adapters can implement one shared infrastructure contract that
+guarantees append allocates the next `EventId` and persists the event in the
+same transaction. Event loads are deterministic (ascending `EventId`), and
+sequence state remains owned by each context repository with no global
+cross-context sequence ownership.
+
+**Key interfaces:**
+- Shared EventStore trait(s) in infrastructure (`db`) with append/load/compact
+  operations and typed error surfaces.
+- Append operation contract that returns allocated `EventId` and enforces
+  atomic allocate+persist behavior.
+- Per-context sequence-state representation and repository-owned persistence
+  for cursor/max-event tracking.
+- Deterministic load operation contract (ascending `EventId`) with explicit
+  ordering guarantees.
+
+**Acceptance criteria:**
+- [ ] Shared append/load/compact contract is defined and consumable by context
+      repositories without leaking domain semantics into `db`.
+- [ ] Append allocate+persist behavior is atomic inside a single write
+      transaction and returns the committed `EventId`.
+- [ ] `load_all_events` (or equivalent load API) returns deterministic ascending
+      `EventId` order and is covered by tests.
+- [ ] Sequence state ownership remains per-context; no global sequence table is
+      introduced under `db/` for cross-context allocation.
+- [ ] Tests verify per-context sequence isolation (context A allocation does not
+      advance context B).
+- [ ] Failure-path tests prove no partial append state is visible when append
+      fails after allocation attempt.
+
+**Out of scope:**
+- Cross-context/global event bus semantics.
+- Event replay projections and subscriber dispatch.
+- Migrating existing context repositories to event-sourced storage in this
+  slice.
+
+## Approved TDD plan
+
+Follow RED -> GREEN vertical slices and unit-test standards in
+`docs/engineering/testing/unit.md` and
+`docs/engineering/testing/unit-naming.md`.
+
+1. Add contract-level tests for append atomicity (allocate+persist in one
+   transaction; failure rolls back both).
+2. Add deterministic load-order tests (ascending `EventId`, independent from
+   insertion sequence artifacts).
+3. Add per-context isolation tests (independent sequence cursors/namespaces).
+4. Add compact behavior tests for prefix compaction invariants and non-reuse of
+   historical IDs.
+5. Implement minimum infrastructure code to satisfy each test slice in order.
