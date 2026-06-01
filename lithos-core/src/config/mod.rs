@@ -45,7 +45,7 @@
 //! let config = builder.load()?;
 //!
 //! // 3. Use the validated configuration
-//! assert!(config.paths().cache.cache_dir().as_path().is_relative());
+//! assert!(!config.paths().cache.cache_dir().as_str().is_empty());
 //! # Ok(())
 //! # }
 //! ```

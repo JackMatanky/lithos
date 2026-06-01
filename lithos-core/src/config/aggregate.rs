@@ -235,19 +235,15 @@ impl Config {
         // Promote these ValidationFailed mappings into a dedicated
         // config-spec projection error type that can be translated across
         // context boundaries without string-based adaptation.
-        let schema_directory = RelativeDirPath::try_new(
-            self.paths
-                .schema
-                .schemas_dir()
-                .as_path()
-                .to_string_lossy()
-                .as_ref(),
-        )
-        .map_err(|error| ConfigError::ValidationFailed {
-            field: "paths.schema.schemas_dir".into(),
-            message: format!("invalid schema directory declaration: {error}")
-                .into(),
-        })?;
+        let schema_directory =
+            RelativeDirPath::try_new(self.paths.schema.schemas_dir().as_str())
+                .map_err(|error| ConfigError::ValidationFailed {
+                    field: "paths.schema.schemas_dir".into(),
+                    message: format!(
+                        "invalid schema directory declaration: {error}"
+                    )
+                    .into(),
+                })?;
         let property_bank_file = RelativeFilePath::try_new(
             self.paths.property_bank_path().to_string_lossy().as_ref(),
         )
@@ -540,10 +536,7 @@ mod tests {
                 Version::initial(),
             )
             .unwrap();
-            assert_eq!(
-                config.paths().schema.schemas_dir().as_path(),
-                std::path::Path::new("schemas")
-            );
+            assert_eq!(config.paths().schema.schemas_dir().as_str(), "schemas");
         }
 
         #[test]
@@ -572,18 +565,15 @@ mod tests {
         #[test]
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
-            assert_eq!(
-                config.paths().cache.cache_dir().as_path(),
-                std::path::Path::new(".cache")
-            );
+            assert_eq!(config.paths().cache.cache_dir().as_str(), ".cache");
         }
 
         #[test]
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.paths().template.templates_dir().as_path(),
-                std::path::Path::new("templates")
+                config.paths().template.templates_dir().as_str(),
+                "templates"
             );
         }
 
@@ -591,8 +581,8 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.paths().template.templates_dir().as_path(),
-                std::path::Path::new("custom_templates")
+                merged.paths().template.templates_dir().as_str(),
+                "custom_templates"
             );
         }
     }
@@ -631,10 +621,7 @@ mod tests {
                 Version::initial(),
             )
             .unwrap();
-            assert_eq!(
-                config.paths().schema.schemas_dir().as_path(),
-                std::path::Path::new("schemas")
-            );
+            assert_eq!(config.paths().schema.schemas_dir().as_str(), "schemas");
             assert_eq!(
                 config.paths().property_bank.as_str(),
                 "property_bank.json"
@@ -662,12 +649,12 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.paths().schema.schemas_dir().as_path(),
-                std::path::Path::new("my-schemas")
+                config.paths().schema.schemas_dir().as_str(),
+                "my-schemas"
             );
             assert_eq!(
-                config.paths().cache.cache_dir().as_path(),
-                std::path::Path::new(".lithos-cache")
+                config.paths().cache.cache_dir().as_str(),
+                ".lithos-cache"
             );
         }
     }

@@ -70,7 +70,10 @@ pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
 pub use name::{
     BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef,
 };
-pub use path::{DirPath, FilePath, FsPath, FsPathRef, PathKey, RelativePath};
+pub use path::{
+    DirPath, FilePath, FsPath, FsPathRef, PathKey, RelativeDirPath,
+    RelativeFilePath, RelativePath,
+};
 pub use reader::FileReader;
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;

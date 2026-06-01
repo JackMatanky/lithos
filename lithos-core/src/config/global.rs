@@ -78,7 +78,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                Template::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "templates_dir".into(),
                         message: format!("invalid templates_dir: {e}").into(),
@@ -93,7 +93,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                Schema::try_new(std::path::Path::new(s)).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: "schemas_dir".into(),
                         message: format!("invalid schemas_dir: {e}").into(),
