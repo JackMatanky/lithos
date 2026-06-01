@@ -266,10 +266,6 @@ pub enum PathValidationError {
     #[error("Path is empty")]
     EmptyPath,
 
-    /// The path is absolute, which is not allowed for vault paths.
-    #[error("Vault path must be relative, got: {0}")]
-    AbsolutePathError(PathBuf),
-
     /// The path contains traversal components (e.g., `..`).
     #[error("Path traversal detected in vault path")]
     PathTraversalError,

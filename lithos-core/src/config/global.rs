@@ -9,7 +9,10 @@
     reason = "rkyv generates exhaustive archived types"
 )]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -21,7 +24,7 @@ use super::{
     raw::RawTrustedVaults,
     task::Task,
 };
-use crate::fs::AbsolutePath;
+use crate::fs::DirPath;
 
 /// Global-level paths configuration (without cache).
 ///
@@ -416,17 +419,19 @@ impl TrustedVaultMap {
 
 /// A validated path to a trusted vault (absolute).
 ///
-/// This is a wrapper around [`AbsolutePath`] that provides a domain-specific
-/// name for trusted vault paths.
+/// This type validates that the path is non-empty and absolute. It performs
+/// only syntactic validation — no filesystem I/O. Use [`to_dir_path`] to
+/// convert to a filesystem-backed [`DirPath`].
 ///
 /// # Invariants
 ///
-/// - Must be an absolute path on the filesystem.
+/// - Must be an absolute path string.
 /// - Must not be empty.
 ///
 /// # Errors
 ///
-/// Returns [`ConfigError::ValidationFailed`] if the provided path is relative.
+/// Returns [`ConfigError::ValidationFailed`] if the provided path is empty
+/// or relative.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -434,7 +439,7 @@ impl TrustedVaultMap {
 #[non_exhaustive]
 pub struct TrustedVaultPath(
     /// Internal path storage.
-    AbsolutePath,
+    Box<str>,
 );
 
 impl TrustedVaultPath {
@@ -443,21 +448,57 @@ impl TrustedVaultPath {
     ///
     /// # Errors
     /// Returns [`ConfigError`] if the path is not absolute or is empty.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "public API takes PathBuf for ownership ergonomics"
+    )]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        let path = AbsolutePath::try_from(path).map_err(|e| {
-            ConfigError::ValidationFailed {
+        if path.as_os_str().is_empty() {
+            return Err(ConfigError::ValidationFailed {
                 field: "trusted_vault_path".into(),
-                message: e.to_string().into(),
-            }
-        })?;
-        Ok(Self(path))
+                message: "trusted vault path cannot be empty".into(),
+            });
+        }
+        if !path.is_absolute() {
+            return Err(ConfigError::ValidationFailed {
+                field: "trusted_vault_path".into(),
+                message: format!(
+                    "trusted vault path must be absolute: {}",
+                    path.display()
+                )
+                .into(),
+            });
+        }
+        Ok(Self(path.to_string_lossy().into_owned().into_boxed_str()))
     }
 
     #[inline]
     #[must_use]
-    /// Return the inner path.
-    pub fn as_path(&self) -> &std::path::Path {
-        self.0.as_path()
+    /// Return the inner path as a [`Path`] reference.
+    pub fn as_path(&self) -> &Path {
+        Path::new(&*self.0)
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the inner path as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[inline]
+    /// Convert to [`DirPath`] for filesystem operations.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] if the path does not refer to an existing
+    /// directory.
+    pub fn to_dir_path(&self) -> Result<DirPath, ConfigError> {
+        DirPath::try_new(PathBuf::from(self.0.as_ref())).map_err(|e| {
+            ConfigError::ValidationFailed {
+                field: "trusted_vault_path".into(),
+                message: format!("invalid vault directory path: {e}").into(),
+            }
+        })
     }
 }
 
@@ -473,7 +514,7 @@ impl TryFrom<String> for TrustedVaultPath {
 impl From<TrustedVaultPath> for String {
     #[inline]
     fn from(path: TrustedVaultPath) -> Self {
-        path.0.as_path().to_string_lossy().into_owned()
+        String::from(path.0)
     }
 }
 
@@ -603,6 +644,22 @@ mod tests {
             let result =
                 TrustedVaultPath::try_new(PathBuf::from(path)).unwrap();
             assert_eq!(result.as_path().to_string_lossy(), path);
+        }
+
+        #[test]
+        fn trusted_vault_path_to_dir_path_fails_for_nonexistent() {
+            let path = if cfg!(windows) {
+                "C:\\_lithos_test_nonexistent"
+            } else {
+                "/_lithos_test_nonexistent_dir_2026"
+            };
+            let tvp = TrustedVaultPath::try_new(PathBuf::from(path))
+                .expect("syntactic validation should pass");
+            let result = tvp.to_dir_path();
+            assert!(
+                result.is_err(),
+                "to_dir_path should fail for nonexistent dir"
+            );
         }
     }
 
