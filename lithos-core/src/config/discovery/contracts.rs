@@ -30,22 +30,22 @@ pub(crate) enum VaultRootResolution {
 }
 
 /// Typed representation of one discovered config file.
-///
-/// `base` carries the directory context used for relative path interpretation
-/// in downstream config processing.
 #[allow(
     dead_code,
     reason = "Phase-1 contracts are defined before full pipeline integration"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DiscoveredConfigFile {
-    /// Source location classification.
+    /// Source location classification (e.g. `SystemConfig`,
+    /// `HiddenRootConfigFile`).
     pub(crate) location: ConfigLocation,
-    /// Base directory used for diagnostics/resolution context.
+    /// Base directory used for interpreting relative paths in the config file.
+    ///
+    /// For local vault configs, this is the vault root.
     pub(crate) base: PathBuf,
-    /// Discovered config file path.
+    /// Absolute canonicalized path to the discovered config file.
     pub(crate) path: PathBuf,
-    /// Parsed structured format.
+    /// The detected or assumed structured format of the file.
     pub(crate) format: StructuredFileFormat,
 }
 
@@ -59,18 +59,26 @@ pub(crate) struct DiscoveredConfigFile {
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum DiscoveryWarning {
-    /// Multiple local candidates were present.
+    /// Multiple local candidates were present at different priority tiers
+    /// (e.g. both `.lithos/lithos.toml` and `lithos.toml`).
     LocalAmbiguity {
+        /// All found candidates in search order.
         candidates: Vec<PathBuf>,
     },
-    /// Multiple formats were present for one logical location.
+    /// Multiple formats were present for one logical location
+    /// (e.g. both `lithos.toml` and `lithos.json`).
     FormatAmbiguity {
+        /// The common base directory where the ambiguity was found.
         base: PathBuf,
+        /// All existing format variants found.
         candidates: Vec<PathBuf>,
     },
-    /// Path casing was corrected during discovery.
+    /// Path casing was corrected during discovery on case-insensitive
+    /// filesystems.
     CaseCorrection {
+        /// The path as requested or derived from convention.
         requested: PathBuf,
+        /// The actual correctly-cased path found on disk.
         resolved: PathBuf,
     },
 }
@@ -84,24 +92,27 @@ pub(crate) enum DiscoveryWarning {
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConfigDiscoveryResult {
-    /// Selected global config candidate.
+    /// Selected global environment config candidate, if any.
     pub(crate) global: Option<DiscoveredConfigFile>,
-    /// Selected local (vault) config candidate.
+    /// Selected local vault config candidate, if any.
     pub(crate) local: Option<DiscoveredConfigFile>,
-    /// Non-fatal diagnostics collected during discovery.
+    /// Non-fatal diagnostics collected during the discovery process.
     pub(crate) warnings: Vec<DiscoveryWarning>,
 }
 
 /// Result of selecting a single candidate from multiple discovered formats.
+///
+/// Provides a strongly-typed outcome of the deterministic selection logic,
+/// carrying both the winner and any ambiguity warning generated.
 #[allow(
     dead_code,
     reason = "Phase-2 contracts are defined before full pipeline integration"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConfigSelectionResult {
-    /// The selected candidate.
+    /// The final selected config candidate.
     pub(crate) candidate: DiscoveredConfigFile,
-    /// Any warning generated during selection.
+    /// A structured warning if multiple formats were available.
     pub(crate) warning: Option<DiscoveryWarning>,
 }
 

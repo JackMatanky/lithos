@@ -1,4 +1,8 @@
-//! Local config candidate discovery.
+//! Local config candidate discovery and deterministic selection.
+//!
+//! This module provides tools for finding existing configuration files across
+//! supported formats and selecting a single winner based on precedence and
+//! format stability rules.
 
 use std::{io, path::Path};
 
@@ -10,9 +14,17 @@ use super::{
 };
 use crate::fs::format::StructuredFileFormat;
 
-/// Finds all existing local config candidates for a location.
+/// Finds all existing local config candidates for a logical location.
 ///
-/// Enumerates candidates by iterating through structured format precedence.
+/// This function probes the filesystem for all supported structured formats
+/// at the specified [`LocalConfigLocation`]. It returns a list of all files
+/// that exist, ordered by the precedence defined in
+/// [`StructuredFileFormat::PRECEDENCE`].
+///
+/// # Errors
+///
+/// Returns [`io::Result`] if path canonicalization fails for any discovered
+/// file.
 #[allow(
     dead_code,
     reason = "Phase-2 seam introduced before full pipeline integration"
@@ -38,10 +50,34 @@ pub(crate) fn find_local_config_candidates(
         .collect()
 }
 
-/// Selects a single config candidate with format precedence and stability.
+/// Selects a single config candidate using precedence and format-stability.
 ///
-/// Prefers `persisted_format` if available and present in `candidates`.
-/// Otherwise, falls back to `StructuredFileFormat::PRECEDENCE`.
+/// This is a deterministic decision function that chooses the final candidate
+/// from a list of discovered files.
+///
+/// ### Selection Strategy
+///
+/// 1. **Stability**: If `persisted_format` is provided and a candidate with
+///    that exact format exists, it is selected regardless of precedence rank.
+/// 2. **Precedence**: If no persisted match exists, the candidate with the
+///    highest precedence rank (defined by [`StructuredFileFormat::rank`]) is
+///    selected.
+///
+/// ### Ambiguity Handling
+///
+/// If multiple candidates are present, a [`DiscoveryWarning::FormatAmbiguity`]
+/// is generated and emitted via `tracing::warn!`, even if a successful
+/// selection is made. This warning is also returned inside the
+/// [`ConfigSelectionResult`] for deterministic testing and CLI reporting.
+///
+/// # Examples
+///
+/// ```ignore
+/// let result = select_config_candidate(candidates, Some(StructuredFileFormat::Json));
+/// if let Some(selection) = result {
+///     assert_eq!(selection.candidate.format, StructuredFileFormat::Json);
+/// }
+/// ```
 #[allow(
     dead_code,
     reason = "Phase-2 seam introduced before full pipeline integration"
