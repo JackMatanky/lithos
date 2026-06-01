@@ -27,12 +27,12 @@ This slice should expose the path generation seam via `LocalConfigLocation::cand
 
 ## Acceptance criteria
 
-- [ ] `LocalConfigLocation::candidate_path(root, format)` exists and generates correct concrete paths for root, hidden-root, and config-directory patterns.
-- [ ] `find_local_config_candidates(root, location)` exists and returns all existing candidates for that location.
-- [ ] Candidate enumeration iterates `StructuredFileFormat::PRECEDENCE` and supports `toml`, `json`, `yaml`, `yml`.
-- [ ] Returned candidate records include absolute path, base directory, location, and detected format.
-- [ ] Unit tests cover all local location variants and all structured formats.
-- [ ] Unit tests verify behavior when no candidates exist.
+- [x] `LocalConfigLocation::candidate_path(root, format)` exists and generates correct concrete paths for root, hidden-root, and config-directory patterns.
+- [x] `find_local_config_candidates(root, location)` exists and returns all existing candidates for that location.
+- [x] Candidate enumeration iterates `StructuredFileFormat::PRECEDENCE` and supports `toml`, `json`, `yaml`, `yml`.
+- [x] Returned candidate records include absolute path, base directory, location, and detected format.
+- [x] Unit tests cover all local location variants and all structured formats.
+- [x] Unit tests verify behavior when no candidates exist.
 
 ## Agent Brief
 
@@ -61,9 +61,9 @@ existing candidates by location and structured format precedence.
 - **Error Handling:** Return `std::io::Error` for genuine I/O failures. Do not use `ConfigIngestError` as this is discovery-specific.
 
 **Acceptance criteria:**
-- [ ] Candidate paths are deterministic for all local location variants.
-- [ ] Candidate enumeration returns only existing files with complete metadata.
-- [ ] Tests validate empty, single-hit, and multi-hit scenarios per location.
+- [x] Candidate paths are deterministic for all local location variants.
+- [x] Candidate enumeration returns only existing files with complete metadata.
+- [x] Tests validate empty, single-hit, and multi-hit scenarios per location.
 
 **Out of scope:**
 - Choosing the winning candidate among multiple formats
