@@ -208,9 +208,9 @@ impl Validator {
         //    returns false, so check_absolute_path_policy would pass it through
         //    unchanged.
         if Self::is_windows_absolute(path) {
-            return Err(PathValidationError::AbsolutePathError(PathBuf::from(
-                path,
-            )));
+            return Err(PathValidationError::RestrictedPathError(
+                PathBuf::from(path),
+            ));
         }
 
         // 3. Standard validation (traversal, hidden files, absolute paths,
@@ -249,8 +249,8 @@ impl Validator {
     ///
     /// - [`PathValidationError::InvalidPathEncoding`] — path is not valid
     ///   UTF-8.
-    /// - [`PathValidationError::AbsolutePathError`] — path is absolute and not
-    ///   permitted by the current mode.
+    /// - [`PathValidationError::RestrictedPathError`] — path is absolute and
+    ///   not permitted by the current mode.
     /// - [`PathValidationError::PathTraversalError`] — path contains `..`.
     /// - [`PathValidationError::RestrictedPathError`] — path accesses a hidden
     ///   file or directory.
@@ -407,7 +407,7 @@ impl Validator {
         if within_strict_root {
             Ok(())
         } else {
-            Err(PathValidationError::AbsolutePathError(path.to_path_buf()))
+            Err(PathValidationError::RestrictedPathError(path.to_path_buf()))
         }
     }
 
@@ -637,9 +637,9 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(PathValidationError::AbsolutePathError(_))
+                    Err(PathValidationError::RestrictedPathError(_))
                 ),
-                "expected AbsolutePathError for Windows drive path, got \
+                "expected RestrictedPathError for Windows drive path, got \
                  {result:?}"
             );
         }
@@ -650,10 +650,10 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(PathValidationError::AbsolutePathError(_))
+                    Err(PathValidationError::RestrictedPathError(_))
                 ),
-                "expected AbsolutePathError for Windows drive-relative path, \
-                 got {result:?}"
+                "expected RestrictedPathError for Windows drive-relative \
+                 path, got {result:?}"
             );
         }
 
@@ -736,9 +736,9 @@ mod tests {
                 assert!(
                     matches!(
                         v.validate(input),
-                        Err(PathValidationError::AbsolutePathError(_))
+                        Err(PathValidationError::RestrictedPathError(_))
                     ),
-                    "expected AbsolutePathError for '{input}'"
+                    "expected RestrictedPathError for '{input}'"
                 );
             }
 
