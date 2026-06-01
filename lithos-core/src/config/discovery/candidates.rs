@@ -91,47 +91,57 @@ mod tests {
         }
 
         #[test]
-        fn returns_correct_paths_for_all_location_variants() {
+        fn returns_correct_path_for_root_config_file_location() {
             let root = tempdir().unwrap();
+            let config_path = root.path().join("lithos.toml");
+            std::fs::write(&config_path, "").unwrap();
 
-            // 1. RootConfigFile
-            let root_path = root.path().join("lithos.toml");
-            std::fs::write(&root_path, "").unwrap();
-            let got_root = find_local_config_candidates(
+            let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::RootConfigFile,
             )
             .unwrap();
-            assert_eq!(
-                got_root.first().unwrap().path,
-                root_path.canonicalize().unwrap()
-            );
 
-            // 2. HiddenRootConfigFile
-            let hidden_path = root.path().join(".lithos.toml");
-            std::fs::write(&hidden_path, "").unwrap();
-            let got_hidden = find_local_config_candidates(
+            assert_eq!(
+                got.first().unwrap().path,
+                config_path.canonicalize().unwrap()
+            );
+        }
+
+        #[test]
+        fn returns_correct_path_for_hidden_root_config_file_location() {
+            let root = tempdir().unwrap();
+            let config_path = root.path().join(".lithos.toml");
+            std::fs::write(&config_path, "").unwrap();
+
+            let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::HiddenRootConfigFile,
             )
             .unwrap();
-            assert_eq!(
-                got_hidden.first().unwrap().path,
-                hidden_path.canonicalize().unwrap()
-            );
 
-            // 3. ConfigDirectoryFile
+            assert_eq!(
+                got.first().unwrap().path,
+                config_path.canonicalize().unwrap()
+            );
+        }
+
+        #[test]
+        fn returns_correct_path_for_config_directory_file_location() {
+            let root = tempdir().unwrap();
             std::fs::create_dir(root.path().join(".lithos")).unwrap();
-            let dir_path = root.path().join(".lithos").join("config.toml");
-            std::fs::write(&dir_path, "").unwrap();
-            let got_dir = find_local_config_candidates(
+            let config_path = root.path().join(".lithos").join("config.toml");
+            std::fs::write(&config_path, "").unwrap();
+
+            let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::ConfigDirectoryFile,
             )
             .unwrap();
+
             assert_eq!(
-                got_dir.first().unwrap().path,
-                dir_path.canonicalize().unwrap()
+                got.first().unwrap().path,
+                config_path.canonicalize().unwrap()
             );
         }
 
