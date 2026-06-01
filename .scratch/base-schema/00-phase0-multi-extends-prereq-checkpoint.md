@@ -81,12 +81,14 @@ Phase 0 implementation and validation evidence.
 - Schema graph construction flow (`schema_processor` parent-edge construction) — must consume list-based extends deterministically.
 - Phase-0/BaseSchema planning contract — unblocking decision must reference concrete validation evidence, not assumption.
 
-**Acceptance criteria:**
-- [ ] `RawSchema.extends` uses a list shape and no longer uses `Option<SchemaName>`.
-- [ ] `SchemaVersion.extends` uses a list shape and no longer uses `Option<SchemaName>`.
-- [ ] Parent-edge construction in schema processing consumes list-based extends (with unchanged behavior for empty/single parent cases).
-- [ ] Targeted schema loader and schema processor tests pass with evidence attached to this checkpoint.
-- [ ] `.scratch/schema-processor-split/PRD.md` (or linked notes) explicitly records Phase 0 completion and unblocks BaseSchema `01`-`07`.
+**Validation checkpoints captured during triage (informational):**
+- `RawSchema.extends` uses a list shape and no longer uses `Option<SchemaName>`.
+- `SchemaVersion.extends` uses a list shape and no longer uses `Option<SchemaName>`.
+- Parent-edge construction in schema processing consumes list-based extends (with unchanged behavior for empty/single parent cases).
+- Targeted schema loader and schema processor tests pass with evidence attached to this checkpoint.
+- `.scratch/schema-processor-split/PRD.md` (or linked notes) explicitly records Phase 0 completion and unblocks BaseSchema `01`-`07`.
+
+Canonical completion criteria are defined only in the top-level `## Acceptance criteria` section of this issue.
 
 **Out of scope:**
 - Implementing BaseSchema Phase 1 slices in this checkpoint.
