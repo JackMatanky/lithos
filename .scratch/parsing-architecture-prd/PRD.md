@@ -69,6 +69,176 @@ This yields a clean `File Source -> Parser -> Domain Construction -> Projection`
   - Use typed errors (`thiserror`) and avoid panic-driven control flow.
   - Keep borrowing/ownership efficient in markdown event paths and avoid unnecessary cloning in hot parsing loops.
 
+## Proposed Interfaces
+
+The following interfaces define seam-level contracts for parser-owned structured and markdown primitives. They are intentionally concrete-first and preserve current behavior while decoupling parse policy from File Source ownership.
+
+```rust
+use std::path::Path;
+
+use crate::fs::format::StructuredFileFormat;
+
+/// Structured parse policy (attribute carried by parser instance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StructuredParsePolicy {
+    /// Prefer extension over content sniffing when both are present.
+    pub prefer_extension: bool,
+}
+
+impl Default for StructuredParsePolicy {
+    fn default() -> Self {
+        Self {
+            prefer_extension: true,
+        }
+    }
+}
+
+/// Parser-level format family classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ParseableFormat {
+    Json,
+    Toml,
+    Yaml,
+    Markdown,
+}
+
+/// Parser-owned structured parsing seam.
+pub struct StructuredParser {
+    policy: StructuredParsePolicy,
+}
+
+impl StructuredParser {
+    #[must_use]
+    pub fn new(policy: StructuredParsePolicy) -> Self;
+
+    /// Parse structured content using deterministic format policy.
+    pub fn parse_from_str<T>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, StructuredParserError>
+    where
+        T: serde::de::DeserializeOwned;
+
+    /// Parse with explicit structured selector (discovery-controlled path).
+    pub fn parse_with_format<T>(
+        path: &Path,
+        content: &str,
+        format: StructuredFileFormat,
+    ) -> Result<T, StructuredParserError>
+    where
+        T: serde::de::DeserializeOwned;
+
+    /// Classify parseable family from extension and optional content hint.
+    pub fn classify_parseable(
+        path: &Path,
+        content: Option<&str>,
+    ) -> ParseableFormat;
+}
+
+/// Parser-owned markdown seam shared by contexts.
+///
+/// Uses pulldown-cmark directly as the event source and frontmatter detector.
+pub struct MarkdownParser;
+
+impl MarkdownParser {
+    /// Split leading frontmatter and markdown body without note/template semantics.
+    ///
+    /// Implementation uses pulldown-cmark metadata block events
+    /// (`Tag::MetadataBlock`) instead of ad-hoc delimiter scanning.
+    pub fn split_frontmatter<'a>(
+        source: &'a str,
+    ) -> Result<FrontmatterSplit<'a>, MarkdownParserError>;
+
+    /// Adapt pulldown-cmark events to offset-aware neutral events.
+    pub fn adapt_events<'a>(
+        source: &'a str,
+        options: pulldown_cmark::Options,
+    ) -> Result<OffsetEventStream<'a>, MarkdownParserError>;
+}
+
+/// Frontmatter/body extraction result with exact source slices.
+pub struct FrontmatterSplit<'a> {
+    pub frontmatter: Option<&'a str>,
+    pub body: &'a str,
+    pub body_start_byte: usize,
+}
+
+/// Neutral parser-owned range type for shared primitives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByteRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Parser-owned markdown event projected with byte offsets.
+pub struct OffsetEvent<'a> {
+    pub range: ByteRange,
+    pub event: pulldown_cmark::Event<'a>,
+}
+
+pub type OffsetEventStream<'a> = Vec<OffsetEvent<'a>>;
+```
+
+```rust
+/// Structured parser failures with source-chain preservation.
+#[derive(Debug, thiserror::Error)]
+pub enum StructuredParserError {
+    #[error("unsupported structured format")]
+    UnsupportedFormat(#[from] crate::fs::error::ParseError),
+
+    #[error("json decode failed")]
+    Json(#[from] serde_json::Error),
+
+    #[error("toml decode failed")]
+    Toml(#[from] toml::de::Error),
+
+    #[error("yaml decode failed")]
+    Yaml(#[from] serde_yaml::Error),
+
+    #[error("structured parse context: {path}")]
+    Context {
+        path: std::path::PathBuf,
+        format: StructuredFileFormat,
+        #[source]
+        source: Box<StructuredParserError>,
+    },
+}
+
+/// Markdown primitive failures with positional context.
+#[derive(Debug, thiserror::Error)]
+pub enum MarkdownParserError {
+    #[error("markdown parse failed")]
+    Pulldown,
+
+    #[error("yaml frontmatter decode failed")]
+    FrontmatterYaml(#[from] serde_yaml::Error),
+
+    #[error("offset mapping failed")]
+    Offset(#[from] crate::note::position::PositionError),
+
+    #[error("markdown parse context: {path}")]
+    Context {
+        path: std::path::PathBuf,
+        #[source]
+        source: Box<MarkdownParserError>,
+    },
+}
+
+/// Optional top-level wrapper for call sites that need unified propagation.
+#[derive(Debug, thiserror::Error)]
+pub enum ParserError {
+    #[error(transparent)]
+    Structured(#[from] StructuredParserError),
+    #[error(transparent)]
+    Markdown(#[from] MarkdownParserError),
+}
+```
+
+Notes:
+- Keep `FileReader` as File Source owner (`read_to_string`, path safety); do not move Vault Root enforcement into parser modules.
+- Keep Note/Template semantics out of `MarkdownParser`; those contexts consume neutral primitives and perform context-local construction.
+- Prefer borrowed outputs (`&str` slices, neutral ranges) for hot paths; avoid unnecessary allocation/cloning in event adaptation.
+
 ## Testing Decisions
 
 - **Test quality definition**: Tests validate externally observable parsing behavior and diagnostics contracts, not internal module topology.
@@ -108,3 +278,19 @@ This yields a clean `File Source -> Parser -> Domain Construction -> Projection`
 - If future adapters create real seam multiplicity, revisit trait extraction with evidence.
 - If parser-neutral position invariants stabilize across contexts, a later proposal can evaluate promoting shared position primitives.
 - ADR 010 is treated as historical context only and is not normative for this effort.
+
+## Migration Safety Contract
+
+| Phase | Scope | Required tests/benchmarks to pass | Rollback trigger |
+| --- | --- | --- | --- |
+| Phase 0: Behavior pinning baseline | Add seam-level behavior tests before production refactor | Existing FS reader structured tests; classification precedence tests; existing note parser frontmatter/range tests; `lithos-core/benches/note_parsing.rs` baseline capture | Any mismatch between pinned assertions and current main behavior; baseline benchmark capture failure |
+| Phase 1: Structured parser seam introduction | Introduce `StructuredParser` and delegate existing `FileReader::parse_structured_from_str` to parser seam with identical behavior | `fs::reader` structured parse tests; schema property bank parsing tests (including malformed input paths); source-chain error assertions; no new clippy warnings | Any changed parse outcome/error contract for existing structured callers; schema/property-bank flow failure |
+| Phase 2: Structured caller migration | Move high-blast-radius schema/property-bank callers to parser-owned API directly | Full schema builder/property-bank suite; integration tests for discovery precedence; regression tests for stale/fresh/content-mismatch processor branches; compare with Phase 1 snapshots | Any break in property-bank load/process flows; divergence in precedence or error context fields |
+| Phase 3: Markdown seam extraction | Introduce parser-owned `MarkdownParser` for frontmatter split + offset event adaptation; keep Note semantics unchanged | Note parser integration tests (tags/tasks/links/frontmatter); offset-to-range validity tests; reference extraction tests; benchmark comparison versus Phase 0 note parsing baseline | Semantic drift in Note extraction outputs; offset/range regression; measurable hot-path performance regression |
+| Phase 4: Template adoption of shared markdown primitives | Consume shared frontmatter/body primitives in Template Asset ingestion path | Template ingestion tests (new + existing); no Note semantic leakage assertions; frontmatter/body parity tests with note corpus fixtures where applicable | Template behavior regressions; cross-context semantic coupling introduced; incompatible frontmatter behavior |
+| Phase 5: Compatibility retirement | Deprecate then remove legacy `FileReader` parsing helpers after all callers migrate | Entire workspace test suite; migration-doc checklist complete; deprecation warnings resolved; lint + fmt + test tasks green | Any remaining production caller on deprecated entry points; unresolved migration docs; post-removal regressions |
+
+Phase gates:
+- No phase advances without green required suite + benchmark check where listed.
+- Rollback means reverting the current phase patchset and reopening with narrower slice + added failing regression test.
+- High-blast-radius structured parsing paths (schema/property-bank) remain mandatory early verification targets on every phase after Phase 1.
