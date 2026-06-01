@@ -18,7 +18,7 @@ AFK
 
 ## What to build
 
-Remove `list_dirs` and `list_entries` from `FsReader`, migrate their callers to `filter_dir_entries` and `filter_file_entries` respectively, and eliminate the final `glob::glob` code path that bypasses `DirScanner`. Completes alignment with PRD §Reader and Scanner API Changes.
+Remove `list_dirs` and `list_entries` from `FileReader`, migrate their callers to `filter_dir_entries` and `filter_file_entries` respectively, and eliminate the final `glob::glob` code path that bypasses `DirScanner`. Completes alignment with PRD §Reader and Scanner API Changes.
 
 ## Acceptance criteria
 
@@ -37,10 +37,10 @@ Remove `list_dirs` and `list_entries` from `FsReader`, migrate their callers to 
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Remove `list_dirs` and `list_entries` methods from `FsReader`, migrating all callers to `filter_dir_entries` and `filter_file_entries`.
+**Summary:** Remove `list_dirs` and `list_entries` methods from `FileReader`, migrating all callers to `filter_dir_entries` and `filter_file_entries`.
 
 **Current behavior:**
-Two `FsReader` methods bypass or duplicate the `DirScanner`/`DirScanInput` scanning architecture:
+Two `FileReader` methods bypass or duplicate the `DirScanner`/`DirScanInput` scanning architecture:
 - `list_dirs` (lines 302-342) uses `glob::glob()` directly with a hand-rolled loop for directory enumeration. It returns relative `Vec<PathBuf>` requiring a separate `std_metadata` call by the consumer.
 - `list_entries` (lines 354-359) wraps `DirScanner::entries()` but returns `Vec<FsEntry>` (file-only by default — no `include_dirs(true)`).
 - Both methods are not present in the PRD final API specification.
@@ -52,10 +52,10 @@ Two `FsReader` methods bypass or duplicate the `DirScanner`/`DirScanInput` scann
 - No `glob::glob` imports remain in reader.rs.
 
 **Key interfaces:**
-- `FsReader::list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError>` — delete; callers use `filter_dir_entries` instead
-- `FsReader::filter_dir_entries(&self, pattern: &str) -> Result<Vec<FsDir>, FsError>` — existing, already returns typed dirs with metadata
-- `FsReader::list_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, FsError>` — delete; callers use `filter_file_entries` instead
-- `FsReader::filter_file_entries(&self, pattern: &str) -> Result<Vec<FsFile>, FsError>` — existing, already returns typed files with metadata
+- `FileReader::list_dirs(&self, pattern: &str) -> Result<Vec<PathBuf>, FsError>` — delete; callers use `filter_dir_entries` instead
+- `FileReader::filter_dir_entries(&self, pattern: &str) -> Result<Vec<FsDir>, FsError>` — existing, already returns typed dirs with metadata
+- `FileReader::list_entries(&self, pattern: &str) -> Result<Vec<FsEntry>, FsError>` — delete; callers use `filter_file_entries` instead
+- `FileReader::filter_file_entries(&self, pattern: &str) -> Result<Vec<FsFile>, FsError>` — existing, already returns typed files with metadata
 - `vault/processor.rs:scan_views()` — sole production consumer of `list_dirs`. Iterates dirs, sorts by depth, converts relative paths, reads `std_metadata` separately. Must adapt to `filter_dir_entries` return type (absolute `DirPath` → `.as_relative(source.root())?` for relative; metadata from `FsDir::metadata()`).
 - `DirPath::as_relative(&self, base: &Path) -> Result<RelativePath, ReadError>` — existing method, used by `filter_file_entries` consumer in same function for file path relative conversion.
 
@@ -96,7 +96,7 @@ Use vertical-slice TDD (one behavior at a time), with public-interface tests and
 ### Slice 3: Verify
 
 1. Run `mise run verify` — all quality gates pass.
-2. Confirm PRD alignment: final `FsReader` scanning API matches spec (`filter_paths`, `filter_file_paths`, `filter_dir_paths`, `filter_entries`, `filter_file_entries`, `filter_dir_entries` — no `list_dirs` or `list_entries`).
+2. Confirm PRD alignment: final `FileReader` scanning API matches spec (`filter_paths`, `filter_file_paths`, `filter_dir_paths`, `filter_entries`, `filter_file_entries`, `filter_dir_entries` — no `list_dirs` or `list_entries`).
 
 ### Test checklist
 
@@ -116,7 +116,7 @@ Use vertical-slice TDD (one behavior at a time), with public-interface tests and
 - Direct callers (d=1, WILL BREAK): `scan_views` in vault processor (only production consumer)
 - Indirect (d=2): `discover` — calls `scan_views`
 - Transitive (d=3): `process_full` — calls `discover`
-- Modules affected: Vault (direct), FsReader (self)
+- Modules affected: Vault (direct), FileReader (self)
 - Risk: **LOW** — 1 direct consumer, 0 execution flows registered in the graph
 - The `list_dirs` method has no test coverage of its own (only tested through processor integration tests)
 
@@ -190,7 +190,7 @@ This eliminates the separate `source.std_metadata()` call (one fewer filesystem 
 ## Revised Agent Brief
 
 **Category:** enhancement
-**Summary:** Remove `list_dirs` and `list_entries` from `FsReader`, migrating `scan_views` to `filter_dir_entries` and 3 test callers to `filter_file_entries`.
+**Summary:** Remove `list_dirs` and `list_entries` from `FileReader`, migrating `scan_views` to `filter_dir_entries` and 3 test callers to `filter_file_entries`.
 
 **Current behavior:**
 - `Reader.list_dirs` uses `glob::glob()` directly (reader.rs:302-342), returns `Vec<PathBuf>` of relative paths, requiring a separate `std_metadata` call per directory from the consumer.
@@ -208,7 +208,7 @@ This eliminates the separate `source.std_metadata()` call (one fewer filesystem 
 - `FsDir::path()` → `&DirPath`; `DirPath::as_relative(&self, base: &Path) -> Result<RelativePath, ReadError>` — convert absolute to relative
 - `FsDir::metadata()` → `&DirMetadata`; derives `Clone` — replaces `source.std_metadata()` + `DirMetadata::from()`
 - `FsFile::path()` → `&FilePath`; `FilePath::filename()` → `Option<FileName>` — replaces `FsEntry::filename()` call
-- `scan_views(source: &FsReader) -> Result<(Vec<ScannedDir>, Vec<ScannedFile>), VaultFileError>` — sole production consumer
+- `scan_views(source: &FileReader) -> Result<(Vec<ScannedDir>, Vec<ScannedFile>), VaultFileError>` — sole production consumer
 - `scanner.rs` doc string at `src/fs/scanner.rs:9-10` — references `list_entries`, needs update
 
 **Acceptance criteria:**
@@ -230,7 +230,7 @@ This eliminates the separate `source.std_metadata()` call (one fewer filesystem 
 
 ## Corrected TDD Plan
 
-Use vertical-slice TDD (one behavior at a time), following red-green-refactor with public interface tests. Tests exercise behavior through `FsReader` and `VaultProcessor` public APIs — no mock-based testing.
+Use vertical-slice TDD (one behavior at a time), following red-green-refactor with public interface tests. Tests exercise behavior through `FileReader` and `VaultProcessor` public APIs — no mock-based testing.
 
 ### Slice 1: Replace `list_dirs` in `scan_views`, then delete it
 

@@ -246,7 +246,7 @@ impl DiscoveredFile {
 ````rust
 use std::collections::{HashMap, HashSet};
 use crate::{
-    fs::{FileStats, Filename, FsReader, RelativePath},
+    fs::{FileStats, Filename, FileReader, RelativePath},
     schema::{
         builder::{FilesContext, PropertyBankContext},
         error::{SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError},
@@ -316,7 +316,7 @@ impl DiscoveryEngine {
     pub(crate) fn run<R>(
         context: &FilesContext,
         repo: &R,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryOutcome, SchemaLoaderError>
     where
         R: Repository,
@@ -333,7 +333,7 @@ impl DiscoveryEngine {
     fn run_batch<E>(
         context: &FilesContext,
         batch_reader: &dyn BatchSchemaReader<Error = E>,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveryOutcome, SchemaLoaderError>
     where
         E: Into<SchemaRepositoryError>,
@@ -375,7 +375,7 @@ impl DiscoveryEngine {
     fn discover_property_bank<E>(
         bank_context: &PropertyBankContext,
         batch_reader: &dyn BatchSchemaReader<Error = E>,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<DiscoveredFile, SchemaLoaderError>
     where
         E: Into<SchemaRepositoryError>,
@@ -411,7 +411,7 @@ impl DiscoveryEngine {
     fn discover_schemas<E>(
         files: &[RelativePath],
         batch_reader: &dyn BatchSchemaReader<Error = E>,
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<
         (HashMap<RelativePath, DiscoveredFile>, HashSet<SchemaId>),
         SchemaLoaderError,
@@ -481,7 +481,7 @@ impl DiscoveryEngine {
     /// Fetch file stats for all files.
     fn fetch_file_stats_batch(
         files: &[RelativePath],
-        source: &FsReader,
+        source: &FileReader,
     ) -> Result<HashMap<RelativePath, FileStats>, SchemaLoaderError> {
         let mut stats_map = HashMap::new();
 
@@ -871,7 +871,7 @@ fn batch_reader_returns_empty_for_unknown_paths() {
 fn discovery_engine_cold_start() {
     let repo = InMemoryRepository::new();
     let temp = TempDir::new().unwrap();
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     // Create test files
     create_test_files(&temp, &["schemas/a.toml", "schemas/b.toml"]);
@@ -890,7 +890,7 @@ fn discovery_engine_cold_start() {
 fn discovery_engine_incremental_with_property_bank() {
     let repo = setup_repo_with_data();
     let temp = TempDir::new().unwrap();
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     create_test_files(&temp, &[
         "schemas/a.toml",
@@ -915,7 +915,7 @@ fn discovery_engine_incremental_with_property_bank() {
 fn discovery_engine_detects_deleted_schemas() {
     let repo = setup_repo_with_persisted_schemas(&["a.toml", "b.toml", "c.toml"]);
     let temp = TempDir::new().unwrap();
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     // Only create a.toml and b.toml (c.toml is missing)
     create_test_files(&temp, &["schemas/a.toml", "schemas/b.toml"]);
@@ -930,7 +930,7 @@ fn discovery_engine_detects_deleted_schemas() {
 fn discovery_engine_uses_single_transaction() {
     let repo = MockRepository::new();
     let temp = TempDir::new().unwrap();
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
 
     create_test_files(&temp, &["schemas/a.toml"]);
     let context = create_test_context(&["schemas/a.toml"]);
@@ -1007,7 +1007,7 @@ fn discover_files_populates_property_bank_context() {
 
     let repo = InMemoryRepository::new();
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
     let builder = Builder::new(repo, source, &config);
 
     let context = builder.discover_files().unwrap();
@@ -1217,7 +1217,7 @@ fn builder_uses_discovery_engine_cold_start() {
 
     let repo = InMemoryRepository::new();
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
     let mut builder = Builder::new(repo, source, &config);
 
     let schemas = builder.load_all().unwrap();
@@ -1233,7 +1233,7 @@ fn builder_uses_discovery_engine_incremental() {
     create_schema_files(&temp, &["schema_a.toml", "schema_b.toml"]);
 
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
     let mut builder = Builder::new(repo, source, &config);
 
     let schemas = builder.load_all().unwrap();
@@ -1250,7 +1250,7 @@ fn builder_deletes_schemas_removed_from_filesystem() {
     create_schema_files(&temp, &["schema_a.toml"]);
 
     let config = setup_test_config(&temp);
-    let source = FsReader::new(temp.path().to_path_buf());
+    let source = FileReader::new(temp.path().to_path_buf());
     let mut builder = Builder::new(repo.clone(), source, &config);
 
     let _ = builder.load_all().unwrap();
@@ -1839,7 +1839,7 @@ Existing dependencies used:
 
 ### Internal Dependencies
 
-- `crate::fs::{FileStats, Filename, FsReader, RelativePath}`
+- `crate::fs::{FileStats, Filename, FileReader, RelativePath}`
 - `crate::schema::{identifier::SchemaId, inheritance::InheritanceGraph}`
 - `crate::schema::views::{RawPropertyBankView, RawSchemaView, RawView}`
 - `crate::schema::storage::{BatchSchemaReader, Repository}`

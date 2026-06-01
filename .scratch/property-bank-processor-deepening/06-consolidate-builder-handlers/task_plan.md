@@ -26,7 +26,7 @@ Phase 0 — Design Review (awaiting user confirmation)
 
 ### Phase 2: GREEN — Implement `run(None, ...)` on `PropertyBankProcessor<Init, Unknown>`
 
-- [ ] Add `fn run(self, view: Option<&RawPropertyBankView>, source: &FsReader, repository: &R) -> Result<...>` on `impl PropertyBankProcessor<Init, Unknown>`
+- [ ] Add `fn run(self, view: Option<&RawPropertyBankView>, source: &FileReader, repository: &R) -> Result<...>` on `impl PropertyBankProcessor<Init, Unknown>`
 - [ ] Implement the `None` branch: `self.transition(Parsed, Missing).parse(source)?.create(repository)?.into_bank()`
 - [ ] Cover only enough to pass the missing-path test
 - [ ] Verify test passes
@@ -97,7 +97,7 @@ Phase 0 — Design Review (awaiting user confirmation)
 | Option B: `run()` on `PropertyBankProcessor<Init, Unknown>` | Single entry point collapses builder import from 15 types to 1; branching moves inside the module where it's closer to the types that enforce post-branch invariants |
 | `run()` returns `Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError>` | Matches existing `PropertyBankCompletion` type alias; no new type needed for one return site |
 | `run_present()` and `run_missing()` as private helpers | Preserves typestate discipline — each helper lives on the `(Stage, Status)` impl where its transitions are valid |
-| `run()` takes `source: &FsReader` and `repository: &R` (borrows) | The processor doesn't own these resources; they're injected per-call |
+| `run()` takes `source: &FileReader` and `repository: &R` (borrows) | The processor doesn't own these resources; they're injected per-call |
 | TDD tracer bullets through pipeline paths | Each path (Missing, Present→Match, Present→Mismatch→ContentMatch, etc.) is a vertical slice; one RED→GREEN cycle per path |
 | Do NOT delete existing builder integration tests | `builder_load_all_orchestrates_discovery` tests the full `Builder`, not just handler methods — it survives unchanged |
 

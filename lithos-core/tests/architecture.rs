@@ -46,14 +46,14 @@ mod tests {
             assert!(
                 !content.contains("fn load_from_file"),
                 "Port trait in {path:?} has forbidden file I/O method \
-                 'load_from_file'. Use Application Services + FsReader \
+                 'load_from_file'. Use Application Services + FileReader \
                  instead."
             );
 
             assert!(
                 !content.contains("fn scan_directory"),
                 "Port trait in {path:?} has forbidden file I/O method \
-                 'scan_directory'. Use Application Services + FsReader \
+                 'scan_directory'. Use Application Services + FileReader \
                  instead."
             );
 

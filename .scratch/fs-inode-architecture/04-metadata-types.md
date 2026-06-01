@@ -133,7 +133,7 @@ Added `FsMetadata::from_path<P: AsRef<Path>>(path: P) -> io::Result<Self>` to pr
 
 **Design Rationale:**
 - **Matches stdlib idiom**: Mirrors `std::fs::metadata(path)` pattern (free function-style API)
-- **Type ownership**: Type owns its construction logic, not the caller (`FsReader`)
+- **Type ownership**: Type owns its construction logic, not the caller (`FileReader`)
 - **Ergonomics**: Generic `<P: AsRef<Path>>` accepts `&Path`, `PathBuf`, `&str` without explicit conversion
 - **Discoverability**: `FsMetadata::from_path(path)` is more explicit than `path.try_into()`
 
@@ -160,7 +160,7 @@ pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
 - Useful when caller already has `std::fs::Metadata`
 
 **Delegation Pattern:**
-`FsReader::metadata()` now delegates to `FsMetadata::from_path()`:
+`FileReader::metadata()` now delegates to `FsMetadata::from_path()`:
 ```rust
 pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError> {
     let full_path = self.root.join(path);
@@ -172,9 +172,9 @@ pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError> {
 ```
 
 Benefits:
-- Single Responsibility: `FsReader` handles path resolution, `FsMetadata` handles construction
-- Testability: Can test `from_path()` independently of `FsReader`
-- Reusability: Direct usage for absolute paths without `FsReader`
+- Single Responsibility: `FileReader` handles path resolution, `FsMetadata` handles construction
+- Testability: Can test `from_path()` independently of `FileReader`
+- Reusability: Direct usage for absolute paths without `FileReader`
 
 ### Test Suite Reorganization
 

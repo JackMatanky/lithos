@@ -599,7 +599,7 @@ This fundamentally changes the domain/storage relationship:
 │ FILE (Source of Truth)                                      │
 │ - schema.yaml, note.md, template.jinja2                     │
 └─────────────────┬───────────────────────────────────────────┘
-                  │ Read file (FsReader)
+                  │ Read file (FileReader)
                   ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ RAW TYPE (Syntax Parse)                                     │

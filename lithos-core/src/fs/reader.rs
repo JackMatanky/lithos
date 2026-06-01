@@ -1,8 +1,7 @@
 //! Root-scoped filesystem reader with validation and format-classification.
 //!
-//! This module provides [`Reader`], a read-only filesystem adapter for safe
-//! vault access with built-in path validation, directory scanning, and
-//! structured file parsing.
+//! This module provides [`FileReader`], a read-only filesystem adapter for safe
+//! vault access with built-in path validation and structured file parsing.
 //!
 //! # Security
 //!
@@ -12,61 +11,52 @@
 //!
 //! # Features
 //!
-//! - **Directory scanning**: Glob-pattern filtering via
-//!   [`filter_file_paths`](Reader::filter_file_paths) and
-//!   [`filter_entries`](Reader::filter_entries)
 //! - **File reading**: Raw bytes, UTF-8 strings, and structured parsing
 //!   (JSON/TOML/YAML)
 //! - **Format detection**: Automatic format classification by extension and
 //!   content
-//! - **Metadata access**: File info, timestamps, and existence checks
+//! - **Path checks**: Root-relative existence checks via [`FileReader::exists`]
 //!
 //! # Examples
 //!
 //! ```no_run
 //! use std::path::Path;
 //!
-//! use lithos_core::fs::FsReader;
+//! use lithos_core::fs::FileReader;
 //!
-//! let reader = FsReader::new("/vault");
+//! let reader = FileReader::new("/vault");
 //!
-//! // Find all TOML files
-//! let schema_files = reader.filter_file_paths("schemas/**/*.toml")?;
+//! // Check whether a file exists
+//! let _exists = reader.exists(Path::new("config.json"));
 //!
 //! // Read and parse structured file
 //! let data: serde_json::Value =
 //!     reader.parse_structured(Path::new("config.json"))?;
 //!
-//! // Get file metadata
-//! let info = reader.metadata(Path::new("README.md"))?;
 //! # Ok::<(), lithos_core::fs::FsError>(())
 //! ```
 
-use std::{
-    path::{Path, PathBuf},
-    time::SystemTime,
-};
+use std::path::{Path, PathBuf};
 
 use super::{
     error::{FsError, PathValidationError},
     format::{FileFormat, parse_from_format, sniff_structured_format},
-    metadata::{FileMetadata, FsTimes},
     name::FileName,
     validator::Validator,
 };
 
 /// A read-only filesystem adapter for safe vault access.
 ///
-/// `Reader` provides methods for filtering, reading, and parsing files within a
+/// `FileReader` provides methods for reading and parsing files within a
 /// specified root directory. It enforces path safety via [`Validator`] to
 /// prevent traversal attacks and unauthorized access to restricted files.
-pub struct Reader {
+pub struct FileReader {
     root: PathBuf,
     validator: Validator,
 }
 
-impl Reader {
-    /// Creates a new `Reader` with flexible validation.
+impl FileReader {
+    /// Creates a new `FileReader` with flexible validation.
     ///
     /// Flexible mode allows symlinks to targets outside the root directory and
     /// does not require an absolute root path.
@@ -78,7 +68,7 @@ impl Reader {
         }
     }
 
-    /// Creates a new `Reader` with strict validation.
+    /// Creates a new `FileReader` with strict validation.
     ///
     /// Strict mode requires an absolute, canonicalized root path and rejects
     /// any symlinks that escape the root boundary.
@@ -106,7 +96,7 @@ impl Reader {
     /// **only be used for global/system-wide configuration resolution**.
     ///
     /// For vault-scoped operations (schemas, templates, notes), use
-    /// [`Reader::new(vault_root)`](Reader::new) instead to ensure
+    /// [`FileReader::new(vault_root)`](FileReader::new) instead to ensure
     /// file access is properly sandboxed to the vault directory.
     ///
     /// # Use Cases
@@ -120,9 +110,9 @@ impl Reader {
     /// ```rust
     /// use std::path::Path;
     ///
-    /// use lithos_core::fs::reader::Reader;
+    /// use lithos_core::fs::reader::FileReader;
     ///
-    /// let fs = Reader::from_system_root();
+    /// let fs = FileReader::from_system_root();
     ///
     /// // Can now check absolute system paths
     /// if fs.exists(Path::new("/etc/lithos/lithos.toml")) {
@@ -150,142 +140,6 @@ impl Reader {
     #[must_use]
     pub fn exists(&self, path: &Path) -> bool {
         self.root.join(path).exists()
-    }
-
-    /// Filters paths within the vault using a glob pattern.
-    ///
-    /// Returns a mixed collection of files and directories.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_paths(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::path::FsPath>, FsError> {
-        use super::scanner::{DirScanInput, DirScanner};
-
-        let scanner = DirScanner::new(&self.root);
-        Ok(scanner.paths(
-            DirScanInput::new().with_pattern(pattern).include_dirs(true),
-        )?)
-    }
-
-    /// Filters file paths within the vault using a glob pattern.
-    ///
-    /// Only files are returned; directories are excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_file_paths(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::path::FilePath>, FsError> {
-        use super::path::FsPath;
-
-        let paths = self.filter_paths(pattern)?;
-        Ok(paths
-            .into_iter()
-            .filter_map(|p| match p {
-                FsPath::File(f) => Some(f),
-                FsPath::Dir(_) => None,
-            })
-            .collect())
-    }
-
-    /// Filters directory paths within the vault using a glob pattern.
-    ///
-    /// Only directories are returned; files are excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_dir_paths(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::path::DirPath>, FsError> {
-        use super::path::FsPath;
-
-        let paths = self.filter_paths(pattern)?;
-        Ok(paths
-            .into_iter()
-            .filter_map(|p| match p {
-                FsPath::Dir(d) => Some(d),
-                FsPath::File(_) => None,
-            })
-            .collect())
-    }
-
-    /// Filters entries within the vault using a glob pattern.
-    ///
-    /// Returns a mixed collection of file and directory entries with metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_entries(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::entry::FsEntry>, FsError> {
-        use super::scanner::{DirScanInput, DirScanner};
-
-        let scanner = DirScanner::new(&self.root);
-        Ok(scanner.entries(
-            DirScanInput::new().with_pattern(pattern).include_dirs(true),
-        )?)
-    }
-
-    /// Filters file entries within the vault using a glob pattern.
-    ///
-    /// Only files are returned; directories are excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_file_entries(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::entry::FsFile>, FsError> {
-        use super::entry::FsEntry;
-
-        let entries = self.filter_entries(pattern)?;
-        Ok(entries
-            .into_iter()
-            .filter_map(|e| match e {
-                FsEntry::File(f) => Some(f),
-                FsEntry::Dir(_) => None,
-            })
-            .collect())
-    }
-
-    /// Filters directory entries within the vault using a glob pattern.
-    ///
-    /// Only directories are returned; files are excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern is invalid or if I/O operations fail.
-    #[inline]
-    pub fn filter_dir_entries(
-        &self,
-        pattern: &str,
-    ) -> Result<Vec<super::entry::FsDir>, FsError> {
-        use super::entry::FsEntry;
-
-        let entries = self.filter_entries(pattern)?;
-        Ok(entries
-            .into_iter()
-            .filter_map(|e| match e {
-                FsEntry::Dir(d) => Some(d),
-                FsEntry::File(_) => None,
-            })
-            .collect())
     }
 
     /// Reads a file's content as raw bytes.
@@ -343,102 +197,6 @@ impl Reader {
     {
         let content = self.read_to_string(path)?;
         f(path, &content)
-    }
-
-    /// Returns the information for a file.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FsError::Read`] if the file does not exist or metadata cannot
-    /// be read.
-    #[inline]
-    pub fn std_metadata(
-        &self,
-        path: &Path,
-    ) -> Result<std::fs::Metadata, FsError> {
-        use super::error::ReadError;
-
-        let full_path = self.root.join(path);
-        std::fs::symlink_metadata(&full_path).map_err(|e| {
-            FsError::Read(ReadError::Io {
-                path: path.to_path_buf(),
-                source: e,
-            })
-        })
-    }
-
-    /// Returns the metadata for a file or directory as a typed [`FsMetadata`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FsError::Read`] if the path does not exist or metadata cannot
-    /// be read.
-    #[inline]
-    pub fn metadata(
-        &self,
-        path: &Path,
-    ) -> Result<super::metadata::FsMetadata, FsError> {
-        use super::{error::ReadError, metadata::FsMetadata};
-
-        let full_path = self.root.join(path);
-        FsMetadata::from_path(&full_path).map_err(|e| {
-            FsError::Read(ReadError::Io {
-                path: path.to_path_buf(),
-                source: e,
-            })
-        })
-    }
-
-    /// Returns the file's creation timestamp.
-    ///
-    /// Returns `None` if the metadata cannot be read or the creation time is
-    /// not available on this platform. Failures are logged at debug level.
-    #[inline]
-    #[must_use]
-    pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
-        let s = self
-            .metadata(path)
-            .map(|m| {
-                m.as_file().map_or_else(
-                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
-                    std::clone::Clone::clone,
-                )
-            })
-            .map_err(|e| {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read metadata for created_at"
-                );
-            })
-            .ok()?;
-        s.times().created_at()
-    }
-
-    /// Returns the file's modification timestamp.
-    ///
-    /// Returns `None` if the metadata cannot be read or the modification time
-    /// is not available on this platform. Failures are logged at debug level.
-    #[inline]
-    #[must_use]
-    pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
-        let s = self
-            .metadata(path)
-            .map(|m| {
-                m.as_file().map_or_else(
-                    || FileMetadata::new(FsTimes::new(None, None), 0, false),
-                    std::clone::Clone::clone,
-                )
-            })
-            .map_err(|e| {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to read metadata for modified_at"
-                );
-            })
-            .ok()?;
-        s.times().modified_at()
     }
 
     /// Extracts the filename (with extension) from a path.
@@ -534,15 +292,6 @@ impl Reader {
     }
 }
 
-/// File system timestamp type alias.
-///
-/// This is now a direct alias to [`SystemTime`] since we use rkyv's
-/// `AsUnixTime` wrapper for serialization instead of manual conversion.
-///
-/// The filesystem methods [`Reader::created_at`] and [`Reader::modified_at`]
-/// return `Option<SystemTime>` directly.
-pub type FileTimestamp = SystemTime;
-
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -571,7 +320,7 @@ mod tests {
             #[case] expected: FileFormat,
         ) {
             assert_eq!(
-                Reader::classify_path(Path::new("data"), Some(content)),
+                FileReader::classify_path(Path::new("data"), Some(content)),
                 expected
             );
         }
@@ -588,13 +337,16 @@ mod tests {
             #[case] path: &str,
             #[case] expected: FileFormat,
         ) {
-            assert_eq!(Reader::classify_path(Path::new(path), None), expected);
+            assert_eq!(
+                FileReader::classify_path(Path::new(path), None),
+                expected
+            );
         }
 
         #[test]
         fn favors_extension_over_content_sniffing() {
             assert_eq!(
-                Reader::classify_path(
+                FileReader::classify_path(
                     Path::new("config.json"),
                     Some("name = \"toml\"")
                 ),
@@ -605,7 +357,7 @@ mod tests {
         #[test]
         fn returns_unknown_without_content() {
             assert_eq!(
-                Reader::classify_path(Path::new("data"), None),
+                FileReader::classify_path(Path::new("data"), None),
                 FileFormat::Unknown
             );
         }
@@ -617,7 +369,7 @@ mod tests {
         #[test]
         fn creates_flexible_reader_with_valid_root() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert_eq!(reader.root(), dir.path());
         }
 
@@ -625,135 +377,18 @@ mod tests {
         fn creates_strict_reader_with_absolute_root() {
             let dir = TempDir::new().expect("tempdir");
             let canonical = dir.path().canonicalize().expect("canonicalize");
-            let reader =
-                Reader::new_strict(canonical.clone()).expect("strict reader");
+            let reader = FileReader::new_strict(canonical.clone())
+                .expect("strict reader");
             assert_eq!(reader.root(), canonical);
         }
 
         #[test]
         fn rejects_relative_root_in_strict_mode() {
-            let result = Reader::new_strict(PathBuf::from("relative/path"));
+            let result = FileReader::new_strict(PathBuf::from("relative/path"));
             assert!(matches!(
                 result,
                 Err(PathValidationError::RelativeRoot(_))
             ));
-        }
-    }
-
-    mod filter_paths {
-        use super::*;
-        use crate::fs::path::FsPath;
-
-        #[test]
-        fn returns_mixed_paths() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let paths = reader.filter_paths("*").expect("filter");
-
-            assert_eq!(paths.len(), 2);
-            assert!(paths.iter().any(|p| matches!(p, FsPath::File(_))));
-            assert!(paths.iter().any(|p| matches!(p, FsPath::Dir(_))));
-        }
-    }
-
-    mod filter_file_paths {
-        use super::*;
-
-        #[test]
-        fn returns_only_file_paths() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let paths = reader.filter_file_paths("*").expect("filter");
-
-            assert_eq!(paths.len(), 1);
-            assert_eq!(
-                paths.first().unwrap().as_path().file_name().unwrap(),
-                "a.json"
-            );
-        }
-    }
-
-    mod filter_dir_paths {
-        use super::*;
-
-        #[test]
-        fn returns_only_dir_paths() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let paths = reader.filter_dir_paths("*").expect("filter");
-
-            assert_eq!(paths.len(), 1);
-            assert_eq!(
-                paths.first().unwrap().as_path().file_name().unwrap(),
-                "subdir"
-            );
-        }
-    }
-
-    mod filter_entries {
-        use super::*;
-        use crate::fs::entry::FsEntry;
-
-        #[test]
-        fn returns_mixed_entries() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let entries = reader.filter_entries("*").expect("filter");
-
-            assert_eq!(entries.len(), 2);
-            assert!(entries.iter().any(|e| matches!(e, FsEntry::File(_))));
-            assert!(entries.iter().any(|e| matches!(e, FsEntry::Dir(_))));
-        }
-    }
-
-    mod filter_file_entries {
-        use super::*;
-
-        #[test]
-        fn returns_only_file_entries() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let entries = reader.filter_file_entries("*").expect("filter");
-
-            assert_eq!(entries.len(), 1);
-            let entry = entries.first().unwrap();
-            assert_eq!(entry.path().as_path().file_name().unwrap(), "a.json");
-            assert_eq!(entry.metadata().size(), 2);
-        }
-    }
-
-    mod filter_dir_entries {
-        use super::*;
-
-        #[test]
-        fn returns_only_dir_entries() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "a.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-
-            let entries = reader.filter_dir_entries("*").expect("filter");
-
-            assert_eq!(entries.len(), 1);
-            assert_eq!(
-                entries.first().unwrap().path().as_path().file_name().unwrap(),
-                "subdir"
-            );
         }
     }
 
@@ -764,14 +399,14 @@ mod tests {
         fn returns_true_for_existing_file() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.json", b"{}");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert!(reader.exists(Path::new("file.json")));
         }
 
         #[test]
         fn returns_false_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert!(!reader.exists(Path::new("nonexistent.json")));
         }
 
@@ -784,133 +419,8 @@ mod tests {
                 dir.path().join("broken"),
             )
             .expect("symlink");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert!(!reader.exists(Path::new("broken")));
-        }
-    }
-
-    mod filter_dir {
-        use super::*;
-
-        #[test]
-        fn returns_sorted_matches() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "schemas/b.json", b"{}");
-            write_file(dir.path(), "schemas/a.json", b"{}");
-            let root = dir.path().to_path_buf();
-            let reader = Reader::new(&root);
-            let files =
-                reader.filter_file_paths("schemas/**/*.json").expect("list");
-            assert_eq!(files.len(), 2);
-            let first = files.first().expect("first file");
-            let second = files.get(1).expect("second file");
-            assert_eq!(first.as_path(), root.join("schemas/a.json"));
-            assert_eq!(second.as_path(), root.join("schemas/b.json"));
-        }
-
-        #[test]
-        fn excludes_directories_from_results() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "file.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir.json"))
-                .expect("dir");
-            let reader = Reader::new(dir.path());
-            let files = reader.filter_file_paths("*.json").expect("list");
-            assert_eq!(files.len(), 1);
-        }
-
-        #[test]
-        fn handles_glob_patterns() {
-            let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
-            // glob::Pattern is very permissive - even "[invalid" is considered
-            // valid It just won't match anything, which is fine
-            let result = reader.filter_file_paths("[invalid");
-            assert!(result.is_ok());
-            assert!(result.unwrap().is_empty());
-        }
-
-        #[test]
-        fn returns_empty_when_no_matches() {
-            let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
-            let files = reader.filter_file_paths("*.json").expect("list");
-            assert!(files.is_empty());
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn includes_symlinks_in_results() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "real.json", b"{}");
-            std::os::unix::fs::symlink(
-                dir.path().join("real.json"),
-                dir.path().join("link.json"),
-            )
-            .expect("symlink");
-            let reader = Reader::new(dir.path());
-            let files = reader.filter_file_paths("*.json").expect("list");
-            assert_eq!(files.len(), 2);
-        }
-    }
-
-    mod filter_file_entries_additional {
-        use super::*;
-
-        #[test]
-        fn returns_sorted_entries() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "schemas/b.json", b"{}");
-            write_file(dir.path(), "schemas/a.json", b"{}");
-            let reader = Reader::new(dir.path());
-            let entries =
-                reader.filter_file_entries("schemas/**/*.json").expect("list");
-            let expected_a = dir.path().join("schemas/a.json");
-            let expected_b = dir.path().join("schemas/b.json");
-
-            assert_eq!(entries.len(), 2);
-            assert_eq!(
-                entries.first().map(|e| e.path().as_path().to_path_buf()),
-                Some(expected_a)
-            );
-            assert_eq!(
-                entries.get(1).map(|e| e.path().as_path().to_path_buf()),
-                Some(expected_b)
-            );
-            assert_eq!(
-                entries
-                    .first()
-                    .and_then(|e| e.path().filename())
-                    .map(|name| name.as_str().to_owned()),
-                Some("a.json".to_owned())
-            );
-            assert_eq!(
-                entries
-                    .get(1)
-                    .and_then(|e| e.path().filename())
-                    .map(|name| name.as_str().to_owned()),
-                Some("b.json".to_owned())
-            );
-            assert!(entries.first().is_some_and(|e| e.metadata().size() > 0));
-        }
-
-        #[test]
-        fn excludes_directories_from_results() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "file.json", b"{}");
-            std::fs::create_dir_all(dir.path().join("subdir.json"))
-                .expect("dir");
-            let reader = Reader::new(dir.path());
-            let entries = reader.filter_file_entries("*.json").expect("list");
-            assert_eq!(entries.len(), 1);
-        }
-
-        #[test]
-        fn returns_empty_when_no_matches() {
-            let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
-            let entries = reader.filter_file_entries("*.json").expect("list");
-            assert!(entries.is_empty());
         }
     }
 
@@ -932,7 +442,7 @@ mod tests {
         ) {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), path, content);
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             let result: Result<serde_json::Value, _> =
                 reader.parse_structured(Path::new(path));
             assert_eq!(result.is_ok(), should_succeed);
@@ -942,7 +452,7 @@ mod tests {
         fn rejects_unknown_format() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "data.xml", b"<root/>");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             let result: Result<serde_json::Value, _> =
                 reader.parse_structured(Path::new("data.xml"));
             assert!(matches!(
@@ -956,7 +466,7 @@ mod tests {
         #[test]
         fn returns_error_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             let result: Result<serde_json::Value, _> =
                 reader.parse_structured(Path::new("nonexistent.json"));
             assert!(matches!(
@@ -973,7 +483,7 @@ mod tests {
         fn returns_file_content() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.txt", b"content");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert_eq!(
                 reader.read_to_string(Path::new("file.txt")).expect("read"),
                 "content"
@@ -984,14 +494,14 @@ mod tests {
         fn rejects_invalid_utf8() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "binary.bin", b"\xff\xfe");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             reader.read_to_string(Path::new("binary.bin")).unwrap_err();
         }
 
         #[test]
         fn returns_error_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             reader.read_to_string(Path::new("nonexistent")).unwrap_err();
         }
     }
@@ -1004,7 +514,7 @@ mod tests {
             let dir = TempDir::new().expect("tempdir");
             let original: Vec<u8> = vec![0x00, 0xFF, 0xAB, 0xCD];
             write_file(dir.path(), "file.bin", &original);
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             assert_eq!(
                 reader.read_bytes(Path::new("file.bin")).expect("read"),
                 original
@@ -1014,76 +524,8 @@ mod tests {
         #[test]
         fn returns_error_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             reader.read_bytes(Path::new("nonexistent")).unwrap_err();
-        }
-    }
-
-    mod metadata {
-        use super::*;
-
-        #[test]
-        fn returns_file_metadata() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "file.json", b"{}");
-            let reader = Reader::new(dir.path());
-            let meta = reader.metadata(Path::new("file.json")).expect("meta");
-            assert!(meta.is_file());
-            assert_eq!(meta.as_file().unwrap().size(), 2);
-        }
-
-        #[test]
-        fn returns_dir_metadata() {
-            let dir = TempDir::new().expect("tempdir");
-            std::fs::create_dir_all(dir.path().join("subdir")).expect("mkdir");
-            let reader = Reader::new(dir.path());
-            let meta = reader.metadata(Path::new("subdir")).expect("meta");
-            assert!(meta.is_dir());
-        }
-
-        #[test]
-        fn returns_error_for_nonexistent_path() {
-            let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
-            let result = reader.metadata(Path::new("nonexistent"));
-            assert!(result.is_err());
-        }
-    }
-
-    mod std_metadata {
-        use super::*;
-
-        #[test]
-        fn returns_file_size() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "file.json", b"{}");
-            let reader = Reader::new(dir.path());
-            let meta =
-                reader.std_metadata(Path::new("file.json")).expect("meta");
-            assert_eq!(meta.len(), 2);
-        }
-
-        #[test]
-        fn returns_error_for_nonexistent_file() {
-            let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
-            reader.std_metadata(Path::new("nonexistent")).unwrap_err();
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn detects_symlink() {
-            let dir = TempDir::new().expect("tempdir");
-            write_file(dir.path(), "real.json", b"{}");
-            std::os::unix::fs::symlink(
-                dir.path().join("real.json"),
-                dir.path().join("link.json"),
-            )
-            .expect("symlink");
-            let reader = Reader::new(dir.path());
-            let meta =
-                reader.std_metadata(Path::new("link.json")).expect("meta");
-            assert!(meta.file_type().is_symlink());
         }
     }
 
@@ -1094,7 +536,7 @@ mod tests {
         fn invokes_closure_with_content() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.txt", b"# Title");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             let has_heading: bool = reader
                 .read_with::<_, FsError, _>(Path::new("file.txt"), |_, s| {
                     Ok(s.trim_start().starts_with('#'))
@@ -1106,7 +548,7 @@ mod tests {
         #[test]
         fn propagates_io_error() {
             let dir = TempDir::new().expect("tempdir");
-            let reader = Reader::new(dir.path());
+            let reader = FileReader::new(dir.path());
             let result: Result<String, FsError> = reader
                 .read_with(Path::new("nonexistent"), |_, _| Ok("x".into()));
             assert!(matches!(
@@ -1128,7 +570,7 @@ mod tests {
     #[test]
     fn validates_path_using_internal_validator() {
         let dir = TempDir::new().expect("tempdir");
-        let reader = Reader::new(dir.path());
+        let reader = FileReader::new(dir.path());
         reader.validate_path(Path::new("safe.txt")).expect("valid path");
         reader
             .validate_path(Path::new("../unsafe.txt"))

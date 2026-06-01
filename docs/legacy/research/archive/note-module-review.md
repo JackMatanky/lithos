@@ -47,7 +47,7 @@ out-of-scope for refactoring in this review.
 ### 3.1 Domain/Infrastructure Separation
 
 - Domain types in `note/` do not import fs/infrastructure, which is good.
-- Ingestion is performed via `NoteReader` (adapter) with `FsReader`, consistent
+- Ingestion is performed via `NoteReader` (adapter) with `FileReader`, consistent
   with architecture constraints.
 
 ### 3.2 Port-Based CQRS

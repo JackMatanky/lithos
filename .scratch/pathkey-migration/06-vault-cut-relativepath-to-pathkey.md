@@ -697,12 +697,12 @@ fn normalized_path_from_relative(
 
 **Step 2:** Update `scan_views` to use `FsPath` directly:
 
-The key insight: `FsReader::filter_dir_entries()` and `filter_file_entries()` already return
+The key insight: `FileReader::filter_dir_entries()` and `filter_file_entries()` already return
 typed `FsDir` and `FsFile` entries with `DirPath` and `FilePath` internally. We just need to
 call `.as_key(root)` on them.
 
 ```rust
-fn scan_views(source: &FsReader) -> Result<ScanViews, VaultFileError> {
+fn scan_views(source: &FileReader) -> Result<ScanViews, VaultFileError> {
     // Directories
     let mut dir_entries: Vec<(PathKey, crate::fs::entry::FsDir)> = source
         .filter_dir_entries("**/*")

@@ -2,24 +2,24 @@
 
 **Status**: drafting
 **Created**: 2026-05-26
-**Context**: The `FsReader` has become a shallow module that mixes file I/O operations with directory traversal. This PRD outlines the strategy to deepen the architecture by splitting these responsibilities into distinct seams: `FileReader` for I/O and `DirScanner` for traversal.
+**Context**: The `FileReader` has become a shallow module that mixes file I/O operations with directory traversal. This PRD outlines the strategy to deepen the architecture by splitting these responsibilities into distinct seams: `FileReader` for I/O and `DirScanner` for traversal.
 
 ---
 
 ## Problem Statement
 
-Currently, `FsReader` provides an interface that is nearly as complex as its implementation. It violates single-responsibility by managing both File I/O (reading bytes/strings and fetching metadata) and Directory Scanning (glob-based filtering and traversal like `filter_entries`).
+Currently, `FileReader` provides an interface that is nearly as complex as its implementation. It violates single-responsibility by managing both File I/O (reading bytes/strings and fetching metadata) and Directory Scanning (glob-based filtering and traversal like `filter_entries`).
 
 This creates significant architectural friction:
-- **Poor Leverage**: Consumers like `VaultProcessor` and `SchemaProcessor` must depend on the entire `FsReader` surface area even if they only need one capability.
+- **Poor Leverage**: Consumers like `VaultProcessor` and `SchemaProcessor` must depend on the entire `FileReader` surface area even if they only need one capability.
 - **Poor Locality**: Traversal bugs and I/O bugs all funnel back to `fs/reader.rs`.
-- **Testing Friction**: Mocking or instantiating `FsReader` requires setting up both I/O boundaries and traversal trees, even when only one behavior is under test.
+- **Testing Friction**: Mocking or instantiating `FileReader` requires setting up both I/O boundaries and traversal trees, even when only one behavior is under test.
 
 ## Solution
 
 We will decouple I/O and traversal into two distinct boundaries:
 
-1. **`FileReader` (I/O)**: A stripped-down version of `FsReader` that only handles reading file contents and extracting metadata scoped to a validated root. It retains the `Validator` to ensure paths passed to it are safe.
+1. **`FileReader` (I/O)**: A stripped-down version of `FileReader` that only handles reading file contents and extracting metadata scoped to a validated root. It retains the `Validator` to ensure paths passed to it are safe.
 2. **`DirScanner` (Traversal)**: A standalone component dedicated to discovering files and directories. It traverses a root path and yields `FsEntry` objects containing strongly-typed `FsPath` instances (which are guaranteed to exist).
 
 Processors like `VaultProcessor` and `SchemaProcessor` will be updated to accept `FileReader` and `DirScanner` as separate dependencies. Discovery engines will instantiate `DirScanner` to find files, and pass the results to processors which then use `FileReader` for I/O.
@@ -38,13 +38,13 @@ Processors like `VaultProcessor` and `SchemaProcessor` will be updated to accept
 ## Implementation Decisions
 
 ### 1. `FileReader` Refactor
-- Rename `FsReader` to `FileReader` in `src/fs/reader.rs`.
+- Rename `FileReader` to `FileReader` in `src/fs/reader.rs`.
 - Strip all `filter_*` methods (`filter_entries`, `filter_file_paths`, `filter_dir_paths`, etc.) from `FileReader`.
 - Retain the `Validator` within `FileReader` to enforce strict/flexible boundary security on arbitrary path strings.
 
 ### 2. Dependency Injection Updates
 - Update `VaultProcessor` (`scan_views`) to accept a `DirScanner` for discovering vault files, removing its reliance on the reader for traversal.
-- Update all other processors (`SchemaProcessor`, `NoteProcessor`, `ConfigBuilder`, etc.) to accept `FileReader` instead of `FsReader`. They already do not use any scanning methods, so this is a strict type rename for them.
+- Update all other processors (`SchemaProcessor`, `NoteProcessor`, `ConfigBuilder`, etc.) to accept `FileReader` instead of `FileReader`. They already do not use any scanning methods, so this is a strict type rename for them.
 - Continue using `DirScanner` natively in `schema/discovery.rs` and `config/discovery.rs`.
 
 ### 3. Type State and Validation
@@ -53,7 +53,7 @@ Processors like `VaultProcessor` and `SchemaProcessor` will be updated to accept
 
 ## Testing Decisions
 
-- **Deletion Test**: Verify that replacing `FsReader` with `FileReader` + `DirScanner` isolates traversal complexity to the discovery modules, leaving the processors focused purely on domain logic.
+- **Deletion Test**: Verify that replacing `FileReader` with `FileReader` + `DirScanner` isolates traversal complexity to the discovery modules, leaving the processors focused purely on domain logic.
 - **Modules Tested**: Unit tests in `src/fs/reader.rs` will be pruned of `filter_*` tests (as these are effectively tested in `scanner.rs`).
 - **Prior Art**: We will rely heavily on existing integration tests in `tests/note_reader.rs`, `tests/schema_loader.rs`, and the processor test modules to ensure end-to-end behavior remains identical.
 

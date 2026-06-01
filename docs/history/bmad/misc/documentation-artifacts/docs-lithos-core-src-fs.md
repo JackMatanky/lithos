@@ -101,7 +101,7 @@ crate, so crate-level docs are not generated here.
 
 ### Type Aliases
 
-- `FsReader`: Alias for `Reader` used at adapter call sites.
+- `FileReader`: Alias for `Reader` used at adapter call sites.
 - `FsWriter`: Alias for `Writer` used at adapter call sites.
 
 ## Function Documentation

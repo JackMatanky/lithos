@@ -47,7 +47,7 @@ mod tests {
         let db_path = root.join("notes.redb");
         let store = Arc::new(Store::open(&db_path).expect("open store"));
         let repository = RedbRepository::new(Arc::clone(&store));
-        let source = lithos_core::fs::FsReader::new(root.as_path());
+        let source = lithos_core::fs::FileReader::new(root.as_path());
 
         let note_path =
             lithos_core::note::paths::NotePath::try_new("notes/ingest.md")

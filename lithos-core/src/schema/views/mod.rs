@@ -38,7 +38,7 @@
 //! │  FILE SYSTEM (Source of Truth)                              │
 //! │  schemas/note.yaml, property_bank.yaml                      │
 //! └───────────────────────┬─────────────────────────────────────┘
-//!                         │ FsReader (security-validated access)
+//!                         │ FileReader (security-validated access)
 //!                         ▼
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │  PARSE: File → Raw* (serde-only, syntax validation)         │

@@ -704,7 +704,7 @@ impl<S> Schema<S> {
 
 ```rust
 pub fn load_schemas<R: Repository>(
-    source: &impl FsReader,
+    source: &impl FileReader,
     repo: &mut R
 ) -> Result<usize, Error> {
     let mut count = 0;

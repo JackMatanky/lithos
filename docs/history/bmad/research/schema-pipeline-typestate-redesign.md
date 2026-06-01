@@ -1611,7 +1611,7 @@ pub(crate) struct SchemaDiscovery;
 impl SchemaDiscovery {
     /// Discover all schemas and branch into per-schema pipelines
     pub(crate) fn discover_all<R: Repository>(
-        source: &FsReader,
+        source: &FileReader,
         repository: &R,
         property_delta: &PropertyDelta,
     ) -> Result<DiscoveryResult, SchemaLoaderError>
@@ -1777,7 +1777,7 @@ impl SchemaProcessor<InheritanceAnalysis, Suspect> {
         name_to_id: &HashMap<SchemaName, SchemaId>,
     ) -> Result<InheritanceBranch, SchemaLoaderError> {
         // 1. Parse RawSchema from content (if not already parsed)
-        let raw: RawSchema = FsReader::parse_structured_from_str(
+        let raw: RawSchema = FileReader::parse_structured_from_str(
             &format!("{}.toml", self.status.id),
             &self.status.content,
         )?;

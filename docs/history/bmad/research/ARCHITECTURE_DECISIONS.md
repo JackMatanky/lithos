@@ -11,7 +11,7 @@ We have completed the comprehensive planning for the schema pipeline refactor us
 ## 1. State Machine Data Ownership
 
 ### Decision: Infrastructure Separation
-- **Builder holds infrastructure** (Config, FsReader, Repository)
+- **Builder holds infrastructure** (Config, FileReader, Repository)
 - **State machines hold only evolving data** (parsed types, domain objects, deltas)
 - **Infrastructure passed by reference** to state transition methods
 
@@ -45,7 +45,7 @@ struct SchemaData {
 ```rust
 pub struct Builder<'config, R> {
     config: &'config Config,
-    source: FsReader,
+    source: FileReader,
     repository: R,
 
     // Mutable: Set after PropertyBank pipeline

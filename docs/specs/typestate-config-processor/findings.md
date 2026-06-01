@@ -1239,7 +1239,7 @@ Based on user decisions, need to:
 1. **Create discovery.rs FIRST** (enables clean metadata handling)
    - Pattern after schema/discovery.rs structure
    - Key differences from ingestor.rs:
-     * Use FsReader.info() instead of created_at()/modified_at() separately
+     * Use FileReader.info() instead of created_at()/modified_at() separately
      * Return FileInfo directly (not RawConfigMetadata)
      * Batch DB queries for views in single transaction
      * Return discovery data for typestate routing
@@ -1283,7 +1283,7 @@ Based on user decisions, need to:
 
 **Needed Changes for discovery.rs:**
 
-1. Use `FsReader.info()` → returns `FileInfo` directly
+1. Use `FileReader.info()` → returns `FileInfo` directly
 2. Return discovery data (FileInfo + Optional<View>), not parsed configs
 3. Batch DB queries in single transaction
 4. Support global + vault in one discovery run

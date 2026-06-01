@@ -101,7 +101,7 @@ Architecture vocabulary from `improve-codebase-architecture`: **Module**, **Inte
 #### 🔍 Candidate A: Internalize the decision tree (`Processor::run()`)
 - **Files**: `property_bank_processor.rs`, `builder.rs`
 - **Problem**: Builder's orchestration tree (5 helper methods, 17-item import) is a visible re-implementation of the processor's typestate encoding. Every branch the builder handles is already encoded by the processor's state transitions
-- **Solution**: Add `impl PropertyBankProcessor<Init, Unknown> { fn run(self, view: Option<&RawPropertyBankView>, source: &FsReader, repository: &R) -> Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError> }` that internalizes the cheapest-path algorithm
+- **Solution**: Add `impl PropertyBankProcessor<Init, Unknown> { fn run(self, view: Option<&RawPropertyBankView>, source: &FileReader, repository: &R) -> Result<(PropertyBank, Option<HashSet<PropertyName>>), SchemaLoaderError> }` that internalizes the cheapest-path algorithm
 - **Benefit**: Builder drops from 5 helpers + 17 imports to 1 call + 3 imports. Processor's internal seams (branch enums) remain testable via existing tests. Per Chapter 7.2: "Invalid states become compile errors" — `run()` enforces the tree internally
 - **Cost**: Decision tree becomes opaque. Currently it's visible as a flat sequence in the builder
 - **Verdict**: Worth exploring if the builder's schema pipeline also gets simplified (but schema processor is deferred to separate scratch)

@@ -1022,7 +1022,7 @@ impl PipelineState {
         Ok(())
     }
 
-    fn parse_stage(&mut self, source: &FsReader) -> Result<(), Error> {
+    fn parse_stage(&mut self, source: &FileReader) -> Result<(), Error> {
         for (_id, node) in self.graph.graph_mut().iter_mut() {
             let PipelinePayload::Compared(compared_data) = node.payload() else {
                 continue;
@@ -1416,7 +1416,7 @@ let graph = Graph::from_nodes_and_edges(&new_nodes, &adj, |n| n.clone());
 
 **After**:
 ```rust
-fn compare_stage(state: &mut PipelineState, source: &FsReader) -> Result<()> {
+fn compare_stage(state: &mut PipelineState, source: &FileReader) -> Result<()> {
     // Access mutable graph through ProcessingGraph wrapper
     for (id, node) in state.graph.graph_mut().iter_mut() {
         let PipelinePayload::Present(present) = node.payload() else { continue };

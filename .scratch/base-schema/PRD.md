@@ -210,7 +210,7 @@ Avoid:
 
 **Location**: `lithos-core/tests/base_schema_processor.rs`
 
-**Scope**: end-to-end with real `FsReader`, repository adapter, fixture files
+**Scope**: end-to-end with real `FileReader`, repository adapter, fixture files
 
 **Prior art**: `lithos-core/tests/property_bank_processor.rs` (replicate pattern)
 

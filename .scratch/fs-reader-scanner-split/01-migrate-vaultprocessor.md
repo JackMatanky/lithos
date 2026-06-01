@@ -11,12 +11,12 @@ Ref: #40
 
 ## What to build
 
-Update `VaultProcessor` so that directory traversal and file discovery are powered entirely by the natively injected `DirScanner`. The processor must no longer depend on `FsReader`'s `filter_entries` or any other scanning methods.
+Update `VaultProcessor` so that directory traversal and file discovery are powered entirely by the natively injected `DirScanner`. The processor must no longer depend on `FileReader`'s `filter_entries` or any other scanning methods.
 
 ## Acceptance criteria
 
 - [ ] `scan_views` and related Vault processor trait methods accept `scanner: &DirScanner` alongside the reader.
-- [ ] Vault discovery relies solely on `DirScanner` output (`FsEntry` arrays) rather than calling `FsReader::filter_*`.
+- [ ] Vault discovery relies solely on `DirScanner` output (`FsEntry` arrays) rather than calling `FileReader::filter_*`.
 - [ ] Depth-sorting and component processing continues to work correctly.
 - [ ] Integration tests in `vault` context continue to pass with identical behavior.
 
@@ -32,7 +32,7 @@ None - can start immediately
 **Summary:** Simplify `VaultProcessor` by removing the unused `process_partial` optimization, and migrate full discovery to natively use `DirScanner`.
 
 **Current behavior:**
-`VaultProcessor::scan_views` relies on `FsReader::filter_dir_entries` and `FsReader::filter_file_entries`. It runs two separate glob queries. Furthermore, `VaultProcessor` maintains complex, parallel state machine logic (`discover_partial`, `compare_partial`) for sparse updates that are completely unused in production.
+`VaultProcessor::scan_views` relies on `FileReader::filter_dir_entries` and `FileReader::filter_file_entries`. It runs two separate glob queries. Furthermore, `VaultProcessor` maintains complex, parallel state machine logic (`discover_partial`, `compare_partial`) for sparse updates that are completely unused in production.
 
 **Desired behavior:**
 1. **Remove Premature Optimization:** Delete `process_partial` and all its associated partial-scan machinery (`discover_partial`, `compare_partial`, `complete_partial`, `ScanMode`).
@@ -46,12 +46,12 @@ None - can start immediately
 **Acceptance criteria:**
 - [ ] `process_partial`, `discover_partial`, `compare_partial`, `complete_partial`, and `ScanMode` are deleted from `processor.rs`.
 - [ ] `scan_views` and `discover` methods accept `scanner: &DirScanner`.
-- [ ] Vault discovery uses a single `scanner.entries(...)` call instead of multiple `FsReader::filter_*` calls.
+- [ ] Vault discovery uses a single `scanner.entries(...)` call instead of multiple `FileReader::filter_*` calls.
 - [ ] `process_partial` tests are removed from `tests/note_reader.rs`.
 - [ ] The remaining `process_full` integration tests in `tests/note_reader.rs` pass with identical behavior.
 
 **Out of scope:**
-- Removing or deprecating `FsReader::filter_*` and `FsReader::*metadata` methods themselves (that will happen in issue #06).
+- Removing or deprecating `FileReader::filter_*` and `FileReader::*metadata` methods themselves (that will happen in issue #06).
 
 ## TDD Implementation Plan
 

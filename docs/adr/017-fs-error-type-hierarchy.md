@@ -29,7 +29,7 @@ We will decompose the FS error module into six types, each with a single respons
 
 5. **`PathValidationError`** (unchanged, 9 variants) — Security validation for path traversal, symlink escape, restricted paths.
 
-6. **`FsError`** (5 `#[from]` variants) — Pure compositor. Wraps all five child types via `#[error(transparent)]` with `#[from]`. Zero direct variants. Serves as the module's public-facing return type on `FsReader` methods.
+6. **`FsError`** (5 `#[from]` variants) — Pure compositor. Wraps all five child types via `#[error(transparent)]` with `#[from]`. Zero direct variants. Serves as the module's public-facing return type on `FileReader` methods.
 
 ### Composition hierarchy
 

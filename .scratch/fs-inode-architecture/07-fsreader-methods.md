@@ -17,7 +17,7 @@ AFK
 
 ## What to build
 
-Add new methods to FsReader: filter_paths, filter_file_paths, filter_dir_paths, filter_entries, filter_file_entries, filter_dir_entries, and metadata(path) → FsMetadata.
+Add new methods to FileReader: filter_paths, filter_file_paths, filter_dir_paths, filter_entries, filter_file_entries, filter_dir_entries, and metadata(path) → FsMetadata.
 
 Delete old info() method entirely (replaced by metadata()).
 
@@ -44,7 +44,7 @@ Delete old info() method entirely (replaced by metadata()).
 ## Implementation Notes (2026-05-13)
 
 ### Summary
-Successfully implemented typed filtering and metadata methods in `FsReader` (`Reader` struct in `reader.rs`) and migrated all internal and external callers from the deprecated `info()` method to the new unified `metadata()` API.
+Successfully implemented typed filtering and metadata methods in `FileReader` (`Reader` struct in `reader.rs`) and migrated all internal and external callers from the deprecated `info()` method to the new unified `metadata()` API.
 
 ### Key Changes
 - **Unified Metadata API**: Renamed the existing `metadata()` (which returned `std::fs::Metadata`) to `std_metadata()` and introduced a new `metadata()` method that returns the typed `FsMetadata` enum.
@@ -52,7 +52,7 @@ Successfully implemented typed filtering and metadata methods in `FsReader` (`Re
 - **Call site Migration**:
     - Updated `config/discovery.rs` and `schema/schema_processor.rs` to use the new `metadata()` method.
     - Added compatibility conversions in `fs/file.rs` (`impl From<FileMetadata> for FileInfo`) to allow existing code to continue using `FileInfo` until the full migration in Issue 08.
-    - Updated `created_at` and `modified_at` in `FsReader` to use the new `metadata()` API.
+    - Updated `created_at` and `modified_at` in `FileReader` to use the new `metadata()` API.
 - **Cleanup**: Deleted the deprecated `info()` method entirely.
 - **Doctest Updates**: Updated doctests in `reader.rs` to use the new `metadata()` API.
 - **Testing**: Comprehensive test coverage added for all new methods, ensuring correct filtering of files vs. directories and proper metadata retrieval.
@@ -67,7 +67,7 @@ Successfully implemented typed filtering and metadata methods in `FsReader` (`Re
 
 ### `FsMetadata::from_path()` Delegation
 
-Refactored `FsReader::metadata()` to delegate to `FsMetadata::from_path()` for better separation of concerns:
+Refactored `FileReader::metadata()` to delegate to `FsMetadata::from_path()` for better separation of concerns:
 
 **Before:**
 ```rust
@@ -86,10 +86,10 @@ pub fn metadata(&self, path: &Path) -> Result<FsMetadata, ParseError> {
 ```
 
 **Benefits:**
-- ✅ **Single Responsibility**: `FsReader` focuses on path resolution, `FsMetadata` owns construction logic
+- ✅ **Single Responsibility**: `FileReader` focuses on path resolution, `FsMetadata` owns construction logic
 - ✅ **Idiomatic API**: Matches stdlib `std::fs::metadata(path)` pattern
-- ✅ **Independent Testability**: Can test `FsMetadata::from_path()` without `FsReader`
-- ✅ **Reusable**: Direct usage for absolute paths without needing `FsReader`
+- ✅ **Independent Testability**: Can test `FsMetadata::from_path()` without `FileReader`
+- ✅ **Reusable**: Direct usage for absolute paths without needing `FileReader`
 
 See Issue 04 implementation notes for full `from_path()` design rationale.
 

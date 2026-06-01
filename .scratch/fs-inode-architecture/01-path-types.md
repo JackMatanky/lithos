@@ -194,7 +194,7 @@ These are used by `SchemaConfigSpec::directory()` and `SchemaConfigSpec::propert
 - Contradicts modularity: a lightweight path type shouldn't reach into the filesystem
 
 **Options:**
-1. **Remove I/O from constructors** — Make `FilePath`/`DirPath` purely syntactic (like `RelativePath`/`AbsolutePath`). Move filesystem existence checks to `FsReader`/`DirScanner` where I/O belongs.
+1. **Remove I/O from constructors** — Make `FilePath`/`DirPath` purely syntactic (like `RelativePath`/`AbsolutePath`). Move filesystem existence checks to `FileReader`/`DirScanner` where I/O belongs.
 2. **Keep I/O but fix error type** — Change return type to `Result<Self, PathError>` using existing `PathError::NotAFile` / `PathError::NotADirectory` variants. This is what `PathError` was designed for (`error.rs:54-65`).
 
 **This decision cascades to Issue 1** — if I/O is removed, `From<PathBuf>` becomes less dangerous (just no type-level file/dir distinction but no I/O surprise). If I/O is kept, `From<PathBuf>` is definitely wrong.

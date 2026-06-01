@@ -816,7 +816,7 @@ All success criteria met. Ready for integration.
 - Replaced Ingestor with DiscoveryEngine in loader.rs
 - Updated Loader struct (removed ingestor field)
 - Replaced ingestor.global_config()/vault_config() with DiscoveryEngine::run()
-- Parse configs from FileEntry using FsReader.parse_structured()
+- Parse configs from FileEntry using FileReader.parse_structured()
 - Extract views from discovery result
 - All 993 tests pass
 

@@ -358,7 +358,7 @@ PipelinePayload::Compared(ComparedPayload::StaleBankReferences(payload)) => {
     // Parse raw schema
     let schema_name = source.filename(payload.path.as_path())...;
     let stats_for_raw = payload.stats;
-    let raw = FsReader::parse_structured_from_str::<RawSchema>(
+    let raw = FileReader::parse_structured_from_str::<RawSchema>(
         payload.path.as_path(),
         &payload.content_str,
     )...

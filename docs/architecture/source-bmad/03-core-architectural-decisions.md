@@ -60,7 +60,7 @@ section: "Architecture Decisions"
 
 - **Strategy:** Pipeline processing and direct functional calls using `Result<T, E>` for error propagation.
 - **Ingestion Flow:**
-  - File discovery via `FsReader` abstraction.
+  - File discovery via `FileReader` abstraction.
   - Context-specific loaders iterate over files, applying parsing and validation.
   - Validated domain objects are persisted via the `Repository` trait.
 - **User Action Flow:**

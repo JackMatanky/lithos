@@ -92,7 +92,7 @@ pub enum FileFormat {
 - Migration to new name deferred to Issue 09 (Phase 3)
 
 **Integration:**
-- Updated `FsReader::classify_path()` to use new enum
+- Updated `FileReader::classify_path()` to use new enum
 - Fixed non-exhaustive pattern matches in `fs/reader.rs`
 - Updated test expectations: `Binary` → `Image`/`Pdf`
 
@@ -263,7 +263,7 @@ All new types exported at `lithos_core::fs` level:
 Phase 2 will integrate the new types into filesystem operations:
 
 **Issue 06:** Update `DirScanner` methods to return `FsEntry` instead of `PathBuf`
-**Issue 07:** Update `FsReader` methods to use new types
+**Issue 07:** Update `FileReader` methods to use new types
 
 These updates will make the type system operational throughout the codebase.
 

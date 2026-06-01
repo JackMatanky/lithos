@@ -192,7 +192,7 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
 
 #### 2.4 Implement Transition Logic
 
-- [ ] File parsing (FsReader integration)
+- [ ] File parsing (FileReader integration)
 - [ ] Delta computation (hash comparison)
 - [ ] Delta application (merge old + new properties)
 - [ ] DB persistence
@@ -389,7 +389,7 @@ Refactor `Loader` into a thin `Builder` facade and remove `Ingestor` entirely.
   ```rust
   pub struct Builder<'config, R> {
       config: &'config Config,
-      source: FsReader,
+      source: FileReader,
       repository: R,
       property_delta: PropertyDelta,
   }

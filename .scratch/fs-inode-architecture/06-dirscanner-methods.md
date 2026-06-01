@@ -164,7 +164,7 @@ impl DirScanner {
 
 **Out of scope:**
 - Updating existing `paths()` or `entries()` methods (keep for backward compat)
-- Updating `FsReader` methods (reserved for Issue 07)
+- Updating `FileReader` methods (reserved for Issue 07)
 - Migrating existing call sites to use new methods (Phase 3)
 
 **Testing strategy:**

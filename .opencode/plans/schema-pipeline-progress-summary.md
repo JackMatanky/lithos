@@ -309,7 +309,7 @@ EARLY EXIT:
 - `redb` - database ✅
 
 ### Internal Modules
-- `FsReader` - filesystem abstraction ✅
+- `FileReader` - filesystem abstraction ✅
 - `Repository` trait - database operations ✅
 - `PropertyBankProcessor` - upstream delta provider ⚠️ (needs integration)
 

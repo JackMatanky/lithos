@@ -221,7 +221,7 @@
 use std::{hint::black_box, path::Path};
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use lithos_core::{config::task::TaskConfigSpec, fs::FsReader, note::parser};
+use lithos_core::{config::task::TaskConfigSpec, fs::FileReader, note::parser};
 
 fn task_spec_fixture() -> TaskConfigSpec {
     TaskConfigSpec::new(
@@ -401,7 +401,7 @@ struct BenchSamples<'sample> {
 
 fn bench_ingest_group(
     c: &mut Criterion,
-    reader: &FsReader,
+    reader: &FileReader,
     root: &Path,
     samples: &BenchSamples<'_>,
 ) {
@@ -505,7 +505,7 @@ fn bench_note_ingest(c: &mut Criterion) {
     std::fs::create_dir_all(root.join("notes"))
         .expect("create bench notes dir");
 
-    let reader = FsReader::new(root.as_path());
+    let reader = FileReader::new(root.as_path());
 
     let samples = BenchSamples {
         simple: simple_markdown(),

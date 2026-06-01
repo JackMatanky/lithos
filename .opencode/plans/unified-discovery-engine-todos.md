@@ -137,7 +137,7 @@
   - Mark with `#[inline]`
 - [ ] Define `DiscoveryEngine` as empty struct (zero-sized type)
 - [ ] Implement `DiscoveryEngine::run()` public entry point
-  - Accept `context: &FilesContext`, `repo: &R`, `source: &FsReader`
+  - Accept `context: &FilesContext`, `repo: &R`, `source: &FileReader`
   - Generic over `R: Repository` with error bound
   - Call `repo.with_batch_schema_reader()` wrapping `run_batch()`
   - Map repository errors to `SchemaLoaderError::Repository`
