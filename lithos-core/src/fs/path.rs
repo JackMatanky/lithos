@@ -1,7 +1,34 @@
 //! Validated path types for the Lithos core library.
 //!
-//! Provides type-safe wrappers for relative and absolute paths, ensuring
-//! consistent validation and policy across the project.
+//! This module provides a hierarchy of type-safe path wrappers that enforce
+//! filesystem invariants and security policies (e.g., vault-root scoping).
+//!
+//! # Type Hierarchy
+//!
+//! - **Rooted Paths**: [`FilePath`] and [`DirPath`] represent paths that exist
+//!   on the local filesystem. They wrap `PathBuf` and validate that the path
+//!   actually refers to the expected file/directory type.
+//! - **Vault-Relative Paths**: [`RelativePath`] represents a path relative to a
+//!   vault root. It is platform-agnostic in logic but uses platform-specific
+//!   separators internally.
+//! - **Storage Keys**: [`PathKey`] is a normalized, UTF-8 encoded,
+//!   vault-relative path using forward slashes (`/`). It is intended for
+//!   database keys and serialization.
+//! - **Unified Views**: [`FsPath`] and [`FsPathRef`] provide enums for
+//!   operations that can apply to either files or directories.
+//!
+//! # Examples
+//!
+//! ```rust
+//! # use lithos_core::fs::PathKey;
+//! // Normalizing a string for storage
+//! let key = PathKey::try_new("notes\\daily\\today.md").unwrap();
+//! assert_eq!(key.as_str(), "notes/daily/today.md");
+//!
+//! // Validating a storage key
+//! let key = PathKey::try_new("data/config.json");
+//! assert!(key.is_ok());
+//! ```
 
 #![expect(
     clippy::module_name_repetitions,
@@ -17,49 +44,11 @@ use super::{
     name::{BaseName, BaseNameRef, DirName, DirNameRef, FileName, FileNameRef},
 };
 
-/// A trait for path fragments that can be appended to a directory to form a
-/// file path.
-pub trait FileFragment {
-    /// Returns the fragment as a string slice.
-    fn as_str(&self) -> &str;
-}
-
-impl FileFragment for FileName {
-    #[inline]
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl FileFragment for RelativeFilePath {
-    #[inline]
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
-/// A trait for path fragments that can be appended to a directory to form a
-/// directory path.
-pub trait DirFragment {
-    /// Returns the fragment as a string slice.
-    fn as_str(&self) -> &str;
-}
-
-impl DirFragment for DirName {
-    #[inline]
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl DirFragment for RelativeDirPath {
-    #[inline]
-    fn as_str(&self) -> &str {
-        self.as_str()
-    }
-}
-
 /// Unified path enum representing either a file or a directory.
+///
+/// This type is used when an operation can handle both files and directories,
+/// such as walking a directory tree or representing a general filesystem node.
+/// It wraps the more specific [`FilePath`] and [`DirPath`] types.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -73,7 +62,7 @@ pub enum FsPath {
 }
 
 impl FsPath {
-    /// Returns the underlying path.
+    /// Returns the underlying path as a standard library [`Path`].
     #[inline]
     #[must_use]
     pub fn as_path(&self) -> &Path {
@@ -97,7 +86,7 @@ impl FsPath {
         matches!(self, Self::Dir(_))
     }
 
-    /// Returns the file path if this is a file.
+    /// Returns the file path if this is a file, or `None` otherwise.
     #[inline]
     #[must_use]
     pub fn as_file(&self) -> Option<&FilePath> {
@@ -107,7 +96,7 @@ impl FsPath {
         }
     }
 
-    /// Returns the directory path if this is a directory.
+    /// Returns the directory path if this is a directory, or `None` otherwise.
     #[inline]
     #[must_use]
     pub fn as_dir(&self) -> Option<&DirPath> {
@@ -117,10 +106,12 @@ impl FsPath {
         }
     }
 
-    /// Convert to vault-relative path by stripping base prefix.
+    /// Convert to vault-relative path by stripping the base prefix.
     ///
     /// # Errors
-    /// Returns error if path is not within the base directory.
+    ///
+    /// Returns [`FsError::Read(ReadError::RootScope)`] if the path is not
+    /// within the base directory boundary.
     #[inline]
     pub fn as_relative(
         &self,
@@ -135,8 +126,10 @@ impl FsPath {
     /// Converts this filesystem path to a root-scoped persistence key.
     ///
     /// # Errors
-    /// Returns an error if this path is outside `root`, not valid UTF-8 after
-    /// root stripping, or fails `PathKey` validation.
+    ///
+    /// Returns [`PathError::RootScope`] if this path is outside `root`,
+    /// [`PathError::InvalidUtf8`] if the path contains non-UTF8 characters,
+    /// or other [`PathError`] variants if validation fails.
     #[inline]
     pub fn as_key(&self, root: &DirPath) -> Result<PathKey, super::PathError> {
         match self {
@@ -231,12 +224,11 @@ impl<'a> FsPathRef<'a> {
     }
 }
 
-/// A validated file path (absolute or relative).
+/// A validated file path that is guaranteed to exist and be a file.
 ///
-/// **Phase 2 Revision (2026-05-12):** Changed from wrapping `RelativePath`
-/// to wrapping `PathBuf` to support absolute paths from `walkdir::DirEntry`.
-/// Use `as_relative(base)` to convert to vault-relative paths at storage
-/// boundary.
+/// This type represents a rooted path on the filesystem. Use
+/// [`as_relative`](Self::as_relative) to convert it to a vault-relative path
+/// for storage, or [`as_key`](Self::as_key) to create a persistence key.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -245,6 +237,19 @@ impl<'a> FsPathRef<'a> {
 pub struct FilePath(#[rkyv(with = AsString)] PathBuf);
 
 impl FilePath {
+    /// Create a new file path from a [`PathBuf`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError::Empty`] if the path is empty, or
+    /// [`PathError::NotAFile`] if the path does not exist or refers to a
+    /// directory.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, super::PathError> {
+        Self::validate(path.as_path())?;
+        Ok(Self(path))
+    }
+
     fn validate(path: &Path) -> Result<(), super::PathError> {
         if path.as_os_str().is_empty() {
             return Err(super::PathError::Empty);
@@ -253,16 +258,6 @@ impl FilePath {
             return Err(super::PathError::NotAFile(path.to_path_buf()));
         }
         Ok(())
-    }
-
-    /// Create a new file path from a `PathBuf` (absolute or relative).
-    ///
-    /// # Errors
-    /// Returns error if path is empty or does not refer to a file.
-    #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, super::PathError> {
-        Self::validate(path.as_path())?;
-        Ok(Self(path))
     }
 
     /// Return the inner path.
@@ -425,12 +420,11 @@ impl From<FilePath> for PathBuf {
     }
 }
 
-/// A validated directory path (absolute or relative).
+/// A validated directory path that is guaranteed to exist and be a directory.
 ///
-/// **Phase 2 Revision (2026-05-12):** Changed from wrapping `RelativePath`
-/// to wrapping `PathBuf` to support absolute paths from `walkdir::DirEntry`.
-/// Use `as_relative(base)` to convert to vault-relative paths at storage
-/// boundary.
+/// This type represents a rooted path on the filesystem. Use
+/// [`as_relative`](Self::as_relative) to convert it to a vault-relative path
+/// for storage, or [`as_key`](Self::as_key) to create a persistence key.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -439,6 +433,19 @@ impl From<FilePath> for PathBuf {
 pub struct DirPath(#[rkyv(with = AsString)] PathBuf);
 
 impl DirPath {
+    /// Create a new directory path from a [`PathBuf`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError::Empty`] if the path is empty, or
+    /// [`PathError::NotADirectory`] if the path does not exist or refers to a
+    /// file.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, super::PathError> {
+        Self::validate(path.as_path())?;
+        Ok(Self(path))
+    }
+
     fn validate(path: &Path) -> Result<(), super::PathError> {
         if path.as_os_str().is_empty() {
             return Err(super::PathError::Empty);
@@ -447,16 +454,6 @@ impl DirPath {
             return Err(super::PathError::NotADirectory(path.to_path_buf()));
         }
         Ok(())
-    }
-
-    /// Create a new directory path from a `PathBuf` (absolute or relative).
-    ///
-    /// # Errors
-    /// Returns error if path is empty or does not refer to a directory.
-    #[inline]
-    pub fn try_new(path: PathBuf) -> Result<Self, super::PathError> {
-        Self::validate(path.as_path())?;
-        Ok(Self(path))
     }
 
     /// Return the inner path.
@@ -567,8 +564,12 @@ impl DirPath {
 
     /// Appends a file fragment to this directory path.
     ///
+    /// The fragment can be a [`FileName`] or a [`RelativeFilePath`].
+    ///
     /// # Errors
-    /// Returns error if the resulting path does not refer to an existing file.
+    ///
+    /// Returns [`PathError::NotAFile`] if the resulting path does not exist or
+    /// refers to a directory.
     #[inline]
     pub fn append_file<T: FileFragment>(
         &self,
@@ -579,9 +580,12 @@ impl DirPath {
 
     /// Appends a directory fragment to this directory path.
     ///
+    /// The fragment can be a [`DirName`] or a [`RelativeDirPath`].
+    ///
     /// # Errors
-    /// Returns error if the resulting path does not refer to an existing
-    /// directory.
+    ///
+    /// Returns [`PathError::NotADirectory`] if the resulting path does not
+    /// exist or refers to a file.
     #[inline]
     pub fn append_dir<T: DirFragment>(
         &self,
@@ -668,25 +672,154 @@ impl From<DirPath> for PathBuf {
     }
 }
 
-/// A zero-copy view of a parent directory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParentDir<'a> {
-    /// The vault root.
-    Root,
-    /// A sub-directory path view.
-    Path(&'a Path),
+/// A validated vault-relative path (file or directory).
+///
+/// This type distinguishes between file and directory relative paths at the
+/// type level. Construct via [`RelativePath::File`] or [`RelativePath::Dir`],
+/// or use `as_relative()` on [`FilePath`], [`DirPath`], or [`FsPath`].
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub enum RelativePath {
+    /// A relative path to a file.
+    File(RelativeFilePath),
+    /// A relative path to a directory.
+    Dir(RelativeDirPath),
 }
 
-impl<'a> ParentDir<'a> {
-    /// Extract the parent directory from a path.
+impl RelativePath {
+    /// Return the underlying path.
     #[inline]
     #[must_use]
-    pub fn from_path(path: &'a Path) -> Self {
-        match path.parent() {
-            Some(p) if p.as_os_str().is_empty() => Self::Root,
-            Some(p) => Self::Path(p),
-            None => Self::Root,
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::File(f) => Path::new(f.as_str()),
+            Self::Dir(d) => Path::new(d.as_str()),
         }
+    }
+
+    /// Returns the underlying path as a UTF-8 string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::File(f) => f.as_str(),
+            Self::Dir(d) => d.as_str(),
+        }
+    }
+}
+
+impl AsRef<Path> for RelativePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl ArchivedRelativePath {
+    /// Return the inner path as a standard library [`Path`].
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        match self {
+            Self::File(f) => Path::new(f.0.as_ref()),
+            Self::Dir(d) => Path::new(d.0.as_ref()),
+        }
+    }
+}
+
+impl std::fmt::Display for RelativePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File(p) => f.write_str(p.as_str()),
+            Self::Dir(p) => f.write_str(p.as_str()),
+        }
+    }
+}
+
+/// A validated vault-relative file path.
+///
+/// This type ensures the path is relative, does not contain traversal
+/// components (`..`), and is not absolute. It preserves platform-specific
+/// separators.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeFilePath(Box<str>);
+
+impl RelativeFilePath {
+    /// Creates a new validated relative file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError::Empty`], [`PathError::NotRelative`],
+    /// [`PathError::ParentTraversal`], or [`PathError::CurrentDirComponent`]
+    /// if the path fails validation.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = RelativePathValidator::validate(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeFilePath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+/// A validated vault-relative directory path.
+///
+/// This type ensures the path is relative, does not contain traversal
+/// components (`..`), and is not absolute. It preserves platform-specific
+/// separators.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct RelativeDirPath(Box<str>);
+
+impl RelativeDirPath {
+    /// Creates a new validated relative directory path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathError::Empty`], [`PathError::NotRelative`],
+    /// [`PathError::ParentTraversal`], or [`PathError::CurrentDirComponent`]
+    /// if the path fails validation.
+    #[inline]
+    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
+        let validated = RelativePathValidator::validate(path)?;
+        Ok(Self(validated.to_owned().into_boxed_str()))
+    }
+
+    /// Returns the validated declaration string.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RelativeDirPath {
+    type Error = super::PathError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
     }
 }
 
@@ -709,6 +842,23 @@ impl<'a> ParentDir<'a> {
 ///
 /// Use [`RelativePath`] for filesystem operations; use [`PathKey`]
 /// for storage and serialization.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::fs::PathKey;
+/// // Normalizes backslashes to forward slashes
+/// let key = PathKey::try_new("notes\\daily\\today.md").unwrap();
+/// assert_eq!(key.as_str(), "notes/daily/today.md");
+///
+/// // Removes duplicate slashes
+/// let key = PathKey::try_new("notes///daily//today.md").unwrap();
+/// assert_eq!(key.as_str(), "notes/daily/today.md");
+///
+/// // Removes trailing slashes
+/// let key = PathKey::try_new("notes/daily/").unwrap();
+/// assert_eq!(key.as_str(), "notes/daily");
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -720,7 +870,9 @@ impl PathKey {
     ///
     /// # Errors
     ///
-    /// Returns [`PathError`] when path validation fails.
+    /// Returns [`PathError::Empty`], [`PathError::NotRelative`],
+    /// [`PathError::ParentTraversal`], or [`PathError::CurrentDirComponent`]
+    /// if the path fails validation.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, super::PathError> {
         // 1. Validate the raw input first.
@@ -841,36 +993,144 @@ impl std::fmt::Display for PathKey {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PathNormalizationContext {
-    flags: u8,
+/// A zero-copy view of a parent directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParentDir<'a> {
+    /// The vault root.
+    Root,
+    /// A sub-directory path view.
+    Path(&'a Path),
 }
 
-impl PathNormalizationContext {
-    const HAS_BACKSLASH: u8 = 1 << 0;
-    const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
-    const HAS_TRAILING_SEPARATOR: u8 = 1 << 2;
-
-    fn new() -> Self {
-        Self {
-            flags: 0,
+impl<'a> ParentDir<'a> {
+    /// Extract the parent directory from a path.
+    #[inline]
+    #[must_use]
+    pub fn from_path(path: &'a Path) -> Self {
+        match path.parent() {
+            Some(p) if p.as_os_str().is_empty() => Self::Root,
+            Some(p) => Self::Path(p),
+            None => Self::Root,
         }
     }
+}
 
-    fn set(&mut self, flag: u8) {
-        self.flags |= flag;
+/// A trait for types that can be appended to a directory to form a file path.
+///
+/// This trait is implemented by types that represent a single filename or a
+/// relative path to a file, allowing them to be used with
+/// [`DirPath::append_file`].
+///
+/// Implementors: [`FileName`], [`RelativeFilePath`].
+pub trait FileFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl FileFragment for FileName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl FileFragment for RelativeFilePath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+/// A trait for types that can be appended to a directory to form a directory
+/// path.
+///
+/// This trait is implemented by types that represent a single directory name or
+/// a relative path to a directory, allowing them to be used with
+/// [`DirPath::append_dir`].
+///
+/// Implementors: [`DirName`], [`RelativeDirPath`].
+pub trait DirFragment {
+    /// Returns the fragment as a string slice.
+    fn as_str(&self) -> &str;
+}
+
+impl DirFragment for DirName {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl DirFragment for RelativeDirPath {
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
+    }
+}
+
+struct RelativePathValidator;
+
+impl RelativePathValidator {
+    fn validate(path: &str) -> Result<&str, super::PathError> {
+        let trimmed = path.trim();
+        Self::reject_empty(trimmed)?;
+
+        let ctx = PathValidationContext::analyze(trimmed);
+        Self::reject_absolute(trimmed, ctx)?;
+        Self::reject_parent_traversal(trimmed, ctx)?;
+        Self::reject_current_dir_component(trimmed, ctx)?;
+        Self::reject_platform_prefix(trimmed, ctx)?;
+
+        Ok(trimmed)
     }
 
-    fn has_backslash(self) -> bool {
-        self.flags & Self::HAS_BACKSLASH != 0
+    fn reject_empty(path: &str) -> Result<(), super::PathError> {
+        if path.is_empty() {
+            return Err(super::PathError::Empty);
+        }
+        Ok(())
     }
 
-    fn has_duplicate_separators(self) -> bool {
-        self.flags & Self::HAS_DUPLICATE_SEPARATORS != 0
+    fn reject_absolute(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.is_absolute() {
+            return Err(super::PathError::NotRelative(PathBuf::from(path)));
+        }
+        Ok(())
     }
 
-    fn has_trailing_separator(self) -> bool {
-        self.flags & Self::HAS_TRAILING_SEPARATOR != 0
+    fn reject_parent_traversal(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_parent_traversal() {
+            return Err(super::PathError::ParentTraversal(PathBuf::from(path)));
+        }
+        Ok(())
+    }
+
+    fn reject_current_dir_component(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_current_dir_component() {
+            return Err(super::PathError::CurrentDirComponent(PathBuf::from(
+                path,
+            )));
+        }
+        Ok(())
+    }
+
+    fn reject_platform_prefix(
+        path: &str,
+        ctx: PathValidationContext,
+    ) -> Result<(), super::PathError> {
+        if ctx.has_platform_prefix() {
+            return Err(super::PathError::PlatformPrefix(PathBuf::from(path)));
+        }
+        Ok(())
     }
 }
 
@@ -942,208 +1202,36 @@ impl PathValidationContext {
     }
 }
 
-struct RelativePathValidator;
-
-impl RelativePathValidator {
-    fn validate(path: &str) -> Result<&str, super::PathError> {
-        let trimmed = path.trim();
-        Self::reject_empty(trimmed)?;
-
-        let ctx = PathValidationContext::analyze(trimmed);
-        Self::reject_absolute(trimmed, ctx)?;
-        Self::reject_parent_traversal(trimmed, ctx)?;
-        Self::reject_current_dir_component(trimmed, ctx)?;
-        Self::reject_platform_prefix(trimmed, ctx)?;
-
-        Ok(trimmed)
-    }
-
-    fn reject_empty(path: &str) -> Result<(), super::PathError> {
-        if path.is_empty() {
-            return Err(super::PathError::Empty);
-        }
-        Ok(())
-    }
-
-    fn reject_absolute(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.is_absolute() {
-            return Err(super::PathError::NotRelative(PathBuf::from(path)));
-        }
-        Ok(())
-    }
-
-    fn reject_parent_traversal(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_parent_traversal() {
-            return Err(super::PathError::ParentTraversal(PathBuf::from(path)));
-        }
-        Ok(())
-    }
-
-    fn reject_current_dir_component(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_current_dir_component() {
-            return Err(super::PathError::CurrentDirComponent(PathBuf::from(
-                path,
-            )));
-        }
-        Ok(())
-    }
-
-    fn reject_platform_prefix(
-        path: &str,
-        ctx: PathValidationContext,
-    ) -> Result<(), super::PathError> {
-        if ctx.has_platform_prefix() {
-            return Err(super::PathError::PlatformPrefix(PathBuf::from(path)));
-        }
-        Ok(())
-    }
+#[derive(Debug, Clone, Copy)]
+struct PathNormalizationContext {
+    flags: u8,
 }
 
-/// Passive, strict relative directory declaration.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct RelativeDirPath(Box<str>);
+impl PathNormalizationContext {
+    const HAS_BACKSLASH: u8 = 1 << 0;
+    const HAS_DUPLICATE_SEPARATORS: u8 = 1 << 1;
+    const HAS_TRAILING_SEPARATOR: u8 = 1 << 2;
 
-impl RelativeDirPath {
-    /// Creates a validated passive relative directory declaration.
-    ///
-    /// # Errors
-    /// Returns [`PathError`] when the value is empty, absolute, or contains
-    /// traversal components.
-    #[inline]
-    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let validated = RelativePathValidator::validate(path)?;
-        Ok(Self(validated.to_owned().into_boxed_str()))
-    }
-
-    /// Returns the validated declaration string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<&str> for RelativeDirPath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-/// Passive, strict relative file declaration.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct RelativeFilePath(Box<str>);
-
-impl RelativeFilePath {
-    /// Creates a validated passive relative file declaration.
-    ///
-    /// # Errors
-    /// Returns [`PathError`] when the value is empty, absolute, or contains
-    /// traversal components.
-    #[inline]
-    pub fn try_new(path: &str) -> Result<Self, super::PathError> {
-        let validated = RelativePathValidator::validate(path)?;
-        Ok(Self(validated.to_owned().into_boxed_str()))
-    }
-
-    /// Returns the validated declaration string.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<&str> for RelativeFilePath {
-    type Error = super::PathError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-/// A validated vault-relative path (file or directory).
-///
-/// This type distinguishes between file and directory relative paths at the
-/// type level. Construct via [`RelativePath::File`] or [`RelativePath::Dir`],
-/// or use `as_relative()` on [`FilePath`], [`DirPath`], or [`FsPath`].
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub enum RelativePath {
-    /// A relative path to a file.
-    File(RelativeFilePath),
-    /// A relative path to a directory.
-    Dir(RelativeDirPath),
-}
-
-impl RelativePath {
-    /// Return the underlying path.
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        match self {
-            Self::File(f) => Path::new(f.as_str()),
-            Self::Dir(d) => Path::new(d.as_str()),
+    fn new() -> Self {
+        Self {
+            flags: 0,
         }
     }
 
-    /// Returns the underlying path as a UTF-8 string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::File(f) => f.as_str(),
-            Self::Dir(d) => d.as_str(),
-        }
+    fn set(&mut self, flag: u8) {
+        self.flags |= flag;
     }
-}
 
-impl AsRef<Path> for RelativePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        self.as_path()
+    fn has_backslash(self) -> bool {
+        self.flags & Self::HAS_BACKSLASH != 0
     }
-}
 
-impl ArchivedRelativePath {
-    /// Return the inner path as a standard library [`Path`].
-    #[inline]
-    #[must_use]
-    pub fn as_path(&self) -> &Path {
-        match self {
-            Self::File(f) => Path::new(f.0.as_ref()),
-            Self::Dir(d) => Path::new(d.0.as_ref()),
-        }
+    fn has_duplicate_separators(self) -> bool {
+        self.flags & Self::HAS_DUPLICATE_SEPARATORS != 0
     }
-}
 
-impl std::fmt::Display for RelativePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::File(p) => f.write_str(p.as_str()),
-            Self::Dir(p) => f.write_str(p.as_str()),
-        }
+    fn has_trailing_separator(self) -> bool {
+        self.flags & Self::HAS_TRAILING_SEPARATOR != 0
     }
 }
 
