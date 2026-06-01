@@ -61,18 +61,6 @@ pub(crate) fn select_config_candidate(
         });
     }
 
-    let base = candidates.first()?.base.clone();
-    let paths = candidates.iter().map(|c| c.path.clone()).collect::<Vec<_>>();
-    let warning = DiscoveryWarning::FormatAmbiguity {
-        base,
-        candidates: paths,
-    };
-
-    tracing::warn!(
-        ?warning,
-        "Multiple configuration formats discovered for the same location."
-    );
-
     let selected_idx = persisted_format
         .and_then(|fmt| candidates.iter().position(|c| c.format == fmt))
         .unwrap_or_else(|| {
@@ -84,6 +72,22 @@ pub(crate) fn select_config_candidate(
         });
 
     let candidate = candidates.swap_remove(selected_idx);
+
+    // Consume the remaining candidates to build the warning without redundant
+    // clones
+    let base = candidate.base.clone();
+    let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
+    paths.push(candidate.path.clone());
+
+    let warning = DiscoveryWarning::FormatAmbiguity {
+        base,
+        candidates: paths,
+    };
+
+    tracing::warn!(
+        ?warning,
+        "Multiple configuration formats discovered for the same location."
+    );
 
     Some(ConfigSelectionResult {
         candidate,
