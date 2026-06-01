@@ -602,8 +602,8 @@ impl VaultProcessor<Prune, Routed> {
             if !is_markdown_path(Path::new(path.as_str())) {
                 continue;
             }
-            let note_path = NotePath::try_new(path.as_str())
-                .map_err(NoteProcessError::from)?;
+            let note_path =
+                NotePath::try_from(path).map_err(NoteProcessError::from)?;
             let note_report = NoteProcessor::new()
                 .record_deleted(note_repository, &note_path)?;
             if note_report.action() == NoteProcessAction::Deleted {

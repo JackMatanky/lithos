@@ -21,6 +21,15 @@ use std::fmt;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::{NoteError, NoteFileError};
+use crate::fs::{PathError, path::PathKey};
+
+// TODO: Remove NotePath/FolderPath once centralized discovery
+//       processor provides FileView with path/folder attributes.
+//       The `TryFrom<PathKey>` and `From<PathKey>` impls (bridging
+//       vault processor to note context pre-centrilization) must
+//       also be removed — the centralized processor will own all
+//       path construction, eliminating the need for these
+//       conversions from the vault side.
 
 /// Validated vault-relative path for a note.
 ///
@@ -46,7 +55,7 @@ use super::error::{NoteError, NoteFileError};
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct NotePath(RelativePath);
+pub struct NotePath(PathKey);
 
 impl NotePath {
     /// Creates a new [`NotePath`] with validation.
@@ -56,9 +65,21 @@ impl NotePath {
     /// Returns [`NoteFileError`] if the path is invalid.
     #[inline]
     pub fn try_new(path: &str) -> Result<Self, NoteError> {
-        let relative = RelativePath::try_new(path)?;
-        let normalized_path = std::path::Path::new(relative.as_str());
+        if let [first, second, ..] = path.as_bytes()
+            && first.is_ascii_alphabetic()
+            && *second == b':'
+        {
+            return Err(NoteFileError::InvalidPath {
+                path: path.into(),
+                reason: "windows-style prefixes are not allowed",
+            }
+            .into());
+        }
 
+        let key = PathKey::try_new(path)
+            .map_err(|e| path_error_to_invalid_path(path, &e))?;
+
+        let normalized_path = std::path::Path::new(key.as_str());
         let ext = normalized_path.extension().and_then(|ext| ext.to_str());
 
         if !ext.is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
@@ -69,7 +90,7 @@ impl NotePath {
             .into());
         }
 
-        Ok(Self(relative))
+        Ok(Self(key))
     }
 
     /// Returns the path as a string slice.
@@ -78,12 +99,26 @@ impl NotePath {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    /// Returns a reference to the underlying [`PathKey`].
+    #[inline]
+    #[must_use]
+    pub fn as_path_key(&self) -> &PathKey {
+        &self.0
+    }
 }
 
 impl fmt::Display for NotePath {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl From<NotePath> for PathKey {
+    #[inline]
+    fn from(path: NotePath) -> Self {
+        path.0
     }
 }
 
@@ -105,12 +140,31 @@ impl TryFrom<String> for NotePath {
     }
 }
 
+impl TryFrom<PathKey> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(key: PathKey) -> Result<Self, Self::Error> {
+        let ext = std::path::Path::new(key.as_str())
+            .extension()
+            .and_then(|ext| ext.to_str());
+        if !ext.is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
+            return Err(NoteFileError::UnsupportedExtension {
+                path: key.as_str().into(),
+                found: ext.unwrap_or("").into(),
+            }
+            .into());
+        }
+        Ok(Self(key))
+    }
+}
+
 /// Validated folder path within the vault.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct FolderPath(RelativePath);
+pub struct FolderPath(PathKey);
 
 impl FolderPath {
     /// Creates a validated folder path.
@@ -121,16 +175,9 @@ impl FolderPath {
     /// invalid.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            return Err(NoteFileError::InvalidPath {
-                path: value.into(),
-                reason: "folder path cannot be empty",
-            }
-            .into());
-        }
-        let relative = RelativePath::try_new(trimmed)?;
-        Ok(Self(relative))
+        let key = PathKey::try_new(value)
+            .map_err(|e| path_error_to_invalid_path(value, &e))?;
+        Ok(Self(key))
     }
 
     /// Returns the folder path as a string slice.
@@ -138,6 +185,13 @@ impl FolderPath {
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+
+    /// Returns a reference to the underlying [`PathKey`].
+    #[inline]
+    #[must_use]
+    pub fn as_path_key(&self) -> &PathKey {
+        &self.0
     }
 }
 
@@ -148,116 +202,39 @@ impl fmt::Display for FolderPath {
     }
 }
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-struct RelativePath(Box<str>);
-
-impl RelativePath {
-    fn try_new(path: &str) -> Result<Self, NoteError> {
-        let normalized = Self::normalize(path);
-        let normalized_str = normalized.as_ref();
-        if normalized_str.is_empty() {
-            return Err(NoteFileError::InvalidPath {
-                path: path.into(),
-                reason: "path cannot be empty",
-            }
-            .into());
-        }
-
-        let bytes = normalized_str.as_bytes();
-        if let (Some(first), Some(second)) = (bytes.first(), bytes.get(1))
-            && ((first.is_ascii_alphabetic() && *second == b':')
-                || (*first == b'/' && *second == b'/'))
-        {
-            return Err(NoteFileError::InvalidPath {
-                path: path.into(),
-                reason: "windows-style prefixes are not allowed",
-            }
-            .into());
-        }
-
-        if normalized_str.split('/').any(|segment| segment == ".") {
-            return Err(NoteFileError::InvalidPath {
-                path: path.into(),
-                reason: "path must not include '.' components",
-            }
-            .into());
-        }
-
-        let normalized_path = std::path::Path::new(normalized_str);
-        if normalized_path.is_absolute() {
-            return Err(NoteFileError::InvalidPath {
-                path: path.into(),
-                reason: "path must be relative",
-            }
-            .into());
-        }
-
-        for component in normalized_path.components() {
-            match component {
-                std::path::Component::ParentDir => {
-                    return Err(NoteFileError::InvalidPath {
-                        path: path.into(),
-                        reason: "path traversal not allowed",
-                    }
-                    .into());
-                }
-                std::path::Component::CurDir => {
-                    return Err(NoteFileError::InvalidPath {
-                        path: path.into(),
-                        reason: "path must not include '.' components",
-                    }
-                    .into());
-                }
-                std::path::Component::Normal(segment) => {
-                    let segment = segment.to_str().ok_or_else(|| {
-                        NoteFileError::InvalidPath {
-                            path: path.into(),
-                            reason: "path contains invalid utf-8",
-                        }
-                    })?;
-                    if segment.starts_with('.') {
-                        return Err(NoteFileError::InvalidPath {
-                            path: path.into(),
-                            reason: "hidden path components not allowed",
-                        }
-                        .into());
-                    }
-                }
-                std::path::Component::Prefix(_)
-                | std::path::Component::RootDir => {
-                    return Err(NoteFileError::InvalidPath {
-                        path: path.into(),
-                        reason: "path must be relative",
-                    }
-                    .into());
-                }
-            }
-        }
-        Ok(Self(normalized.into()))
+impl From<FolderPath> for PathKey {
+    #[inline]
+    fn from(path: FolderPath) -> Self {
+        path.0
     }
+}
 
-    fn as_str(&self) -> &str {
-        &self.0
+impl From<PathKey> for FolderPath {
+    #[inline]
+    fn from(key: PathKey) -> Self {
+        Self(key)
     }
+}
 
-    fn normalize(path: &str) -> std::borrow::Cow<'_, str> {
-        if path.contains('\\') {
-            let mut owned = String::with_capacity(path.len());
-            for ch in path.chars() {
-                if ch == '\\' {
-                    owned.push('/');
-                } else {
-                    owned.push(ch);
-                }
-            }
-            std::borrow::Cow::Owned(owned)
-        } else {
-            std::borrow::Cow::Borrowed(path)
+fn path_error_to_invalid_path(path: &str, err: &PathError) -> NoteError {
+    let reason = match err {
+        PathError::Empty => "path cannot be empty",
+        PathError::NotRelative(_) => "path must be relative",
+        PathError::ParentTraversal(_) => "path traversal not allowed",
+        PathError::CurrentDirComponent(_) => {
+            "path must not include '.' components"
         }
+        PathError::PlatformPrefix(_) => {
+            "windows-style prefixes are not allowed"
+        }
+        PathError::InvalidUtf8(_) => "path contains invalid utf-8",
+        _ => "invalid path",
+    };
+    NoteFileError::InvalidPath {
+        path: path.into(),
+        reason,
     }
+    .into()
 }
 
 #[cfg(test)]
