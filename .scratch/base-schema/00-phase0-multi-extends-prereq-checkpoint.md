@@ -28,11 +28,11 @@ This checkpoint is intentionally human-gated because it spans two PRDs and affec
 
 ## Acceptance criteria
 
-- [ ] `RawSchema.extends` has been migrated from `Option<SchemaName>` to `Vec<SchemaName>`.
-- [ ] `SchemaVersion.extends` has been migrated from `Option<SchemaName>` to `Vec<SchemaName>`.
-- [ ] Callers that read extends from raw/snapshot types compile and preserve current single-parent behavior.
-- [ ] A brief validation note is added to `.scratch/schema-processor-split/PRD.md` or linked issue comments indicating Phase 0 is complete.
-- [ ] BaseSchema issues `01` through `07` are explicitly unblocked.
+- [x] `RawSchema.extends` has been migrated from `Option<SchemaName>` to `Vec<SchemaName>`.
+- [x] `SchemaVersion.extends` has been migrated from `Option<SchemaName>` to `Vec<SchemaName>`.
+- [x] Callers that read extends from raw/snapshot types compile and preserve current single-parent behavior.
+- [x] A brief validation note is added to `.scratch/schema-processor-split/PRD.md` or linked issue comments indicating Phase 0 is complete.
+- [x] BaseSchema issues `01` through `07` are explicitly unblocked.
 
 ## Blocked by
 
@@ -116,3 +116,14 @@ Use vertical RED-GREEN cycles (one behavior per test) and keep tests behavior-fo
 Test naming and module organization must follow:
 - `docs/engineering/testing/unit.md`
 - `docs/engineering/testing/unit-naming.md`
+
+## Validation Evidence
+
+- `cargo test -p lithos-core raw::aggregate::tests::deserialization` (pass)
+- `cargo test -p lithos-core schema::views::snapshots::tests::schema_version` (pass)
+- `cargo test -p lithos-core schema::schema_processor::tests::build_new_graph_adds_all_resolvable_parents_from_extends_list` (pass)
+- `cargo test -p lithos-core --test schema_loader` (pass)
+
+## Unblock Decision
+
+Phase 0 prerequisite is complete and validated. BaseSchema issues `01` through `07` are unblocked for agent execution.

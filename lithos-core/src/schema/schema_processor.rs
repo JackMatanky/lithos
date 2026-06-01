@@ -52,7 +52,7 @@
 //! ```
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     marker::PhantomData,
     sync::Arc,
 };
@@ -1391,6 +1391,26 @@ impl SchemaProcessor<FileParsed, Compared> {
 }
 
 impl SchemaProcessor<InheritanceGraphed, Parsed> {
+    fn classify_extends_change(
+        old_parents: &[SchemaId],
+        new_parents: &[SchemaId],
+    ) -> ExtendsChangeKind {
+        let old_set: BTreeSet<SchemaId> = old_parents.iter().copied().collect();
+        let new_set: BTreeSet<SchemaId> = new_parents.iter().copied().collect();
+
+        if old_set == new_set {
+            return ExtendsChangeKind::Unchanged;
+        }
+        if old_set.is_empty() {
+            return ExtendsChangeKind::RootToChild;
+        }
+        if new_set.is_empty() {
+            return ExtendsChangeKind::ChildToRoot;
+        }
+
+        ExtendsChangeKind::Rewired
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "graph construction keeps related steps co-located"
@@ -1481,18 +1501,10 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 }
             };
 
-            let old_parent =
-                old_parents.get(&id).and_then(|p| p.first().copied());
-            let new_parent = new_parents.first().copied();
-            let change_kind = match (old_parent, new_parent) {
-                (None, None) => ExtendsChangeKind::Unchanged,
-                (None, Some(_)) => ExtendsChangeKind::RootToChild,
-                (Some(_), None) => ExtendsChangeKind::ChildToRoot,
-                (Some(old), Some(new)) if old == new => {
-                    ExtendsChangeKind::Unchanged
-                }
-                (Some(_), Some(_)) => ExtendsChangeKind::Rewired,
-            };
+            let old_parents_slice =
+                old_parents.get(&id).map_or(&[][..], Vec::as_slice);
+            let change_kind =
+                Self::classify_extends_change(old_parents_slice, &new_parents);
 
             // Clone only once, right before consumption
             let branch_payload = match file_parsed.clone() {
@@ -3048,6 +3060,33 @@ mod tests {
         assert_eq!(parents.len(), 2);
         assert!(parents.contains(&base_id));
         assert!(parents.contains(&shared_id));
+    }
+
+    #[test]
+    fn classify_extends_change_returns_unchanged_for_same_parent_set() {
+        let a = SchemaId::new();
+        let b = SchemaId::new();
+
+        let change = SchemaProcessor::<InheritanceGraphed, Parsed>::classify_extends_change(
+            &[a, b],
+            &[b, a],
+        );
+
+        assert_eq!(change, ExtendsChangeKind::Unchanged);
+    }
+
+    #[test]
+    fn classify_extends_change_returns_rewired_for_changed_parent_set() {
+        let a = SchemaId::new();
+        let b = SchemaId::new();
+        let c = SchemaId::new();
+
+        let change = SchemaProcessor::<InheritanceGraphed, Parsed>::classify_extends_change(
+            &[a, b],
+            &[a, c],
+        );
+
+        assert_eq!(change, ExtendsChangeKind::Rewired);
     }
 
     #[test]

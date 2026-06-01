@@ -153,6 +153,16 @@ This architecture enables:
 
 **Estimated Effort**: ~100-150 lines modifications, no new files
 
+**Validation note (2026-06-01):**
+- Phase 0 is complete in the dedicated worktree branch (`chore/base-schema-phase0-prereq-checkpoint`).
+- Implemented: `RawSchema.extends` and `SchemaVersion.extends` migrated to `Vec<SchemaName>`.
+- Parent-edge construction updated to consume list-based extends while preserving no-parent/single-parent behavior.
+- Evidence runs passed:
+  - `cargo test -p lithos-core raw::aggregate::tests::deserialization`
+  - `cargo test -p lithos-core schema::views::snapshots::tests::schema_version`
+  - `cargo test -p lithos-core schema::schema_processor::tests::build_new_graph_adds_all_resolvable_parents_from_extends_list`
+  - `cargo test -p lithos-core --test schema_loader`
+
 ### Phase 1: BaseSchema + BaseSchemaProcessor
 
 **Implemented in**: `.scratch/base-schema/`
