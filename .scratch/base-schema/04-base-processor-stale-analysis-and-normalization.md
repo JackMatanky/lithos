@@ -1,0 +1,39 @@
+---
+title: 04-base-processor-stale-analysis-and-normalization
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-06-01
+---
+
+## Type
+
+AFK
+
+## Labels
+
+- base-schema
+- ready-for-agent
+
+## Parent
+
+- `.scratch/base-schema/PRD.md`
+
+## What to build
+
+Implement stale-content parsing and semantic delta analysis for base schemas, including metadata-only normalization rules.
+
+This slice adds `Parsed`/`Analysis`/`Refresh` behavior so timestamp/content drift without semantic changes emits `Fresh`, while semantic changes emit `Stale` with explicit deltas.
+
+## Acceptance criteria
+
+- [ ] Processor implements parsed stale path and property/excludes/extends diff analysis.
+- [ ] `StaleTimestamps` and `StaleContent` normalize to `Fresh` when semantic state is unchanged.
+- [ ] Semantic changes emit `Stale` with explicit `PropertyDelta`, `ExcludesDelta`, and `ExtendsDelta`.
+- [ ] Full rebuild fallback triggers are implemented for parse/view corruption and incoherent delta results.
+- [ ] `Fresh`/`Stale` outcomes preserve deterministic behavior across repeated runs.
+- [ ] Unit tests cover stale-timestamp match, stale-content-no-semantic-change, semantic-delta, and corrupt fallback branches.
+
+## Blocked by
+
+- `.scratch/base-schema/03-base-processor-init-and-fast-paths.md`
