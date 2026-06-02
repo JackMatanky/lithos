@@ -7,9 +7,8 @@
 use std::{io, path::Path};
 
 use super::{
-    contracts::{
-        ConfigSelectionResult, DiscoveredConfigFile, DiscoveryWarning,
-    },
+    contracts::{ConfigSelectionResult, DiscoveredConfigFile},
+    diagnostics::{DiscoveryWarning, FormatDiscoveryWarning},
     location::{ConfigLocation, LocalConfigLocation},
 };
 use crate::fs::format::StructuredFileFormat;
@@ -65,7 +64,7 @@ pub(crate) fn find_local_config_candidates(
 ///
 /// ### Ambiguity Handling
 ///
-/// If multiple candidates are present, a [`DiscoveryWarning::FormatAmbiguity`]
+/// If multiple candidates are present, a [`DiscoveryWarning::Format`] warning
 /// is generated and emitted via `tracing::warn!`, even if a successful
 /// selection is made. This warning is also returned inside the
 /// [`ConfigSelectionResult`] for deterministic testing and CLI reporting.
@@ -114,10 +113,10 @@ pub(crate) fn select_config_candidate(
     let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
     paths.push(candidate.path.clone());
 
-    let warning = DiscoveryWarning::FormatAmbiguity {
+    let warning = DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
         base: candidate.base.clone(),
         candidates: paths,
-    };
+    });
 
     tracing::warn!(
         ?warning,
@@ -332,13 +331,14 @@ mod tests {
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
             assert_eq!(got.candidate.path, base.join("lithos.json"));
 
-            let expected_warning = DiscoveryWarning::FormatAmbiguity {
-                base,
-                candidates: vec![
-                    PathBuf::from("/vault/lithos.toml"),
-                    PathBuf::from("/vault/lithos.json"),
-                ],
-            };
+            let expected_warning =
+                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                    base,
+                    candidates: vec![
+                        PathBuf::from("/vault/lithos.toml"),
+                        PathBuf::from("/vault/lithos.json"),
+                    ],
+                });
             assert_eq!(got.warning, Some(expected_warning));
         }
 
@@ -374,13 +374,14 @@ mod tests {
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
             assert_eq!(got.candidate.path, base.join("lithos.json"));
 
-            let expected_warning = DiscoveryWarning::FormatAmbiguity {
-                base,
-                candidates: vec![
-                    PathBuf::from("/vault/lithos.yaml"),
-                    PathBuf::from("/vault/lithos.json"),
-                ],
-            };
+            let expected_warning =
+                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                    base,
+                    candidates: vec![
+                        PathBuf::from("/vault/lithos.yaml"),
+                        PathBuf::from("/vault/lithos.json"),
+                    ],
+                });
             assert_eq!(got.warning, Some(expected_warning));
         }
     }
