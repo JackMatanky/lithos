@@ -36,6 +36,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        base::BaseSchema,
         error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs, SchemaIndex},
@@ -117,6 +118,9 @@ pub(crate) struct InMemoryRepository {
 
     /// Cached topological graph singleton.
     topological_graph: Arc<RwLock<Option<InheritanceGraph<()>>>>,
+
+    /// Base schema storage: `SchemaId` → `BaseSchema`
+    base_schemas: Arc<RwLock<HashMap<SchemaId, BaseSchema>>>,
 }
 
 impl InMemoryRepository {
@@ -133,6 +137,7 @@ impl InMemoryRepository {
             path_to_id: Arc::new(RwLock::new(HashMap::new())),
             raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
             topological_graph: Arc::new(RwLock::new(None)),
+            base_schemas: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -150,6 +155,7 @@ impl InMemoryRepository {
             path_to_id: Arc::new(RwLock::new(HashMap::new())),
             raw_bank_views: Arc::new(RwLock::new(HashMap::new())),
             topological_graph: Arc::new(RwLock::new(None)),
+            base_schemas: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -190,6 +196,7 @@ impl InMemoryRepository {
         self.path_to_id.write().expect("Lock poisoned").clear();
         self.raw_bank_views.write().expect("Lock poisoned").clear();
         *self.topological_graph.write().expect("Lock poisoned") = None;
+        self.base_schemas.write().expect("Lock poisoned").clear();
     }
 }
 
@@ -475,6 +482,34 @@ impl ReadRepository for InMemoryRepository {
             SchemaRepositoryError::from(DbError::Corruption(e.to_string()))
         })
     }
+
+    #[inline]
+    fn find_base_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<BaseSchema>, SchemaRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let base_schemas =
+            read_lock(&self.base_schemas, "find_base_schema_by_id")?;
+        self.harness.counters().inc_read();
+
+        Ok(base_schemas.get(&id).cloned())
+    }
+
+    #[inline]
+    fn find_base_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<BaseSchema>, SchemaRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let base_schemas =
+            read_lock(&self.base_schemas, "find_base_schemas_by_ids")?;
+        self.harness.counters().inc_read();
+
+        Ok(ids.iter().filter_map(|id| base_schemas.get(id).cloned()).collect())
+    }
 }
 
 impl WriteRepository for InMemoryRepository {
@@ -606,6 +641,53 @@ impl WriteRepository for InMemoryRepository {
             name_to_id.remove(schema.name());
         }
         raw_views.remove(&id);
+        Ok(())
+    }
+
+    #[inline]
+    fn save_base_schema(
+        &self,
+        schema: &BaseSchema,
+    ) -> Result<(), SchemaRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut base_schemas =
+            write_lock(&self.base_schemas, "save_base_schema")?;
+        self.harness.counters().inc_write();
+
+        base_schemas.insert(*schema.id(), schema.clone());
+        Ok(())
+    }
+
+    #[inline]
+    fn save_many_base_schemas(
+        &self,
+        schemas: &[BaseSchema],
+    ) -> Result<(), SchemaRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut base_schemas =
+            write_lock(&self.base_schemas, "save_many_base_schemas")?;
+        self.harness.counters().inc_write();
+
+        for schema in schemas {
+            base_schemas.insert(*schema.id(), schema.clone());
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn delete_base_schema(
+        &self,
+        id: SchemaId,
+    ) -> Result<(), SchemaRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut base_schemas =
+            write_lock(&self.base_schemas, "delete_base_schema")?;
+        self.harness.counters().inc_write();
+
+        base_schemas.remove(&id);
         Ok(())
     }
 }
@@ -798,6 +880,246 @@ mod tests {
             let result = repo.find_schema_by_id(id);
 
             assert!(matches!(result, Err(SchemaRepositoryError::Storage(_))));
+        }
+    }
+
+    mod base_schema {
+        use super::*;
+        use crate::schema::storage::testing::tests::fixtures::{
+            FailOnRead, FailOnWrite,
+        };
+
+        mod fixtures {
+            use super::*;
+
+            pub(super) fn base_schema(name: &str) -> BaseSchema {
+                let id = SchemaId::new();
+                let schema_name =
+                    SchemaName::try_new(name).expect("valid test schema name");
+                BaseSchema::new(
+                    id,
+                    schema_name,
+                    PropertyMap::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )
+            }
+        }
+
+        mod defaults {
+            use super::*;
+
+            #[test]
+            fn returns_none_when_no_base_schema_saved() {
+                let repo = InMemoryRepository::new();
+                let result =
+                    repo.find_base_schema_by_id(SchemaId::new()).unwrap();
+                assert!(result.is_none());
+            }
+        }
+
+        mod save {
+            use super::*;
+
+            #[test]
+            fn roundtrip_save_and_find() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("test-base");
+
+                repo.save_base_schema(&base).unwrap();
+
+                let found = repo.find_base_schema_by_id(*base.id()).unwrap();
+                assert_eq!(found, Some(base));
+            }
+
+            #[test]
+            fn increments_write_counter() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("test-base");
+
+                repo.save_base_schema(&base).unwrap();
+
+                let snapshot = repo.harness().counters().snapshot();
+                assert_eq!(snapshot.writes, 1);
+            }
+
+            #[test]
+            fn returns_storage_error_when_before_write_failure_is_injected() {
+                let harness =
+                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
+                let repo = InMemoryRepository::with_harness(harness);
+                let base = fixtures::base_schema("test-base");
+
+                let result = repo.save_base_schema(&base);
+
+                assert!(matches!(
+                    result,
+                    Err(SchemaRepositoryError::Storage(_))
+                ));
+            }
+        }
+
+        mod lookup {
+            use super::*;
+
+            #[test]
+            fn find_by_id_returns_none_for_missing() {
+                let repo = InMemoryRepository::new();
+                let result =
+                    repo.find_base_schema_by_id(SchemaId::new()).unwrap();
+                assert!(result.is_none());
+            }
+
+            #[test]
+            fn find_by_ids_skips_missing() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("base-1");
+
+                repo.save_base_schema(&base).unwrap();
+
+                let results = repo
+                    .find_base_schemas_by_ids(&[*base.id(), SchemaId::new()])
+                    .unwrap();
+                assert_eq!(results, vec![base]);
+            }
+
+            #[test]
+            fn find_by_ids_preserves_order() {
+                let repo = InMemoryRepository::new();
+                let base1 = fixtures::base_schema("base-a");
+                let base2 = fixtures::base_schema("base-b");
+
+                repo.save_base_schema(&base1).unwrap();
+                repo.save_base_schema(&base2).unwrap();
+
+                // Request in reverse order
+                let results = repo
+                    .find_base_schemas_by_ids(&[*base2.id(), *base1.id()])
+                    .unwrap();
+                assert_eq!(results, vec![base2, base1]);
+            }
+
+            #[test]
+            fn find_by_ids_empty_slice() {
+                let repo = InMemoryRepository::new();
+                let results = repo.find_base_schemas_by_ids(&[]).unwrap();
+                assert!(results.is_empty());
+            }
+
+            #[test]
+            fn increments_read_counter_on_find() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("test-base");
+                repo.save_base_schema(&base).unwrap();
+
+                let _ = repo.find_base_schema_by_id(*base.id()).unwrap();
+
+                let snapshot = repo.harness().counters().snapshot();
+                assert_eq!(snapshot.reads, 1);
+            }
+
+            #[test]
+            fn returns_storage_error_when_before_read_failure_is_injected() {
+                let harness =
+                    InMemoryHarness::with_injector(Box::new(FailOnRead));
+                let repo = InMemoryRepository::with_harness(harness);
+
+                let result = repo.find_base_schema_by_id(SchemaId::new());
+
+                assert!(matches!(
+                    result,
+                    Err(SchemaRepositoryError::Storage(_))
+                ));
+            }
+        }
+
+        mod delete {
+            use super::*;
+
+            #[test]
+            fn removes_base_schema() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("test-base");
+                repo.save_base_schema(&base).unwrap();
+
+                repo.delete_base_schema(*base.id()).unwrap();
+
+                let found = repo.find_base_schema_by_id(*base.id()).unwrap();
+                assert!(found.is_none());
+            }
+
+            #[test]
+            fn idempotent_on_missing() {
+                let repo = InMemoryRepository::new();
+
+                // Should not error on first or second delete
+                repo.delete_base_schema(SchemaId::new()).unwrap();
+                repo.delete_base_schema(SchemaId::new()).unwrap();
+            }
+
+            #[test]
+            fn increments_write_counter() {
+                let repo = InMemoryRepository::new();
+                let base = fixtures::base_schema("test-base");
+                repo.save_base_schema(&base).unwrap();
+
+                repo.delete_base_schema(*base.id()).unwrap();
+
+                let snapshot = repo.harness().counters().snapshot();
+                // 1 for save + 1 for delete
+                assert_eq!(snapshot.writes, 2);
+            }
+
+            #[test]
+            fn returns_storage_error_when_before_write_failure_is_injected() {
+                let harness =
+                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
+                let repo = InMemoryRepository::with_harness(harness);
+
+                let result = repo.delete_base_schema(SchemaId::new());
+
+                assert!(matches!(
+                    result,
+                    Err(SchemaRepositoryError::Storage(_))
+                ));
+            }
+        }
+
+        mod save_many {
+            use super::*;
+
+            #[test]
+            fn persists_all() {
+                let repo = InMemoryRepository::new();
+                let base1 = fixtures::base_schema("base-1");
+                let base2 = fixtures::base_schema("base-2");
+
+                repo.save_many_base_schemas(&[base1.clone(), base2.clone()])
+                    .unwrap();
+
+                let found1 = repo.find_base_schema_by_id(*base1.id()).unwrap();
+                let found2 = repo.find_base_schema_by_id(*base2.id()).unwrap();
+                assert_eq!(found1, Some(base1));
+                assert_eq!(found2, Some(base2));
+            }
+
+            #[test]
+            fn empty_slice() {
+                let repo = InMemoryRepository::new();
+                repo.save_many_base_schemas(&[]).unwrap();
+            }
+
+            #[test]
+            fn increments_write_counter() {
+                let repo = InMemoryRepository::new();
+                let base1 = fixtures::base_schema("base-1");
+                let base2 = fixtures::base_schema("base-2");
+
+                repo.save_many_base_schemas(&[base1, base2]).unwrap();
+
+                let snapshot = repo.harness().counters().snapshot();
+                assert_eq!(snapshot.writes, 1);
+            }
         }
     }
 }

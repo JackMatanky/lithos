@@ -46,6 +46,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        base::BaseSchema,
         error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, PathIdPairs},
@@ -54,9 +55,10 @@ use crate::{
         storage::{
             RedbRepository,
             tables::{
-                PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
-                SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS, TOPOLOGICAL_GRAPH_KEY,
+                BASE_SCHEMA_BY_ID, PROPERTY_BANK, PROPERTY_BANK_KEY,
+                RAW_PROPERTY_BANK_VIEW, RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME,
+                SCHEMA_ID_BY_PATH, SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS,
+                TOPOLOGICAL_GRAPH_KEY,
             },
         },
         views::{RawPropertyBankView, RawSchemaView},
@@ -471,6 +473,53 @@ impl ReadRepository for RedbRepository {
                 )
             })
     }
+
+    #[inline]
+    fn find_base_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<BaseSchema>, SchemaRepositoryError> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(guard) = table.get(id)? else {
+                    return Ok(None);
+                };
+
+                let base_schema = BaseSchema::from_bytes(guard.value())?;
+                Ok(Some(base_schema))
+            })
+            .map_err(SchemaRepositoryError::from)
+    }
+
+    #[inline]
+    fn find_base_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<BaseSchema>, SchemaRepositoryError> {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut results = Vec::with_capacity(ids.len());
+                for id in ids {
+                    if let Some(guard) = table.get(*id)? {
+                        results.push(BaseSchema::from_bytes(guard.value())?);
+                    }
+                }
+                Ok(results)
+            })
+            .map_err(SchemaRepositoryError::from)
+    }
 }
 
 /// Parses and validates a schema-name index key.
@@ -544,6 +593,7 @@ mod tests {
         schema::{
             aggregate::Schema,
             bank::PropertyBank,
+            base::BaseSchema,
             identifier::{SchemaId, SchemaName},
             inheritance::{InheritanceGraph, SchemaGraphBuilder},
             property::PropertyMap,
@@ -1068,6 +1118,120 @@ mod tests {
                 ReadRepository::find_raw_schema_views_by_paths(&repo, &paths)
                     .unwrap();
             assert_eq!(view_hits, vec![Some(view1), None, Some(view2)]);
+        }
+    }
+
+    mod base_schema {
+        use super::*;
+
+        fn test_base_schema(name: &str) -> BaseSchema {
+            let id = SchemaId::new();
+            let schema_name =
+                SchemaName::try_new(name).expect("valid test schema name");
+            BaseSchema::new(
+                id,
+                schema_name,
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+
+        mod lookup {
+            use super::*;
+
+            #[test]
+            fn returns_none_when_not_saved() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let result =
+                    repo.find_base_schema_by_id(SchemaId::new()).unwrap();
+                assert!(result.is_none());
+            }
+
+            #[test]
+            fn find_by_ids_empty_slice() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let results = repo.find_base_schemas_by_ids(&[]).unwrap();
+                assert!(results.is_empty());
+            }
+
+            #[test]
+            fn find_by_ids_skips_missing() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base = test_base_schema("base-1");
+                repo.save_base_schema(&base).unwrap();
+
+                let results =
+                    repo.find_base_schemas_by_ids(&[SchemaId::new()]).unwrap();
+                assert!(results.is_empty());
+            }
+
+            #[test]
+            fn roundtrip_save_and_find() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base = test_base_schema("roundtrip-base");
+                repo.save_base_schema(&base).unwrap();
+
+                let found = repo.find_base_schema_by_id(*base.id()).unwrap();
+                assert_eq!(found, Some(base));
+            }
+
+            #[test]
+            fn find_by_ids_preserves_order() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base1 = test_base_schema("base-a");
+                let base2 = test_base_schema("base-b");
+                repo.save_base_schema(&base1).unwrap();
+                repo.save_base_schema(&base2).unwrap();
+
+                // Request in reverse order
+                let results = repo
+                    .find_base_schemas_by_ids(&[*base2.id(), *base1.id()])
+                    .unwrap();
+                assert_eq!(results, vec![base2, base1]);
+            }
+
+            #[test]
+            fn find_by_ids_preserves_order_with_missing_in_between() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base1 = test_base_schema("base-1");
+                let base2 = test_base_schema("base-2");
+                repo.save_base_schema(&base1).unwrap();
+                repo.save_base_schema(&base2).unwrap();
+
+                let results = repo
+                    .find_base_schemas_by_ids(&[
+                        *base1.id(),
+                        SchemaId::new(),
+                        *base2.id(),
+                    ])
+                    .unwrap();
+                assert_eq!(results, vec![base1, base2]);
+            }
         }
     }
 }

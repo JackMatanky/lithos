@@ -424,6 +424,7 @@ mod tests {
         schema::{
             aggregate::Schema,
             bank::PropertyBank,
+            base::BaseSchema,
             identifier::{SchemaId, SchemaName},
             index::{NameIdPairs, PathIdPairs, SchemaIndex},
             inheritance::InheritanceGraph,
@@ -606,6 +607,24 @@ mod tests {
         ) -> Result<SchemaIndex, crate::schema::error::SchemaRepositoryError>
         {
             self.inner.get_schema_index()
+        }
+
+        fn find_base_schema_by_id(
+            &self,
+            id: SchemaId,
+        ) -> Result<
+            Option<BaseSchema>,
+            crate::schema::error::SchemaRepositoryError,
+        > {
+            self.inner.find_base_schema_by_id(id)
+        }
+
+        fn find_base_schemas_by_ids(
+            &self,
+            ids: &[SchemaId],
+        ) -> Result<Vec<BaseSchema>, crate::schema::error::SchemaRepositoryError>
+        {
+            self.inner.find_base_schemas_by_ids(ids)
         }
     }
 

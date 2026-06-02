@@ -93,3 +93,13 @@ pub const SCHEMA_ID_BY_NAME: Table<&str, &[u8]> =
 /// Value: `SchemaId`
 pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
     PathTable::new("schema_id_by_path");
+
+/// Base schemas (phase-1 aggregates) indexed by schema ID.
+///
+/// Stores file-local `BaseSchema` structures containing pre-inheritance
+/// extends/excludes lists for schema processing pipelines.
+///
+/// Key: `SchemaId`
+/// Value: rkyv-serialized `BaseSchema`
+pub const BASE_SCHEMA_BY_ID: UuidTable<SchemaId, &[u8]> =
+    UuidTable::new("base_schema_by_id");
