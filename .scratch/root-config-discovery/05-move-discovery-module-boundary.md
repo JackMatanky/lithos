@@ -33,6 +33,8 @@ This slice resolves the module boundary before Phase 2 expands path discovery fu
 - [ ] Root marker detection uses a thin static marker filename set in Discovery rather than `LocalConfigLocation` as the upstream marker vocabulary.
 - [ ] Config retains its own local config location taxonomy for Phase 2 candidate classification and precedence.
 - [ ] Discovery result contracts return path/source/format metadata only and do not parse, merge, validate, or hash config contents.
+- [ ] Top-level Discovery does not import `ConfigLocation`, `GlobalConfigLocation`, `LocalConfigLocation`, or other Config-owned classification types.
+- [ ] Config-owned classified file/result contracts live under `config/`, not top-level `discovery/`.
 - [ ] Existing tests are updated to compile against the new module path.
 - [ ] Documentation references use `Discovery -> Config -> Indexer` terminology where relevant.
 
@@ -54,11 +56,13 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 - `RootResolver`, `RootResolverInput`, `RootResolutionResult`, `RootResolutionSource`
 - Static root marker filename patterns
 - `DiscoveredConfigPath` or equivalent path-only config discovery contract
+- Config-owned classified contracts such as `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult`
 - Config-owned mapping from discovered paths into local/environment config processing
 
 **Acceptance criteria:**
 - [ ] No top-level Discovery type depends on `ConfigLocation` or `LocalConfigLocation` to identify root markers.
 - [ ] Config may consume Discovery outputs but Discovery does not import Config domain types.
+- [ ] Top-level Discovery contracts remain path/source/format-only; Config owns `ConfigLocation` classification and result assembly contracts.
 - [ ] `config/discovery.rs` exists only for Config-owned post-selection orchestration.
 - [ ] Module docs and context docs make the Discovery/Config/Indexer distinction explicit.
 
@@ -72,11 +76,13 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 - `lithos-core/src/config/discovery.rs` should be reinstated as a file module. Any Config-owned taxonomy/candidate modules that remain after the Discovery move should live under `config/`, not under a `config/discovery/` directory.
 - Top-level Discovery must not import Config domain types for marker detection. It should use static marker filename patterns and return path/source/format metadata only.
 - Config may consume Discovery outputs, but parsing, merging, validation, hashing, source classification, and resolved config construction remain Config responsibilities.
+- Config owns classified discovery contracts that mention `ConfigLocation`, including selected local/global file outcomes and aggregate selection/discovery results. Top-level Discovery owns only root resolution and thin path/source/format discovery outputs.
 
 **Approved impact summary:**
 
 - Affected modules: top-level `discovery`, `config::discovery`, Config candidate/location taxonomy, Config builder imports, resolver tests, and relevant documentation.
 - Affected contracts: `RootResolver`, `RootResolverInput`, `RootResolutionResult`, `RootResolutionSource`, and `DiscoveredConfigPath` or equivalent path-only config discovery contract.
+- Affected Config contracts: `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult` should be imported from `config/` after the split.
 - Expected risk: low to medium. The work is primarily a module boundary refactor, but import churn and documentation links can regress compile/doc tests.
 
 **Approved TDD plan:**
@@ -85,9 +91,10 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 2. Move root/config path discovery contracts into `lithos-core/src/discovery/` and expose the new module boundary.
 3. Refactor `RootResolver` marker discovery to use static marker patterns, not `LocalConfigLocation`.
 4. Move Config-owned `location` and `candidates` taxonomy/classification modules under `config/`.
-5. Reinstate `config/discovery.rs` as Config-owned post-selection orchestration around config file/view loading.
-6. Update imports and documentation references to use the `Discovery -> Config -> Indexer` terminology where relevant.
-7. Verify incrementally with targeted unit tests, then run full quality gates.
+5. Move Config-classified result contracts out of top-level `discovery` and into Config-owned modules.
+6. Reinstate `config/discovery.rs` as Config-owned post-selection orchestration around config file/view loading.
+7. Update imports and documentation references to use the `Discovery -> Config -> Indexer` terminology where relevant.
+8. Verify incrementally with targeted unit tests, then run full quality gates.
 
 **Testing standards:**
 

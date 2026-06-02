@@ -53,14 +53,18 @@ non-fatal.
 
 **Key interfaces:**
 - `GlobalConfigLocation` variants
+- Config-owned `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult` contracts
 - Environment candidate enumerator
 - `--no-global-config` bypass path
 - Warning path for case-correction diagnostics
+
+These contracts are Config-owned after `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`. Phase 2 must not move `GlobalConfigLocation` classification or aggregate config discovery results back into top-level `discovery/`.
 
 **Acceptance criteria:**
 - [ ] Source precedence is deterministic and test-verified.
 - [ ] Missing global config does not fail discovery.
 - [ ] Suppression mode bypasses all environment/global lookup.
+- [ ] Environment/global discovery uses Config-owned classification contracts and consumes only path/source/format outputs from top-level Discovery where needed.
 
 **Out of scope:**
 - Local (vault) config winner selection
