@@ -3,6 +3,7 @@
 ## Contexts
 
 - [Config](./lithos-core/src/config/CONTEXT.md) - defines configuration sources, precedence, and validated runtime settings
+- [Discovery](./lithos-core/src/discovery/CONTEXT.md) - locates the vault root and config file paths before configuration is loaded
 - [Note](./lithos-core/src/note/CONTEXT.md) - parses and models notes, tasks, links, tags, and note metadata
 - [Schema](./lithos-core/src/schema/CONTEXT.md) - defines and resolves schema rules used for metadata validation
 - [Template](./lithos-core/src/template/CONTEXT.md) - defines template assets and rendering constraints for note generation
@@ -16,6 +17,7 @@
 
 - **Note -> Schema**: Note metadata is validated against schema definitions selected via File Class schema-name reference
 - **Template -> Schema**: Template inputs and generated structures align with schema-defined property semantics
+- **Discovery -> Config**: Discovery locates vault root and config file paths; Config loads and resolves the selected files
 - **Config -> Note**: Configuration controls note ingestion and interpretation behavior
 - **Config -> Schema**: Configuration controls schema loading and validation behavior
 - **Config -> Template**: Configuration controls template lookup and rendering behavior
@@ -23,7 +25,8 @@
 - **Schema (shared semantics)**: Schema uses a global Property Bank for reusable property definitions and resolves parent-child inheritance with explicit excludes
 - **Note, Schema, Template -> DB (infrastructure)**: Business contexts persist/query through repository contracts backed by DB infrastructure
 - **Note, Schema, Template -> FS (infrastructure)**: Business contexts ingest and materialize file-backed state through FS abstractions
-- **Config -> FS (infrastructure)**: Configuration loading depends on filesystem sources and path rules
+- **Discovery -> FS (infrastructure)**: Discovery depends on filesystem sources and path rules to locate vault root and config files
+- **Config -> FS (infrastructure)**: Configuration loading depends on filesystem reads for selected config paths
 - **Note, Schema, Template, Config, DB -> Utils**: Contexts consume stable outward-facing utility contracts
 - **DB, Schema, Config -> Support (internal)**: Internal modules consume crate-private support internals
 - **Support -> Utils (promotion path)**: Stabilized, outward-facing internals move from support into utils by explicit governance decisions

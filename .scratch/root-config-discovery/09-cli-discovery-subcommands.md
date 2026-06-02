@@ -1,5 +1,5 @@
 ---
-title: 08-cli-discovery-subcommands
+title: 09-cli-discovery-subcommands
 category: enhancement
 label: ready-for-agent
 status: open
@@ -66,9 +66,9 @@ config parsing.
 
 **Out of scope:**
 - Config content parsing/validation
-- Filesystem discovery processor integration
+- Indexer integration
 - Broader CLI redesign outside discovery commands
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/06-phase-2-local-config-discovery.md`
+- `.scratch/root-config-discovery/07-phase-2-local-config-discovery.md`

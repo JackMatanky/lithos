@@ -1,5 +1,5 @@
 ---
-title: 05-phase-2-environment-config-discovery
+title: 06-phase-2-environment-config-discovery
 category: enhancement
 label: ready-for-agent
 status: open
@@ -71,3 +71,4 @@ non-fatal.
 
 - `.scratch/root-config-discovery/02-local-candidate-generation.md`
 - `.scratch/root-config-discovery/03-candidate-selection-format-stability.md`
+- `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`

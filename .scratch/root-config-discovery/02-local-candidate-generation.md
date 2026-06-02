@@ -54,7 +54,7 @@ existing candidates by location and structured format precedence.
 - `find_local_config_candidates(root, location) -> Result<Vec<DiscoveredConfigFile>, std::io::Error>`
 
 **Refined Implementation Details:**
-- **Location:** Implement `find_local_config_candidates` in a new module `lithos-core/src/config/discovery/candidates.rs`.
+- **Location:** Implement `find_local_config_candidates` in `lithos-core/src/config/discovery/candidates.rs` as the initial location. Issue 05 moves root/config path discovery to top-level `discovery/` before the remaining Phase 2 issues.
 - **Pathing:** All returned `DiscoveredConfigFile` paths MUST be absolute. Use `root.canonicalize()` or ensure `root` is absolute before joining.
 - **Ordering:** The returned `Vec` MUST follow the order defined in `StructuredFileFormat::PRECEDENCE`.
 - **Base Directory:** The `base` field in `DiscoveredConfigFile` should be the `root` passed to the function.
@@ -72,7 +72,7 @@ existing candidates by location and structured format precedence.
 
 ## Approved TDD Plan
 
-Follow vertical-slice TDD with behavior-first tests over public interfaces. Use Structure A (submodules) in `lithos-core/src/config/discovery/candidates.rs`.
+Follow vertical-slice TDD with behavior-first tests over public interfaces. Use Structure A (submodules) in `lithos-core/src/config/discovery/candidates.rs` for the initial implementation location.
 
 1. **Empty Discovery:**
    - RED: `lookup::returns_empty_vec_when_no_files_exist`

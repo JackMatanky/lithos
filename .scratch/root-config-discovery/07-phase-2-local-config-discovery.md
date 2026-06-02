@@ -1,5 +1,5 @@
 ---
-title: 06-phase-2-local-config-discovery
+title: 07-phase-2-local-config-discovery
 category: enhancement
 label: ready-for-agent
 status: open
@@ -27,7 +27,7 @@ This slice produces local `DiscoveredConfigFile` outcomes and typed warnings for
 
 ## Acceptance criteria
 
-- [ ] Local discovery consumes Phase 1 root resolution output and supports not-found behavior without panic.
+- [ ] Local discovery consumes top-level Discovery root resolution output and supports not-found behavior without panic.
 - [ ] All three local location patterns are checked with documented location precedence.
 - [ ] Candidate generation and selection integrate `find_local_config_candidates` and `select_config_candidate` seams.
 - [ ] Multi-location and multi-format ambiguities emit typed warnings while still producing deterministic winner.
@@ -47,7 +47,7 @@ Local config resolution is not yet represented as an explicit Phase 2 seam
 composed from typed root outcomes and typed candidate outcomes.
 
 **Desired behavior:**
-Local discovery consumes `VaultRootResolution`, checks all local patterns,
+Local discovery consumes the top-level Discovery root resolution result, checks all local patterns,
 selects a deterministic winner, and records ambiguity warnings without failing.
 
 **Key interfaces:**
@@ -68,4 +68,5 @@ selects a deterministic winner, and records ambiguity warnings without failing.
 ## Blocked by
 
 - `.scratch/root-config-discovery/04-phase-1-vault-root-resolution.md`
-- `.scratch/root-config-discovery/05-phase-2-environment-config-discovery.md`
+- `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`
+- `.scratch/root-config-discovery/06-phase-2-environment-config-discovery.md`

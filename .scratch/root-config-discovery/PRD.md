@@ -23,13 +23,13 @@ Root and config discovery must be rebuilt as an explicit, phased, typestate pipe
 
 ## Solution
 
-Replace the current `config/discovery.rs` with a dedicated `config/discovery/` submodule that implements a two-phase root-config discovery pipeline:
+Introduce a top-level `discovery/` context that implements a two-phase root-config path discovery pipeline:
 
 **Phase 1 — Vault Root Resolution**: Determine the vault root from one of three sources: explicit CLI flag (`--vault`), environment variable (`LITHOS_VAULT_PATH`), or ascending directory walk from the canonicalized CWD. The phase terminates at the first match and returns a typed `VaultRootResolution` that records both the resolved path and the resolution source.
 
 **Phase 2 — Config File Discovery**: Given the resolved vault root (or the absence of one), locate applicable config files from the applicable Config Sources in precedence order. The phase enumerates all candidate paths, checks existence, applies format precedence rules for multi-format ties, emits ambiguity warnings when multiple candidates coexist at the same priority tier, and returns a typed `ConfigDiscoveryResult` carrying the discovered path, format, location type, and base directory.
 
-Both phases produce typed, source-annotated result values. Neither phase parses, validates, or processes config file contents. Discovery ends when file paths are returned. All downstream processing is out of scope.
+Both phases produce typed, source-annotated path result values. Neither phase parses, validates, hashes, or processes config file contents. Discovery ends when file paths are returned. Config owns all downstream processing after paths are selected.
 
 The pipeline also introduces a minimal `lithos config` subcommand group to the CLI that exposes discovery results directly, enabling developers to validate and debug discovery behavior without running the full pipeline.
 
@@ -62,7 +62,7 @@ The pipeline also introduces a minimal `lithos config` subcommand group to the C
 23. As a test author, I want the discovery result types to carry resolution source annotations, so that tests can assert not just what was found but how it was found.
 24. As an operator, I want trace-level logs at each phase transition and each filesystem check, so that discovery decisions are fully observable.
 25. As an operator, I want `--verbose` output on `lithos config where` to show the directories traversed during the ascending walk, so that I can diagnose unexpected root resolution without reading debug logs.
-26. As an architecture reviewer, I want root discovery located under `config/discovery/`, so that module ownership is clear and the context boundary is enforced.
+26. As an architecture reviewer, I want root/config path discovery located under top-level `discovery/`, so that pre-config path discovery is separated from Config content processing.
 27. As an architecture reviewer, I want the discovery pipeline to be strictly separated from config parsing, validation, and hashing, so that each concern can evolve independently.
 
 ---
@@ -71,9 +71,10 @@ The pipeline also introduces a minimal `lithos config` subcommand group to the C
 
 ### Module Structure
 
-- Replace `config/discovery.rs` (flat file) with a `config/discovery/` submodule.
-- The new submodule owns: vault root resolution algorithm, ascending walk logic, global config location enumeration, local config candidate generation, format precedence and stability selection, and all discovery result types.
-- The existing `config/builder.rs` is a downstream consumer of discovery results; it does not run discovery itself.
+- Move root/config path discovery into top-level `discovery/`.
+- Reinstate `config/discovery.rs` for Config-owned behavior after config file paths are selected.
+- The new top-level Discovery context owns: vault root resolution algorithm, ascending walk logic, global config location enumeration, local config candidate generation, format precedence and stability selection, and path discovery result types.
+- The existing `config/builder.rs` is a downstream consumer of discovery results; it does not own root/config path discovery itself.
 - The `lithos-cli` crate gains a `config` subcommand group with three subcommands (`where`, `list-sources`, `check`) that expose discovery results directly without invoking the config processor.
 
 ### Phase 1: Vault Root Resolution
@@ -249,10 +250,10 @@ Good tests assert phase-level outcomes via typed results, not internal helper st
 - Config file parsing, deserialization, or schema validation.
 - Semantic config validation or constraint checking.
 - `ConfigHashView` construction or boundary-change detection (see `config-pipeline-refactor` PRD).
-- `DiscoveryConfigSpec` construction and handoff to the filesystem discovery processor.
+- `DiscoveryConfigSpec` construction and handoff to the Indexer.
 - `extends` chain resolution or config inheritance.
 - Settings materialization or `EffectiveSettings` construction.
-- Filesystem discovery processor behavior (`FsDiscoveryProcessor`).
+- Indexer behavior that scans filesystem nodes and classifies freshness.
 - Context routing (schema, note, template orchestration).
 - Context-level event sourcing.
 - Full pipeline restartability infrastructure.
@@ -264,7 +265,7 @@ Good tests assert phase-level outcomes via typed results, not internal helper st
 ## Further Notes
 
 - This PRD is a prerequisite for the Config Pipeline Refactor PRD, which consumes the typed `ConfigDiscoveryResult` produced here.
-- This PRD is a prerequisite for centralized filesystem discovery, which requires a resolved `VaultRoot` and `DiscoveryConfigSpec` as inputs.
+- This PRD is a prerequisite for the Indexer, which requires a resolved `VaultRoot` and `DiscoveryConfigSpec` as inputs.
 - The `StructuredFileFormat` type and `PRECEDENCE` constant are already implemented in `fs/format.rs` (commit `1d6ddc74`). Discovery must use them directly.
-- ADR 0002 (`config-as-prerequisite-lens`) documents the architectural rationale for resolving config before discovery. This PRD implements the discovery portion of that decision.
+- ADR 0002 (`config-as-prerequisite-lens`) documents the architectural rationale for resolving config before indexing. This PRD implements the path discovery portion of that decision.
 - The research grounding for phase design, algorithm details, and comparative analysis from Cargo, Git, Ruff, Biome, and dprint is preserved in `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/root-config-discovery-research.md`.

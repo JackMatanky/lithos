@@ -1,5 +1,5 @@
 ---
-title: 07-remove-vault-path-from-raw-vault-config
+title: 08-remove-vault-path-from-raw-vault-config
 category: enhancement
 label: ready-for-agent
 status: open
@@ -66,4 +66,4 @@ from discovery outputs.
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/06-phase-2-local-config-discovery.md`
+- `.scratch/root-config-discovery/07-phase-2-local-config-discovery.md`
