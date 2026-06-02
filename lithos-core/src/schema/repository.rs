@@ -5,6 +5,7 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        base::BaseSchema,
         error::SchemaRepositoryError,
         identifier::{SchemaId, SchemaName},
         inheritance::InheritanceGraph,
@@ -268,6 +269,49 @@ pub trait ReadRepository {
     fn get_schema_index(
         &self,
     ) -> Result<crate::schema::index::SchemaIndex, SchemaRepositoryError>;
+
+    /// Find a base schema by its unique identifier.
+    ///
+    /// Returns `None` if no base schema exists with the given ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaRepositoryError`] if the database read or
+    /// deserialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::ReadRepository;
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    ///
+    /// match repo.find_base_schema_by_id(schema_id)? {
+    ///     Some(base) => println!("Found base: {}", base.name()),
+    ///     None => println!("Base schema not found"),
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    fn find_base_schema_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<BaseSchema>, SchemaRepositoryError>;
+
+    /// Find multiple base schemas by ID, skipping missing entries.
+    ///
+    /// Returns only found base schemas in input order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaRepositoryError`] if database read or deserialization
+    /// fails.
+    fn find_base_schemas_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<Vec<BaseSchema>, SchemaRepositoryError>;
 }
 
 /// Segregated write interface for schema persistence.
@@ -390,6 +434,61 @@ pub trait WriteRepository {
     ///
     /// Returns [`SchemaRepositoryError`] if database write fails.
     fn delete_schema(&self, id: SchemaId) -> Result<(), SchemaRepositoryError>;
+
+    /// Persist a base schema aggregate to the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
+    /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use lithos_core::schema::repository::{ReadRepository, WriteRepository};
+    /// use lithos_core::schema::storage::RedbRepository;
+    /// use std::sync::Arc;
+    ///
+    /// # let store = Arc::new(lithos_core::db::Store::open_temp()?);
+    /// let repo = RedbRepository::new(store);
+    ///
+    /// repo.save_base_schema(&base_schema)?;
+    /// assert_eq!(
+    ///     repo.find_base_schema_by_id(*base_schema.id())?.is_some(),
+    ///     true
+    /// );
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    fn save_base_schema(
+        &self,
+        schema: &BaseSchema,
+    ) -> Result<(), SchemaRepositoryError>;
+
+    /// Save multiple base schemas in a single transaction.
+    ///
+    /// If any base schema fails to serialize, the entire batch rolls back.
+    /// All-or-nothing atomicity: either all are saved or none are.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaRepositoryError`] if serialization or database write
+    /// fails.
+    fn save_many_base_schemas(
+        &self,
+        schemas: &[BaseSchema],
+    ) -> Result<(), SchemaRepositoryError>;
+
+    /// Delete a base schema aggregate by ID.
+    ///
+    /// Idempotent: returns `Ok(())` if the base schema does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaRepositoryError`] if database write fails.
+    fn delete_base_schema(
+        &self,
+        id: SchemaId,
+    ) -> Result<(), SchemaRepositoryError>;
 }
 
 /// Unified interface for schema persistence and retrieval.

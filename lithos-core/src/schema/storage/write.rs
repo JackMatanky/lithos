@@ -43,16 +43,18 @@ use crate::{
     schema::{
         aggregate::Schema,
         bank::PropertyBank,
+        base::BaseSchema,
         error::SchemaRepositoryError,
-        identifier::SchemaName,
+        identifier::{SchemaId, SchemaName},
         inheritance::InheritanceGraph,
         repository::WriteRepository,
         storage::{
             RedbRepository,
             tables::{
-                PROPERTY_BANK, PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_VIEW,
-                RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME, SCHEMA_ID_BY_PATH,
-                SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS, TOPOLOGICAL_GRAPH_KEY,
+                BASE_SCHEMA_BY_ID, PROPERTY_BANK, PROPERTY_BANK_KEY,
+                RAW_PROPERTY_BANK_VIEW, RAW_SCHEMA_VIEWS, SCHEMA_ID_BY_NAME,
+                SCHEMA_ID_BY_PATH, SCHEMA_TOPOLOGICAL_GRAPH, SCHEMAS,
+                TOPOLOGICAL_GRAPH_KEY,
             },
         },
         views::{RawPropertyBankView, RawSchemaView},
@@ -208,6 +210,64 @@ impl WriteRepository for RedbRepository {
                 remove_path_id_index(tx, ctx.view_path.as_ref())?;
                 remove_schema(tx, id)?;
                 remove_raw_schema_view(tx, id)?;
+                Ok(())
+            })
+            .map_err(SchemaRepositoryError::from)
+    }
+
+    #[inline]
+    fn save_base_schema(
+        &self,
+        schema: &BaseSchema,
+    ) -> Result<(), SchemaRepositoryError> {
+        let bytes = schema.to_bytes().map_err(SchemaRepositoryError::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
+                table.insert(*schema.id(), bytes.as_slice())?;
+                Ok(())
+            })
+            .map_err(SchemaRepositoryError::from)
+    }
+
+    #[inline]
+    fn save_many_base_schemas(
+        &self,
+        schemas: &[BaseSchema],
+    ) -> Result<(), SchemaRepositoryError> {
+        let serialized = schemas
+            .iter()
+            .map(|schema| {
+                schema.to_bytes().map(|bytes| (*schema.id(), bytes.to_vec()))
+            })
+            .collect::<Result<Vec<(SchemaId, Vec<u8>)>, _>>()
+            .map_err(SchemaRepositoryError::from)?;
+
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
+
+                for (id, bytes) in &serialized {
+                    let _ = table.insert(*id, bytes.as_slice())?;
+                }
+                Ok(())
+            })
+            .map_err(SchemaRepositoryError::from)
+    }
+
+    #[inline]
+    fn delete_base_schema(
+        &self,
+        id: crate::schema::identifier::SchemaId,
+    ) -> Result<(), SchemaRepositoryError> {
+        self.store
+            .write(|tx| {
+                let mut table =
+                    tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
+                let _ = table.remove(id)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -845,6 +905,116 @@ mod tests {
 
             assert!(repo.find_schema_id_by_name(&name).unwrap().is_none());
             assert!(repo.find_schema_by_id(id).unwrap().is_none());
+        }
+    }
+
+    mod base_schema {
+        use std::sync::Arc;
+
+        use crate::{
+            db::Store,
+            schema::{
+                base::BaseSchema,
+                identifier::{SchemaId, SchemaName},
+                property::PropertyMap,
+                repository::{ReadRepository, WriteRepository},
+                storage::RedbRepository,
+            },
+        };
+
+        fn test_base_schema(name: &str) -> BaseSchema {
+            let id = SchemaId::new();
+            let schema_name =
+                SchemaName::try_new(name).expect("valid test schema name");
+            BaseSchema::new(
+                id,
+                schema_name,
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+
+        mod save {
+            use super::*;
+
+            #[test]
+            fn persists_and_can_be_retrieved() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base = test_base_schema("test-base");
+                repo.save_base_schema(&base).unwrap();
+
+                let found = repo.find_base_schema_by_id(*base.id()).unwrap();
+                assert_eq!(found, Some(base));
+            }
+        }
+
+        mod save_many {
+            use super::*;
+
+            #[test]
+            fn persists_all() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base1 = test_base_schema("base-1");
+                let base2 = test_base_schema("base-2");
+
+                repo.save_many_base_schemas(&[base1.clone(), base2.clone()])
+                    .unwrap();
+
+                let found1 = repo.find_base_schema_by_id(*base1.id()).unwrap();
+                let found2 = repo.find_base_schema_by_id(*base2.id()).unwrap();
+                assert_eq!(found1, Some(base1));
+                assert_eq!(found2, Some(base2));
+            }
+
+            #[test]
+            fn empty_slice() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                repo.save_many_base_schemas(&[]).unwrap();
+            }
+        }
+
+        mod delete {
+            use super::*;
+
+            #[test]
+            fn removes_base_schema() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                let base = test_base_schema("test-delete");
+                repo.save_base_schema(&base).unwrap();
+
+                repo.delete_base_schema(*base.id()).unwrap();
+
+                let found = repo.find_base_schema_by_id(*base.id()).unwrap();
+                assert!(found.is_none());
+            }
+
+            #[test]
+            fn idempotent_on_missing() {
+                let temp_dir = tempfile::TempDir::new().unwrap();
+                let db_path = temp_dir.path().join("test.db");
+                let store = Arc::new(Store::open(&db_path).unwrap());
+                let repo = RedbRepository::new(store);
+
+                repo.delete_base_schema(SchemaId::new()).unwrap();
+                repo.delete_base_schema(SchemaId::new()).unwrap();
+            }
         }
     }
 }

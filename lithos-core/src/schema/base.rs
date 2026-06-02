@@ -1,6 +1,6 @@
 //! Base schema domain type.
 //!
-//! Provides [`BaseSchema`], the phase-1 schema aggregate carrying a
+//! Provides [`BaseSchema`], the validated schema aggregate carrying a
 //! file-local `extends` list (by [`SchemaName`]) prior to cross-schema
 //! parent resolution.
 //!
@@ -21,7 +21,7 @@ use super::{
     property::{PropertyMap, PropertyName},
 };
 
-/// Phase-1 schema aggregate carrying file-local `extends` by name.
+/// Schema aggregate carrying file-local `extends` by name.
 ///
 /// `BaseSchema` is the projection of a `RawSchema` after validation but before
 /// cross-schema parent resolution. Its `extends` list mirrors the schema
