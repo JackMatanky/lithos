@@ -18,6 +18,7 @@ use crate::{
     schema::{
         error::{SchemaIngestionError, SchemaLoaderError},
         expander::RefExpander,
+        identifier::SchemaName,
         property::{PropertyMap, PropertyName},
         raw::{
             RawPropertyBank, RawPropertyInline, RawPropertyMap, RawSchema,
@@ -116,6 +117,108 @@ impl ExcludesDelta {
         Self {
             added,
             removals,
+        }
+    }
+}
+
+/// Delta for schema-level `extends` lists (aggregate-level inheritance).
+///
+/// Tracks which parent schemas were added or removed between two snapshots
+/// of a base schema's `extends` list. Ordering is not semantically meaningful;
+/// duplicates are removed via set semantics.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct ExtendsDelta {
+    /// Schema names present in the new extends list but not the old list.
+    added: Box<[SchemaName]>,
+    /// Schema names present in the old extends list but not the new list.
+    removed: Box<[SchemaName]>,
+}
+
+impl ExtendsDelta {
+    /// Creates a new extends delta with deduplicated inputs.
+    ///
+    /// `added` and `removed` are deduplicated via [`HashSet`] and stored in a
+    /// deterministic order.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API constructor for slice 02+")
+    )]
+    pub(crate) fn new(
+        mut added: Vec<SchemaName>,
+        mut removed: Vec<SchemaName>,
+    ) -> Self {
+        added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        added.dedup();
+
+        removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        removed.dedup();
+
+        Self {
+            added: added.into_boxed_slice(),
+            removed: removed.into_boxed_slice(),
+        }
+    }
+
+    /// Returns `true` when no extends changes exist.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API for slice 02+"))]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.removed.is_empty()
+    }
+
+    /// Returns schema names that were added to the extends list.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn added(&self) -> &[SchemaName] {
+        &self.added
+    }
+
+    /// Returns schema names that were removed from the extends list.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
+    pub(crate) fn removed(&self) -> &[SchemaName] {
+        &self.removed
+    }
+
+    /// Builds an extends delta from old/new slices as a symmetric difference.
+    ///
+    /// `added` contains entries present in `new_extends` but not `old_extends`.
+    /// `removed` contains entries present in `old_extends` but not
+    /// `new_extends`. Deduplication uses [`HashSet`] and is order-insensitive.
+    #[inline]
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "API constructor for slice 02+")
+    )]
+    pub(crate) fn from_slices(
+        old_extends: &[SchemaName],
+        new_extends: &[SchemaName],
+    ) -> Self {
+        let mut added: Vec<SchemaName> = new_extends
+            .iter()
+            .filter(|n| !old_extends.contains(n))
+            .cloned()
+            .collect();
+        added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        added.dedup();
+
+        let mut removed: Vec<SchemaName> = old_extends
+            .iter()
+            .filter(|n| !new_extends.contains(n))
+            .cloned()
+            .collect();
+        removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        removed.dedup();
+
+        Self {
+            added: added.into_boxed_slice(),
+            removed: removed.into_boxed_slice(),
         }
     }
 }
@@ -501,6 +604,168 @@ mod tests {
                 set.len(),
                 2,
                 "Set should contain both added and removed"
+            );
+        }
+    }
+
+    mod extends_delta {
+        use super::*;
+        use crate::schema::identifier::SchemaName;
+
+        fn schema_name(s: &str) -> SchemaName {
+            SchemaName::try_new(s).expect("valid test schema name")
+        }
+
+        #[test]
+        fn is_empty_returns_true_when_added_and_removed_are_empty() {
+            let delta = ExtendsDelta::default();
+            assert!(
+                delta.is_empty(),
+                "Default ExtendsDelta should report empty"
+            );
+        }
+
+        #[test]
+        fn is_empty_returns_false_when_added_has_entries() {
+            let delta =
+                ExtendsDelta::new(vec![schema_name("parent")], Vec::new());
+            assert!(
+                !delta.is_empty(),
+                "Delta with added entry should not be empty"
+            );
+        }
+
+        #[test]
+        fn is_empty_returns_false_when_removed_has_entries() {
+            let delta =
+                ExtendsDelta::new(Vec::new(), vec![schema_name("parent")]);
+            assert!(
+                !delta.is_empty(),
+                "Delta with removed entry should not be empty"
+            );
+        }
+
+        #[test]
+        fn new_deduplicates_added() {
+            let delta = ExtendsDelta::new(
+                vec![
+                    schema_name("parent"),
+                    schema_name("other"),
+                    schema_name("parent"),
+                ],
+                Vec::new(),
+            );
+            assert_eq!(
+                delta.added().len(),
+                2,
+                "Expected duplicates in added to be removed: {:?}",
+                delta.added()
+            );
+        }
+
+        #[test]
+        fn new_deduplicates_removed() {
+            let delta = ExtendsDelta::new(Vec::new(), vec![
+                schema_name("parent"),
+                schema_name("parent"),
+                schema_name("other"),
+            ]);
+            assert_eq!(
+                delta.removed().len(),
+                2,
+                "Expected duplicates in removed to be removed: {:?}",
+                delta.removed()
+            );
+        }
+
+        #[test]
+        fn equal_deltas_compare_equal_regardless_of_input_order() {
+            let a = ExtendsDelta::new(
+                vec![schema_name("parent"), schema_name("other")],
+                Vec::new(),
+            );
+            let b = ExtendsDelta::new(
+                vec![schema_name("other"), schema_name("parent")],
+                Vec::new(),
+            );
+
+            assert_eq!(
+                a, b,
+                "Equal sets must compare equal regardless of input order"
+            );
+        }
+
+        #[test]
+        fn from_slices_returns_empty_when_lists_match() {
+            let names = [schema_name("a"), schema_name("b")];
+            let delta = ExtendsDelta::from_slices(&names, &names);
+            assert!(
+                delta.is_empty(),
+                "Identical lists should produce an empty delta"
+            );
+        }
+
+        #[test]
+        fn from_slices_detects_additions() {
+            let old = [schema_name("a")];
+            let new = [schema_name("a"), schema_name("b")];
+
+            let delta = ExtendsDelta::from_slices(&old, &new);
+
+            assert!(delta.added().contains(&schema_name("b")));
+        }
+
+        #[test]
+        fn from_slices_reports_no_removals_on_pure_addition() {
+            let old = [schema_name("a")];
+            let new = [schema_name("a"), schema_name("b")];
+
+            let delta = ExtendsDelta::from_slices(&old, &new);
+
+            assert!(delta.removed().is_empty());
+        }
+
+        #[test]
+        fn from_slices_returns_removed_when_old_has_extra() {
+            let old = [schema_name("a"), schema_name("b")];
+            let new = [schema_name("a")];
+
+            let delta = ExtendsDelta::from_slices(&old, &new);
+
+            assert!(delta.removed().contains(&schema_name("b")));
+        }
+
+        #[test]
+        fn from_slices_produces_symmetric_difference_when_lists_partially_overlap()
+         {
+            let old = [schema_name("a"), schema_name("b")];
+            let new = [schema_name("b"), schema_name("c")];
+
+            let delta = ExtendsDelta::from_slices(&old, &new);
+
+            assert!(delta.added().contains(&schema_name("c")));
+            assert!(delta.removed().contains(&schema_name("a")));
+        }
+
+        #[test]
+        fn added_accessor_returns_borrowed_slice() {
+            let delta = ExtendsDelta::new(vec![schema_name("a")], Vec::new());
+            let added: &[SchemaName] = delta.added();
+            assert_eq!(added.len(), 1);
+            assert_eq!(
+                added.first().expect("added has one entry").as_str(),
+                "a"
+            );
+        }
+
+        #[test]
+        fn removed_accessor_returns_borrowed_slice() {
+            let delta = ExtendsDelta::new(Vec::new(), vec![schema_name("b")]);
+            let removed: &[SchemaName] = delta.removed();
+            assert_eq!(removed.len(), 1);
+            assert_eq!(
+                removed.first().expect("removed has one entry").as_str(),
+                "b"
             );
         }
     }
