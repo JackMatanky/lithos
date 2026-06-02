@@ -238,10 +238,17 @@ impl BaseSchemaProcessor<Init, Unknown> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Building phase: terminal domain construction.
+///
+/// Activated after the entry stage resolves into either a missing (`New`) or
+/// present (`Fresh`) path. Constructing the `BaseSchema` requires a
+/// `WriteRepository`.
 #[derive(Debug)]
 struct Construction;
 
-/// Raw construction inputs for building a `BaseSchema`.
+/// Raw construction inputs for building a new `BaseSchema` from scratch.
+///
+/// Entered from the missing-view path or stale-timestamp path when no cached
+/// view exists or timestamps have drifted. Produces a `Completed<NewReady>`.
 #[derive(Debug)]
 struct New {
     schema_id: SchemaId,
@@ -253,6 +260,12 @@ struct New {
 
 /// Proven: identity is fully synchronized; schema can be fetched without
 /// rebuild.
+///
+/// Entered from the fresh-timestamp path when a cached view exists and
+/// timestamps match. Currently unused until 04 activates the stale-analysis
+/// pipeline which transitions into `Construction<Fresh>` for the fetch.
+/// See `.scratch/base-schema/
+/// 04-base-processor-stale-analysis-and-normalization.md`.
 #[derive(Debug)]
 struct Fresh {
     schema_id: SchemaId,
@@ -282,12 +295,17 @@ impl BaseSchemaProcessor<Construction, New> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
-            base,
+            base_schema: base,
         }))
     }
 }
 
 /// Construction operations that fetch the cached base schema.
+///
+/// Dead code until 04 activates the stale-analysis pipeline, which
+/// transitions through the `Fresh` status after verifying timestamps match.
+/// See `.scratch/base-schema/
+/// 04-base-processor-stale-analysis-and-normalization.md`.
 impl BaseSchemaProcessor<Construction, Fresh> {
     #[inline]
     fn fetch(self) -> BaseSchemaProcessor<Completed, FreshReady> {
@@ -311,7 +329,7 @@ struct Completed;
 /// Proven: terminal ingestion goal reached with newly built schema.
 #[derive(Debug)]
 struct NewReady {
-    base: BaseSchema,
+    base_schema: BaseSchema,
 }
 
 /// Proven: terminal ingestion goal reached with freshly fetched schema.
@@ -326,7 +344,7 @@ impl BaseSchemaProcessor<Completed, NewReady> {
     #[inline]
     #[must_use]
     fn into_base(self) -> BaseSchema {
-        self.status.base
+        self.status.base_schema
     }
 }
 
@@ -490,7 +508,7 @@ mod tests {
         }
 
         #[test]
-        fn new_resolution_contains_constructed_base() {
+        fn new_resolution_derives_name_from_file_basename() {
             let fixture = fixtures::make_fixture();
             let processor =
                 BaseSchemaProcessor::<Init, Unknown>::from_discovery(
@@ -505,6 +523,23 @@ mod tests {
 
             let base_schema = expect_new!(resolution);
             assert_eq!(base_schema.name().as_str(), "test-schema");
+        }
+
+        #[test]
+        fn new_resolution_constructs_with_empty_defaults() {
+            let fixture = fixtures::make_fixture();
+            let processor =
+                BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("processor");
+
+            let resolution = processor
+                .run(None, &fixture.source, &fixture.repository)
+                .expect("run");
+
+            let base_schema = expect_new!(resolution);
             assert!(base_schema.properties().is_empty());
             assert!(base_schema.extends().is_empty());
             assert!(base_schema.excludes().is_empty());
@@ -636,7 +671,7 @@ mod tests {
                 file: fixture.file,
                 path_key: fixture.key,
                 status: NewReady {
-                    base: expected.clone(),
+                    base_schema: expected.clone(),
                 },
                 _stage: PhantomData,
             };
