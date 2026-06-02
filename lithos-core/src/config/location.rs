@@ -65,13 +65,13 @@ pub(crate) enum LocalConfigLocation {
 }
 
 impl LocalConfigLocation {
-    /// Locations recognized as valid vault root markers.
+    /// Locations probed for local config candidate classification.
     #[allow(
         dead_code,
         reason = "Phase-1 contracts are defined before full pipeline \
                   integration"
     )]
-    pub(crate) const MARKERS: &'static [Self] = &[
+    pub(crate) const CANDIDATE_LOCATIONS: &'static [Self] = &[
         Self::RootConfigFile,
         Self::HiddenRootConfigFile,
         Self::ConfigDirectoryFile,
@@ -145,17 +145,17 @@ mod tests {
         }
     }
 
-    mod markers {
+    mod candidate_locations {
         use super::*;
 
         #[test]
-        fn returns_all_supported_root_marker_locations() {
-            assert_eq!(LocalConfigLocation::MARKERS.len(), 3);
+        fn returns_all_supported_candidate_locations() {
+            assert_eq!(LocalConfigLocation::CANDIDATE_LOCATIONS.len(), 3);
         }
 
         #[test]
-        fn returns_markers_in_discovery_order() {
-            assert_eq!(LocalConfigLocation::MARKERS, &[
+        fn returns_locations_in_candidate_precedence_order() {
+            assert_eq!(LocalConfigLocation::CANDIDATE_LOCATIONS, &[
                 LocalConfigLocation::RootConfigFile,
                 LocalConfigLocation::HiddenRootConfigFile,
                 LocalConfigLocation::ConfigDirectoryFile,

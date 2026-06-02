@@ -80,7 +80,7 @@ From user request:
 | Use `DirPath` for schema directory | Type-safe, matches domain (it's a directory), has From<PathBuf> |
 | Use `FilePath` for property bank | Type-safe, matches domain (it's a file), has From<PathBuf> |
 | Use `From<PathBuf>` not `.new()` | Bypass filesystem validation for constructed paths |
-| Resolve paths in `to_schema_spec()` | Single responsibility: Config owns vault root, joins there |
+| Resolve paths in `to_schema_spec()` | Single responsibility: Discovery resolves the vault root; Config consumes resolved config paths |
 | Keep accessor methods `directory()` and `property_bank()` | Maintains encapsulation pattern used throughout crate |
 | Don't serialize SchemaConfigSpec | Already doesn't derive Archive/Serialize - runtime-only type |
 | Remove `vault_root` param from `DiscoveryEngine::run()` | Impact: 3 call sites (1 prod + 2 tests), LOW risk |
