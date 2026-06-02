@@ -96,8 +96,8 @@ pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
 
 /// Base schemas (phase-1 aggregates) indexed by schema ID.
 ///
-/// Stores file-local `BaseSchema` structures containing pre-inheritance
-/// extends/excludes lists for schema processing pipelines.
+/// Stores file-local `BaseSchema` structures with property maps,
+/// extends, and excludes lists for schema processing pipelines.
 ///
 /// Key: `SchemaId`
 /// Value: rkyv-serialized `BaseSchema`

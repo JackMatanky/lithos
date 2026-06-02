@@ -237,13 +237,13 @@ impl WriteRepository for RedbRepository {
         &self,
         schemas: &[BaseSchema],
     ) -> Result<(), SchemaRepositoryError> {
-        let mut serialized: Vec<(SchemaId, Vec<u8>)> =
-            Vec::with_capacity(schemas.len());
-        for schema in schemas {
-            let bytes =
-                schema.to_bytes().map_err(SchemaRepositoryError::from)?;
-            serialized.push((*schema.id(), bytes.as_slice().to_vec()));
-        }
+        let serialized = schemas
+            .iter()
+            .map(|schema| {
+                schema.to_bytes().map(|bytes| (*schema.id(), bytes.to_vec()))
+            })
+            .collect::<Result<Vec<(SchemaId, Vec<u8>)>, _>>()
+            .map_err(SchemaRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -251,8 +251,7 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
 
                 for (id, bytes) in &serialized {
-                    let slice: &[u8] = bytes.as_slice();
-                    table.insert(*id, slice)?;
+                    let _ = table.insert(*id, bytes.as_slice())?;
                 }
                 Ok(())
             })
