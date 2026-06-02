@@ -77,6 +77,7 @@ The following interfaces define seam-level contracts for parser-owned structured
 use std::path::Path;
 
 use crate::fs::format::StructuredFileFormat;
+use crate::utils::position::{ByteRange, PositionError};
 
 /// Structured parse policy (attribute carried by parser instance).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,16 +159,15 @@ impl MarkdownParser {
 
 /// Frontmatter/body extraction result with exact source slices.
 pub struct FrontmatterSplit<'a> {
-    pub frontmatter: Option<&'a str>,
+    pub frontmatter: Option<FrontmatterSlice<'a>>,
     pub body: &'a str,
-    pub body_start_byte: usize,
+    pub body_range: ByteRange,
 }
 
-/// Neutral parser-owned range type for shared primitives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ByteRange {
-    pub start: usize,
-    pub end: usize,
+/// Borrowed frontmatter view with exact byte span.
+pub struct FrontmatterSlice<'a> {
+    pub raw: &'a str,
+    pub range: ByteRange,
 }
 
 /// Parser-owned markdown event projected with byte offsets.
@@ -214,7 +214,7 @@ pub enum MarkdownParserError {
     FrontmatterYaml(#[from] serde_yaml::Error),
 
     #[error("offset mapping failed")]
-    Offset(#[from] crate::note::position::PositionError),
+    Offset(#[from] PositionError),
 
     #[error("markdown parse context: {path}")]
     Context {
@@ -238,6 +238,84 @@ Notes:
 - Keep `FileReader` as File Source owner (`read_to_string`, path safety); do not move Vault Root enforcement into parser modules.
 - Keep Note/Template semantics out of `MarkdownParser`; those contexts consume neutral primitives and perform context-local construction.
 - Prefer borrowed outputs (`&str` slices, neutral ranges) for hot paths; avoid unnecessary allocation/cloning in event adaptation.
+- Prefer `FrontmatterSlice` for parser seam exchange; decode into typed frontmatter happens in consuming context.
+- Move source-position primitives out of Note into `utils::position`; parser, Note, Template, and diagnostics consume the same deep byte/position module.
+
+### Position/Byte Ownership Plan
+
+- Introduce shared source-position primitives in `utils::position`:
+  - `ByteOffset(u32)`
+  - `ByteRange { start: ByteOffset, end: ByteOffset }`
+  - `Location { offset: ByteOffset, line: Line, column: Column }`
+  - `LocationRange { start: Location, end: Location }`
+  - `LineIndex`
+  - `Line`
+  - `Column`
+- Use shorter names because the module path carries meaning (`utils::position::ByteOffset`, not `SourceByteOffset`).
+- Keep fields private and validate through constructors/methods rather than public struct fields.
+- Split errors by depth:
+  - `ByteOffsetError` owns byte-value failures: overflow, out-of-bounds, UTF-8 boundary violations.
+  - `PositionError` composes `ByteOffsetError` and owns range/location failures: invalid range, invalid line, invalid column.
+- Let contexts use the most specific error they need:
+  - offset-only operations return `ByteOffsetError`.
+  - range/location/index operations return `PositionError`.
+  - Note/Template/Parser errors wrap these transparently where they add context.
+- Tighten byte handling during extraction:
+  - all offset construction from `usize` checks `u32` overflow
+  - all string-facing offset validation checks bounds and UTF-8 boundary
+  - all range constructors enforce half-open invariant (`start <= end`)
+  - all offset arithmetic uses checked add and returns `ByteOffsetError::Overflow`
+  - convert to `usize` only at IO/slice boundary
+
+```rust
+pub mod utils::position {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ByteOffset(u32);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct ByteRange {
+        start: ByteOffset,
+        end: ByteOffset,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Location {
+        offset: ByteOffset,
+        line: Line,
+        column: Column,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum ByteOffsetError {
+        #[error("byte offset overflow")]
+        Overflow { offset: ByteOffset, delta: usize },
+
+        #[error("byte offset out of bounds")]
+        OutOfBounds {
+            offset: ByteOffset,
+            source_len: ByteOffset,
+        },
+
+        #[error("byte offset is not a UTF-8 boundary")]
+        Utf8Boundary { offset: ByteOffset },
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum PositionError {
+        #[error(transparent)]
+        ByteOffset(#[from] ByteOffsetError),
+
+        #[error("invalid byte range")]
+        InvalidRange { start: ByteOffset, end: ByteOffset },
+
+        #[error("invalid line")]
+        InvalidLine { line: u32 },
+
+        #[error("invalid column")]
+        InvalidColumn { column: u32 },
+    }
+}
+```
 
 ## Testing Decisions
 
@@ -276,7 +354,7 @@ Notes:
 - Migration should proceed in narrow, reviewable slices to reduce risk on schema/property-bank ingestion flows.
 - Deprecation should be explicit and time-boxed after caller migration is complete.
 - If future adapters create real seam multiplicity, revisit trait extraction with evidence.
-- If parser-neutral position invariants stabilize across contexts, a later proposal can evaluate promoting shared position primitives.
+- Shared byte/position primitives belong in `utils::position`, not Note or Parser, because they model source text rather than context semantics.
 - ADR 010 is treated as historical context only and is not normative for this effort.
 
 ## Migration Safety Contract
@@ -286,7 +364,8 @@ Notes:
 | Phase 0: Behavior pinning baseline | Add seam-level behavior tests before production refactor | Existing FS reader structured tests; classification precedence tests; existing note parser frontmatter/range tests; `lithos-core/benches/note_parsing.rs` baseline capture | Any mismatch between pinned assertions and current main behavior; baseline benchmark capture failure |
 | Phase 1: Structured parser seam introduction | Introduce `StructuredParser` and delegate existing `FileReader::parse_structured_from_str` to parser seam with identical behavior | `fs::reader` structured parse tests; schema property bank parsing tests (including malformed input paths); source-chain error assertions; no new clippy warnings | Any changed parse outcome/error contract for existing structured callers; schema/property-bank flow failure |
 | Phase 2: Structured caller migration | Move high-blast-radius schema/property-bank callers to parser-owned API directly | Full schema builder/property-bank suite; integration tests for discovery precedence; regression tests for stale/fresh/content-mismatch processor branches; compare with Phase 1 snapshots | Any break in property-bank load/process flows; divergence in precedence or error context fields |
-| Phase 3: Markdown seam extraction | Introduce parser-owned `MarkdownParser` for frontmatter split + offset event adaptation; keep Note semantics unchanged | Note parser integration tests (tags/tasks/links/frontmatter); offset-to-range validity tests; reference extraction tests; benchmark comparison versus Phase 0 note parsing baseline | Semantic drift in Note extraction outputs; offset/range regression; measurable hot-path performance regression |
+| Phase 2.5: Position primitive extraction | Extract source byte/range/location primitives from `note/position.rs` into `utils::position`; keep Note/Template/Parser semantics local | Existing `note::position` test suite ported/pinned; UTF-8 boundary regression tests; half-open range invariant tests; overflow tests; no semantic API break in Note call sites | Any regression in offset-to-line/column behavior; any context semantic type leak into `utils::position`; adapter/conversion mismatch |
+| Phase 3: Markdown seam extraction | Introduce parser-owned `MarkdownParser` for frontmatter split + offset event adaptation; use pulldown metadata events; keep Note semantics unchanged | Note parser integration tests (tags/tasks/links/frontmatter); offset-to-range validity tests; reference extraction tests; benchmark comparison versus Phase 0 note parsing baseline | Semantic drift in Note extraction outputs; offset/range regression; measurable hot-path performance regression |
 | Phase 4: Template adoption of shared markdown primitives | Consume shared frontmatter/body primitives in Template Asset ingestion path | Template ingestion tests (new + existing); no Note semantic leakage assertions; frontmatter/body parity tests with note corpus fixtures where applicable | Template behavior regressions; cross-context semantic coupling introduced; incompatible frontmatter behavior |
 | Phase 5: Compatibility retirement | Deprecate then remove legacy `FileReader` parsing helpers after all callers migrate | Entire workspace test suite; migration-doc checklist complete; deprecation warnings resolved; lint + fmt + test tasks green | Any remaining production caller on deprecated entry points; unresolved migration docs; post-removal regressions |
 
