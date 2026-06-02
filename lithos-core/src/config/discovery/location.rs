@@ -51,6 +51,13 @@ pub(crate) enum LocalConfigLocation {
 }
 
 impl LocalConfigLocation {
+    /// Locations recognized as valid vault root markers.
+    pub(crate) const MARKERS: &'static [Self] = &[
+        Self::RootConfigFile,
+        Self::HiddenRootConfigFile,
+        Self::ConfigDirectoryFile,
+    ];
+
     /// Generates a concrete candidate path for a location/format pair.
     #[allow(
         dead_code,

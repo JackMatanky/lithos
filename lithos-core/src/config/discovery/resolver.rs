@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env,
     ffi::OsStr,
-    io,
+    io, iter,
     path::{Path, PathBuf},
 };
 
@@ -12,16 +12,6 @@ use super::{
     location::{ConfigLocation, LocalConfigLocation},
 };
 use crate::fs::format::StructuredFileFormat;
-
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
-const LOCAL_MARKER_LOCATIONS: [LocalConfigLocation; 3] = [
-    LocalConfigLocation::RootConfigFile,
-    LocalConfigLocation::HiddenRootConfigFile,
-    LocalConfigLocation::ConfigDirectoryFile,
-];
 
 #[allow(
     dead_code,
@@ -199,7 +189,7 @@ impl RootResolver {
         cwd: &Path,
         ceilings: &HashSet<PathBuf>,
     ) -> Result<AscendingResolution, RootResolutionError> {
-        let mut current = cwd.canonicalize().map_err(|source| {
+        let start = cwd.canonicalize().map_err(|source| {
             RootResolutionError::CurrentDirectoryCanonicalize {
                 path: cwd.to_path_buf(),
                 source,
@@ -208,15 +198,28 @@ impl RootResolver {
 
         let mut visited = HashSet::new();
 
-        loop {
-            if !visited.insert(current.clone()) {
-                return Ok(AscendingResolution::not_found());
+        let walk = iter::successors(Some(start), |path| {
+            // Short-circuit if we hit a loop
+            if !visited.insert(path.clone()) {
+                return None;
             }
 
+            // Termination conditions: stop if we are at a ceiling
+            if ceilings.contains(path) {
+                return None;
+            }
+
+            path.parent()
+                .map(Path::canonicalize)
+                .and_then(Result::ok)
+                .filter(|parent| parent != path)
+        });
+
+        for current in walk {
             if !self.policy.allow_marker_at_ceiling
                 && ceilings.contains(&current)
             {
-                return Ok(AscendingResolution::not_found());
+                break;
             }
 
             if let Some(marker) = Self::discover_marker(&current)? {
@@ -224,92 +227,78 @@ impl RootResolver {
             }
 
             if ceilings.contains(&current) {
-                return Ok(AscendingResolution::not_found());
+                break;
             }
-
-            let Some(parent) = current.parent() else {
-                return Ok(AscendingResolution::not_found());
-            };
-
-            let parent_canonical = parent.canonicalize().map_err(|source| {
-                RootResolutionError::CanonicalizePath {
-                    path: parent.to_path_buf(),
-                    source,
-                }
-            })?;
-
-            if parent_canonical == current {
-                return Ok(AscendingResolution::not_found());
-            }
-
-            current = parent_canonical;
         }
+
+        Ok(AscendingResolution::not_found())
     }
 
     fn discover_marker(
         root: &Path,
     ) -> Result<Option<DiscoveredConfigFile>, RootResolutionError> {
-        for location in LOCAL_MARKER_LOCATIONS {
-            for format in StructuredFileFormat::PRECEDENCE {
+        LocalConfigLocation::MARKERS
+            .iter()
+            .flat_map(|&location| {
+                StructuredFileFormat::PRECEDENCE
+                    .iter()
+                    .map(move |&format| (location, format))
+            })
+            .find_map(|(location, format)| {
                 let path = location.candidate_path(root, format);
                 if !path.is_file() {
-                    continue;
+                    return None;
                 }
 
-                let canonical = path.canonicalize().map_err(|source| {
-                    RootResolutionError::CanonicalizePath {
-                        path: path.clone(),
-                        source,
+                match path.canonicalize() {
+                    Ok(canonical) => Some(Ok(DiscoveredConfigFile {
+                        location: ConfigLocation::Local(location),
+                        base: root.to_path_buf(),
+                        path: canonical,
+                        format,
+                    })),
+                    Err(source) => {
+                        Some(Err(RootResolutionError::CanonicalizePath {
+                            path: path.clone(),
+                            source,
+                        }))
                     }
-                })?;
-                return Ok(Some(DiscoveredConfigFile {
-                    location: ConfigLocation::Local(location),
-                    base: root.to_path_buf(),
-                    path: canonical,
-                    format,
-                }));
-            }
-        }
-
-        Ok(None)
+                }
+            })
+            .transpose()
     }
 
     fn parse_ceilings(
         ceiling_dirs_raw: Option<&OsStr>,
         warnings: &mut Vec<RootResolutionWarning>,
     ) -> HashSet<PathBuf> {
-        let Some(raw) = ceiling_dirs_raw else {
-            return HashSet::new();
-        };
+        ceiling_dirs_raw
+            .map(env::split_paths)
+            .into_iter()
+            .flatten()
+            .filter_map(|segment| {
+                let s = segment.to_string_lossy();
+                let trimmed = s.trim();
 
-        let mut ceilings = HashSet::new();
+                if trimmed.is_empty() {
+                    warnings.push(RootResolutionWarning::EmptyCeilingSegment);
+                    return None;
+                }
 
-        for segment in env::split_paths(raw) {
-            let trimmed = segment.to_string_lossy().trim().to_owned();
-            if trimmed.is_empty() {
-                warnings.push(RootResolutionWarning::EmptyCeilingSegment);
-                continue;
-            }
-
-            let path = PathBuf::from(&trimmed);
-            let Ok(canonical) = path.canonicalize() else {
-                warnings.push(RootResolutionWarning::InvalidCeilingSegment {
-                    segment: path,
-                });
-                continue;
-            };
-
-            if !canonical.is_dir() {
-                warnings.push(RootResolutionWarning::InvalidCeilingSegment {
-                    segment: PathBuf::from(trimmed),
-                });
-                continue;
-            }
-
-            ceilings.insert(canonical);
-        }
-
-        ceilings
+                let path = PathBuf::from(trimmed);
+                match path.canonicalize() {
+                    Ok(canonical) if canonical.is_dir() => Some(canonical),
+                    _ => {
+                        warnings.push(
+                            RootResolutionWarning::InvalidCeilingSegment {
+                                segment: path,
+                            },
+                        );
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 }
 
