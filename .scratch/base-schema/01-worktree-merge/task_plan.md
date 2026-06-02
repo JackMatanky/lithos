@@ -6,7 +6,7 @@ Safely merge all changes from the dedicated worktree `.worktrees/base-schema-01-
 ## Phases
 - [x] Phase 1: Analysis & Impact Assessment <!-- id: 0 -->
 - [x] Phase 2: Merge Strategy Formulation <!-- id: 1 -->
-- [/] Phase 3: Review & Approval <!-- id: 2 -->
+- [x] Phase 3: Review & Approval <!-- id: 2 -->
 - [x] Phase 4: Execution <!-- id: 3 -->
 - [x] Phase 5: Verification & Cleanup <!-- id: 4 -->
 
@@ -18,4 +18,4 @@ Safely merge all changes from the dedicated worktree `.worktrees/base-schema-01-
 - [x] Run `mise run verify` in the merged state.
 - [x] Verify that the `closed` status of the issue in `.scratch` is preserved.
 - [x] Stage and commit merge-related changes.
-- [x] (Optional) Remove the worktree if requested.
+- [x] Remove the worktree and branch.
