@@ -1,8 +1,8 @@
-//! Discovery result contracts for root/config path discovery.
+//! Root marker contract: the typed output of vault root resolution.
 //!
-//! This module defines typed outcomes transported by the root resolution phase.
-//! It intentionally excludes traversal, filesystem probing, and precedence
-//! execution logic.
+//! [`FoundRootMarker`] carries the path and format of the marker file found
+//! during ascending vault root discovery. It is the handoff type from
+//! [`crate::discovery::resolver`] to the Config context.
 
 use std::path::PathBuf;
 

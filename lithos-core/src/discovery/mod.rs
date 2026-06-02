@@ -3,12 +3,12 @@
 //! Provides the core primitives for locating and identifying root markers,
 //! configuration files, and vault boundaries.
 
-/// Discovery result contracts.
-pub mod contracts;
 /// Diagnostics and warnings during discovery.
 pub mod diagnostics;
+/// Root marker contract: the typed output of vault root resolution.
+pub mod marker;
 /// Root resolution logic.
 pub mod resolver;
 
-pub(crate) use contracts::*;
 pub(crate) use diagnostics::*;
+pub(crate) use marker::*;

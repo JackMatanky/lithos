@@ -1,8 +1,12 @@
-//! Config-owned discovery result contracts.
+//! Config-side root handoff types.
 //!
-//! These contracts classify discovered paths with Config location taxonomy.
-//! Top-level Discovery remains responsible only for root/path discovery
-//! outputs.
+//! Receives [`crate::discovery::FoundRootMarker`] output from the Discovery
+//! context and classifies it into [`DiscoveredConfigFile`] with the appropriate
+//! [`crate::config::location::LocalConfigLocation`] variant.
+//!
+//! [`ConfigDiscoveryResult`] aggregates both local and global classified files
+//! and will be consumed by [`crate::config::discovery`] as its input contract.
+//! It lives here until the global classification side is built in Phase 2.
 
 use std::path::PathBuf;
 

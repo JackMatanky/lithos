@@ -8,8 +8,8 @@ use std::{io, path::Path};
 
 use crate::{
     config::{
-        contracts::DiscoveredConfigFile,
         location::{ConfigLocation, LocalConfigLocation},
+        root::DiscoveredConfigFile,
     },
     discovery::{DiscoveryWarning, FormatDiscoveryWarning},
     fs::format::StructuredFileFormat,
