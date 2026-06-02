@@ -10,6 +10,8 @@
 
 /// Schema aggregate and identifier types.
 pub mod aggregate;
+/// Base schema domain type (phase-1, name-based extends list).
+pub mod base;
 /// Core identity types for the schema system.
 pub mod identifier;
 
