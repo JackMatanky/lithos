@@ -4,7 +4,7 @@
 //! both the filesystem and database, consolidating all data needed for
 //! config processing.
 //!
-//! The `location` and `contracts` submodules expose typed discovery interfaces
+//! The `location` and `candidates` submodules expose typed discovery interfaces
 //! used by downstream configuration orchestration.
 
 use crate::{
