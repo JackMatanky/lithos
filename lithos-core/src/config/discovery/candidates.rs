@@ -7,9 +7,8 @@
 use std::{io, path::Path};
 
 use super::{
-    contracts::{
-        ConfigSelectionResult, DiscoveredConfigFile, DiscoveryWarning,
-    },
+    contracts::{ConfigSelectionResult, DiscoveredConfigFile},
+    diagnostics::{DiscoveryWarning, FormatDiscoveryWarning},
     location::{ConfigLocation, LocalConfigLocation},
 };
 use crate::fs::format::StructuredFileFormat;
@@ -65,7 +64,7 @@ pub(crate) fn find_local_config_candidates(
 ///
 /// ### Ambiguity Handling
 ///
-/// If multiple candidates are present, a [`DiscoveryWarning::FormatAmbiguity`]
+/// If multiple candidates are present, a [`DiscoveryWarning::Format`] warning
 /// is generated and emitted via `tracing::warn!`, even if a successful
 /// selection is made. This warning is also returned inside the
 /// [`ConfigSelectionResult`] for deterministic testing and CLI reporting.
@@ -114,10 +113,10 @@ pub(crate) fn select_config_candidate(
     let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
     paths.push(candidate.path.clone());
 
-    let warning = DiscoveryWarning::FormatAmbiguity {
+    let warning = DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
         base: candidate.base.clone(),
         candidates: paths,
-    };
+    });
 
     tracing::warn!(
         ?warning,
@@ -132,150 +131,196 @@ pub(crate) fn select_config_candidate(
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use std::{fs, path::PathBuf};
+
+    use tempfile::{TempDir, tempdir};
 
     use super::*;
 
-    mod lookup {
+    mod fixtures {
         use super::*;
+
+        pub(super) fn local_candidate(
+            base: &Path,
+            file_name: &str,
+            format: StructuredFileFormat,
+        ) -> DiscoveredConfigFile {
+            DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::RootConfigFile,
+                ),
+                base: base.to_path_buf(),
+                path: base.join(file_name),
+                format,
+            }
+        }
+
+        pub(super) fn write_file(root: &Path, relative: &str) -> PathBuf {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create config parent dir");
+            }
+            fs::write(&path, "").expect("write config file");
+            path
+        }
+
+        pub(super) struct CurrentDirGuard {
+            original: PathBuf,
+        }
+
+        impl CurrentDirGuard {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Relative path tests need to change current dir"
+            )]
+            pub(super) fn enter(path: &Path) -> Self {
+                let original =
+                    std::env::current_dir().expect("read original cwd");
+                std::env::set_current_dir(path).expect("set test cwd");
+                Self {
+                    original,
+                }
+            }
+        }
+
+        impl Drop for CurrentDirGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.original);
+            }
+        }
+
+        pub(super) fn temp_vault() -> TempDir {
+            tempdir().expect("create temp vault")
+        }
+    }
+
+    mod find_local_config_candidates {
+        use super::{fixtures::*, *};
 
         #[test]
         fn returns_empty_vec_when_no_files_exist() {
-            let root = tempdir().unwrap();
-            let location = LocalConfigLocation::RootConfigFile;
-
-            let got =
-                find_local_config_candidates(root.path(), location).unwrap();
-
-            assert!(got.is_empty());
-        }
-
-        #[test]
-        fn returns_single_candidate_when_one_format_exists() {
-            let root = tempdir().unwrap();
-            let config_path = root.path().join("lithos.toml");
-            std::fs::write(&config_path, "").unwrap();
-
-            let location = LocalConfigLocation::RootConfigFile;
-            let got =
-                find_local_config_candidates(root.path(), location).unwrap();
-
-            assert_eq!(got.len(), 1);
-            assert_eq!(
-                got.first().unwrap().path,
-                config_path.canonicalize().unwrap()
-            );
-        }
-
-        #[test]
-        fn returns_multiple_candidates_ordered_by_precedence() {
-            let root = tempdir().unwrap();
-            let toml_path = root.path().join("lithos.toml");
-            let json_path = root.path().join("lithos.json");
-            std::fs::write(&toml_path, "").unwrap();
-            std::fs::write(&json_path, "").unwrap();
-
-            let location = LocalConfigLocation::RootConfigFile;
-            let got =
-                find_local_config_candidates(root.path(), location).unwrap();
-
-            assert_eq!(got.len(), 2);
-            assert_eq!(got.first().unwrap().format, StructuredFileFormat::Toml);
-            assert_eq!(got.get(1).unwrap().format, StructuredFileFormat::Json);
-        }
-
-        #[test]
-        fn returns_correct_path_for_root_config_file_location() {
-            let root = tempdir().unwrap();
-            let config_path = root.path().join("lithos.toml");
-            std::fs::write(&config_path, "").unwrap();
+            let root = temp_vault();
 
             let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::RootConfigFile,
             )
-            .unwrap();
+            .expect("find candidates");
+
+            assert!(got.is_empty());
+        }
+
+        #[test]
+        fn returns_candidate_when_single_format_exists() {
+            let root = temp_vault();
+            write_file(root.path(), "lithos.toml");
+
+            let got = find_local_config_candidates(
+                root.path(),
+                LocalConfigLocation::RootConfigFile,
+            )
+            .expect("find candidates");
+
+            assert_eq!(got.len(), 1);
+        }
+
+        #[test]
+        fn returns_candidates_ordered_by_format_precedence() {
+            let root = temp_vault();
+            write_file(root.path(), "lithos.toml");
+            write_file(root.path(), "lithos.json");
+
+            let got = find_local_config_candidates(
+                root.path(),
+                LocalConfigLocation::RootConfigFile,
+            )
+            .expect("find candidates");
+            let formats: Vec<_> =
+                got.iter().map(|candidate| candidate.format).collect();
+
+            assert_eq!(formats, vec![
+                StructuredFileFormat::Toml,
+                StructuredFileFormat::Json
+            ]);
+        }
+
+        #[test]
+        fn returns_root_config_path_for_root_location() {
+            let root = temp_vault();
+            let config_path = write_file(root.path(), "lithos.toml");
+
+            let got = find_local_config_candidates(
+                root.path(),
+                LocalConfigLocation::RootConfigFile,
+            )
+            .expect("find candidates");
+            let candidate = got.first().expect("candidate exists");
 
             assert_eq!(
-                got.first().unwrap().path,
-                config_path.canonicalize().unwrap()
+                candidate.path,
+                config_path.canonicalize().expect("canonical config path")
             );
         }
 
         #[test]
-        fn returns_correct_path_for_hidden_root_config_file_location() {
-            let root = tempdir().unwrap();
-            let config_path = root.path().join(".lithos.toml");
-            std::fs::write(&config_path, "").unwrap();
+        fn returns_hidden_root_path_for_hidden_location() {
+            let root = temp_vault();
+            let config_path = write_file(root.path(), ".lithos.toml");
 
             let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::HiddenRootConfigFile,
             )
-            .unwrap();
+            .expect("find candidates");
+            let candidate = got.first().expect("candidate exists");
 
             assert_eq!(
-                got.first().unwrap().path,
-                config_path.canonicalize().unwrap()
+                candidate.path,
+                config_path.canonicalize().expect("canonical config path")
             );
         }
 
         #[test]
-        fn returns_correct_path_for_config_directory_file_location() {
-            let root = tempdir().unwrap();
-            std::fs::create_dir(root.path().join(".lithos")).unwrap();
-            let config_path = root.path().join(".lithos").join("config.toml");
-            std::fs::write(&config_path, "").unwrap();
+        fn returns_config_directory_path_for_directory_location() {
+            let root = temp_vault();
+            let config_path = write_file(root.path(), ".lithos/config.toml");
 
             let got = find_local_config_candidates(
                 root.path(),
                 LocalConfigLocation::ConfigDirectoryFile,
             )
-            .unwrap();
+            .expect("find candidates");
+            let candidate = got.first().expect("candidate exists");
 
             assert_eq!(
-                got.first().unwrap().path,
-                config_path.canonicalize().unwrap()
+                candidate.path,
+                config_path.canonicalize().expect("canonical config path")
             );
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests need to change working directory to verify \
-                      relative path resolution"
-        )]
         fn returns_absolute_paths_when_root_is_relative() {
-            let root = tempdir().unwrap();
-            let config_path = root.path().join("lithos.toml");
-            std::fs::write(&config_path, "").unwrap();
+            let root = temp_vault();
+            write_file(root.path(), "lithos.toml");
+            let parent = root.path().parent().expect("temp root has parent");
+            let _guard = CurrentDirGuard::enter(parent);
 
-            // Change to parent of root to use relative path
-            let original_dir = std::env::current_dir().unwrap();
-            std::env::set_current_dir(root.path().parent().unwrap()).unwrap();
+            let relative_root =
+                Path::new(root.path().file_name().expect("temp root has name"));
 
-            let relative_root = Path::new(root.path().file_name().unwrap());
-            let location = LocalConfigLocation::RootConfigFile;
+            let got = find_local_config_candidates(
+                relative_root,
+                LocalConfigLocation::RootConfigFile,
+            )
+            .expect("find candidates");
+            let candidate = got.first().expect("candidate exists");
 
-            let result = find_local_config_candidates(relative_root, location);
-
-            // Restore current dir
-            std::env::set_current_dir(original_dir).unwrap();
-
-            let got = result.unwrap();
-            assert_eq!(got.len(), 1);
-            assert!(got.first().unwrap().path.is_absolute());
-            assert_eq!(
-                got.first().unwrap().path,
-                config_path.canonicalize().unwrap()
-            );
+            assert!(candidate.path.is_absolute());
         }
     }
 
-    mod selection {
-        use std::path::PathBuf;
-
-        use super::*;
+    mod select_config_candidate {
+        use super::{fixtures::*, *};
 
         #[test]
         fn returns_none_when_candidates_are_empty() {
@@ -285,44 +330,48 @@ mod tests {
 
         #[test]
         fn returns_candidate_when_single_candidate_exists() {
-            let candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
+            let base = Path::new("/vault");
+            let candidate = local_candidate(
+                base,
+                "lithos.toml",
+                StructuredFileFormat::Toml,
+            );
+
+            let got = select_config_candidate(vec![candidate], None)
+                .expect("expected a candidate to be selected");
+
+            assert_eq!(got.candidate.format, StructuredFileFormat::Toml);
+        }
+
+        #[test]
+        fn returns_no_warning_when_single_candidate_exists() {
+            let base = PathBuf::from("/vault");
+            let candidate = local_candidate(
+                &base,
+                "lithos.toml",
+                StructuredFileFormat::Toml,
+            );
 
             let got = select_config_candidate(vec![candidate], None)
                 .expect("expected a candidate to be selected");
 
             assert_eq!(got.warning, None);
-            assert_eq!(got.candidate.format, StructuredFileFormat::Toml);
         }
 
         #[test]
-        fn returns_persisted_match_with_warning_when_multiple_candidates_exist()
-        {
+        fn returns_persisted_format_when_match_exists() {
             let base = PathBuf::from("/vault");
-            let toml_candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: base.clone(),
-                path: base.join("lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-            let json_candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: base.clone(),
-                path: base.join("lithos.json"),
-                format: StructuredFileFormat::Json,
-            };
+            let toml_candidate = local_candidate(
+                &base,
+                "lithos.toml",
+                StructuredFileFormat::Toml,
+            );
+            let json_candidate = local_candidate(
+                &base,
+                "lithos.json",
+                StructuredFileFormat::Json,
+            );
 
-            // json is lower precedence than toml, but we pass json as persisted
             let got = select_config_candidate(
                 vec![toml_candidate, json_candidate],
                 Some(StructuredFileFormat::Json),
@@ -330,41 +379,53 @@ mod tests {
             .expect("expected a candidate to be selected");
 
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
-            assert_eq!(got.candidate.path, base.join("lithos.json"));
+        }
 
-            let expected_warning = DiscoveryWarning::FormatAmbiguity {
-                base,
-                candidates: vec![
-                    PathBuf::from("/vault/lithos.toml"),
-                    PathBuf::from("/vault/lithos.json"),
-                ],
-            };
+        #[test]
+        fn returns_warning_when_multiple_formats_exist() {
+            let base = PathBuf::from("/vault");
+            let toml_candidate = local_candidate(
+                &base,
+                "lithos.toml",
+                StructuredFileFormat::Toml,
+            );
+            let json_candidate = local_candidate(
+                &base,
+                "lithos.json",
+                StructuredFileFormat::Json,
+            );
+
+            let got = select_config_candidate(
+                vec![toml_candidate, json_candidate],
+                Some(StructuredFileFormat::Json),
+            )
+            .expect("expected a candidate to be selected");
+
+            let expected_warning =
+                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                    base,
+                    candidates: vec![
+                        PathBuf::from("/vault/lithos.toml"),
+                        PathBuf::from("/vault/lithos.json"),
+                    ],
+                });
             assert_eq!(got.warning, Some(expected_warning));
         }
 
         #[test]
-        fn returns_highest_precedence_with_warning_when_no_persisted_match_exists()
-         {
+        fn returns_highest_precedence_when_no_persisted_match_exists() {
             let base = PathBuf::from("/vault");
-            let yaml_candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: base.clone(),
-                path: base.join("lithos.yaml"),
-                format: StructuredFileFormat::Yaml,
-            };
-            let json_candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: base.clone(),
-                path: base.join("lithos.json"),
-                format: StructuredFileFormat::Json,
-            };
+            let yaml_candidate = local_candidate(
+                &base,
+                "lithos.yaml",
+                StructuredFileFormat::Yaml,
+            );
+            let json_candidate = local_candidate(
+                &base,
+                "lithos.json",
+                StructuredFileFormat::Json,
+            );
 
-            // yaml has rank 2, json has rank 1. So json wins. No persisted
-            // match (or matches neither).
             let got = select_config_candidate(
                 vec![yaml_candidate, json_candidate],
                 Some(StructuredFileFormat::Toml),
@@ -372,15 +433,36 @@ mod tests {
             .expect("expected a candidate to be selected");
 
             assert_eq!(got.candidate.format, StructuredFileFormat::Json);
-            assert_eq!(got.candidate.path, base.join("lithos.json"));
+        }
 
-            let expected_warning = DiscoveryWarning::FormatAmbiguity {
-                base,
-                candidates: vec![
-                    PathBuf::from("/vault/lithos.yaml"),
-                    PathBuf::from("/vault/lithos.json"),
-                ],
-            };
+        #[test]
+        fn returns_warning_candidates_in_input_order() {
+            let base = PathBuf::from("/vault");
+            let yaml_candidate = local_candidate(
+                &base,
+                "lithos.yaml",
+                StructuredFileFormat::Yaml,
+            );
+            let json_candidate = local_candidate(
+                &base,
+                "lithos.json",
+                StructuredFileFormat::Json,
+            );
+
+            let got = select_config_candidate(
+                vec![yaml_candidate, json_candidate],
+                Some(StructuredFileFormat::Toml),
+            )
+            .expect("expected a candidate to be selected");
+
+            let expected_warning =
+                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                    base,
+                    candidates: vec![
+                        PathBuf::from("/vault/lithos.yaml"),
+                        PathBuf::from("/vault/lithos.json"),
+                    ],
+                });
             assert_eq!(got.warning, Some(expected_warning));
         }
     }

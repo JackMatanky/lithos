@@ -23,7 +23,9 @@ use crate::{
 
 pub(crate) mod candidates;
 pub(crate) mod contracts;
+pub(crate) mod diagnostics;
 pub(crate) mod location;
+pub(crate) mod resolver;
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Discovery Result Types

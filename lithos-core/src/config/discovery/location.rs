@@ -51,6 +51,13 @@ pub(crate) enum LocalConfigLocation {
 }
 
 impl LocalConfigLocation {
+    /// Locations recognized as valid vault root markers.
+    pub(crate) const MARKERS: &'static [Self] = &[
+        Self::RootConfigFile,
+        Self::HiddenRootConfigFile,
+        Self::ConfigDirectoryFile,
+    ];
+
     /// Generates a concrete candidate path for a location/format pair.
     #[allow(
         dead_code,
@@ -91,78 +98,99 @@ pub(crate) enum ConfigLocation {
 mod tests {
     use super::*;
 
-    mod validation {
+    mod candidate_path {
         use super::*;
 
         #[test]
-        fn returns_true_when_comparing_equal_explicit_override_locations() {
+        fn returns_root_config_file_path() {
+            let got = LocalConfigLocation::RootConfigFile.candidate_path(
+                Path::new("/vault"),
+                StructuredFileFormat::Toml,
+            );
+
+            assert_eq!(got, PathBuf::from("/vault/lithos.toml"));
+        }
+
+        #[test]
+        fn returns_hidden_root_config_file_path() {
+            let got = LocalConfigLocation::HiddenRootConfigFile.candidate_path(
+                Path::new("/vault"),
+                StructuredFileFormat::Json,
+            );
+
+            assert_eq!(got, PathBuf::from("/vault/.lithos.json"));
+        }
+
+        #[test]
+        fn returns_config_directory_file_path() {
+            let got = LocalConfigLocation::ConfigDirectoryFile.candidate_path(
+                Path::new("/vault"),
+                StructuredFileFormat::Yaml,
+            );
+
+            assert_eq!(got, PathBuf::from("/vault/.lithos/config.yaml"));
+        }
+
+        #[test]
+        fn returns_yml_path_for_hidden_root_config_file() {
+            let got = LocalConfigLocation::HiddenRootConfigFile
+                .candidate_path(Path::new("/vault"), StructuredFileFormat::Yml);
+
+            assert_eq!(got, PathBuf::from("/vault/.lithos.yml"));
+        }
+    }
+
+    mod markers {
+        use super::*;
+
+        #[test]
+        fn returns_all_supported_root_marker_locations() {
+            assert_eq!(LocalConfigLocation::MARKERS.len(), 3);
+        }
+
+        #[test]
+        fn returns_markers_in_discovery_order() {
+            assert_eq!(LocalConfigLocation::MARKERS, &[
+                LocalConfigLocation::RootConfigFile,
+                LocalConfigLocation::HiddenRootConfigFile,
+                LocalConfigLocation::ConfigDirectoryFile,
+            ]);
+        }
+    }
+
+    mod equality {
+        use super::*;
+
+        #[test]
+        fn returns_true_when_explicit_override_locations_match() {
             let first = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
                 "/tmp/lithos.toml",
             ));
             let second = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
                 "/tmp/lithos.toml",
             ));
+
             assert_eq!(first, second);
         }
 
         #[test]
-        fn returns_true_when_comparing_equal_environment_override_locations() {
+        fn returns_true_when_environment_override_locations_match() {
             let first = GlobalConfigLocation::EnvironmentOverride(
                 PathBuf::from("/env/lithos.toml"),
             );
             let second = GlobalConfigLocation::EnvironmentOverride(
                 PathBuf::from("/env/lithos.toml"),
             );
+
             assert_eq!(first, second);
         }
 
         #[test]
-        fn returns_local_config_location_when_wrapping_local_variant() {
+        fn returns_local_variant_when_wrapping_local_location() {
             let wrapped =
                 ConfigLocation::Local(LocalConfigLocation::ConfigDirectoryFile);
+
             assert!(matches!(wrapped, ConfigLocation::Local(_)));
-        }
-    }
-
-    mod lookup {
-        use super::*;
-
-        #[test]
-        fn returns_root_config_file_path_when_location_is_root_and_format_is_toml()
-         {
-            let got = LocalConfigLocation::RootConfigFile.candidate_path(
-                Path::new("/vault"),
-                StructuredFileFormat::Toml,
-            );
-            assert_eq!(got, PathBuf::from("/vault/lithos.toml"));
-        }
-
-        #[test]
-        fn returns_hidden_root_config_file_path_when_location_is_hidden_root_and_format_is_json()
-         {
-            let got = LocalConfigLocation::HiddenRootConfigFile.candidate_path(
-                Path::new("/vault"),
-                StructuredFileFormat::Json,
-            );
-            assert_eq!(got, PathBuf::from("/vault/.lithos.json"));
-        }
-
-        #[test]
-        fn returns_config_directory_file_path_when_location_is_config_directory_and_format_is_yaml()
-         {
-            let got = LocalConfigLocation::ConfigDirectoryFile.candidate_path(
-                Path::new("/vault"),
-                StructuredFileFormat::Yaml,
-            );
-            assert_eq!(got, PathBuf::from("/vault/.lithos/config.yaml"));
-        }
-
-        #[test]
-        fn returns_hidden_root_config_file_path_when_location_is_hidden_root_and_format_is_yml()
-         {
-            let got = LocalConfigLocation::HiddenRootConfigFile
-                .candidate_path(Path::new("/vault"), StructuredFileFormat::Yml);
-            assert_eq!(got, PathBuf::from("/vault/.lithos.yml"));
         }
     }
 }
