@@ -1,3 +1,17 @@
+//! Phase 1 vault root resolution and discovery marker location.
+//!
+//! This module implements the first phase of the configuration discovery
+//! process: finding the "vault root" directory and the "marker" file (e.g.,
+//! `lithos.toml`) that defines it.
+//!
+//! Resolution follows a strict precedence chain:
+//! 1. **Explicit Flag**: A path provided directly via CLI.
+//! 2. **Environment Variable**: A path provided via the `LITHOS_VAULT`
+//!    environment variable.
+//! 3. **Ascending Discovery**: Searching upwards from the current working
+//!    directory until a marker file is found or a "ceiling" directory is
+//!    reached.
+
 use std::{
     collections::HashSet,
     env,
@@ -13,6 +27,10 @@ use super::{
 };
 use crate::fs::format::StructuredFileFormat;
 
+/// The primary engine for resolving a vault root and its discovery marker.
+///
+/// `RootResolver` implements the policy-driven search for the configuration
+/// entry point of a vault.
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
@@ -27,6 +45,8 @@ pub(crate) struct RootResolver {
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 impl RootResolver {
+    /// Creates a new resolver with the specified resolution
+    /// [`RootResolutionPolicy`].
     #[allow(
         dead_code,
         reason = "Phase-1 resolver seam is implemented before orchestration \
@@ -38,6 +58,36 @@ impl RootResolver {
         }
     }
 
+    /// Resolves the vault root based on the provided [`RootResolverInput`].
+    ///
+    /// This method evaluates overrides (explicit flag, environment) before
+    /// performing an ascending search from the current working directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RootResolutionError`] if:
+    /// - An explicit or environment path is provided but does not exist or is
+    ///   not a directory.
+    /// - The current directory cannot be canonicalized.
+    /// - A filesystem error occurs during discovery (e.g., permission denied
+    ///   during canonicalization).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let resolver = RootResolver::default();
+    /// let input = RootResolverInput {
+    ///     explicit_vault_path: None,
+    ///     env_vault_path: None,
+    ///     cwd: Path::new("."),
+    ///     ceiling_dirs_raw: None,
+    /// };
+    ///
+    /// let result = resolver.resolve(input)?;
+    /// if let Some(root) = result.root {
+    ///     println!("Resolved vault root: {}", root.display());
+    /// }
+    /// ```
     pub(crate) fn resolve(
         &self,
         input: RootResolverInput<'_>,
@@ -73,6 +123,7 @@ impl RootResolver {
         })
     }
 
+    /// Resolves a vault root from a forced override path.
     fn resolve_override(
         path: &Path,
         source: RootResolutionSource,
@@ -86,6 +137,8 @@ impl RootResolver {
         })
     }
 
+    /// Validates that an override path exists, is a directory, and can be
+    /// canonicalized.
     fn validate_override(
         path: &Path,
         source: RootResolutionSource,
@@ -146,6 +199,7 @@ impl RootResolver {
         })
     }
 
+    /// Performs the ascending discovery search starting from `cwd`.
     fn resolve_ascending(
         &self,
         cwd: &Path,
@@ -196,6 +250,7 @@ impl RootResolver {
         Ok(AscendingResolution::not_found())
     }
 
+    /// Checks a specific directory for any supported root marker files.
     fn discover_marker(
         root: &Path,
     ) -> Result<Option<DiscoveredConfigFile>, RootResolutionError> {
@@ -230,6 +285,8 @@ impl RootResolver {
             .transpose()
     }
 
+    /// Parses a raw string of ceiling directories (e.g., from an environment
+    /// variable).
     fn parse_ceilings(
         ceiling_dirs_raw: Option<&OsStr>,
         warnings: &mut Vec<RootResolutionWarning>,
@@ -264,47 +321,66 @@ impl RootResolver {
     }
 }
 
+/// Input parameters for the root resolution process.
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RootResolverInput<'a> {
+    /// Explicit vault path from CLI flags.
     pub(crate) explicit_vault_path: Option<&'a Path>,
+    /// Forced vault path from the environment.
     pub(crate) env_vault_path: Option<&'a Path>,
+    /// The directory to start ascending search from.
     pub(crate) cwd: &'a Path,
+    /// Raw ceiling directory string (platform-specific separator).
     pub(crate) ceiling_dirs_raw: Option<&'a OsStr>,
 }
 
+/// The result of a successful (though potentially empty) root resolution.
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RootResolutionResult {
+    /// The absolute path to the resolved vault root.
     pub(crate) root: Option<PathBuf>,
+    /// The discovery marker found at the root, if resolved via ascending
+    /// discovery.
     pub(crate) marker: Option<DiscoveredConfigFile>,
+    /// The origin of the resolution.
     pub(crate) source: Option<RootResolutionSource>,
+    /// Non-fatal warnings encountered during resolution (e.g., invalid ceiling
+    /// segments).
     pub(crate) warnings: Vec<RootResolutionWarning>,
 }
 
+/// The origin of a resolved vault root.
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RootResolutionSource {
+    /// Provided via an explicit CLI flag.
     ExplicitFlag,
+    /// Provided via an environment variable.
     EnvironmentVariable,
+    /// Discovered by searching upwards from the current directory.
     AscendingDiscovery,
 }
 
+/// Policy configuration for the [`RootResolver`].
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RootResolutionPolicy {
+    /// Whether to allow a discovery marker to be valid even if it is located
+    /// exactly at a ceiling directory.
     pub(crate) allow_marker_at_ceiling: bool,
 }
 
@@ -316,33 +392,41 @@ impl Default for RootResolutionPolicy {
     }
 }
 
+/// Errors that can occur during vault root resolution.
 #[allow(
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RootResolutionError {
+    /// The path provided via CLI flag does not exist.
     #[error("Explicit vault path does not exist: {path}")]
     ExplicitPathMissing {
         path: PathBuf,
     },
+    /// The path provided via CLI flag exists but is not a directory.
     #[error("Explicit vault path is not a directory: {path}")]
     ExplicitPathNotDirectory {
         path: PathBuf,
     },
+    /// The path provided via environment variable does not exist.
     #[error("Environment vault path does not exist: {path}")]
     EnvironmentPathMissing {
         path: PathBuf,
     },
+    /// The path provided via environment variable exists but is not a
+    /// directory.
     #[error("Environment vault path is not a directory: {path}")]
     EnvironmentPathNotDirectory {
         path: PathBuf,
     },
+    /// Failed to canonicalize the current working directory.
     #[error("Failed to canonicalize current directory {path}: {source}")]
     CurrentDirectoryCanonicalize {
         path: PathBuf,
         source: io::Error,
     },
+    /// A general filesystem error occurred during path canonicalization.
     #[error("Failed to canonicalize path {path}: {source}")]
     CanonicalizePath {
         path: PathBuf,
@@ -350,12 +434,14 @@ pub(crate) enum RootResolutionError {
     },
 }
 
+/// Internal helper for tracking the result of an ascending discovery walk.
 struct AscendingResolution {
     root: Option<PathBuf>,
     marker: Option<DiscoveredConfigFile>,
 }
 
 impl AscendingResolution {
+    /// Constructs a successful resolution.
     fn found(root: PathBuf, marker: DiscoveredConfigFile) -> Self {
         Self {
             root: Some(root),
@@ -363,6 +449,7 @@ impl AscendingResolution {
         }
     }
 
+    /// Constructs a resolution where no marker was found.
     fn not_found() -> Self {
         Self {
             root: None,
