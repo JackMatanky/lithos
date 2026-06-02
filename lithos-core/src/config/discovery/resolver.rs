@@ -17,44 +17,6 @@ use crate::fs::format::StructuredFileFormat;
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RootResolutionPolicy {
-    allow_marker_at_ceiling: bool,
-}
-
-impl Default for RootResolutionPolicy {
-    fn default() -> Self {
-        Self {
-            allow_marker_at_ceiling: true,
-        }
-    }
-}
-
-struct AscendingResolution {
-    root: Option<PathBuf>,
-    marker: Option<DiscoveredConfigFile>,
-}
-
-impl AscendingResolution {
-    fn found(root: PathBuf, marker: DiscoveredConfigFile) -> Self {
-        Self {
-            root: Some(root),
-            marker: Some(marker),
-        }
-    }
-
-    fn not_found() -> Self {
-        Self {
-            root: None,
-            marker: None,
-        }
-    }
-}
-
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
 #[derive(Debug, Default)]
 pub(crate) struct RootResolver {
     policy: RootResolutionPolicy,
@@ -341,6 +303,23 @@ pub(crate) enum RootResolutionSource {
     dead_code,
     reason = "Phase-1 resolver seam is implemented before orchestration wiring"
 )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RootResolutionPolicy {
+    pub(crate) allow_marker_at_ceiling: bool,
+}
+
+impl Default for RootResolutionPolicy {
+    fn default() -> Self {
+        Self {
+            allow_marker_at_ceiling: true,
+        }
+    }
+}
+
+#[allow(
+    dead_code,
+    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
+)]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RootResolutionError {
     #[error("Explicit vault path does not exist: {path}")]
@@ -369,6 +348,27 @@ pub(crate) enum RootResolutionError {
         path: PathBuf,
         source: io::Error,
     },
+}
+
+struct AscendingResolution {
+    root: Option<PathBuf>,
+    marker: Option<DiscoveredConfigFile>,
+}
+
+impl AscendingResolution {
+    fn found(root: PathBuf, marker: DiscoveredConfigFile) -> Self {
+        Self {
+            root: Some(root),
+            marker: Some(marker),
+        }
+    }
+
+    fn not_found() -> Self {
+        Self {
+            root: None,
+            marker: None,
+        }
+    }
 }
 
 #[cfg(test)]
