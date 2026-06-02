@@ -2,7 +2,8 @@
 title: 04-phase-1-vault-root-resolution
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
+date_completed: 2026-06-02
 date_created: 2026-06-01
 ---
 
@@ -27,13 +28,13 @@ This slice must eliminate the circular bootstrap dependency by producing vault r
 
 ## Acceptance criteria
 
-- [ ] Resolution order is explicit flag (`--vault`) then env override (`LITHOS_VAULT_PATH`) then ascending walk from canonicalized CWD.
-- [ ] Explicit and env-provided paths are validated eagerly and fail fast when path is missing or not a directory.
-- [ ] Ascending walk checks recognized local marker patterns and short-circuits on first match.
-- [ ] Ascending walk maintains visited canonical-path set to detect symlink loops safely.
-- [ ] `LITHOS_CEILING_DIRS` termination is supported for boundary-limited traversal.
-- [ ] Not-found is represented as typed `VaultRootResolution::NotFound` and is propagated for contextual handling.
-- [ ] Unit/integration tests cover explicit, env, ascending success, ceiling termination, symlink traversal, and not-found behavior.
+- [x] Resolution order is explicit flag (`--vault`) then env override (`LITHOS_VAULT_PATH`) then ascending walk from canonicalized CWD.
+- [x] Explicit and env-provided paths are validated eagerly and fail fast when path is missing or not a directory.
+- [x] Ascending walk checks recognized local marker patterns and short-circuits on first match.
+- [x] Ascending walk maintains visited canonical-path set to detect symlink loops safely.
+- [x] `LITHOS_CEILING_DIRS` termination is supported for boundary-limited traversal.
+- [x] ~~Not-found is represented as typed `VaultRootResolution::NotFound` and is propagated for contextual handling.~~ (Superseded: Represented as `root: None, source: None` in `RootResolutionResult` per architecture update)
+- [x] Unit/integration tests cover explicit, env, ascending success, ceiling termination, symlink traversal, and not-found behavior.
 
 ## Agent Brief
 
@@ -58,9 +59,9 @@ environment override, then ascending walk from canonicalized CWD.
 - Loop safety via canonical visited-path set
 
 **Acceptance criteria:**
-- [ ] Explicit/env invalid paths fail fast with typed errors.
-- [ ] Ascending traversal is deterministic and loop-safe.
-- [ ] Not-found is represented as value (`NotFound`), not panic.
+- [x] Explicit/env invalid paths fail fast with typed errors.
+- [x] Ascending traversal is deterministic and loop-safe.
+- [x] Not-found is represented as value (`root: None`), not panic.
 
 **Out of scope:**
 - Local/global config candidate resolution
@@ -105,17 +106,17 @@ no root is discovered.
   canonicalization/normalization expectations, and invalid-entry handling).
 
 **Acceptance criteria:**
-- [ ] Resolution precedence is deterministic: explicit > env > ascending CWD.
-- [ ] Explicit/env paths are eagerly validated and return typed failures when
+- [x] Resolution precedence is deterministic: explicit > env > ascending CWD.
+- [x] Explicit/env paths are eagerly validated and return typed failures when
       missing/non-directory.
-- [ ] Ascending traversal checks the approved local marker set and short-circuits
+- [x] Ascending traversal checks the approved local marker set and short-circuits
       on first match.
-- [ ] Traversal tracks visited canonical directories and terminates safely on
+- [x] Traversal tracks visited canonical directories and terminates safely on
       symlink cycles.
-- [ ] `LITHOS_CEILING_DIRS` is honored as a traversal boundary with documented
+- [x] `LITHOS_CEILING_DIRS` is honored as a traversal boundary with documented
       parsing semantics.
-- [ ] No-root scenarios return `VaultRootResolution::NotFound` (no panic).
-- [ ] Unit and integration tests cover explicit/env success+failure, ascending
+- [x] No-root scenarios return `root: None` (no panic).
+- [x] Unit and integration tests cover explicit/env success+failure, ascending
       success, ceiling termination, symlink loop safety, and not-found outcomes.
 
 **Out of scope:**
