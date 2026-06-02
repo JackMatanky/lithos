@@ -72,25 +72,22 @@ mod tests {
         *,
     };
 
-    mod validation {
-        use super::*;
-
-        #[test]
-        fn returns_local_location_when_config_location_is_not_global() {
-            let global =
-                ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
-            let local = ConfigLocation::Local(
-                LocalConfigLocation::HiddenRootConfigFile,
-            );
-            assert_ne!(global, local);
-        }
-    }
-
     mod constructor {
         use super::*;
 
+        fn local_file() -> DiscoveredConfigFile {
+            DiscoveredConfigFile {
+                location: ConfigLocation::Local(
+                    LocalConfigLocation::ConfigDirectoryFile,
+                ),
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/.lithos/config.toml"),
+                format: StructuredFileFormat::Toml,
+            }
+        }
+
         #[test]
-        fn returns_base_path_when_constructing_discovered_config_file() {
+        fn returns_base_path_for_discovered_config_file() {
             let discovered = DiscoveredConfigFile {
                 location: ConfigLocation::Local(
                     LocalConfigLocation::HiddenRootConfigFile,
@@ -103,7 +100,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_warning_list_when_constructing_config_discovery_result() {
+        fn returns_warnings_for_config_discovery_result() {
             let result = ConfigDiscoveryResult {
                 global: None,
                 local: None,
@@ -117,8 +114,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_global_and_local_when_constructing_config_discovery_result_with_discovered_files()
-         {
+        fn returns_global_file_for_config_discovery_result() {
             let global = DiscoveredConfigFile {
                 location: ConfigLocation::Global(
                     GlobalConfigLocation::EnvironmentOverride(PathBuf::from(
@@ -129,38 +125,31 @@ mod tests {
                 path: PathBuf::from("/env/lithos.toml"),
                 format: StructuredFileFormat::Toml,
             };
-            let local = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::ConfigDirectoryFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/.lithos/config.toml"),
-                format: StructuredFileFormat::Toml,
-            };
 
             let result = ConfigDiscoveryResult {
                 global: Some(global),
-                local: Some(local),
+                local: Some(local_file()),
                 warnings: Vec::new(),
             };
 
             assert!(result.global.is_some());
+        }
+
+        #[test]
+        fn returns_local_file_for_config_discovery_result() {
+            let result = ConfigDiscoveryResult {
+                global: None,
+                local: Some(local_file()),
+                warnings: Vec::new(),
+            };
+
             assert!(result.local.is_some());
         }
 
         #[test]
-        fn returns_candidate_when_constructing_config_selection_result() {
-            let candidate = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::ConfigDirectoryFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/.lithos/config.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-
+        fn returns_warning_none_for_config_selection_result() {
             let result = ConfigSelectionResult {
-                candidate,
+                candidate: local_file(),
                 warning: None,
             };
 
@@ -172,7 +161,18 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_true_when_comparing_equal_global_config_locations() {
+        fn returns_false_when_config_locations_differ() {
+            let global =
+                ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
+            let local = ConfigLocation::Local(
+                LocalConfigLocation::HiddenRootConfigFile,
+            );
+
+            assert_ne!(global, local);
+        }
+
+        #[test]
+        fn returns_true_when_global_locations_match() {
             let first = ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
             let second =
                 ConfigLocation::Global(GlobalConfigLocation::XdgConfig);

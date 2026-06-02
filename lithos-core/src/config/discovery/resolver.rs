@@ -379,20 +379,59 @@ mod tests {
 
     use super::*;
 
-    fn path_list(paths: &[&Path]) -> OsString {
-        env::join_paths(paths.iter().copied()).expect("joins path list")
-    }
-
-    fn resolver() -> RootResolver {
-        RootResolver::new(RootResolutionPolicy::default())
-    }
-
-    mod precedence {
+    mod fixtures {
         use super::*;
 
+        pub(super) fn path_list(paths: &[&Path]) -> OsString {
+            env::join_paths(paths.iter().copied()).expect("joins path list")
+        }
+
+        pub(super) fn resolver() -> RootResolver {
+            RootResolver::new(RootResolutionPolicy::default())
+        }
+
+        pub(super) fn resolver_rejecting_ceiling_markers() -> RootResolver {
+            RootResolver::new(RootResolutionPolicy {
+                allow_marker_at_ceiling: false,
+            })
+        }
+
+        pub(super) fn input_from_cwd(cwd: &Path) -> RootResolverInput<'_> {
+            RootResolverInput {
+                explicit_vault_path: None,
+                env_vault_path: None,
+                cwd,
+                ceiling_dirs_raw: None,
+            }
+        }
+
+        pub(super) fn input_with_ceilings<'a>(
+            cwd: &'a Path,
+            ceilings: &'a OsString,
+        ) -> RootResolverInput<'a> {
+            RootResolverInput {
+                explicit_vault_path: None,
+                env_vault_path: None,
+                cwd,
+                ceiling_dirs_raw: Some(ceilings.as_os_str()),
+            }
+        }
+
+        pub(super) fn write_marker(root: &Path, relative: &str) -> PathBuf {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create marker parent dir");
+            }
+            fs::write(&path, "").expect("write marker file");
+            path
+        }
+    }
+
+    mod resolve {
+        use super::{fixtures::*, *};
+
         #[test]
-        fn returns_explicit_resolution_when_explicit_and_env_are_both_present()
-        {
+        fn returns_explicit_source_when_explicit_path_exists() {
             let explicit = tempdir().expect("explicit dir");
             let env_dir = tempdir().expect("env dir");
             let cwd = tempdir().expect("cwd");
@@ -407,6 +446,23 @@ mod tests {
                 .expect("resolution succeeds");
 
             assert_eq!(result.source, Some(RootResolutionSource::ExplicitFlag));
+        }
+
+        #[test]
+        fn returns_explicit_root_when_explicit_path_exists() {
+            let explicit = tempdir().expect("explicit dir");
+            let env_dir = tempdir().expect("env dir");
+            let cwd = tempdir().expect("cwd");
+
+            let result = resolver()
+                .resolve(RootResolverInput {
+                    explicit_vault_path: Some(explicit.path()),
+                    env_vault_path: Some(env_dir.path()),
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect("resolution succeeds");
+
             assert_eq!(
                 result.root,
                 Some(
@@ -416,7 +472,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_environment_resolution_when_explicit_is_not_present() {
+        fn returns_environment_source_when_explicit_path_is_absent() {
             let env_dir = tempdir().expect("env dir");
             let cwd = tempdir().expect("cwd");
 
@@ -433,18 +489,67 @@ mod tests {
                 result.source,
                 Some(RootResolutionSource::EnvironmentVariable)
             );
+        }
+
+        #[test]
+        fn returns_environment_root_when_environment_path_exists() {
+            let env_dir = tempdir().expect("env dir");
+            let cwd = tempdir().expect("cwd");
+
+            let result = resolver()
+                .resolve(RootResolverInput {
+                    explicit_vault_path: None,
+                    env_vault_path: Some(env_dir.path()),
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect("resolution succeeds");
+
             assert_eq!(
                 result.root,
                 Some(env_dir.path().canonicalize().expect("canonical env"))
             );
         }
-    }
-
-    mod validation {
-        use super::*;
 
         #[test]
-        fn returns_typed_error_when_explicit_path_does_not_exist() {
+        fn prefers_explicit_path_over_environment_path() {
+            let explicit = tempdir().expect("explicit dir");
+            let env_dir = tempdir().expect("env dir");
+            let cwd = tempdir().expect("cwd");
+
+            let result = resolver()
+                .resolve(RootResolverInput {
+                    explicit_vault_path: Some(explicit.path()),
+                    env_vault_path: Some(env_dir.path()),
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect("resolution succeeds");
+
+            assert_eq!(result.source, Some(RootResolutionSource::ExplicitFlag));
+        }
+
+        #[test]
+        fn returns_ascending_source_when_marker_is_found() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
+
+            let result = resolver()
+                .resolve(input_from_cwd(root.path()))
+                .expect("resolution succeeds");
+
+            assert_eq!(
+                result.source,
+                Some(RootResolutionSource::AscendingDiscovery)
+            );
+        }
+    }
+
+    mod validate_override {
+        use super::{fixtures::*, *};
+
+        #[test]
+        fn returns_error_when_explicit_path_is_missing() {
             let cwd = tempdir().expect("cwd");
             let missing = cwd.path().join("missing");
 
@@ -467,7 +572,54 @@ mod tests {
         }
 
         #[test]
-        fn returns_typed_error_when_environment_path_is_not_directory() {
+        fn returns_error_when_explicit_path_is_file() {
+            let cwd = tempdir().expect("cwd");
+            let file_path = cwd.path().join("file.txt");
+            fs::write(&file_path, "x").expect("write file");
+
+            let error = resolver()
+                .resolve(RootResolverInput {
+                    explicit_vault_path: Some(&file_path),
+                    env_vault_path: None,
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect_err("explicit file path should fail");
+
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "Explicit vault path is not a directory: {}",
+                    file_path.display()
+                ),
+            );
+        }
+
+        #[test]
+        fn returns_error_when_environment_path_is_missing() {
+            let cwd = tempdir().expect("cwd");
+            let missing = cwd.path().join("missing");
+
+            let error = resolver()
+                .resolve(RootResolverInput {
+                    explicit_vault_path: None,
+                    env_vault_path: Some(&missing),
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect_err("missing environment path should fail");
+
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "Environment vault path does not exist: {}",
+                    missing.display()
+                ),
+            );
+        }
+
+        #[test]
+        fn returns_error_when_environment_path_is_file() {
             let cwd = tempdir().expect("cwd");
             let file_path = cwd.path().join("file.txt");
             fs::write(&file_path, "x").expect("write file");
@@ -491,14 +643,28 @@ mod tests {
         }
     }
 
-    mod lookup {
-        use super::*;
+    mod resolve_ascending {
+        use super::{fixtures::*, *};
 
         #[test]
-        fn returns_marker_file_when_marker_exists_in_ancestor() {
+        fn returns_root_when_marker_exists_in_cwd() {
             let root = tempdir().expect("root");
-            let marker_path = root.path().join("lithos.toml");
-            fs::write(&marker_path, "").expect("marker");
+            write_marker(root.path(), "lithos.toml");
+
+            let result = resolver()
+                .resolve(input_from_cwd(root.path()))
+                .expect("resolution succeeds");
+
+            assert_eq!(
+                result.root,
+                Some(root.path().canonicalize().expect("canonical root"))
+            );
+        }
+
+        #[test]
+        fn returns_root_when_marker_exists_in_ancestor() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
 
             let child = root.path().join("a").join("b");
             fs::create_dir_all(&child).expect("child");
@@ -511,35 +677,47 @@ mod tests {
                     ceiling_dirs_raw: None,
                 })
                 .expect("resolution succeeds");
-            let marker = result.marker.expect("marker is discovered");
 
             assert_eq!(
                 result.root,
                 Some(root.path().canonicalize().expect("canonical root"))
             );
-            assert_eq!(
-                result.source,
-                Some(RootResolutionSource::AscendingDiscovery)
-            );
-            assert_eq!(
-                marker.base,
-                root.path().canonicalize().expect("canonical root")
-            );
-            assert_eq!(
-                marker.location,
-                ConfigLocation::Local(LocalConfigLocation::RootConfigFile)
-            );
+        }
+
+        #[test]
+        fn returns_marker_when_marker_exists_in_ancestor() {
+            let root = tempdir().expect("root");
+            let marker_path = write_marker(root.path(), "lithos.toml");
+
+            let child = root.path().join("a").join("b");
+            fs::create_dir_all(&child).expect("child");
+
+            let result = resolver()
+                .resolve(input_from_cwd(&child))
+                .expect("resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
             assert_eq!(
                 marker.path,
                 marker_path.canonicalize().expect("canonical marker")
             );
-            assert_eq!(marker.format, StructuredFileFormat::Toml);
         }
 
         #[test]
-        fn returns_not_found_when_ceiling_stops_before_marker() {
+        fn returns_none_when_no_marker_exists() {
             let root = tempdir().expect("root");
-            fs::write(root.path().join("lithos.toml"), "").expect("marker");
+
+            let result = resolver()
+                .resolve(input_from_cwd(root.path()))
+                .expect("resolution succeeds");
+
+            assert_eq!(result.root, None);
+        }
+
+        #[test]
+        fn returns_none_when_ceiling_stops_before_marker() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
 
             let stop = root.path().join("level1");
             let cwd = stop.join("level2");
@@ -547,22 +725,47 @@ mod tests {
 
             let ceilings = path_list(&[&stop]);
             let result = resolver()
-                .resolve(RootResolverInput {
-                    explicit_vault_path: None,
-                    env_vault_path: None,
-                    cwd: &cwd,
-                    ceiling_dirs_raw: Some(ceilings.as_os_str()),
-                })
+                .resolve(input_with_ceilings(&cwd, &ceilings))
                 .expect("resolution succeeds");
 
             assert_eq!(result.root, None);
-            assert_eq!(result.marker, None);
-            assert_eq!(result.source, None);
+        }
+
+        #[test]
+        fn returns_marker_at_ceiling_when_policy_allows_it() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
+
+            let cwd = root.path().join("nested");
+            fs::create_dir_all(&cwd).expect("cwd");
+
+            let ceilings = path_list(&[root.path()]);
+            let result = resolver()
+                .resolve(input_with_ceilings(&cwd, &ceilings))
+                .expect("resolution succeeds");
+
+            assert!(result.marker.is_some());
+        }
+
+        #[test]
+        fn returns_none_at_ceiling_when_policy_rejects_it() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
+
+            let cwd = root.path().join("nested");
+            fs::create_dir_all(&cwd).expect("cwd");
+
+            let ceilings = path_list(&[root.path()]);
+            let result = resolver_rejecting_ceiling_markers()
+                .resolve(input_with_ceilings(&cwd, &ceilings))
+                .expect("resolution succeeds");
+
+            assert_eq!(result.root, None);
         }
 
         #[cfg(unix)]
         #[test]
-        fn returns_not_found_when_visited_paths_repeat_via_symlink_loop() {
+        fn returns_none_when_symlink_loop_repeats_path() {
             use std::os::unix::fs as unix_fs;
 
             let root = tempdir().expect("root");
@@ -573,25 +776,207 @@ mod tests {
             let cwd = loop_link.join("loop").join("loop");
 
             let result = resolver()
-                .resolve(RootResolverInput {
-                    explicit_vault_path: None,
-                    env_vault_path: None,
-                    cwd: &cwd,
-                    ceiling_dirs_raw: None,
-                })
+                .resolve(input_from_cwd(&cwd))
                 .expect("resolution succeeds");
 
             assert_eq!(result.root, None);
         }
     }
 
-    mod diagnostics {
-        use super::*;
+    mod discover_marker {
+        use super::{fixtures::*, *};
 
         #[test]
-        fn returns_warnings_and_honors_valid_ceiling_when_segments_are_mixed() {
+        fn returns_root_config_marker_first() {
             let root = tempdir().expect("root");
-            fs::write(root.path().join("lithos.toml"), "").expect("marker");
+            write_marker(root.path(), ".lithos.toml");
+            write_marker(root.path(), "lithos.toml");
+
+            let marker = RootResolver::discover_marker(root.path())
+                .expect("marker lookup succeeds")
+                .expect("marker exists");
+
+            assert_eq!(
+                marker.location,
+                ConfigLocation::Local(LocalConfigLocation::RootConfigFile)
+            );
+        }
+
+        #[test]
+        fn returns_hidden_root_marker_when_root_marker_absent() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), ".lithos.toml");
+
+            let marker = RootResolver::discover_marker(root.path())
+                .expect("marker lookup succeeds")
+                .expect("marker exists");
+
+            assert_eq!(
+                marker.location,
+                ConfigLocation::Local(
+                    LocalConfigLocation::HiddenRootConfigFile
+                )
+            );
+        }
+
+        #[test]
+        fn returns_config_directory_marker_when_other_markers_absent() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), ".lithos/config.toml");
+
+            let marker = RootResolver::discover_marker(root.path())
+                .expect("marker lookup succeeds")
+                .expect("marker exists");
+
+            assert_eq!(
+                marker.location,
+                ConfigLocation::Local(LocalConfigLocation::ConfigDirectoryFile)
+            );
+        }
+
+        #[test]
+        fn returns_toml_marker_before_json_marker() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.json");
+            write_marker(root.path(), "lithos.toml");
+
+            let marker = RootResolver::discover_marker(root.path())
+                .expect("marker lookup succeeds")
+                .expect("marker exists");
+
+            assert_eq!(marker.format, StructuredFileFormat::Toml);
+        }
+
+        #[test]
+        fn returns_none_when_no_marker_file_exists() {
+            let root = tempdir().expect("root");
+
+            let marker = RootResolver::discover_marker(root.path())
+                .expect("marker lookup succeeds");
+
+            assert_eq!(marker, None);
+        }
+    }
+
+    mod parse_ceilings {
+        use super::{fixtures::*, *};
+
+        #[test]
+        fn returns_empty_set_when_env_is_absent() {
+            let mut warnings = Vec::new();
+
+            let ceilings = RootResolver::parse_ceilings(None, &mut warnings);
+
+            assert!(ceilings.is_empty());
+        }
+
+        #[test]
+        fn returns_canonical_ceiling_when_segment_is_valid() {
+            let root = tempdir().expect("root");
+            let raw = path_list(&[root.path()]);
+            let mut warnings = Vec::new();
+
+            let ceilings = RootResolver::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
+
+            assert!(ceilings.contains(
+                &root.path().canonicalize().expect("canonical root")
+            ));
+        }
+
+        #[test]
+        fn returns_warning_when_segment_is_empty() {
+            let raw = OsString::from(":");
+            let mut warnings = Vec::new();
+
+            RootResolver::parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+
+            assert!(
+                warnings.contains(&RootResolutionWarning::EmptyCeilingSegment)
+            );
+        }
+
+        #[test]
+        fn returns_warning_when_segment_is_whitespace() {
+            let raw = OsString::from("   ");
+            let mut warnings = Vec::new();
+
+            RootResolver::parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+
+            assert!(
+                warnings.contains(&RootResolutionWarning::EmptyCeilingSegment)
+            );
+        }
+
+        #[test]
+        fn returns_warning_when_segment_is_missing() {
+            let root = tempdir().expect("root");
+            let missing = root.path().join("missing");
+            let raw = path_list(&[&missing]);
+            let mut warnings = Vec::new();
+
+            RootResolver::parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+
+            assert!(result_contains_invalid_ceiling(&warnings));
+        }
+
+        #[test]
+        fn returns_warning_when_segment_is_file() {
+            let root = tempdir().expect("root");
+            let file_path = root.path().join("file.txt");
+            fs::write(&file_path, "x").expect("write file");
+            let raw = path_list(&[&file_path]);
+            let mut warnings = Vec::new();
+
+            RootResolver::parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+
+            assert!(result_contains_invalid_ceiling(&warnings));
+        }
+
+        #[test]
+        fn preserves_valid_ceilings_when_other_segments_are_invalid() {
+            let root = tempdir().expect("root");
+            let valid = root.path().join("stop");
+            fs::create_dir_all(&valid).expect("valid ceiling");
+            let raw = env::join_paths([
+                OsString::from(""),
+                valid.as_os_str().to_os_string(),
+                root.path().join("missing").as_os_str().to_os_string(),
+            ])
+            .expect("join paths");
+            let mut warnings = Vec::new();
+
+            let ceilings = RootResolver::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
+
+            assert!(ceilings.contains(
+                &valid.canonicalize().expect("canonical valid ceiling")
+            ));
+        }
+
+        fn result_contains_invalid_ceiling(
+            warnings: &[RootResolutionWarning],
+        ) -> bool {
+            warnings.iter().any(|warning| {
+                matches!(
+                    warning,
+                    RootResolutionWarning::InvalidCeilingSegment { .. }
+                )
+            })
+        }
+    }
+
+    mod diagnostics {
+        use super::{fixtures::*, *};
+
+        #[test]
+        fn returns_warnings_when_segments_are_mixed() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
 
             let stop = root.path().join("stop");
             let cwd = stop.join("nested");
@@ -614,7 +999,6 @@ mod tests {
                 })
                 .expect("resolution succeeds");
 
-            assert_eq!(result.root, None);
             assert!(
                 result
                     .warnings

@@ -67,12 +67,11 @@ pub(crate) enum DiscoveryWarning {
 mod tests {
     use super::*;
 
-    mod validation {
+    mod constructor {
         use super::*;
 
         #[test]
-        fn returns_case_correction_variant_when_constructing_case_correction_warning()
-         {
+        fn returns_case_correction_warning() {
             let warning = DiscoveryWarning::CaseCorrection {
                 requested: PathBuf::from("/Vault/.Lithos/lithos.toml"),
                 resolved: PathBuf::from("/vault/.lithos/lithos.toml"),
@@ -81,8 +80,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_format_ambiguity_variant_when_constructing_format_ambiguity_warning()
-         {
+        fn returns_format_ambiguity_warning() {
             let warning =
                 DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
                     base: PathBuf::from("/vault/.lithos"),
@@ -100,8 +98,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_local_ambiguity_variant_when_constructing_local_ambiguity_warning()
-         {
+        fn returns_local_ambiguity_warning() {
             let warning =
                 DiscoveryWarning::Local(LocalDiscoveryWarning::Ambiguity {
                     candidates: vec![
@@ -118,7 +115,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_root_resolution_variant_when_constructing_root_warning() {
+        fn returns_root_resolution_warning() {
             let warning = DiscoveryWarning::RootResolution(
                 RootResolutionWarning::EmptyCeilingSegment,
             );
@@ -135,7 +132,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_true_when_comparing_equal_discovery_warning_payloads() {
+        fn returns_true_when_warning_payloads_match() {
             let first =
                 DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
                     base: PathBuf::from("/vault/.lithos"),
