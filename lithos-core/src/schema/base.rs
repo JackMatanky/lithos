@@ -12,7 +12,7 @@
 //! - [`Schema`](super::aggregate::Schema) - fully resolved aggregate whose
 //!   `parents` are [`SchemaId`]s after cross-schema lookup.
 
-use std::{collections::HashSet, time::SystemTime};
+use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
@@ -108,16 +108,14 @@ impl BaseSchema {
         id: SchemaId,
         name: SchemaName,
         properties: PropertyMap,
-        extends: Vec<SchemaName>,
-        excludes: Vec<PropertyName>,
+        mut extends: Vec<SchemaName>,
+        mut excludes: Vec<PropertyName>,
     ) -> Self {
-        let mut extends: Vec<SchemaName> =
-            extends.into_iter().collect::<HashSet<_>>().into_iter().collect();
         extends.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        extends.dedup();
 
-        let mut excludes: Vec<PropertyName> =
-            excludes.into_iter().collect::<HashSet<_>>().into_iter().collect();
         excludes.sort();
+        excludes.dedup();
 
         Self {
             id,
@@ -191,24 +189,33 @@ mod tests {
         use super::{fixtures, *};
 
         #[test]
-        fn new_stores_provided_id_and_name() {
+        fn new_stores_provided_id() {
             let id = SchemaId::new();
-            let name = fixtures::schema_name("child");
-
             let base = BaseSchema::new(
                 id,
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            assert_eq!(base.id(), &id);
+        }
+
+        #[test]
+        fn new_stores_provided_name() {
+            let name = fixtures::schema_name("child");
+            let base = BaseSchema::new(
+                SchemaId::new(),
                 name.clone(),
                 PropertyMap::new(),
                 Vec::new(),
                 Vec::new(),
             );
-
-            assert_eq!(base.id(), &id);
             assert_eq!(base.name(), &name);
         }
 
         #[test]
-        fn new_stores_empty_extends_when_input_is_empty() {
+        fn new_defaults_to_empty_extends() {
             let base = BaseSchema::new(
                 SchemaId::new(),
                 fixtures::schema_name("child"),
@@ -216,9 +223,19 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
             );
+            assert!(base.extends().is_empty());
+        }
 
-            assert!(base.extends().is_empty(), "extends should be empty");
-            assert!(base.excludes().is_empty(), "excludes should be empty");
+        #[test]
+        fn new_defaults_to_empty_excludes() {
+            let base = BaseSchema::new(
+                SchemaId::new(),
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            assert!(base.excludes().is_empty());
         }
 
         #[test]
@@ -234,16 +251,9 @@ mod tests {
                 Vec::new(),
             );
 
-            assert_eq!(
-                base.extends().len(),
-                2,
-                "Expected duplicate parents to be removed: {:?}",
-                base.extends()
-            );
-            let names: HashSet<&str> =
-                base.extends().iter().map(SchemaName::as_str).collect();
-            assert!(names.contains("parent"));
-            assert!(names.contains(other.as_str()));
+            assert_eq!(base.extends().len(), 2);
+            assert!(base.extends().contains(&fixtures::schema_name("parent")));
+            assert!(base.extends().contains(&fixtures::schema_name("other")));
         }
 
         #[test]
@@ -259,16 +269,11 @@ mod tests {
                 vec![title.clone(), body.clone(), title],
             );
 
-            assert_eq!(
-                base.excludes().len(),
-                2,
-                "Expected duplicate excludes to be removed: {:?}",
-                base.excludes()
+            assert_eq!(base.excludes().len(), 2);
+            assert!(
+                base.excludes().contains(&fixtures::property_name("title"))
             );
-            let names: HashSet<&str> =
-                base.excludes().iter().map(PropertyName::as_str).collect();
-            assert!(names.contains("title"));
-            assert!(names.contains(body.as_str()));
+            assert!(base.excludes().contains(&fixtures::property_name("body")));
         }
 
         #[test]
@@ -280,11 +285,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
             );
-
-            assert!(
-                base.properties().is_empty(),
-                "Empty property map should be accepted as-is"
-            );
+            assert!(base.properties().is_empty());
         }
 
         #[test]
@@ -429,20 +430,42 @@ mod tests {
         use super::{fixtures, *};
 
         #[test]
-        fn clones_to_independent_equal_value() {
+        fn clone_preserves_identity() {
+            let base = BaseSchema::new(
+                SchemaId::new(),
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            let cloned = base.clone();
+            assert_eq!(cloned.id(), base.id());
+            assert_eq!(cloned.name(), base.name());
+        }
+
+        #[test]
+        fn clone_preserves_extends() {
             let base = BaseSchema::new(
                 SchemaId::new(),
                 fixtures::schema_name("child"),
                 PropertyMap::new(),
                 vec![fixtures::schema_name("parent")],
+                Vec::new(),
+            );
+            let cloned = base.clone();
+            assert_eq!(cloned.extends(), base.extends());
+        }
+
+        #[test]
+        fn clone_preserves_excludes() {
+            let base = BaseSchema::new(
+                SchemaId::new(),
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                Vec::new(),
                 vec![fixtures::property_name("title")],
             );
-
             let cloned = base.clone();
-
-            assert_eq!(cloned.id(), base.id());
-            assert_eq!(cloned.name(), base.name());
-            assert_eq!(cloned.extends(), base.extends());
             assert_eq!(cloned.excludes(), base.excludes());
         }
     }
@@ -472,6 +495,31 @@ mod tests {
             assert_eq!(deserialized.name().as_str(), name.as_str());
             assert_eq!(deserialized.extends().len(), 1);
             assert_eq!(deserialized.excludes().len(), 1);
+        }
+
+        #[test]
+        fn roundtrips_via_rkyv_archive_when_all_collections_empty() {
+            let id = SchemaId::new();
+            let name = fixtures::schema_name("child");
+            let base = BaseSchema::new(
+                id,
+                name.clone(),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&base)
+                .expect("rkyv serialization succeeds");
+            let deserialized: BaseSchema =
+                rkyv::from_bytes::<BaseSchema, rkyv::rancor::Error>(&bytes)
+                    .expect("rkyv deserialization succeeds");
+
+            assert_eq!(deserialized.id(), &id);
+            assert_eq!(deserialized.name().as_str(), name.as_str());
+            assert!(deserialized.extends().is_empty());
+            assert!(deserialized.excludes().is_empty());
+            assert!(deserialized.properties().is_empty());
         }
     }
 }

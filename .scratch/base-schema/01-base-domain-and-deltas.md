@@ -71,18 +71,18 @@ This slice adds the new `BaseSchema` domain type in `schema/base.rs` and the `Ex
 - `RawSchema.extends` and `SchemaVersion.extends` are now `Vec<SchemaName>` (Phase 0 complete).
 
 **Desired behavior:**
-- A `BaseSchema` value type exists with private fields, public accessors, and a single constructor that always deduplicates `extends` and `excludes` on construction (order-insensitive). Field shape: `id`, `name`, `properties`, `extends: Box<[SchemaName]>`, `excludes: Box<[PropertyName]>`, `recorded_at: SystemTime` (private, `AsUnixTime` rkyv adapter).
+- A `BaseSchema` value type exists with private fields, public accessors, and a single constructor that always deduplicates `extends` and `excludes` on construction. Field shape: `id`, `name`, `properties`, `extends: Box<[SchemaName]>`, `excludes: Box<[PropertyName]>`, `recorded_at: SystemTime` (private, `AsUnixTime` rkyv adapter).
 - `BaseSchema` derives the same archive/serde traits as `Schema`/`PropertyBank` (`Debug, Clone, PartialEq, Archive, Serialize, Deserialize`) and is `#[non_exhaustive]`. No speculative `Eq`/`Hash`/`Default`/`Ord` derives.
-- An `ExtendsDelta { added: Box<[SchemaName]>, removed: Box<[SchemaName]> }` aggregate delta exists in `schema/delta.rs`, parallel to `ExcludesDelta`, with `is_empty()` as the unchanged-state marker and a `new(added, removed)` constructor that deduplicates both inputs via `HashSet` (order-insensitive). Order is **not** preserved.
+- An `ExtendsDelta { added: Box<[SchemaName]>, removed: Box<[SchemaName]> }` aggregate delta exists in `schema/delta.rs`, parallel to `ExcludesDelta`, with `is_empty()` as the unchanged-state marker and a `new(added, removed)` constructor that deduplicates both inputs. Outputs are stored in a deterministic order for stable `PartialEq` behavior.
 - `ExtendsDelta` derives only `Debug, Clone, PartialEq, Default`. No archive/serde derives in this slice — they can be added when a downstream slice persists the delta.
 - `lithos-core/src/schema/mod.rs` exports `pub mod base;`. No `base_schema` legacy name is introduced.
 
 **Key interfaces (behavioral contract):**
-- `BaseSchema::new(id: SchemaId, name: SchemaName, properties: PropertyMap, extends: Vec<SchemaName>, excludes: Vec<PropertyName>) -> Self` — pure constructor; deduplicates extends/excludes; sets `recorded_at = SystemTime::now()`.
+- `BaseSchema::new(id: SchemaId, name: SchemaName, properties: PropertyMap, extends: Vec<SchemaName>, excludes: Vec<PropertyName>) -> Self` — pure constructor; deduplicates and sorts extends/excludes for deterministic equality; sets `recorded_at = SystemTime::now()`.
 - `BaseSchema::id() -> &SchemaId`, `name() -> &SchemaName`, `properties() -> &PropertyMap`, `extends() -> &[SchemaName]`, `excludes() -> &[PropertyName]` — all `&` returns. `recorded_at` is private and not exposed (matches `Schema`/`PropertyBank` precedent).
-- `ExtendsDelta::new(added: Vec<SchemaName>, removed: Vec<SchemaName>) -> Self` — dedup via `HashSet`; no sort.
+- `ExtendsDelta::new(added: Vec<SchemaName>, removed: Vec<SchemaName>) -> Self` — deduplicates and sorts both inputs deterministically.
 - `ExtendsDelta::is_empty() -> bool`, `added() -> &[SchemaName]`, `removed() -> &[SchemaName]`.
-- `ExtendsDelta::from_slices(old: &[SchemaName], new: &[SchemaName]) -> Self` — produces the symmetric difference, dedup'd, order-insensitive.
+- `ExtendsDelta::from_slices(old: &[SchemaName], new: &[SchemaName]) -> Self` — produces the symmetric difference, deduplicated and sorted deterministically.
 - Visibility: `BaseSchema` is `pub`; `ExtendsDelta` is `pub(crate)` (matches `ExcludesDelta`).
 
 **Implementation constraints (Rust):**
@@ -90,34 +90,35 @@ This slice adds the new `BaseSchema` domain type in `schema/base.rs` and the `Ex
 - Borrowed accessors (`-> &[T]`, `-> &PropertyMap`).
 - No `unwrap()`/`panic!` outside tests.
 - Avoid speculative derives — add only what tests require.
-- Use `HashSet` for dedup; collect into `Box<[T]>` for storage. Do not sort (order is not semantically meaningful).
+- Use `sort` + `dedup` for deduplication to minimize allocations, as output must be sorted for deterministic `PartialEq` equality on boxed slices.
 - Follow the rkyv pattern used by `Schema` and `PropertyBank` (including `AsUnixTime` for `recorded_at`).
 - Unit tests live in `#[cfg(test)] mod tests` colocated with implementation; module/name conventions per `docs/engineering/testing/unit-naming.md`.
+- One assertion per test; split multi-behavior tests into focused units.
 
 **Naming note:** `BaseSchema.extends` (not `parents`) is intentional. It aligns with the source-file field, with `RawSchema.extends` / `SchemaVersion.extends`, and with the **"Extends List"** term in the schema context glossary. `Schema.parents` is a different abstraction (resolved `Vec<SchemaId>`).
 
 **Acceptance criteria (testable):**
 - [ ] `BaseSchema` exists at `lithos-core/src/schema/base.rs` with the fields specified, including `recorded_at: SystemTime` with `#[rkyv(with = AsUnixTime)]`.
 - [ ] `BaseSchema` derives are exactly `Debug, Clone, PartialEq, Archive, Serialize, Deserialize` and the type is `#[non_exhaustive]`.
-- [ ] `BaseSchema::new` deduplicates both `extends` and `excludes` (order-insensitive).
+- [ ] `BaseSchema::new` deduplicates both `extends` and `excludes` deterministically.
 - [ ] `BaseSchema` accessors are read-only (`-> &T`) and `recorded_at` is not publicly exposed.
 - [ ] `BaseSchema` survives an `rkyv` archive/deserialize roundtrip (fixture test, like `schema_roundtrips_rkyv`).
 - [ ] `ExtendsDelta` exists in `delta.rs` with the field shape specified and is `pub(crate)`.
-- [ ] `ExtendsDelta::new` deduplicates both inputs via `HashSet` (order-insensitive).
+- [ ] `ExtendsDelta::new` deduplicates and sorts both inputs deterministically.
 - [ ] `ExtendsDelta::is_empty()` returns `true` when and only when both `added` and `removed` are empty.
-- [ ] `ExtendsDelta::from_slices(old, new)` reports the symmetric difference, dedup'd, order-insensitive.
+- [ ] `ExtendsDelta::from_slices(old, new)` reports the symmetric difference, deduplicated and sorted deterministically.
 - [ ] `schema/mod.rs` exports `pub mod base;`. No `base_schema` name is introduced.
-- [ ] All unit tests pass for: dedup-on-construction, accessor borrowing, rkyv roundtrip, empty/non-empty delta, dedup normalization, `from_slices` diffing.
+- [ ] All unit tests pass for: dedup-on-construction, accessor borrowing, rkyv roundtrip, empty/non-empty delta, dedup normalization, `from_slices` diffing. Tests follow "one assertion per test" best practices.
 - [ ] `mise run verify` passes (fmt, lint with `-D warnings`, all tests, ADR validate).
 
 **Out of scope:**
 - Repository / storage / redb table wiring (slice 02).
 - `BaseSchemaProcessor` and `BaseSchemaChange` envelope (slice 03+).
-- Adding `Ord`/`PartialOrd` to `SchemaName` (broader change; not needed because dedup uses `HashSet`).
+- Adding `Ord`/`PartialOrd` to `SchemaName` (broader change; not needed if we sort by `as_str()`).
 - Adding `Archive`/`Serialize`/`Deserialize` to `ExtendsDelta` (defer to the slice that persists it).
 - Any change to `Schema`, `PropertyBank`, or existing builder/processor flows.
 
-## Approved TDD Plan (2026-06-02)
+## Approved TDD Plan (Refined 2026-06-02)
 
 Vertical RED-GREEN cycles, one behavior per test. Structure A (submodules) per `docs/engineering/testing/unit-naming.md`. Verb-first names. Test names use the canonical module vocabulary (`constructor`, `accessors`, `validation`, `serialization`, etc.).
 
@@ -131,39 +132,48 @@ Vertical RED-GREEN cycles, one behavior per test. Structure A (submodules) per `
 4. `new_deduplicates_added`
 5. `new_deduplicates_removed`
 6. `from_slices_returns_empty_when_lists_match`
-7. `from_slices_returns_added_when_new_has_extra`
-8. `from_slices_returns_removed_when_old_has_extra`
-9. `from_slices_produces_symmetric_difference_when_lists_partially_overlap`
-10. `accessors_expose_added_and_removed_as_borrowed_slices`
+7. `from_slices_detects_additions`
+8. `from_slices_reports_no_removals_on_pure_addition`
+9. `from_slices_returns_removed_when_old_has_extra`
+10. `from_slices_produces_symmetric_difference_when_lists_partially_overlap`
+11. `added_accessor_returns_borrowed_slice`
+12. `removed_accessor_returns_borrowed_slice`
+13. `equal_deltas_compare_equal_regardless_of_input_order`
 
 Submodule fixture: `fn schema_name(s: &str) -> SchemaName`.
 
 ### `lithos-core/src/schema/base.rs` — new file with `mod tests`
 
 `mod constructor`:
-1. `new_stores_provided_id_and_name`
-2. `new_stores_empty_extends_when_input_is_empty`
-3. `new_deduplicates_extends`
-4. `new_deduplicates_excludes`
-5. `new_accepts_empty_property_map`
+1. `new_stores_provided_id`
+2. `new_stores_provided_name`
+3. `new_defaults_to_empty_extends`
+4. `new_defaults_to_empty_excludes`
+5. `new_deduplicates_extends`
+6. `new_deduplicates_excludes`
+7. `new_accepts_empty_property_map`
+8. `new_accepts_self_in_extends_for_resolver_to_reject_later`
+9. `equal_base_schemas_compare_equal_regardless_of_extends_excludes_order`
 
 `mod accessors`:
-6. `id_returns_borrowed_schema_id`
-7. `name_returns_borrowed_schema_name`
-8. `properties_returns_borrowed_property_map`
-9. `extends_returns_borrowed_schema_name_slice`
-10. `excludes_returns_borrowed_property_name_slice`
+10. `id_returns_borrowed_schema_id`
+11. `name_returns_borrowed_schema_name`
+12. `properties_returns_borrowed_property_map`
+13. `extends_returns_borrowed_schema_name_slice`
+14. `excludes_returns_borrowed_property_name_slice`
 
 `mod cloning`:
-11. `clones_to_independent_equal_value`
+15. `clone_preserves_identity`
+16. `clone_preserves_extends`
+17. `clone_preserves_excludes`
 
 `mod serialization`:
-12. `roundtrips_via_rkyv_archive`
+18. `roundtrips_via_rkyv_archive`
+19. `roundtrips_via_rkyv_archive_when_all_collections_empty`
 
 ### Execution sequence
 
-1. Scaffold: create `base.rs`, add `pub mod base;` to `mod.rs`, confirm `cargo build`.
-2. TDD cycles 1–10 for `ExtendsDelta` in `delta.rs`.
-3. TDD cycles 1–12 for `BaseSchema` in `base.rs`.
-4. Refactor checkpoint after each type's tests are GREEN.
-5. Final `mise run verify`.
+1. Refactor `ExtendsDelta` and `BaseSchema` to use `sort` + `dedup` instead of `HashSet`.
+2. Refine and split tests in `delta.rs` and `base.rs` to match the refined TDD plan.
+3. Verify all tests pass and clippy is clean.
+4. Final `mise run verify`.

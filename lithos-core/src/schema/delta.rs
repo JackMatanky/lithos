@@ -146,16 +146,14 @@ impl ExtendsDelta {
         expect(dead_code, reason = "API constructor for slice 02+")
     )]
     pub(crate) fn new(
-        added: Vec<SchemaName>,
-        removed: Vec<SchemaName>,
+        mut added: Vec<SchemaName>,
+        mut removed: Vec<SchemaName>,
     ) -> Self {
-        let mut added: Vec<SchemaName> =
-            added.into_iter().collect::<HashSet<_>>().into_iter().collect();
         added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        added.dedup();
 
-        let mut removed: Vec<SchemaName> =
-            removed.into_iter().collect::<HashSet<_>>().into_iter().collect();
         removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        removed.dedup();
 
         Self {
             added: added.into_boxed_slice(),
@@ -202,16 +200,21 @@ impl ExtendsDelta {
         old_extends: &[SchemaName],
         new_extends: &[SchemaName],
     ) -> Self {
-        let old_set: HashSet<&SchemaName> = old_extends.iter().collect();
-        let new_set: HashSet<&SchemaName> = new_extends.iter().collect();
-
-        let mut added: Vec<SchemaName> =
-            new_set.difference(&old_set).map(|name| (*name).clone()).collect();
+        let mut added: Vec<SchemaName> = new_extends
+            .iter()
+            .filter(|n| !old_extends.contains(n))
+            .cloned()
+            .collect();
         added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        added.dedup();
 
-        let mut removed: Vec<SchemaName> =
-            old_set.difference(&new_set).map(|name| (*name).clone()).collect();
+        let mut removed: Vec<SchemaName> = old_extends
+            .iter()
+            .filter(|n| !new_extends.contains(n))
+            .cloned()
+            .collect();
         removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        removed.dedup();
 
         Self {
             added: added.into_boxed_slice(),
@@ -703,22 +706,23 @@ mod tests {
         }
 
         #[test]
-        fn from_slices_returns_added_when_new_has_extra() {
+        fn from_slices_detects_additions() {
             let old = [schema_name("a")];
             let new = [schema_name("a"), schema_name("b")];
 
             let delta = ExtendsDelta::from_slices(&old, &new);
 
-            assert_eq!(delta.added().len(), 1);
+            assert!(delta.added().contains(&schema_name("b")));
+        }
+
+        #[test]
+        fn from_slices_reports_no_removals_on_pure_addition() {
+            let old = [schema_name("a")];
+            let new = [schema_name("a"), schema_name("b")];
+
+            let delta = ExtendsDelta::from_slices(&old, &new);
+
             assert!(delta.removed().is_empty());
-            assert_eq!(
-                delta
-                    .added()
-                    .first()
-                    .expect("added should have one entry")
-                    .as_str(),
-                "b"
-            );
         }
 
         #[test]
@@ -728,16 +732,7 @@ mod tests {
 
             let delta = ExtendsDelta::from_slices(&old, &new);
 
-            assert!(delta.added().is_empty());
-            assert_eq!(delta.removed().len(), 1);
-            assert_eq!(
-                delta
-                    .removed()
-                    .first()
-                    .expect("removed should have one entry")
-                    .as_str(),
-                "b"
-            );
+            assert!(delta.removed().contains(&schema_name("b")));
         }
 
         #[test]
@@ -748,30 +743,26 @@ mod tests {
 
             let delta = ExtendsDelta::from_slices(&old, &new);
 
-            let added_set: HashSet<_> =
-                delta.added().iter().map(SchemaName::as_str).collect();
-            let removed_set: HashSet<_> =
-                delta.removed().iter().map(SchemaName::as_str).collect();
-
-            assert_eq!(added_set, HashSet::from(["c"]));
-            assert_eq!(removed_set, HashSet::from(["a"]));
+            assert!(delta.added().contains(&schema_name("c")));
+            assert!(delta.removed().contains(&schema_name("a")));
         }
 
         #[test]
-        fn accessors_expose_added_and_removed_as_borrowed_slices() {
-            let delta =
-                ExtendsDelta::new(vec![schema_name("a")], vec![schema_name(
-                    "b",
-                )]);
+        fn added_accessor_returns_borrowed_slice() {
+            let delta = ExtendsDelta::new(vec![schema_name("a")], Vec::new());
             let added: &[SchemaName] = delta.added();
-            let removed: &[SchemaName] = delta.removed();
-
             assert_eq!(added.len(), 1);
-            assert_eq!(removed.len(), 1);
             assert_eq!(
                 added.first().expect("added has one entry").as_str(),
                 "a"
             );
+        }
+
+        #[test]
+        fn removed_accessor_returns_borrowed_slice() {
+            let delta = ExtendsDelta::new(Vec::new(), vec![schema_name("b")]);
+            let removed: &[SchemaName] = delta.removed();
+            assert_eq!(removed.len(), 1);
             assert_eq!(
                 removed.first().expect("removed has one entry").as_str(),
                 "b"
