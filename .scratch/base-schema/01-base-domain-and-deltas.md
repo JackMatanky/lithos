@@ -2,8 +2,9 @@
 title: 01-base-domain-and-deltas
 category: enhancement
 label: ready-for-agent
-status: open
+status: closed
 date_created: 2026-06-01
+date_completed: 2026-06-02
 ---
 
 ## Type
