@@ -10,3 +10,4 @@
     - Validated merged state (1579 unit tests passed).
     - Merged worktree branch back into `main`.
     - Final validation on `main` successful.
+    - Removed worktree `.worktrees/05-move-discovery-module-boundary` and deleted branch `05-move-discovery-module-boundary`.
