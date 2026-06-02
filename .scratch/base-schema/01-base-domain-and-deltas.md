@@ -27,12 +27,12 @@ This slice adds the new `BaseSchema` domain type in `schema/base.rs` and the `Ex
 
 ## Acceptance criteria
 
-- [ ] `BaseSchema` exists in `lithos-core/src/schema/base.rs` with fields: `id`, `name`, `properties`, `extends: Box<[SchemaName]>`, `excludes: Box<[PropertyName]>`.
-- [ ] `BaseSchema` derives/implements required archive/serde traits used by schema persistence.
-- [ ] `ExtendsDelta` exists in `lithos-core/src/schema/delta.rs` as aggregate delta: `added: Box<[SchemaName]>`, `removed: Box<[SchemaName]>`.
-- [ ] `ExtendsDelta::is_empty()` exists and is used as unchanged semantic marker.
-- [ ] `schema/mod.rs` exports `base` (and no `base_schema` legacy export name is introduced).
-- [ ] Unit tests validate `BaseSchema` construction invariants and `ExtendsDelta` empty/non-empty behavior.
+- [x] `BaseSchema` exists in `lithos-core/src/schema/base.rs` with fields: `id`, `name`, `properties`, `extends: Box<[SchemaName]>`, `excludes: Box<[PropertyName]>`.
+- [x] `BaseSchema` derives/implements required archive/serde traits used by schema persistence.
+- [x] `ExtendsDelta` exists in `lithos-core/src/schema/delta.rs` as aggregate delta: `added: Box<[SchemaName]>`, `removed: Box<[SchemaName]>`.
+- [x] `ExtendsDelta::is_empty()` exists and is used as unchanged semantic marker.
+- [x] `schema/mod.rs` exports `base` (and no `base_schema` legacy export name is introduced).
+- [x] Unit tests validate `BaseSchema` construction invariants and `ExtendsDelta` empty/non-empty behavior.
 
 ## Blocked by
 
@@ -177,3 +177,17 @@ Submodule fixture: `fn schema_name(s: &str) -> SchemaName`.
 2. Refine and split tests in `delta.rs` and `base.rs` to match the refined TDD plan.
 3. Verify all tests pass and clippy is clean.
 4. Final `mise run verify`.
+
+## Implementation Notes (2026-06-02)
+
+### Refinements for Rust Best Practices
+- **Performance Optimization**: Switched from `HashSet` to `sort` + `dedup` for deduplicating `extends` and `excludes` in `BaseSchema::new` and `ExtendsDelta`. This minimizes allocations while maintaining the deterministic output order required for stable `PartialEq` equality on boxed slices.
+- **Test Quality**: Refined and split multi-behavior tests in `base.rs` and `delta.rs` into focused single-behavior units, following the "one assertion per test" best practice. This improved failure diagnostic clarity and increased the total unit test count in `lithos-core` to **1501**.
+- **Type Safety**: `recorded_at` uses `rkyv(with = AsUnixTime)` to ensure efficient zero-copy serialization of ingestion timestamps, matching `Schema` and `PropertyBank` patterns.
+- **API Documentation**: Public accessors return borrowed slices (`&[T]`) or references (`&T`) to avoid unnecessary cloning of collection metadata.
+
+### Verification Evidence
+- `cargo test -p lithos-core --lib`: **1501 passed** (verified via worktree-local binary listing).
+- `mise run verify`: all gates green (deny, fmt, build, lint, unit, e2e, integration).
+- `cargo clippy`: clean with strict deny-level warnings and `-D warnings`.
+- `cargo fmt`: clean.
