@@ -64,7 +64,7 @@
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
 //! - [`builder`] - Orchestrates: discover → process → merge → persist
-//! - [`discovery`] - File discovery and cached-view lookup
+//! - [`crate::discovery`] - File discovery and cached-view lookup
 //!
 //! ## Storage & Views
 //! - [`storage`] - Unified Repository trait and redb implementation
@@ -111,6 +111,8 @@ pub use storage::{RedbRepository, RedbStorage};
 
 /// Configuration build orchestration with hybrid staleness detection.
 pub mod builder;
+/// Local config candidate discovery and deterministic selection.
+pub(crate) mod candidates;
 /// Consolidated discovery logic for config files.
 pub(crate) mod discovery;
 /// Configuration error types.
@@ -119,6 +121,8 @@ pub mod error;
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
+/// Config location taxonomy.
+pub(crate) mod location;
 /// Logging configuration types.
 pub mod logging;
 /// Config merging orchestration for processor outcomes.
@@ -127,6 +131,9 @@ pub mod merger;
 pub mod processor;
 /// Raw (serde) configuration input types.
 pub mod raw;
+/// Config-side root handoff types: classified file and aggregate discovery
+/// result.
+pub(crate) mod root;
 /// Task configuration schema and validation.
 pub mod task;
 /// Field specification and value validation types.

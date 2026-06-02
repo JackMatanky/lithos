@@ -1,15 +1,21 @@
-//! Discovery result contracts shared by config discovery phases.
+//! Config-side root handoff types.
 //!
-//! This module defines typed outcomes and warnings transported by discovery.
-//! It intentionally excludes traversal, filesystem probing, and precedence
-//! execution logic.
+//! Receives [`crate::discovery::FoundRootMarker`] output from the Discovery
+//! context and classifies it into [`DiscoveredConfigFile`] with the appropriate
+//! [`crate::config::location::LocalConfigLocation`] variant.
+//!
+//! [`ConfigDiscoveryResult`] aggregates both local and global classified files
+//! and will be consumed by [`crate::config::discovery`] as its input contract.
+//! It lives here until the global classification side is built in Phase 2.
 
 use std::path::PathBuf;
 
-use super::{diagnostics::DiscoveryWarning, location::ConfigLocation};
-use crate::fs::format::StructuredFileFormat;
+use crate::{
+    config::location::ConfigLocation, discovery::diagnostics::DiscoveryWarning,
+    fs::format::StructuredFileFormat,
+};
 
-/// Typed representation of one discovered config file.
+/// Typed representation of one discovered config file with location metadata.
 #[allow(
     dead_code,
     reason = "Phase-1 contracts are defined before full pipeline integration"
@@ -46,30 +52,12 @@ pub(crate) struct ConfigDiscoveryResult {
     pub(crate) warnings: Vec<DiscoveryWarning>,
 }
 
-/// Result of selecting a single candidate from multiple discovered formats.
-///
-/// Provides a strongly-typed outcome of the deterministic selection logic,
-/// carrying both the winner and any ambiguity warning generated.
-#[allow(
-    dead_code,
-    reason = "Phase-2 contracts are defined before full pipeline integration"
-)]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ConfigSelectionResult {
-    /// The final selected config candidate.
-    pub(crate) candidate: DiscoveredConfigFile,
-    /// A structured warning if multiple formats were available.
-    pub(crate) warning: Option<DiscoveryWarning>,
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{
-            diagnostics::{DiscoveryWarning, LocalDiscoveryWarning},
-            location::{GlobalConfigLocation, LocalConfigLocation},
-        },
-        *,
+    use super::*;
+    use crate::{
+        config::location::{GlobalConfigLocation, LocalConfigLocation},
+        discovery::diagnostics::LocalDiscoveryWarning,
     };
 
     mod constructor {
@@ -144,16 +132,6 @@ mod tests {
             };
 
             assert!(result.local.is_some());
-        }
-
-        #[test]
-        fn returns_warning_none_for_config_selection_result() {
-            let result = ConfigSelectionResult {
-                candidate: local_file(),
-                warning: None,
-            };
-
-            assert!(result.warning.is_none());
         }
     }
 

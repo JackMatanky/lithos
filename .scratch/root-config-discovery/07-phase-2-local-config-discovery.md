@@ -25,6 +25,8 @@ Implement local (vault) config discovery in Phase 2 by integrating resolved vaul
 
 This slice produces local `DiscoveredConfigFile` outcomes and typed warnings for ambiguity, while preserving strict separation from config parsing and validation.
 
+`DiscoveredConfigFile` is a Config-owned classified result contract after `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`; top-level Discovery remains limited to root resolution and thin path/source/format discovery outputs.
+
 ## Acceptance criteria
 
 - [ ] Local discovery consumes top-level Discovery root resolution output and supports not-found behavior without panic.
@@ -51,7 +53,7 @@ Local discovery consumes the top-level Discovery root resolution result, checks 
 selects a deterministic winner, and records ambiguity warnings without failing.
 
 **Key interfaces:**
-- `ConfigDiscoveryResult.local: Option<DiscoveredConfigFile>`
+- Config-owned `ConfigDiscoveryResult.local: Option<DiscoveredConfigFile>`
 - Candidate generation + selection seams
 - Typed warning emission for location/format ambiguity
 
@@ -59,6 +61,7 @@ selects a deterministic winner, and records ambiguity warnings without failing.
 - [ ] Root-resolved and root-not-found branches both behave predictably.
 - [ ] Winner selection and warning emission are deterministic and tested.
 - [ ] Returned file metadata includes `base`, `path`, `format`, and location.
+- [ ] Local discovery consumes top-level Discovery root/path outputs without making top-level Discovery depend on `ConfigLocation` or `LocalConfigLocation`.
 
 **Out of scope:**
 - Global source lookup logic

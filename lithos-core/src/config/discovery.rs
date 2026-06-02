@@ -4,8 +4,8 @@
 //! both the filesystem and database, consolidating all data needed for
 //! config processing.
 //!
-//! The `location` and `contracts` submodules expose typed discovery interfaces
-//! used by downstream configuration orchestration.
+//! Config-owned location and candidate classification live in sibling modules
+//! under [`crate::config`].
 
 use crate::{
     config::{
@@ -20,12 +20,6 @@ use crate::{
         scanner::{DirScanInput, DirScanner},
     },
 };
-
-pub(crate) mod candidates;
-pub(crate) mod contracts;
-pub(crate) mod diagnostics;
-pub(crate) mod location;
-pub(crate) mod resolver;
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  Discovery Result Types

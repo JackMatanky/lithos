@@ -6,12 +6,30 @@
 
 use std::{io, path::Path};
 
-use super::{
-    contracts::{ConfigSelectionResult, DiscoveredConfigFile},
-    diagnostics::{DiscoveryWarning, FormatDiscoveryWarning},
-    location::{ConfigLocation, LocalConfigLocation},
+use crate::{
+    config::{
+        location::{ConfigLocation, LocalConfigLocation},
+        root::DiscoveredConfigFile,
+    },
+    discovery::{DiscoveryWarning, FormatDiscoveryWarning},
+    fs::format::StructuredFileFormat,
 };
-use crate::fs::format::StructuredFileFormat;
+
+/// Result of selecting a single candidate from multiple discovered formats.
+///
+/// Provides a strongly-typed outcome of the deterministic selection logic,
+/// carrying both the winner and any ambiguity warning generated.
+#[allow(
+    dead_code,
+    reason = "Phase-2 contracts are defined before full pipeline integration"
+)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ConfigSelectionResult {
+    /// The final selected config candidate.
+    pub(crate) candidate: DiscoveredConfigFile,
+    /// A structured warning if multiple formats were available.
+    pub(crate) warning: Option<DiscoveryWarning>,
+}
 
 /// Finds all existing local config candidates for a logical location.
 ///
@@ -464,6 +482,22 @@ mod tests {
                     ],
                 });
             assert_eq!(got.warning, Some(expected_warning));
+        }
+
+        #[test]
+        fn returns_no_warning_for_config_selection_result_when_warning_is_none()
+        {
+            let base = PathBuf::from("/vault");
+            let candidate = local_candidate(
+                &base,
+                "lithos.toml",
+                StructuredFileFormat::Toml,
+            );
+            let result = ConfigSelectionResult {
+                candidate,
+                warning: None,
+            };
+            assert!(result.warning.is_none());
         }
     }
 }
