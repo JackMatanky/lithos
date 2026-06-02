@@ -90,3 +90,31 @@ Vertical-slice tracer-bullet approach (one test → one impl per cycle):
 
 **Naming convention**: `find_*` prefix (not `get_*`), following `find_schema_by_id` pattern.
 **Test structure**: `mod base_schema { mod lookup { ... } mod save { ... } mod delete { ... } }` per adapter.
+
+## Implementation Log
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `f9345a26` | docs(scratch): update issue 02 with review findings and TDD plan |
+| `6268921a` | feat(schema): add BaseSchema repository contracts and storage |
+| `d0776577` | refactor(schema): iterator pre-serialization, fix BASE_SCHEMA_BY_ID doc |
+
+### Rust Best Practices Review (post-impl)
+
+**Findings (3 minor, 0 critical):**
+
+1. **Unnecessary clone** (`write.rs:245`): `save_many_base_schemas` used `bytes.as_slice().to_vec()` — `to_vec()` clones the vec unnecessarily when `bytes` is already `Vec<u8>`. Fixed: use `bytes` directly (via `bytes.to_vec()` — AlignedVec derefs to `[u8]`).
+
+2. **Pre-serialization inside transaction**: Initially moved serialization inside the write transaction to match `save_many_schemas`. But the codebase policy is to serialize *outside* the transaction to keep tx time minimal. Reverted to pre-serialization with iterator chain: `.map().collect::<Result<Vec<_>, _>>()`.
+
+3. **Stale doc for `BASE_SCHEMA_BY_ID`** (`tables.rs:97-105`): Omitted `PropertyMap` — BaseSchema also contains properties, not just extends/excludes. Fixed.
+
+**Loops → iterators**: `save_many_base_schemas` pre-serialization converted from `for` loop to `.map().collect::<Result<Vec<_>, _>>()`. Inner insert loop stays as `for` — `try_for_each` doesn't match `Result<Option<AccessGuard>>` return from `table.insert`.
+
+### Verification
+- 1529 unit + integration tests pass
+- `cargo clippy --all-targets` — 0 warnings
+- `cargo fmt --check` — clean
+- All pre-commit hooks passed on both commits (fmt, clippy, tests, conventional commits, gitleaks)
