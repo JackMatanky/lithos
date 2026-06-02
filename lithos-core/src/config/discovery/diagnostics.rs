@@ -1,5 +1,31 @@
 use std::path::PathBuf;
 
+/// Typed warning channel for non-fatal discovery diagnostics.
+///
+/// Warnings are structured so CLI/reporting layers can render deterministic,
+/// actionable diagnostics without parsing free-form strings.
+#[allow(
+    dead_code,
+    reason = "Phase-1 contracts are defined before full pipeline integration"
+)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DiscoveryWarning {
+    /// Local config candidate diagnostics.
+    Local(LocalDiscoveryWarning),
+    /// Structured-format candidate diagnostics.
+    Format(FormatDiscoveryWarning),
+    /// Path casing was corrected during discovery on case-insensitive
+    /// filesystems.
+    CaseCorrection {
+        /// The path as requested or derived from convention.
+        requested: PathBuf,
+        /// The actual correctly-cased path found on disk.
+        resolved: PathBuf,
+    },
+    /// Root-resolution-specific warning payload.
+    RootResolution(RootResolutionWarning),
+}
+
 /// Warnings emitted while resolving vault roots.
 #[allow(
     dead_code,
@@ -35,32 +61,6 @@ pub(crate) enum FormatDiscoveryWarning {
         /// All existing format variants found.
         candidates: Vec<PathBuf>,
     },
-}
-
-/// Typed warning channel for non-fatal discovery diagnostics.
-///
-/// Warnings are structured so CLI/reporting layers can render deterministic,
-/// actionable diagnostics without parsing free-form strings.
-#[allow(
-    dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
-)]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum DiscoveryWarning {
-    /// Local config candidate diagnostics.
-    Local(LocalDiscoveryWarning),
-    /// Structured-format candidate diagnostics.
-    Format(FormatDiscoveryWarning),
-    /// Path casing was corrected during discovery on case-insensitive
-    /// filesystems.
-    CaseCorrection {
-        /// The path as requested or derived from convention.
-        requested: PathBuf,
-        /// The actual correctly-cased path found on disk.
-        resolved: PathBuf,
-    },
-    /// Root-resolution-specific warning payload.
-    RootResolution(RootResolutionWarning),
 }
 
 #[cfg(test)]

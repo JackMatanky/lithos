@@ -7,6 +7,20 @@ use std::path::{Path, PathBuf};
 
 use crate::fs::format::StructuredFileFormat;
 
+/// Unified config location taxonomy.
+///
+/// This wrapper preserves source class information so downstream resolution can
+/// apply precedence rules (`Global` before `Local`) without string matching.
+#[allow(
+    dead_code,
+    reason = "Phase-1 contracts are defined before full pipeline integration"
+)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ConfigLocation {
+    Global(GlobalConfigLocation),
+    Local(LocalConfigLocation),
+}
+
 /// Global configuration discovery locations.
 ///
 /// Discovery order: `ExplicitOverride` > `EnvironmentOverride` > `XdgConfig`
@@ -78,20 +92,6 @@ impl LocalConfigLocation {
             }
         }
     }
-}
-
-/// Unified config location taxonomy.
-///
-/// This wrapper preserves source class information so downstream resolution can
-/// apply precedence rules (`Global` before `Local`) without string matching.
-#[allow(
-    dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
-)]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ConfigLocation {
-    Global(GlobalConfigLocation),
-    Local(LocalConfigLocation),
 }
 
 #[cfg(test)]
