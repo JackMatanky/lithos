@@ -13,7 +13,7 @@ use crate::fs::format::StructuredFileFormat;
 /// apply precedence rules (`Global` before `Local`) without string matching.
 #[allow(
     dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
+    reason = "ConfigLocation::Global added in Phase 2; Local used now"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ConfigLocation {
@@ -25,9 +25,10 @@ pub(crate) enum ConfigLocation {
 ///
 /// Discovery order: `ExplicitOverride` > `EnvironmentOverride` > `XdgConfig`
 /// > `UserConfig` > `SystemConfig`.
-#[allow(
+#[expect(
     dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
+    reason = "Phase-1 taxonomy defined before pipeline integration; variants \
+              constructed in Phase 2"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GlobalConfigLocation {
@@ -49,13 +50,14 @@ pub(crate) enum GlobalConfigLocation {
 /// - `RootConfigFile`: `<root>/lithos.{toml,json,yaml,yml}`
 /// - `HiddenRootConfigFile`: `<root>/.lithos.{toml,json,yaml,yml}`
 /// - `ConfigDirectoryFile`: `<root>/.lithos/config.{toml,json,yaml,yml}`
-#[allow(
+#[expect(
     clippy::enum_variant_names,
     reason = "Variant names are fixed by the approved PRD contract"
 )]
 #[allow(
     dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
+    reason = "Phase-1 taxonomy; variants constructed once pipeline \
+              integration lands"
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LocalConfigLocation {
@@ -64,13 +66,12 @@ pub(crate) enum LocalConfigLocation {
     ConfigDirectoryFile,
 }
 
+#[allow(
+    dead_code,
+    reason = "Phase-1 taxonomy; items used once pipeline integration lands"
+)]
 impl LocalConfigLocation {
     /// Locations probed for local config candidate classification.
-    #[allow(
-        dead_code,
-        reason = "Phase-1 contracts are defined before full pipeline \
-                  integration"
-    )]
     pub(crate) const CANDIDATE_LOCATIONS: &'static [Self] = &[
         Self::RootConfigFile,
         Self::HiddenRootConfigFile,
@@ -78,11 +79,6 @@ impl LocalConfigLocation {
     ];
 
     /// Generates a concrete candidate path for a location/format pair.
-    #[allow(
-        dead_code,
-        reason = "Phase-1 contracts are defined before full pipeline \
-                  integration"
-    )]
     pub(crate) fn candidate_path(
         self,
         root: &Path,

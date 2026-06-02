@@ -64,7 +64,9 @@
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
 //! - [`builder`] - Orchestrates: discover → process → merge → persist
-//! - [`crate::discovery`] - File discovery and cached-view lookup
+//! - [`discovery`] - Atomic filesystem + DB scan for config file locations
+//! - [`crate::discovery`] - Pre-config vault root and path discovery (Discovery
+//!   context)
 //!
 //! ## Storage & Views
 //! - [`storage`] - Unified Repository trait and redb implementation

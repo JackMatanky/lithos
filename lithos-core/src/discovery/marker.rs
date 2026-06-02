@@ -13,10 +13,7 @@ use crate::fs::format::StructuredFileFormat;
 /// Carries the canonicalized path to the marker file (e.g. `lithos.toml`) and
 /// the base directory it was found in. Does not include Config location
 /// taxonomy; that classification is Config-owned.
-#[allow(
-    dead_code,
-    reason = "Phase-1 contracts are defined before full pipeline integration"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct FoundRootMarker {
     /// Base directory the marker was found in (the vault root candidate).
@@ -31,37 +28,52 @@ pub(crate) struct FoundRootMarker {
 mod tests {
     use super::*;
 
-    mod constructor {
+    mod equality {
         use super::*;
 
         #[test]
-        fn returns_base_path_for_found_root_marker() {
-            let marker = FoundRootMarker {
+        fn returns_true_when_markers_have_same_path_and_format() {
+            let a = FoundRootMarker {
                 base: PathBuf::from("/vault"),
                 path: PathBuf::from("/vault/lithos.toml"),
                 format: StructuredFileFormat::Toml,
             };
-            assert_eq!(marker.base, PathBuf::from("/vault"));
+            let b = FoundRootMarker {
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/lithos.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+            assert_eq!(a, b);
         }
 
         #[test]
-        fn returns_path_for_found_root_marker() {
-            let marker = FoundRootMarker {
+        fn returns_false_when_marker_paths_differ() {
+            let a = FoundRootMarker {
                 base: PathBuf::from("/vault"),
                 path: PathBuf::from("/vault/lithos.toml"),
                 format: StructuredFileFormat::Toml,
             };
-            assert_eq!(marker.path, PathBuf::from("/vault/lithos.toml"));
+            let b = FoundRootMarker {
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/.lithos.toml"),
+                format: StructuredFileFormat::Toml,
+            };
+            assert_ne!(a, b);
         }
 
         #[test]
-        fn returns_format_for_found_root_marker() {
-            let marker = FoundRootMarker {
+        fn returns_false_when_marker_formats_differ() {
+            let a = FoundRootMarker {
                 base: PathBuf::from("/vault"),
                 path: PathBuf::from("/vault/lithos.toml"),
                 format: StructuredFileFormat::Toml,
             };
-            assert_eq!(marker.format, StructuredFileFormat::Toml);
+            let b = FoundRootMarker {
+                base: PathBuf::from("/vault"),
+                path: PathBuf::from("/vault/lithos.toml"),
+                format: StructuredFileFormat::Json,
+            };
+            assert_ne!(a, b);
         }
     }
 }

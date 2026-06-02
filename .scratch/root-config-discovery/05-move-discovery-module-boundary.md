@@ -1,9 +1,10 @@
 ---
 title: 05-move-discovery-module-boundary
 category: refactor
-label: ready-for-agent
-status: open
+label: done
+status: closed
 date_created: 2026-06-02
+date_closed: 2026-06-03
 ---
 
 ## Type
@@ -13,7 +14,7 @@ AFK
 ## Labels
 
 - root-config-discovery
-- ready-for-agent
+- done
 
 ## Parent
 
@@ -27,16 +28,16 @@ This slice resolves the module boundary before Phase 2 expands path discovery fu
 
 ## Acceptance criteria
 
-- [ ] Root/config path discovery modules move from `lithos-core/src/config/discovery/` to `lithos-core/src/discovery/`.
-- [ ] `lithos-core/src/discovery/mod.rs` exposes the root/config path discovery module boundary.
-- [ ] `lithos-core/src/config/discovery.rs` is reinstated as a Config-owned module for post-selection config loading/orchestration concerns, not root/config path discovery.
-- [ ] Root marker detection uses a thin static marker filename set in Discovery rather than `LocalConfigLocation` as the upstream marker vocabulary.
-- [ ] Config retains its own local config location taxonomy for Phase 2 candidate classification and precedence.
-- [ ] Discovery result contracts return path/source/format metadata only and do not parse, merge, validate, or hash config contents.
-- [ ] Top-level Discovery does not import `ConfigLocation`, `GlobalConfigLocation`, `LocalConfigLocation`, or other Config-owned classification types.
-- [ ] Config-owned classified file/result contracts live under `config/`, not top-level `discovery/`.
-- [ ] Existing tests are updated to compile against the new module path.
-- [ ] Documentation references use `Discovery -> Config -> Indexer` terminology where relevant.
+- [x] Root/config path discovery modules move from `lithos-core/src/config/discovery/` to `lithos-core/src/discovery/`.
+- [x] `lithos-core/src/discovery/mod.rs` exposes the root/config path discovery module boundary.
+- [x] `lithos-core/src/config/discovery.rs` is reinstated as a Config-owned module for post-selection config loading/orchestration concerns, not root/config path discovery.
+- [x] Root marker detection uses a thin static marker filename set in Discovery rather than `LocalConfigLocation` as the upstream marker vocabulary.
+- [x] Config retains its own local config location taxonomy for Phase 2 candidate classification and precedence.
+- [x] Discovery result contracts return path/source/format metadata only and do not parse, merge, validate, or hash config contents.
+- [x] Top-level Discovery does not import `ConfigLocation`, `GlobalConfigLocation`, `LocalConfigLocation`, or other Config-owned classification types.
+- [x] Config-owned classified file/result contracts live under `config/`, not top-level `discovery/`.
+- [x] Existing tests are updated to compile against the new module path.
+- [x] Documentation references use `Discovery -> Config -> Indexer` terminology where relevant.
 
 ## Agent Brief
 
@@ -55,16 +56,22 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 **Key interfaces:**
 - `RootResolver`, `RootResolverInput`, `RootResolutionResult`, `RootResolutionSource`
 - Static root marker filename patterns
-- `DiscoveredConfigPath` or equivalent path-only config discovery contract
-- Config-owned classified contracts such as `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult`
+- `FoundRootMarker` — path-only root marker contract (renamed from `DiscoveredConfigPath`)
+- Config-owned classified contracts: `DiscoveredConfigFile` (`config/root.rs`), `ConfigDiscoveryResult` (`config/root.rs`), `ConfigSelectionResult` (`config/candidates.rs`)
 - Config-owned mapping from discovered paths into local/environment config processing
 
 **Acceptance criteria:**
-- [ ] No top-level Discovery type depends on `ConfigLocation` or `LocalConfigLocation` to identify root markers.
-- [ ] Config may consume Discovery outputs but Discovery does not import Config domain types.
-- [ ] Top-level Discovery contracts remain path/source/format-only; Config owns `ConfigLocation` classification and result assembly contracts.
-- [ ] `config/discovery.rs` exists only for Config-owned post-selection orchestration.
-- [ ] Module docs and context docs make the Discovery/Config/Indexer distinction explicit.
+- [x] No top-level Discovery type depends on `ConfigLocation` or `LocalConfigLocation` to identify root markers.
+- [x] Config may consume Discovery outputs but Discovery does not import Config domain types.
+- [x] Top-level Discovery contracts remain path/source/format-only; Config owns `ConfigLocation` classification and result assembly contracts.
+- [x] `config/discovery.rs` exists only for Config-owned post-selection orchestration.
+- [x] Module docs and context docs make the Discovery/Config/Indexer distinction explicit.
+
+**Out of scope:**
+- Environment Config source lookup expansion.
+- Local Config candidate selection changes beyond adapting to the moved seam.
+- Raw config DTO/schema migrations.
+- CLI discovery command wiring.
 
 ## Implementation Notes
 
@@ -81,8 +88,8 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 **Approved impact summary:**
 
 - Affected modules: top-level `discovery`, `config::discovery`, Config candidate/location taxonomy, Config builder imports, resolver tests, and relevant documentation.
-- Affected contracts: `RootResolver`, `RootResolverInput`, `RootResolutionResult`, `RootResolutionSource`, and `DiscoveredConfigPath` or equivalent path-only config discovery contract.
-- Affected Config contracts: `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult` should be imported from `config/` after the split.
+- Affected contracts: `RootResolver`, `RootResolverInput`, `RootResolutionResult`, `RootResolutionSource`, and `FoundRootMarker` (path-only root marker contract).
+- Affected Config contracts: `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult` live under `config/` after the split.
 - Expected risk: low to medium. The work is primarily a module boundary refactor, but import churn and documentation links can regress compile/doc tests.
 
 **Approved TDD plan:**
@@ -108,6 +115,36 @@ Top-level `discovery/` owns the pre-config path discovery seam. It locates the v
 - Local Config candidate selection changes beyond adapting to the moved seam.
 - Raw config DTO/schema migrations.
 - CLI discovery command wiring.
+
+## Final module layout
+
+```
+lithos-core/src/
+├── discovery/
+│   ├── mod.rs          — boundary docs: Discovery -> Config -> Indexer invariants
+│   ├── marker.rs       — FoundRootMarker (path + format, no Config taxonomy)
+│   ├── diagnostics.rs  — DiscoveryWarning, RootResolutionWarning, LocalDiscoveryWarning, FormatDiscoveryWarning
+│   └── resolver.rs     — RootResolver, RootResolverInput, RootResolutionResult, RootResolutionSource, RootResolutionPolicy, RootResolutionError
+└── config/
+    ├── location.rs     — ConfigLocation, GlobalConfigLocation, LocalConfigLocation, CANDIDATE_LOCATIONS
+    ├── candidates.rs   — ConfigSelectionResult, find_local_config_candidates, select_config_candidate
+    ├── root.rs         — DiscoveredConfigFile, ConfigDiscoveryResult (Config-side root handoff types)
+    └── discovery.rs    — DiscoveryEngine (Config-owned post-selection orchestration)
+```
+
+**Key naming decisions:**
+- `DiscoveredConfigPath` renamed to `FoundRootMarker` — name reflects domain role (root marker found during ascending discovery, not a generic config path).
+- `contracts.rs` renamed to `marker.rs` in Discovery (name matches sole type) and `root.rs` in Config (names the Config-side of the root handoff seam).
+- `ConfigSelectionResult` moved from `config/root.rs` into `config/candidates.rs` alongside its producing function.
+- `ConfigDiscoveryResult` stays in `config/root.rs` until Phase 2 adds the global classification side.
+
+**Quality gates at close:**
+- `mise run fmt`: passed
+- `mise run lint`: passed (zero warnings, zero errors)
+- `mise run test`: 1570 unit + 36 integration + 1 e2e passed; doctests passed
+
+**Dead_code note:**
+Phase-1 seam types that are not yet wired into orchestration carry `#[allow(dead_code, reason = "...")]`. These will be removed when Phase 2 issues 06/07 wire the pipeline. Using `allow` rather than `expect` deliberately — `expect` would fire unfulfilled warnings once the items are referenced, creating noise before the integration work lands.
 
 ## Blocked by
 

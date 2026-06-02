@@ -40,10 +40,7 @@ pub(crate) enum RootResolutionWarning {
 }
 
 /// Warnings emitted while selecting local config candidates.
-#[allow(
-    dead_code,
-    reason = "Phase-1 warning seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LocalDiscoveryWarning {
     Ambiguity {

@@ -21,7 +21,7 @@ use crate::{
 /// carrying both the winner and any ambiguity warning generated.
 #[allow(
     dead_code,
-    reason = "Phase-2 contracts are defined before full pipeline integration"
+    reason = "Phase-2 seam; wired in once pipeline integration lands"
 )]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ConfigSelectionResult {
@@ -44,7 +44,7 @@ pub(crate) struct ConfigSelectionResult {
 /// file.
 #[allow(
     dead_code,
-    reason = "Phase-2 seam introduced before full pipeline integration"
+    reason = "Phase-2 seam; wired in once pipeline integration lands"
 )]
 pub(crate) fn find_local_config_candidates(
     root: &Path,
@@ -97,7 +97,7 @@ pub(crate) fn find_local_config_candidates(
 /// ```
 #[allow(
     dead_code,
-    reason = "Phase-2 seam introduced before full pipeline integration"
+    reason = "Phase-2 seam; wired in once pipeline integration lands"
 )]
 pub(crate) fn select_config_candidate(
     mut candidates: Vec<DiscoveredConfigFile>,
@@ -485,8 +485,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_no_warning_for_config_selection_result_when_warning_is_none()
-        {
+        fn returns_no_warning_when_directly_constructed_with_none() {
             let base = PathBuf::from("/vault");
             let candidate = local_candidate(
                 &base,

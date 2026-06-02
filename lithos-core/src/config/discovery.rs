@@ -206,7 +206,8 @@ impl DiscoveryEngine {
 
     /// Finds the global config file using priority order.
     ///
-    /// Priority order (from `ingestor.rs::GlobalConfigLocation`):
+    /// Priority order (matches
+    /// [`crate::config::location::GlobalConfigLocation`]):
     /// 1. `$LITHOS_CONFIG_FILE`
     /// 2. `$XDG_CONFIG_HOME/lithos/lithos.toml`
     /// 3. `~/.config/lithos/lithos.toml`
@@ -260,7 +261,8 @@ impl DiscoveryEngine {
 
     /// Returns the priority-ordered list of global config paths.
     ///
-    /// This mirrors the logic from `ingestor.rs::GlobalConfigLocation`.
+    /// Order matches [`crate::config::location::GlobalConfigLocation`]
+    /// precedence.
     fn global_config_paths() -> Vec<std::path::PathBuf> {
         let mut paths = Vec::new();
 

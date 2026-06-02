@@ -29,27 +29,16 @@ use crate::{
 ///
 /// `RootResolver` implements the policy-driven search for the configuration
 /// entry point of a vault.
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Default)]
 pub(crate) struct RootResolver {
     policy: RootResolutionPolicy,
 }
 
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl RootResolver {
     /// Creates a new resolver with the specified resolution
     /// [`RootResolutionPolicy`].
-    #[allow(
-        dead_code,
-        reason = "Phase-1 resolver seam is implemented before orchestration \
-                  wiring"
-    )]
     pub(crate) const fn new(policy: RootResolutionPolicy) -> Self {
         Self {
             policy,
@@ -320,10 +309,7 @@ impl RootResolver {
 }
 
 /// Input parameters for the root resolution process.
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RootResolverInput<'a> {
     /// Explicit vault path from CLI flags.
@@ -337,10 +323,7 @@ pub(crate) struct RootResolverInput<'a> {
 }
 
 /// The result of a successful (though potentially empty) root resolution.
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RootResolutionResult {
     /// The absolute path to the resolved vault root.
@@ -355,10 +338,7 @@ pub(crate) struct RootResolutionResult {
 }
 
 /// The origin of a resolved vault root.
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RootResolutionSource {
     /// Provided via an explicit CLI flag.
@@ -370,10 +350,7 @@ pub(crate) enum RootResolutionSource {
 }
 
 /// Policy configuration for the [`RootResolver`].
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RootResolutionPolicy {
     /// Whether to allow a discovery marker to be valid even if it is located
@@ -390,10 +367,7 @@ impl Default for RootResolutionPolicy {
 }
 
 /// Errors that can occur during vault root resolution.
-#[allow(
-    dead_code,
-    reason = "Phase-1 resolver seam is implemented before orchestration wiring"
-)]
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RootResolutionError {
     /// The path provided via CLI flag does not exist.
