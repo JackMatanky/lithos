@@ -3,6 +3,7 @@ title: 02-base-repository-contracts-and-storage
 category: enhancement
 label: ready-for-agent
 status: closed
+date_completed: 2026-06-02
 date_created: 2026-06-01
 ---
 
