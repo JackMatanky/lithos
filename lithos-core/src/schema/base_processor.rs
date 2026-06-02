@@ -168,7 +168,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         let (file, path_key, _status) = self.into_parts();
         let schema_name = Self::schema_name_from_path(&file)?;
         let constructed = Self::transition_from_parts(file, path_key, New {
-            schema_id: SchemaId::new(),
+            id: SchemaId::new(),
             schema_name,
             properties: PropertyMap::new(),
             extends: Vec::new(),
@@ -219,7 +219,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
             let schema_name = Self::schema_name_from_path(&file)?;
             let constructed =
                 Self::transition_from_parts(file, path_key, New {
-                    schema_id: SchemaId::new(),
+                    id: SchemaId::new(),
                     schema_name,
                     properties: PropertyMap::new(),
                     extends: Vec::new(),
@@ -251,7 +251,7 @@ struct Construction;
 /// view exists or timestamps have drifted. Produces a `Completed<NewReady>`.
 #[derive(Debug)]
 struct New {
-    schema_id: SchemaId,
+    id: SchemaId,
     schema_name: SchemaName,
     properties: PropertyMap,
     extends: Vec<SchemaName>,
@@ -268,8 +268,8 @@ struct New {
 /// 04-base-processor-stale-analysis-and-normalization.md`.
 #[derive(Debug)]
 struct Fresh {
-    schema_id: SchemaId,
-    base_schema: BaseSchema,
+    id: SchemaId,
+    base: BaseSchema,
 }
 
 /// Construction operations that build the base schema.
@@ -283,7 +283,7 @@ impl BaseSchemaProcessor<Construction, New> {
         let (file, path_key, status) = self.into_parts();
 
         let base = BaseSchema::new(
-            status.schema_id,
+            status.id,
             status.schema_name,
             status.properties,
             status.extends,
@@ -295,7 +295,7 @@ impl BaseSchemaProcessor<Construction, New> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
-            base_schema: base,
+            base,
         }))
     }
 }
@@ -312,8 +312,8 @@ impl BaseSchemaProcessor<Construction, Fresh> {
         let (file, path_key, status) = self.into_parts();
 
         Self::transition_from_parts(file, path_key, FreshReady {
-            schema_id: status.schema_id,
-            base_schema: status.base_schema,
+            id: status.id,
+            base: status.base,
         })
     }
 }
@@ -329,14 +329,14 @@ struct Completed;
 /// Proven: terminal ingestion goal reached with newly built schema.
 #[derive(Debug)]
 struct NewReady {
-    base_schema: BaseSchema,
+    base: BaseSchema,
 }
 
 /// Proven: terminal ingestion goal reached with freshly fetched schema.
 #[derive(Debug)]
 struct FreshReady {
-    schema_id: SchemaId,
-    base_schema: BaseSchema,
+    id: SchemaId,
+    base: BaseSchema,
 }
 
 /// Completed operations that expose the final base schema.
@@ -344,7 +344,7 @@ impl BaseSchemaProcessor<Completed, NewReady> {
     #[inline]
     #[must_use]
     fn into_base(self) -> BaseSchema {
-        self.status.base_schema
+        self.status.base
     }
 }
 
@@ -352,7 +352,7 @@ impl BaseSchemaProcessor<Completed, FreshReady> {
     #[inline]
     #[must_use]
     fn into_base(self) -> BaseSchema {
-        self.status.base_schema
+        self.status.base
     }
 }
 
@@ -671,7 +671,7 @@ mod tests {
                 file: fixture.file,
                 path_key: fixture.key,
                 status: NewReady {
-                    base_schema: expected.clone(),
+                    base: expected.clone(),
                 },
                 _stage: PhantomData,
             };
@@ -700,8 +700,8 @@ mod tests {
                 file: fixture.file,
                 path_key: fixture.key,
                 status: FreshReady {
-                    schema_id,
-                    base_schema: expected.clone(),
+                    id: schema_id,
+                    base: expected.clone(),
                 },
                 _stage: PhantomData,
             };
