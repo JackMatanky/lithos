@@ -94,7 +94,7 @@ pub const SCHEMA_ID_BY_NAME: Table<&str, &[u8]> =
 pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
     PathTable::new("schema_id_by_path");
 
-/// Base schemas (phase-1 aggregates) indexed by schema ID.
+/// Base schemas (pre-resolution aggregates) indexed by schema ID.
 ///
 /// Stores file-local `BaseSchema` structures with property maps,
 /// extends, and excludes lists for schema processing pipelines.
