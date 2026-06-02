@@ -111,6 +111,8 @@ pub use storage::{RedbRepository, RedbStorage};
 
 /// Configuration build orchestration with hybrid staleness detection.
 pub mod builder;
+/// Local config candidate discovery and deterministic selection.
+pub(crate) mod candidates;
 /// Consolidated discovery logic for config files.
 pub(crate) mod discovery;
 /// Configuration error types.
@@ -119,6 +121,8 @@ pub mod error;
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
+/// Config location taxonomy.
+pub(crate) mod location;
 /// Logging configuration types.
 pub mod logging;
 /// Config merging orchestration for processor outcomes.

@@ -6,8 +6,8 @@
 
 use std::{io, path::Path};
 
-use super::location::{ConfigLocation, LocalConfigLocation};
 use crate::{
+    config::location::{ConfigLocation, LocalConfigLocation},
     discovery::{
         ConfigSelectionResult, DiscoveredConfigFile, DiscoveryWarning,
         FormatDiscoveryWarning,

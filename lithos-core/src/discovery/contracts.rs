@@ -8,8 +8,7 @@ use std::path::PathBuf;
 
 use super::diagnostics::DiscoveryWarning;
 use crate::{
-    config::discovery::location::ConfigLocation,
-    fs::format::StructuredFileFormat,
+    config::location::ConfigLocation, fs::format::StructuredFileFormat,
 };
 
 /// Typed representation of one discovered config file without location
@@ -87,9 +86,7 @@ pub(crate) struct ConfigSelectionResult {
 mod tests {
     use super::*;
     use crate::{
-        config::discovery::location::{
-            GlobalConfigLocation, LocalConfigLocation,
-        },
+        config::location::{GlobalConfigLocation, LocalConfigLocation},
         discovery::diagnostics::{DiscoveryWarning, LocalDiscoveryWarning},
     };
 

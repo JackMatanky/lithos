@@ -1,4 +1,4 @@
-//! Discovery location taxonomy for config resolution.
+//! Location taxonomy for config resolution.
 //!
 //! This module defines location-oriented contracts only. It does not perform
 //! filesystem traversal or candidate selection.
