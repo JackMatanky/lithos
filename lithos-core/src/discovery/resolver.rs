@@ -21,8 +21,7 @@ use std::{
 };
 
 use crate::{
-    config::discovery::location::{ConfigLocation, LocalConfigLocation},
-    discovery::{DiscoveredConfigFile, RootResolutionWarning},
+    discovery::{DiscoveredConfigPath, RootResolutionWarning},
     fs::format::StructuredFileFormat,
 };
 
@@ -252,41 +251,36 @@ impl RootResolver {
     /// Checks a specific directory for any supported root marker files.
     fn discover_marker(
         root: &Path,
-    ) -> Result<Option<DiscoveredConfigFile>, RootResolutionError> {
-        LocalConfigLocation::MARKERS
-            .iter()
-            .flat_map(|&location| {
-                StructuredFileFormat::PRECEDENCE
-                    .iter()
-                    .map(move |&format| (location, format))
-            })
-            .find_map(
-                |(location, format): (
-                    LocalConfigLocation,
-                    StructuredFileFormat,
-                )| {
-                    let path = location.candidate_path(root, format);
-                    if !path.is_file() {
-                        return None;
-                    }
+    ) -> Result<Option<DiscoveredConfigPath>, RootResolutionError> {
+        let prefixes = ["lithos", ".lithos", ".lithos/config"];
+        for prefix in prefixes {
+            for format in StructuredFileFormat::PRECEDENCE {
+                let ext = format.extension();
+                let filename = format!("{prefix}.{ext}");
+                let path = root.join(filename);
 
-                    match path.canonicalize() {
-                        Ok(canonical) => Some(Ok(DiscoveredConfigFile {
-                            location: ConfigLocation::Local(location),
-                            base: root.to_path_buf(),
-                            path: canonical,
-                            format,
-                        })),
-                        Err(source) => {
-                            Some(Err(RootResolutionError::CanonicalizePath {
-                                path: path.clone(),
-                                source,
-                            }))
-                        }
+                if !path.is_file() {
+                    continue;
+                }
+
+                let canonical = match path.canonicalize() {
+                    Ok(c) => c,
+                    Err(source) => {
+                        return Err(RootResolutionError::CanonicalizePath {
+                            path,
+                            source,
+                        });
                     }
-                },
-            )
-            .transpose()
+                };
+
+                return Ok(Some(DiscoveredConfigPath {
+                    base: root.to_path_buf(),
+                    path: canonical,
+                    format,
+                }));
+            }
+        }
+        Ok(None)
     }
 
     /// Parses a raw string of ceiling directories (e.g., from an environment
@@ -353,7 +347,7 @@ pub(crate) struct RootResolutionResult {
     pub(crate) root: Option<PathBuf>,
     /// The discovery marker found at the root, if resolved via ascending
     /// discovery.
-    pub(crate) marker: Option<DiscoveredConfigFile>,
+    pub(crate) marker: Option<DiscoveredConfigPath>,
     /// The origin of the resolution.
     pub(crate) source: Option<RootResolutionSource>,
     /// Non-fatal warnings encountered during resolution (e.g., invalid ceiling
@@ -441,12 +435,12 @@ pub(crate) enum RootResolutionError {
 /// Internal helper for tracking the result of an ascending discovery walk.
 struct AscendingResolution {
     root: Option<PathBuf>,
-    marker: Option<DiscoveredConfigFile>,
+    marker: Option<DiscoveredConfigPath>,
 }
 
 impl AscendingResolution {
     /// Constructs a successful resolution.
-    fn found(root: PathBuf, marker: DiscoveredConfigFile) -> Self {
+    fn found(root: PathBuf, marker: DiscoveredConfigPath) -> Self {
         Self {
             root: Some(root),
             marker: Some(marker),
@@ -881,47 +875,46 @@ mod tests {
         fn returns_root_config_marker_first() {
             let root = tempdir().expect("root");
             write_marker(root.path(), ".lithos.toml");
-            write_marker(root.path(), "lithos.toml");
+            let expected_path = write_marker(root.path(), "lithos.toml");
 
             let marker = RootResolver::discover_marker(root.path())
                 .expect("marker lookup succeeds")
                 .expect("marker exists");
 
             assert_eq!(
-                marker.location,
-                ConfigLocation::Local(LocalConfigLocation::RootConfigFile)
+                marker.path,
+                expected_path.canonicalize().expect("canonical marker")
             );
         }
 
         #[test]
         fn returns_hidden_root_marker_when_root_marker_absent() {
             let root = tempdir().expect("root");
-            write_marker(root.path(), ".lithos.toml");
+            let expected_path = write_marker(root.path(), ".lithos.toml");
 
             let marker = RootResolver::discover_marker(root.path())
                 .expect("marker lookup succeeds")
                 .expect("marker exists");
 
             assert_eq!(
-                marker.location,
-                ConfigLocation::Local(
-                    LocalConfigLocation::HiddenRootConfigFile
-                )
+                marker.path,
+                expected_path.canonicalize().expect("canonical marker")
             );
         }
 
         #[test]
         fn returns_config_directory_marker_when_other_markers_absent() {
             let root = tempdir().expect("root");
-            write_marker(root.path(), ".lithos/config.toml");
+            let expected_path =
+                write_marker(root.path(), ".lithos/config.toml");
 
             let marker = RootResolver::discover_marker(root.path())
                 .expect("marker lookup succeeds")
                 .expect("marker exists");
 
             assert_eq!(
-                marker.location,
-                ConfigLocation::Local(LocalConfigLocation::ConfigDirectoryFile)
+                marker.path,
+                expected_path.canonicalize().expect("canonical marker")
             );
         }
 

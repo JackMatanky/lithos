@@ -12,7 +12,25 @@ use crate::{
     fs::format::StructuredFileFormat,
 };
 
-/// Typed representation of one discovered config file.
+/// Typed representation of one discovered config file without location
+/// metadata.
+#[allow(
+    dead_code,
+    reason = "Phase-1 contracts are defined before full pipeline integration"
+)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct DiscoveredConfigPath {
+    /// Base directory used for interpreting relative paths in the config file.
+    ///
+    /// For local vault configs, this is the vault root.
+    pub(crate) base: PathBuf,
+    /// Absolute canonicalized path to the discovered config file.
+    pub(crate) path: PathBuf,
+    /// The detected or assumed structured format of the file.
+    pub(crate) format: StructuredFileFormat,
+}
+
+/// Typed representation of one discovered config file with location metadata.
 #[allow(
     dead_code,
     reason = "Phase-1 contracts are defined before full pipeline integration"

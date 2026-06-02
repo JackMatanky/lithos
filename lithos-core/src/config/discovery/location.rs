@@ -66,6 +66,11 @@ pub(crate) enum LocalConfigLocation {
 
 impl LocalConfigLocation {
     /// Locations recognized as valid vault root markers.
+    #[allow(
+        dead_code,
+        reason = "Phase-1 contracts are defined before full pipeline \
+                  integration"
+    )]
     pub(crate) const MARKERS: &'static [Self] = &[
         Self::RootConfigFile,
         Self::HiddenRootConfigFile,
