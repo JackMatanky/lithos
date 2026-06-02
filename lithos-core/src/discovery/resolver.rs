@@ -20,12 +20,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{
-    contracts::DiscoveredConfigFile,
-    diagnostics::RootResolutionWarning,
-    location::{ConfigLocation, LocalConfigLocation},
+use crate::{
+    config::discovery::location::{ConfigLocation, LocalConfigLocation},
+    discovery::{DiscoveredConfigFile, RootResolutionWarning},
+    fs::format::StructuredFileFormat,
 };
-use crate::fs::format::StructuredFileFormat;
 
 /// The primary engine for resolving a vault root and its discovery marker.
 ///
@@ -261,27 +260,32 @@ impl RootResolver {
                     .iter()
                     .map(move |&format| (location, format))
             })
-            .find_map(|(location, format)| {
-                let path = location.candidate_path(root, format);
-                if !path.is_file() {
-                    return None;
-                }
-
-                match path.canonicalize() {
-                    Ok(canonical) => Some(Ok(DiscoveredConfigFile {
-                        location: ConfigLocation::Local(location),
-                        base: root.to_path_buf(),
-                        path: canonical,
-                        format,
-                    })),
-                    Err(source) => {
-                        Some(Err(RootResolutionError::CanonicalizePath {
-                            path: path.clone(),
-                            source,
-                        }))
+            .find_map(
+                |(location, format): (
+                    LocalConfigLocation,
+                    StructuredFileFormat,
+                )| {
+                    let path = location.candidate_path(root, format);
+                    if !path.is_file() {
+                        return None;
                     }
-                }
-            })
+
+                    match path.canonicalize() {
+                        Ok(canonical) => Some(Ok(DiscoveredConfigFile {
+                            location: ConfigLocation::Local(location),
+                            base: root.to_path_buf(),
+                            path: canonical,
+                            format,
+                        })),
+                        Err(source) => {
+                            Some(Err(RootResolutionError::CanonicalizePath {
+                                path: path.clone(),
+                                source,
+                            }))
+                        }
+                    }
+                },
+            )
             .transpose()
     }
 

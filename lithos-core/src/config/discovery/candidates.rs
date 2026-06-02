@@ -6,12 +6,14 @@
 
 use std::{io, path::Path};
 
-use super::{
-    contracts::{ConfigSelectionResult, DiscoveredConfigFile},
-    diagnostics::{DiscoveryWarning, FormatDiscoveryWarning},
-    location::{ConfigLocation, LocalConfigLocation},
+use super::location::{ConfigLocation, LocalConfigLocation};
+use crate::{
+    discovery::{
+        ConfigSelectionResult, DiscoveredConfigFile, DiscoveryWarning,
+        FormatDiscoveryWarning,
+    },
+    fs::format::StructuredFileFormat,
 };
-use crate::fs::format::StructuredFileFormat;
 
 /// Finds all existing local config candidates for a logical location.
 ///

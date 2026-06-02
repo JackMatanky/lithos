@@ -6,8 +6,11 @@
 
 use std::path::PathBuf;
 
-use super::{diagnostics::DiscoveryWarning, location::ConfigLocation};
-use crate::fs::format::StructuredFileFormat;
+use super::diagnostics::DiscoveryWarning;
+use crate::{
+    config::discovery::location::ConfigLocation,
+    fs::format::StructuredFileFormat,
+};
 
 /// Typed representation of one discovered config file.
 #[allow(
@@ -64,12 +67,12 @@ pub(crate) struct ConfigSelectionResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{
-            diagnostics::{DiscoveryWarning, LocalDiscoveryWarning},
-            location::{GlobalConfigLocation, LocalConfigLocation},
+    use super::*;
+    use crate::{
+        config::discovery::location::{
+            GlobalConfigLocation, LocalConfigLocation,
         },
-        *,
+        discovery::diagnostics::{DiscoveryWarning, LocalDiscoveryWarning},
     };
 
     mod constructor {
