@@ -77,8 +77,8 @@ pub struct BaseSchema {
 impl BaseSchema {
     /// Creates a new `BaseSchema` with current timestamp.
     ///
-    /// `extends` and `excludes` are deduplicated via [`HashSet`]; order is not
-    /// preserved and is not semantically meaningful.
+    /// `extends` and `excludes` are deduplicated via [`HashSet`] and stored in
+    /// a deterministic order.
     ///
     /// # Examples
     ///
@@ -111,15 +111,20 @@ impl BaseSchema {
         extends: Vec<SchemaName>,
         excludes: Vec<PropertyName>,
     ) -> Self {
-        let extends_set: HashSet<SchemaName> = extends.into_iter().collect();
-        let excludes_set: HashSet<PropertyName> =
-            excludes.into_iter().collect();
+        let mut extends: Vec<SchemaName> =
+            extends.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        extends.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        let mut excludes: Vec<PropertyName> =
+            excludes.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        excludes.sort();
+
         Self {
             id,
             name,
             properties,
-            extends: extends_set.into_iter().collect(),
-            excludes: excludes_set.into_iter().collect(),
+            extends: extends.into_boxed_slice(),
+            excludes: excludes.into_boxed_slice(),
             recorded_at: SystemTime::now(),
         }
     }
@@ -280,6 +285,57 @@ mod tests {
                 base.properties().is_empty(),
                 "Empty property map should be accepted as-is"
             );
+        }
+
+        #[test]
+        fn new_accepts_self_in_extends_for_resolver_to_reject_later() {
+            let name = fixtures::schema_name("child");
+
+            let base = BaseSchema::new(
+                SchemaId::new(),
+                name.clone(),
+                PropertyMap::new(),
+                vec![name.clone()],
+                Vec::new(),
+            );
+
+            // Phase-1 BaseSchema is file-local. Cycle detection happens
+            // in the inheritance resolver (slice 02+), not here.
+            assert_eq!(base.extends(), &[name]);
+        }
+
+        #[test]
+        fn equal_base_schemas_compare_equal_regardless_of_extends_excludes_order()
+         {
+            let base1 = BaseSchema::new(
+                SchemaId::new(),
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                vec![
+                    fixtures::schema_name("parent"),
+                    fixtures::schema_name("other"),
+                ],
+                vec![
+                    fixtures::property_name("title"),
+                    fixtures::property_name("body"),
+                ],
+            );
+            let base2 = BaseSchema::new(
+                SchemaId::new(),
+                fixtures::schema_name("child"),
+                PropertyMap::new(),
+                vec![
+                    fixtures::schema_name("other"),
+                    fixtures::schema_name("parent"),
+                ],
+                vec![
+                    fixtures::property_name("body"),
+                    fixtures::property_name("title"),
+                ],
+            );
+
+            assert_eq!(base1.extends(), base2.extends());
+            assert_eq!(base1.excludes(), base2.excludes());
         }
     }
 

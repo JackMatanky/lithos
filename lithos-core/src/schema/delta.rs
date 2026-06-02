@@ -137,8 +137,8 @@ pub(crate) struct ExtendsDelta {
 impl ExtendsDelta {
     /// Creates a new extends delta with deduplicated inputs.
     ///
-    /// `added` and `removed` are deduplicated via [`HashSet`]; order is not
-    /// preserved and is not semantically meaningful.
+    /// `added` and `removed` are deduplicated via [`HashSet`] and stored in a
+    /// deterministic order.
     #[inline]
     #[must_use]
     #[cfg_attr(
@@ -149,11 +149,17 @@ impl ExtendsDelta {
         added: Vec<SchemaName>,
         removed: Vec<SchemaName>,
     ) -> Self {
-        let added: HashSet<SchemaName> = added.into_iter().collect();
-        let removed: HashSet<SchemaName> = removed.into_iter().collect();
+        let mut added: Vec<SchemaName> =
+            added.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        let mut removed: Vec<SchemaName> =
+            removed.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
         Self {
-            added: added.into_iter().collect(),
-            removed: removed.into_iter().collect(),
+            added: added.into_boxed_slice(),
+            removed: removed.into_boxed_slice(),
         }
     }
 
@@ -199,14 +205,17 @@ impl ExtendsDelta {
         let old_set: HashSet<&SchemaName> = old_extends.iter().collect();
         let new_set: HashSet<&SchemaName> = new_extends.iter().collect();
 
-        let added: Box<[SchemaName]> =
+        let mut added: Vec<SchemaName> =
             new_set.difference(&old_set).map(|name| (*name).clone()).collect();
-        let removed: Box<[SchemaName]> =
+        added.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        let mut removed: Vec<SchemaName> =
             old_set.difference(&new_set).map(|name| (*name).clone()).collect();
+        removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
 
         Self {
-            added,
-            removed,
+            added: added.into_boxed_slice(),
+            removed: removed.into_boxed_slice(),
         }
     }
 }
@@ -663,6 +672,23 @@ mod tests {
                 2,
                 "Expected duplicates in removed to be removed: {:?}",
                 delta.removed()
+            );
+        }
+
+        #[test]
+        fn equal_deltas_compare_equal_regardless_of_input_order() {
+            let a = ExtendsDelta::new(
+                vec![schema_name("parent"), schema_name("other")],
+                Vec::new(),
+            );
+            let b = ExtendsDelta::new(
+                vec![schema_name("other"), schema_name("parent")],
+                Vec::new(),
+            );
+
+            assert_eq!(
+                a, b,
+                "Equal sets must compare equal regardless of input order"
             );
         }
 
