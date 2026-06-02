@@ -7,10 +7,10 @@
 |-------|-------------|--------|
 | 1. Discovery | Identify divergence point and analyze changes in both branches. | complete |
 | 2. Conflict Analysis | Identify physical and logical conflicts using GitNexus and Rust best practices. | complete |
-| 3. Strategy Design | Define merge sequence, migrations, and validation procedures. | in_progress |
-| 4. Approval | Present findings and strategy for user approval. | pending |
-| 5. Execution | Execute the approved merge strategy. | pending |
-| 6. Validation | Run quality gates (fmt, lint, test) on the merged state. | pending |
+| 3. Strategy Design | Define merge sequence, migrations, and validation procedures. | complete |
+| 4. Approval | Present findings and strategy for user approval. | complete |
+| 5. Execution | Execute the approved merge strategy. | complete |
+| 6. Validation | Run quality gates (fmt, lint, test) on the merged state. | complete |
 
 ## Decisions
 | Decision | Rationale |
