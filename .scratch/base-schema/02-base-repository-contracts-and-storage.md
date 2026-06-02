@@ -92,6 +92,12 @@ Vertical-slice tracer-bullet approach (one test → one impl per cycle):
 **Naming convention**: `find_*` prefix (not `get_*`), following `find_schema_by_id` pattern.
 **Test structure**: `mod base_schema { mod lookup { ... } mod save { ... } mod delete { ... } }` per adapter.
 
+## Merge Log
+
+| Date | Action |
+|------|--------|
+| 2026-06-02 | Merged into `main` at `7ecf06a6` (8 feature commits, 0 conflicts) |
+
 ## Implementation Log
 
 ### Commits
