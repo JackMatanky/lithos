@@ -21,7 +21,7 @@ use std::{
 };
 
 use crate::{
-    discovery::{DiscoveredConfigPath, RootResolutionWarning},
+    discovery::{FoundRootMarker, RootResolutionWarning},
     fs::format::StructuredFileFormat,
 };
 
@@ -251,7 +251,7 @@ impl RootResolver {
     /// Checks a specific directory for any supported root marker files.
     fn discover_marker(
         root: &Path,
-    ) -> Result<Option<DiscoveredConfigPath>, RootResolutionError> {
+    ) -> Result<Option<FoundRootMarker>, RootResolutionError> {
         let prefixes = ["lithos", ".lithos", ".lithos/config"];
         for prefix in prefixes {
             for format in StructuredFileFormat::PRECEDENCE {
@@ -273,7 +273,7 @@ impl RootResolver {
                     }
                 };
 
-                return Ok(Some(DiscoveredConfigPath {
+                return Ok(Some(FoundRootMarker {
                     base: root.to_path_buf(),
                     path: canonical,
                     format,
@@ -345,9 +345,8 @@ pub(crate) struct RootResolverInput<'a> {
 pub(crate) struct RootResolutionResult {
     /// The absolute path to the resolved vault root.
     pub(crate) root: Option<PathBuf>,
-    /// The discovery marker found at the root, if resolved via ascending
-    /// discovery.
-    pub(crate) marker: Option<DiscoveredConfigPath>,
+    /// The root marker file found during ascending discovery, if any.
+    pub(crate) marker: Option<FoundRootMarker>,
     /// The origin of the resolution.
     pub(crate) source: Option<RootResolutionSource>,
     /// Non-fatal warnings encountered during resolution (e.g., invalid ceiling
@@ -435,12 +434,12 @@ pub(crate) enum RootResolutionError {
 /// Internal helper for tracking the result of an ascending discovery walk.
 struct AscendingResolution {
     root: Option<PathBuf>,
-    marker: Option<DiscoveredConfigPath>,
+    marker: Option<FoundRootMarker>,
 }
 
 impl AscendingResolution {
     /// Constructs a successful resolution.
-    fn found(root: PathBuf, marker: DiscoveredConfigPath) -> Self {
+    fn found(root: PathBuf, marker: FoundRootMarker) -> Self {
         Self {
             root: Some(root),
             marker: Some(marker),

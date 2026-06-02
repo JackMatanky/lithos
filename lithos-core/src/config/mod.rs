@@ -113,6 +113,8 @@ pub use storage::{RedbRepository, RedbStorage};
 pub mod builder;
 /// Local config candidate discovery and deterministic selection.
 pub(crate) mod candidates;
+/// Config-owned discovery result contracts.
+pub(crate) mod contracts;
 /// Consolidated discovery logic for config files.
 pub(crate) mod discovery;
 /// Configuration error types.
