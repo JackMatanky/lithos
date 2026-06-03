@@ -53,6 +53,7 @@ use std::marker::PhantomData;
 use crate::{
     fs::{DirPath, FileReader, FsFile, PathKey},
     schema::{
+        bank::PropertyBank,
         base::BaseSchema,
         delta::{
             ExcludesDelta, ExtendsDelta, PropertyDelta, PropertyDeltaEngine,
@@ -67,8 +68,8 @@ use crate::{
         raw::RawSchema,
         repository::{ReadRepository, Repository, WriteRepository},
         views::{
-            HashRecord, RawPropertyHashIndex, RawView as _, RawViewRead,
-            SchemaVersion, contracts::Version as _, raw::RawSchemaView,
+            HashRecord, RawView as _, RawViewRead, SchemaVersion,
+            contracts::Version as _, raw::RawSchemaView,
         },
     },
     support::content_hash::Blake3Hash,
@@ -238,6 +239,11 @@ impl BaseSchemaProcessor<Init, Unknown> {
 
     /// Run the full base schema pipeline.
     ///
+    /// `bank` is the already-loaded [`PropertyBank`] from the preceding
+    /// `PropertyBankProcessor` run; it is used for `$ref` expansion during
+    /// delta computation and schema construction. The caller is responsible for
+    /// loading it; this processor never fetches it from the repository.
+    ///
     /// When `view` is `None`, the processor runs the missing path
     /// (construct from defaults → persist).
     /// When `view` is `Some(...)`, the processor runs the present path
@@ -251,12 +257,13 @@ impl BaseSchemaProcessor<Init, Unknown> {
         view: Option<&RawSchemaView>,
         source: &FileReader,
         repository: &R,
+        bank: &PropertyBank,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
         if let Some(view) = view {
             let present = self.transition(Comparison, Present {
                 view: view.clone(),
             });
-            Self::run_present(present, source, repository)
+            Self::run_present(present, source, repository, bank)
         } else {
             self.run_missing(repository)
         }
@@ -295,6 +302,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         processor: BaseSchemaProcessor<Comparison, Present>,
         source: &FileReader,
         repository: &R,
+        bank: &PropertyBank,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
         match processor.check_timestamps(source)? {
             TimestampBranch::Match(fresh) => {
@@ -306,11 +314,12 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 })
             }
             TimestampBranch::Mismatch(suspect) => {
-                Self::run_content_check(suspect, repository)
+                Self::run_content_check(suspect, repository, bank)
             }
         }
     }
 
+    /// Internal helper for content-hash comparison after a timestamp mismatch.
     #[cfg_attr(
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
@@ -318,6 +327,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
     fn run_content_check<R: Repository>(
         processor: BaseSchemaProcessor<Comparison, Suspect>,
         repository: &R,
+        bank: &PropertyBank,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
         match processor.check_content() {
             ContentBranch::Match(stale_timestamps) => {
@@ -331,11 +341,13 @@ impl BaseSchemaProcessor<Init, Unknown> {
             }
             ContentBranch::Mismatch(stale) => {
                 let parsed = stale.parse()?;
-                Self::run_analysis(parsed.analyze(repository)?, repository)
+                Self::run_analysis(parsed.analyze(bank)?, repository)
             }
         }
     }
 
+    /// Internal helper for semantic-delta analysis after a content-hash
+    /// mismatch.
     #[cfg_attr(
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
@@ -365,74 +377,6 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 })
             }
         }
-    }
-
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "Builder integration deferred to Phase 3")
-    )]
-    fn diff_properties<R: Repository>(
-        raw: &RawSchema,
-        previous_hashes: &RawPropertyHashIndex,
-        repository: &R,
-    ) -> Result<PropertyDelta, SchemaLoaderError> {
-        let engine = PropertyDeltaEngine::for_schema(raw, previous_hashes);
-        if let Some(bank) = repository
-            .get_property_bank()
-            .map_err(SchemaLoaderError::Repository)?
-        {
-            engine.diff_schema(&RefExpander::new(&bank))
-        } else {
-            engine.diff_schema_without_bank()
-        }
-    }
-
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "Builder integration deferred to Phase 3")
-    )]
-    fn updated_base_schema<R: Repository>(
-        schema_id: SchemaId,
-        raw: &RawSchema,
-        repository: &R,
-    ) -> Result<BaseSchema, SchemaLoaderError> {
-        let properties = if let Some(bank) = repository
-            .get_property_bank()
-            .map_err(SchemaLoaderError::Repository)?
-        {
-            let expander = RefExpander::new(&bank);
-            let mut resolved_properties = expander
-                .expand_properties(&raw.properties().ref_entries())
-                .map_err(SchemaLoaderError::Resolution)?;
-            let inline_entries = raw.properties().inline_entries();
-            if !inline_entries.is_empty() {
-                resolved_properties.extend(
-                    PropertyMap::try_from(inline_entries)
-                        .map_err(SchemaLoaderError::Resolution)?,
-                );
-            }
-            resolved_properties
-        } else {
-            let refs = raw.properties().ref_entries();
-            if !refs.is_empty() {
-                tracing::warn!(
-                    ref_count = refs.len(),
-                    "property bank missing; treating schema refs as unexpanded"
-                );
-            }
-            PropertyMap::try_from(raw.properties().inline_entries())
-                .map_err(SchemaLoaderError::Resolution)?
-        };
-
-        let schema_name = SchemaName::try_new(raw.name())
-            .map_err(SchemaLoaderError::Resolution)?;
-        Ok(BaseSchema::new(
-            schema_id,
-            schema_name,
-            properties,
-            raw.extends().to_vec(),
-            raw.excludes().to_vec(),
-        ))
     }
 }
 
@@ -663,9 +607,9 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
-    fn analyze<R: Repository>(
+    fn analyze(
         self,
-        repository: &R,
+        bank: &PropertyBank,
     ) -> Result<AnalysisBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
 
@@ -687,12 +631,12 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
             )));
         };
 
-        let property_delta =
-            BaseSchemaProcessor::<Init, Unknown>::diff_properties(
-                &status.raw,
-                version.hashes().properties(),
-                repository,
-            )?;
+        let expander = RefExpander::new(bank);
+        let property_delta = PropertyDeltaEngine::for_schema(
+            &status.raw,
+            version.hashes().properties(),
+        )
+        .diff_schema(&expander)?;
         let excludes_delta = ExcludesDelta::from_slices(
             version.excludes(),
             status.raw.excludes(),
@@ -720,6 +664,7 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
                     raw: status.raw,
                     view: status.view,
                     content_hash: status.content_hash,
+                    bank_snapshot: bank.clone(),
                     property_delta,
                     excludes_delta,
                     extends_delta,
@@ -892,6 +837,11 @@ struct Changed {
     raw: RawSchema,
     view: RawSchemaView,
     content_hash: Blake3Hash,
+    /// Snapshot of the [`PropertyBank`] used to expand `$ref` properties when
+    /// constructing the updated [`BaseSchema`]. Cloned from the
+    /// caller-supplied bank at the Analysis stage so the bank need not be
+    /// re-fetched.
+    bank_snapshot: PropertyBank,
     property_delta: PropertyDelta,
     excludes_delta: ExcludesDelta,
     extends_delta: ExtendsDelta,
@@ -949,6 +899,8 @@ impl BaseSchemaProcessor<Construction, Changed> {
                     ),
                 )
             })?;
+
+        // Build updated view version using the new content and property hashes.
         let property_hashes = status.raw.properties().compute_hashes();
         let hashes =
             HashRecord::new(status.content_hash, property_hashes.into());
@@ -957,12 +909,29 @@ impl BaseSchemaProcessor<Construction, Changed> {
                 .map_err(SchemaLoaderError::Ingestion)?;
         let mut updated_view = status.view;
         updated_view.add_version(version);
-        let updated_base =
-            BaseSchemaProcessor::<Init, Unknown>::updated_base_schema(
-                schema_id,
-                &status.raw,
-                repository,
-            )?;
+
+        // Expand properties using the bank snapshot carried from Analysis.
+        let expander = RefExpander::new(&status.bank_snapshot);
+        let mut properties = expander
+            .expand_properties(&status.raw.properties().ref_entries())
+            .map_err(SchemaLoaderError::Resolution)?;
+        let inline_entries = status.raw.properties().inline_entries();
+        if !inline_entries.is_empty() {
+            properties.extend(
+                PropertyMap::try_from(inline_entries)
+                    .map_err(SchemaLoaderError::Resolution)?,
+            );
+        }
+
+        let schema_name = SchemaName::try_new(status.raw.name())
+            .map_err(SchemaLoaderError::Resolution)?;
+        let updated_base = BaseSchema::new(
+            schema_id,
+            schema_name,
+            properties,
+            status.raw.extends().to_vec(),
+            status.raw.excludes().to_vec(),
+        );
 
         repository
             .save_base_schema(&updated_base)
@@ -1079,10 +1048,7 @@ impl BaseSchemaProcessor<Completed, NewReady> {
 impl BaseSchemaProcessor<Completed, FreshReady> {
     #[inline]
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "Builder integration deferred to Phase 3")
-    )]
+    #[allow(dead_code, reason = "Builder integration deferred to Phase 3")]
     fn into_base(self) -> BaseSchema {
         self.status.base
     }
@@ -1126,10 +1092,37 @@ mod tests {
     use crate::{
         fs::{DirPath, FsFile},
         schema::{
-            repository::ReadRepository, storage::testing::InMemoryRepository,
-            views::RawView,
+            bank::PropertyBank, repository::ReadRepository,
+            storage::testing::InMemoryRepository, views::RawView,
         },
     };
+
+    macro_rules! expect_new {
+        ($resolution:expr) => {{
+            let resolution = $resolution;
+            let BaseSchemaResolution::New {
+                base_schema,
+            } = resolution
+            else {
+                panic!("Expected New resolution");
+            };
+            base_schema
+        }};
+    }
+
+    macro_rules! expect_fresh {
+        ($resolution:expr) => {{
+            let resolution = $resolution;
+            let BaseSchemaResolution::Fresh {
+                schema_id,
+                base_schema,
+            } = resolution
+            else {
+                panic!("Expected Fresh resolution");
+            };
+            (schema_id, base_schema)
+        }};
+    }
 
     /// Helper to create a [`RawSchemaView`] with the fixture file's timestamps.
     fn matching_view(fixture: &fixtures::Fixture) -> RawSchemaView {
@@ -1292,7 +1285,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn from_discovery_returns_processor_with_unknown() {
+        fn new_resolution_constructs_with_empty_properties() {
             let fixture = fixtures::make_fixture();
             let processor =
                 BaseSchemaProcessor::<Init, Unknown>::from_discovery(
@@ -1301,39 +1294,68 @@ mod tests {
                 )
                 .expect("processor");
 
-            assert!(matches!(processor.status, Unknown));
+            let resolution = processor
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
+                .expect("run");
+
+            let base_schema = expect_new!(resolution);
+            assert!(base_schema.properties().is_empty());
+        }
+
+        #[test]
+        fn new_resolution_constructs_with_empty_extends() {
+            let fixture = fixtures::make_fixture();
+            let processor =
+                BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("processor");
+
+            let resolution = processor
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
+                .expect("run");
+
+            let base_schema = expect_new!(resolution);
+            assert!(base_schema.extends().is_empty());
+        }
+
+        #[test]
+        fn new_resolution_constructs_with_empty_excludes() {
+            let fixture = fixtures::make_fixture();
+            let processor =
+                BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("processor");
+
+            let resolution = processor
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
+                .expect("run");
+
+            let base_schema = expect_new!(resolution);
+            assert!(base_schema.excludes().is_empty());
         }
     }
 
     mod run {
         use super::*;
-
-        macro_rules! expect_new {
-            ($resolution:expr) => {{
-                let resolution = $resolution;
-                let BaseSchemaResolution::New {
-                    base_schema,
-                } = resolution
-                else {
-                    panic!("Expected New resolution");
-                };
-                base_schema
-            }};
-        }
-
-        macro_rules! expect_fresh {
-            ($resolution:expr) => {{
-                let resolution = $resolution;
-                let BaseSchemaResolution::Fresh {
-                    schema_id,
-                    base_schema,
-                } = resolution
-                else {
-                    panic!("Expected Fresh resolution");
-                };
-                (schema_id, base_schema)
-            }};
-        }
 
         #[test]
         fn missing_constructs_and_persists_base_schema() {
@@ -1346,7 +1368,12 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(None, &fixture.source, &fixture.repository)
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
             assert!(matches!(resolution, BaseSchemaResolution::New { .. }));
@@ -1363,7 +1390,12 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(None, &fixture.source, &fixture.repository)
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
             let base_schema = expect_new!(resolution);
@@ -1381,7 +1413,12 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(None, &fixture.source, &fixture.repository)
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
             let base_schema = expect_new!(resolution);
@@ -1393,26 +1430,9 @@ mod tests {
         #[test]
         fn present_returns_fresh_when_timestamps_match() {
             let fixture = fixtures::make_fixture();
-
-            let schema_id = crate::schema::identifier::SchemaId::new();
-            let schema_name =
-                crate::schema::identifier::SchemaName::try_new("test-schema")
-                    .expect("name");
-            let base = BaseSchema::new(
-                schema_id,
-                schema_name,
-                PropertyMap::new(),
-                Vec::new(),
-                Vec::new(),
-            );
-            fixture.repository.save_base_schema(&base).expect("save base");
-
+            let schema_id = SchemaId::new();
             let view = matching_view(&fixture);
-            fixture
-                .repository
-                .save_raw_schema_view(schema_id, &view)
-                .expect("save view");
-
+            seed_base_and_view(&fixture, schema_id, &view);
             let processor =
                 BaseSchemaProcessor::<Init, Unknown>::from_discovery(
                     fixture.file,
@@ -1421,37 +1441,24 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(Some(&view), &fixture.source, &fixture.repository)
+                .run(
+                    Some(&view),
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
-            let (sid, bs) = expect_fresh!(resolution);
+            let (sid, _) = expect_fresh!(resolution);
             assert_eq!(sid, schema_id);
-            assert_eq!(bs.name().as_str(), "test-schema");
         }
 
         #[test]
-        fn present_does_not_write_when_fresh() {
+        fn present_returns_correct_base_schema_when_fresh() {
             let fixture = fixtures::make_fixture();
-
-            let schema_id = crate::schema::identifier::SchemaId::new();
-            let schema_name =
-                crate::schema::identifier::SchemaName::try_new("test-schema")
-                    .expect("name");
-            let base = BaseSchema::new(
-                schema_id,
-                schema_name,
-                PropertyMap::new(),
-                Vec::new(),
-                Vec::new(),
-            );
-            fixture.repository.save_base_schema(&base).expect("save base");
-
+            let schema_id = SchemaId::new();
             let view = matching_view(&fixture);
-            fixture
-                .repository
-                .save_raw_schema_view(schema_id, &view)
-                .expect("save view");
-
+            let base = seed_base_and_view(&fixture, schema_id, &view);
             let processor =
                 BaseSchemaProcessor::<Init, Unknown>::from_discovery(
                     fixture.file,
@@ -1460,10 +1467,15 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(Some(&view), &fixture.source, &fixture.repository)
+                .run(
+                    Some(&view),
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
-            let (_sid, bs) = expect_fresh!(resolution);
+            let (_, bs) = expect_fresh!(resolution);
             assert_eq!(bs, base);
         }
 
@@ -1478,7 +1490,12 @@ mod tests {
                 .expect("processor");
 
             let resolution = processor
-                .run(None, &fixture.source, &fixture.repository)
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
                 .expect("run");
 
             let base_schema = expect_new!(resolution);
@@ -1509,7 +1526,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 let (fresh_id, _) = expect_fresh!(resolution);
@@ -1517,13 +1539,11 @@ mod tests {
             }
 
             #[test]
-            fn persists_view_when_normalizing_stale_timestamps() {
+            fn returns_fresh_when_normalizing_stale_timestamps() {
                 let fixture = fixtures::make_fixture();
                 let schema_id = SchemaId::new();
                 let view = stale_view(&fixture, &fixture.content);
                 seed_base_and_view(&fixture, schema_id, &view);
-                fixture.repository.harness().counters().reset();
-                let fixture_times = fixture.file.metadata().times().clone();
                 let processor =
                     BaseSchemaProcessor::<Init, Unknown>::from_discovery(
                         fixture.file,
@@ -1532,25 +1552,89 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 assert!(matches!(
                     resolution,
                     BaseSchemaResolution::Fresh { .. }
                 ));
+            }
+
+            #[test]
+            fn updates_view_timestamps_when_normalizing_stale_timestamps() {
+                let fixture = fixtures::make_fixture();
+                let schema_id = SchemaId::new();
+                let view = stale_view(&fixture, &fixture.content);
+                seed_base_and_view(&fixture, schema_id, &view);
+                let fixture_times = fixture.file.metadata().times().clone();
+                let processor =
+                    BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                        fixture.file,
+                        &fixture.vault_root,
+                    )
+                    .expect("processor");
+
+                processor
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
+                    .expect("run");
+
                 let saved = fixture
                     .repository
                     .get_raw_schema_view(schema_id)
                     .expect("get view")
                     .expect("view");
-                assert!(saved.is_timestamp_match(
-                    fixture_times.created_at(),
-                    fixture_times.modified_at(),
-                ));
+                assert!(
+                    saved.is_timestamp_match(
+                        fixture_times.created_at(),
+                        fixture_times.modified_at(),
+                    ),
+                    "saved view should match fixture timestamps"
+                );
+            }
+
+            #[test]
+            fn does_not_write_base_schema_when_normalizing_stale_timestamps() {
+                let fixture = fixtures::make_fixture();
+                let schema_id = SchemaId::new();
+                let view = stale_view(&fixture, &fixture.content);
+                seed_base_and_view(&fixture, schema_id, &view);
+                fixture.repository.harness().counters().reset();
+                let processor =
+                    BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                        fixture.file,
+                        &fixture.vault_root,
+                    )
+                    .expect("processor");
+
+                processor
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
+                    .expect("run");
+
+                // Only the view update should be written; BaseSchema is
+                // unchanged.
                 let snapshot =
                     fixture.repository.harness().counters().snapshot();
-                assert_eq!(snapshot.writes, 2);
+                assert_eq!(
+                    snapshot.writes, 2,
+                    "expected only view write (schema_id path + view), not \
+                     BaseSchema rewrite"
+                );
             }
 
             #[test]
@@ -1558,8 +1642,35 @@ mod tests {
              {
                 let mut fixture = fixtures::make_fixture();
                 let schema_id = SchemaId::new();
-                let old_content = "properties: {}";
-                let view = stale_view(&fixture, old_content);
+                let view = stale_view(&fixture, "properties: {}");
+                seed_base_and_view(&fixture, schema_id, &view);
+                fixtures::write_schema(&mut fixture, "properties: {}\n");
+                let processor =
+                    BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                        fixture.file,
+                        &fixture.vault_root,
+                    )
+                    .expect("processor");
+
+                let resolution = processor
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
+                    .expect("run");
+
+                let (fresh_id, _) = expect_fresh!(resolution);
+                assert_eq!(fresh_id, schema_id);
+            }
+
+            #[test]
+            fn returns_unchanged_base_schema_when_semantic_state_is_unchanged_after_content_mismatch()
+             {
+                let mut fixture = fixtures::make_fixture();
+                let schema_id = SchemaId::new();
+                let view = stale_view(&fixture, "properties: {}");
                 let base = seed_base_and_view(&fixture, schema_id, &view);
                 fixtures::write_schema(&mut fixture, "properties: {}\n");
                 let processor =
@@ -1570,21 +1681,55 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
-                let (fresh_id, fresh_base) = expect_fresh!(resolution);
-                assert_eq!(fresh_id, schema_id);
+                let (_, fresh_base) = expect_fresh!(resolution);
                 assert_eq!(fresh_base, base);
             }
 
             #[test]
-            fn appends_version_without_mutating_prior_metadata_when_content_normalizes()
+            fn appends_view_version_when_content_normalizes() {
+                let mut fixture = fixtures::make_fixture();
+                let schema_id = SchemaId::new();
+                let view = stale_view(&fixture, "properties: {}");
+                seed_base_and_view(&fixture, schema_id, &view);
+                fixtures::write_schema(&mut fixture, "properties: {}\n");
+                let processor =
+                    BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                        fixture.file,
+                        &fixture.vault_root,
+                    )
+                    .expect("processor");
+
+                processor
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
+                    .expect("run");
+
+                let saved = fixture
+                    .repository
+                    .get_raw_schema_view(schema_id)
+                    .expect("get view")
+                    .expect("view");
+                assert_eq!(saved.version_count(), view.version_count() + 1);
+            }
+
+            #[test]
+            fn new_view_version_carries_current_file_metadata_when_content_normalizes()
              {
                 let mut fixture = fixtures::make_fixture();
                 let schema_id = SchemaId::new();
-                let old_content = "properties: {}";
-                let view = stale_view(&fixture, old_content);
+                let view = stale_view(&fixture, "properties: {}");
                 seed_base_and_view(&fixture, schema_id, &view);
                 fixtures::write_schema(&mut fixture, "properties: {}\n");
                 let new_metadata = fixture.file.metadata().clone();
@@ -1595,20 +1740,20 @@ mod tests {
                     )
                     .expect("processor");
 
-                let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                processor
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
-                assert!(matches!(
-                    resolution,
-                    BaseSchemaResolution::Fresh { .. }
-                ));
                 let saved = fixture
                     .repository
                     .get_raw_schema_view(schema_id)
                     .expect("get view")
                     .expect("view");
-                assert_eq!(saved.version_count(), view.version_count() + 1);
                 assert_eq!(
                     saved.current().expect("new current").metadata(),
                     &new_metadata
@@ -1659,7 +1804,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 let (_, _, property_delta, _, _) = expect_stale!(resolution);
@@ -1684,7 +1834,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 let (_, _, _, _, extends_delta) = expect_stale!(resolution);
@@ -1709,7 +1864,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 let (_, _, _, excludes_delta, _) = expect_stale!(resolution);
@@ -1734,7 +1894,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 let (stale_id, base_schema, _, _, _) =
@@ -1761,7 +1926,12 @@ mod tests {
                     .expect("processor");
 
                 let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
+                    .run(
+                        Some(&view),
+                        &fixture.source,
+                        &fixture.repository,
+                        &PropertyBank::new(),
+                    )
                     .expect("run");
 
                 assert!(matches!(
@@ -1777,7 +1947,7 @@ mod tests {
             }
 
             #[test]
-            fn logs_and_treats_refs_as_empty_when_property_bank_is_missing() {
+            fn returns_error_when_ref_property_not_found_in_bank() {
                 let mut fixture = fixtures::make_fixture();
                 let schema_id = SchemaId::new();
                 let view = stale_view(&fixture, "properties: {}");
@@ -1796,12 +1966,18 @@ mod tests {
                     )
                     .expect("processor");
 
-                let resolution = processor
-                    .run(Some(&view), &fixture.source, &fixture.repository)
-                    .expect("run");
+                // Empty bank: $ref cannot be resolved → resolution error.
+                let result = processor.run(
+                    Some(&view),
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                );
 
-                let (_, base_schema) = expect_fresh!(resolution);
-                assert!(base_schema.properties().is_empty());
+                assert!(
+                    result.is_err(),
+                    "Expected resolution error for unresolvable $ref"
+                );
             }
         }
 
@@ -1827,6 +2003,7 @@ mod tests {
                         Some(&corrupt_view),
                         &fixture.source,
                         &fixture.repository,
+                        &PropertyBank::new(),
                     )
                     .expect("run");
 
@@ -1851,6 +2028,7 @@ mod tests {
                     Some(&view),
                     &fixture.source,
                     &fixture.repository,
+                    &PropertyBank::new(),
                 );
 
                 assert!(result.is_err(), "Expected parse error");
@@ -1862,62 +2040,52 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new_ready_into_base_returns_constructed_schema() {
+        fn new_resolution_carries_constructed_base_schema() {
             let fixture = fixtures::make_fixture();
-            let schema_id = crate::schema::identifier::SchemaId::new();
-            let schema_name =
-                crate::schema::identifier::SchemaName::try_new("test-schema")
-                    .expect("name");
-            let base = BaseSchema::new(
-                schema_id,
-                schema_name,
-                PropertyMap::new(),
-                Vec::new(),
-                Vec::new(),
-            );
-            let expected = base.clone();
+            let processor =
+                BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("processor");
 
-            let processor = BaseSchemaProcessor::<Completed, NewReady> {
-                file: fixture.file,
-                path_key: fixture.key,
-                status: NewReady {
-                    base: expected.clone(),
-                },
-                _stage: PhantomData,
-            };
+            let resolution = processor
+                .run(
+                    None,
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
+                .expect("run");
 
-            let result = processor.into_base();
-            assert_eq!(result, expected);
+            let base_schema = expect_new!(resolution);
+            assert_eq!(base_schema.name().as_str(), "test-schema");
         }
 
         #[test]
-        fn fresh_ready_into_base_returns_fetched_schema() {
+        fn fresh_resolution_carries_cached_base_schema() {
             let fixture = fixtures::make_fixture();
-            let schema_id = crate::schema::identifier::SchemaId::new();
-            let schema_name =
-                crate::schema::identifier::SchemaName::try_new("test-schema")
-                    .expect("name");
-            let base = BaseSchema::new(
-                schema_id,
-                schema_name,
-                PropertyMap::new(),
-                Vec::new(),
-                Vec::new(),
-            );
-            let expected = base.clone();
+            let schema_id = SchemaId::new();
+            let view = matching_view(&fixture);
+            let expected = seed_base_and_view(&fixture, schema_id, &view);
+            let processor =
+                BaseSchemaProcessor::<Init, Unknown>::from_discovery(
+                    fixture.file,
+                    &fixture.vault_root,
+                )
+                .expect("processor");
 
-            let processor = BaseSchemaProcessor::<Completed, FreshReady> {
-                file: fixture.file,
-                path_key: fixture.key,
-                status: FreshReady {
-                    id: schema_id,
-                    base: expected.clone(),
-                },
-                _stage: PhantomData,
-            };
+            let resolution = processor
+                .run(
+                    Some(&view),
+                    &fixture.source,
+                    &fixture.repository,
+                    &PropertyBank::new(),
+                )
+                .expect("run");
 
-            let result = processor.into_base();
-            assert_eq!(result, expected);
+            let (_, base_schema) = expect_fresh!(resolution);
+            assert_eq!(base_schema, expected);
         }
     }
 }
