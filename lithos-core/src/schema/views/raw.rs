@@ -101,6 +101,17 @@ impl RawSchemaView {
 
         Ok(Self::new(path, version))
     }
+
+    /// Creates a deliberately corrupt view with no current version for tests.
+    #[cfg(test)]
+    #[inline]
+    #[must_use]
+    pub(crate) fn empty_for_test(path: PathKey) -> Self {
+        Self {
+            path,
+            versions: Vec::new(),
+        }
+    }
 }
 
 /// Implements [`RawView`] for [`RawSchemaView`].
