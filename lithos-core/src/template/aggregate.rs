@@ -15,13 +15,13 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     sync::LazyLock,
+    time::SystemTime,
 };
 
-use chrono::{DateTime, Utc};
 use regex::Regex;
 use rkyv::{
     Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
-    with::Skip,
+    with::{AsUnixTime, Map, Skip},
 };
 use uuid::Uuid;
 
@@ -287,21 +287,22 @@ pub struct Metadata {
     /// Tags for categorization.
     pub tags: Vec<Box<str>>,
     /// Creation timestamp.
-    #[rkyv(with = crate::ser::DateTimeAsI64)]
-    pub created_at: DateTime<Utc>,
+    #[rkyv(with = Map<AsUnixTime>)]
+    pub created_at: Option<SystemTime>,
     /// Last modification timestamp.
-    #[rkyv(with = crate::ser::DateTimeAsI64)]
-    pub updated_at: DateTime<Utc>,
+    #[rkyv(with = Map<AsUnixTime>)]
+    pub modified_at: Option<SystemTime>,
 }
 
 impl Default for Metadata {
     fn default() -> Self {
+        let now = Some(SystemTime::now());
         Self {
             description: None,
             version: None,
             tags: Vec::new(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: now,
+            modified_at: now,
         }
     }
 }
