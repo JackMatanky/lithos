@@ -13,16 +13,16 @@ Safely merge the `feat/06-discovery-cleanup-and-integration` branch into `main`,
     - [x] Check for overlapping edits in the same files.
     - [x] Analyze potential symbol-level conflicts using GitNexus.
     - [x] Evaluate impact of feature changes on existing `main` execution flows.
-- [ ] **Phase 3: Merge Strategy Definition**
+- [x] **Phase 3: Merge Strategy Definition**
     - [x] Define merge sequence (e.g., commit uncommitted work, merge feature branch).
     - [x] Document required manual interventions (e.g., resolving conflicts, adjusting integration).
-- [ ] **Phase 4: Execution & Validation**
-    - [ ] Perform the merge.
-    - [ ] Run full quality gate (`mise run verify`).
-    - [ ] Stage and commit merge-related changes.
-- [ ] **Phase 5: Cleanup**
-    - [ ] Remove the dedicated worktree.
-    - [ ] Delete the feature branch.
+- [x] **Phase 4: Execution & Validation**
+    - [x] Perform the merge.
+    - [x] Run full quality gate (`mise run verify`).
+    - [x] Stage and commit merge-related changes.
+- [x] **Phase 5: Cleanup**
+    - [x] Remove the dedicated worktree.
+    - [x] Delete the feature branch.
 
 ## Decisions
 - **Decision 1:** Discard uncommitted documentation changes in main worktree before merge, as they are redundant with the committed version in the feature branch.
