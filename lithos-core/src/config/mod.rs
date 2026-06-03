@@ -64,7 +64,7 @@
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
 //! - [`builder`] - Orchestrates: discover → process → merge → persist
-//! - [`discovery`] - Atomic filesystem + DB scan for config file locations
+//! - [`discovery`] - Config discovery pipeline (filesystem + DB)
 //! - [`crate::discovery`] - Pre-config vault root and path discovery (Discovery
 //!   context)
 //!
@@ -115,6 +115,8 @@ pub use storage::{RedbRepository, RedbStorage};
 pub mod builder;
 /// Local config candidate discovery and deterministic selection.
 pub(crate) mod candidates;
+/// Configuration diagnostics and warnings.
+pub(crate) mod diagnostics;
 /// Consolidated discovery logic for config files.
 pub(crate) mod discovery;
 /// Configuration error types.

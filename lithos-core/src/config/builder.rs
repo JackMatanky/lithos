@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
     config::{
         aggregate::{Config, Version},
-        discovery::{DiscoveryEngine, DiscoveryResult},
+        discovery::{ConfigDiscoveryPipeline, DiscoveryResult},
         error::{ConfigError, ConfigIngestError},
         frontmatter::Frontmatter,
         logging::Logging,
@@ -36,6 +36,7 @@ use crate::{
         },
         raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
         repository::Repository,
+        root::ConfigDiscoveryResult,
         task::Task,
         vault::{VaultId, VaultRoot},
         views::{RawFileVersion, RawGlobalConfigView, RawVaultConfigView},
@@ -101,7 +102,7 @@ pub fn build_from_layers(
 /// # Architecture
 ///
 /// The builder owns the orchestration pipeline but delegates to:
-/// - `DiscoveryEngine`: File discovery and database query
+/// - `ConfigDiscoveryPipeline`: File discovery and database query
 /// - `Repository`: Database persistence and retrieval
 /// - `build_from_layers`: Domain validation and construction
 ///
@@ -164,11 +165,13 @@ where
     /// Load configuration with hybrid staleness detection.
     ///
     /// Pipeline:
-    /// 1. Load raw views from DB (if exist)
-    /// 2. Ingest raw configs from files
-    /// 3. Detect staleness (timestamps + content hash)
-    /// 4. If stale: merge → build → save
-    /// 5. If fresh: load cached config from DB
+    /// 1. Validate vault root and get vault ID
+    /// 2. Discover vault root and marker via Discovery engine
+    /// 3. Read config files and query DB for cached views
+    /// 4. Parse raw configs from files
+    /// 5. Detect staleness (timestamps + content hash)
+    /// 6. If stale: merge → build → save
+    /// 7. If fresh: load cached config from DB
     ///
     /// # Errors
     ///
@@ -206,10 +209,36 @@ where
         // Step 2: Get or create vault ID
         let vault_id = self.get_or_create_vault_id()?;
 
-        // Step 3: Run discovery engine (filesystem + database)
-        let discovery = DiscoveryEngine::run(&vault_root, &self.repository)?;
+        // Step 3: Use discovery engine to classify the vault marker file.
+        // The vault root is already known to the Builder; we pass it via
+        // `flag_path` so the engine skips the ascending walk and directly
+        // probes the directory for a marker file.
+        use crate::discovery::{
+            engine::{DiscoveryEngine, DiscoveryInput},
+            policy::DiscoveryPolicy,
+        };
 
-        // Step 4: Parse raw configs from discovered files
+        let disc_engine = DiscoveryEngine::new(DiscoveryPolicy::default());
+        let vault_result = disc_engine
+            .find_vault(&DiscoveryInput {
+                flag_path: Some(vault_root.as_path()),
+                env_path: None,
+                cwd: vault_root.as_path(),
+                ceiling_dirs_raw: None,
+            })
+            .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
+
+        let config_discovery =
+            ConfigDiscoveryResult::from_vault_discovery(vault_result);
+
+        // Step 4: Run config discovery pipeline (read files + query DB)
+        let discovery = ConfigDiscoveryPipeline::run(
+            &config_discovery,
+            Some(vault_id),
+            &self.repository,
+        )?;
+
+        // Step 5: Parse raw configs from discovered files
         let global_raw = if let Some(entry) = discovery.global().entry() {
             let reader = FileReader::from_system_root();
             let entry_path = entry.path();
@@ -223,11 +252,11 @@ where
             None
         };
 
-        let vault_raw = if let Some(_entry) = discovery.vault().entry() {
-            let reader = FileReader::new(vault_root.as_path());
-            let relative_path = std::path::Path::new(".lithos/lithos.toml");
+        let vault_raw = if let Some(entry) = discovery.vault().entry() {
+            let reader = FileReader::from_system_root();
+            let entry_path = entry.path();
             let mut raw = reader
-                .parse_structured::<RawVaultConfig>(relative_path)
+                .parse_structured::<RawVaultConfig>(entry_path.as_path())
                 .map_err(ConfigIngestError::from)
                 .map_err(ConfigError::from)?;
             raw.metadata = discovery.vault().info().cloned();
@@ -240,7 +269,7 @@ where
         let global_view = discovery.global().view().cloned();
         let vault_view = discovery.vault().view().cloned();
 
-        // Step 5: Process global config
+        // Step 6: Process global config
         let global_processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(
             global_raw,
             global_view,
@@ -253,7 +282,7 @@ where
             },
         };
 
-        // Step 6: Process vault config
+        // Step 7: Process vault config
         let vault_processor = ConfigFileProcessor::<VaultConfig, _, _>::new(
             vault_raw, vault_view,
         );
@@ -265,7 +294,7 @@ where
             },
         };
 
-        // Step 7: Resolve outcomes, then execute persistence/build plan
+        // Step 8: Resolve outcomes, then execute persistence/build plan
         let resolver = ConfigResolver::new();
         let plan = resolver.resolve(global_outcome, vault_outcome)?;
         self.execute_plan(vault_id, &vault_root, plan, &discovery)
