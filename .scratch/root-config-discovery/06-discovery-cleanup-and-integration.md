@@ -200,3 +200,71 @@ All new types are `pub(crate)` unless explicitly needed wider.
 ## Blocked by
 
 - `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`
+
+## Implementation Log
+
+### Phase 1 (Cycles 1-9): Foundation — Extract from `resolver.rs`
+
+**Files created:** `discovery/error.rs`, `discovery/walk.rs`, `discovery/probe.rs`, `discovery/selector.rs`, `discovery/policy.rs`, `discovery/engine.rs`
+**Files modified:** `discovery/diagnostics.rs`, `discovery/marker.rs`, `discovery/mod.rs`, `discovery/CONTEXT.md`
+**Files deleted:** `discovery/resolver.rs`
+
+**Key decisions:**
+- `#[allow(dead_code)]` preserved on all Phase-1 seam types pending orchestration wiring
+- `AscendingWalker` yields directories; ceiling policy enforced by `DiscoveryEngine`
+- `LocalDiscoveryWarning` / `FormatDiscoveryWarning` temporarily retained in `discovery/diagnostics.rs` to preserve compilation while Phase 2 migrates them
+
+**Spec deviations resolved:**
+- `DiscoveryWarning::Local`/`Format` variants retained for Phase 2 migration (compile-safe)
+- `rank()` implemented on `VaultSourceType`/`GlobalSourceType` enums (correct placement)
+
+**Quality gate review findings:**
+- Fixed `pub mod diagnostics` → `pub(crate) mod diagnostics`, `pub mod marker` → `pub(crate) mod marker` (inconsistent visibility)
+- Added `#[allow(dead_code)]` to `FormatDiscoveryWarning` (missing annotation)
+- Fixed stale doc link in `marker.rs` (referenced deleted `resolver` module)
+- 30 new tests, 1663/1633 baseline pass → 1663 total pass
+
+### Phase 2 (Cycles 10-14): Context Cleanup
+
+**Files created:** `config/diagnostics.rs`
+**Files modified:** `discovery/diagnostics.rs`, `config/root.rs`, `config/candidates.rs`, `config/mod.rs`, `discovery/CONTEXT.md`
+
+**Key decisions:**
+- `LocalDiscoveryWarning` + `FormatDiscoveryWarning` moved to `config/diagnostics.rs` under `ConfigWarning` wrapper
+- `discovery::diagnostics::DiscoveryWarning` keeps only Discovery-owned variants: `RootResolution(VaultDiscoveryWarning)`, `CaseCorrection`
+- Zero cross-context imports: `discovery::diagnostics` does not import from `config`, `config::diagnostics` does not import from `discovery`
+- `ConfigDiscoveryResult.warnings` changed from `Vec<DiscoveryWarning>` to `Vec<ConfigWarning>`
+- `VaultDiscoveryWarning` renaming was pre-existing from Phase 1
+
+**Quality gate review findings:** All clean. 1665 tests pass.
+
+### Phase 3 (Cycles 15-18): Config Integration
+
+**Files modified:** `config/discovery.rs`, `config/builder.rs`, `config/root.rs`, `config/mod.rs`
+
+**Key decisions:**
+- `config/discovery.rs::DiscoveryEngine` renamed to `ConfigDiscoveryPipeline`
+- `ConfigDiscoveryPipeline::run()` signature: `(discovery_result: &ConfigDiscoveryResult, vault_id: Option<VaultId>, repo: &R)` — extra `vault_id` param needed for DB query routing
+- `Builder.load()` uses `flag_path: Some(vault_root.as_path())` (not `cwd`) to skip ascending walk when vault root is already known
+- Legacy `find_global_config`, `find_vault_config`, `scan_filesystem`, `global_config_paths` deleted from `config/discovery.rs`
+- `ConfigDiscoveryResult::from_vault_discovery()` added to `config/root.rs` with path-component-safe `classify_local_config_location()`
+
+**Quality gate review findings (Critical bugs fixed):**
+1. `builder.rs`: `_entry` → `entry`; vault config path was hardcoded to `.lithos/lithos.toml` — fixed to use discovered `entry_path`
+2. `builder.rs`: `DiscoveryEngine::find_vault()` was called with `cwd=vault_root` — fixed to use `flag_path=Some(vault_root.as_path())` to signal that vault root is already known
+3. `root.rs`: `classify_local_config_location` used string matching — replaced with path component matching for cross-platform safety
+4. `config/discovery.rs`: Added doc comment explaining `vault_id: None` branch semantics
+
+### Verification
+
+| Gate | Status |
+| :--- | :----- |
+| `cargo fmt --check` | ✅ clean |
+| `cargo clippy --all-targets -- -D warnings` | ✅ 0 warnings |
+| `cargo nextest run --workspace` | ✅ 1665/1665 pass |
+| `mise run verify` | ✅ all gates pass |
+
+**Test delta:** 1633 baseline → 1665 final (+32 new discovery tests)
+**Files added:** 7 (`discovery/error.rs`, `walk.rs`, `probe.rs`, `selector.rs`, `policy.rs`, `engine.rs`, `config/diagnostics.rs`)
+**Files deleted:** 1 (`discovery/resolver.rs`)
+**Files modified:** 10

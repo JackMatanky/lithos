@@ -1,8 +1,8 @@
 //! Consolidated discovery logic for config files.
 //!
-//! Provides the [`DiscoveryEngine`] which performs a single atomic scan of
-//! both the filesystem and database, consolidating all data needed for
-//! config processing.
+//! Provides the [`ConfigDiscoveryPipeline`] which performs a single atomic
+//! scan of both the filesystem and database, consolidating all data needed
+//! for config processing.
 //!
 //! Config-owned location and candidate classification live in sibling modules
 //! under [`crate::config`].
@@ -10,14 +10,14 @@
 use crate::{
     config::{
         error::ConfigIngestError,
-        vault::{VaultId, VaultRoot},
+        root::{ConfigDiscoveryResult, DiscoveredConfigFile},
+        vault::VaultId,
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
     fs::{
         FsEntry, FsFile,
         metadata::{FileMetadata, FsMetadata},
         path::FilePath,
-        scanner::{DirScanInput, DirScanner},
     },
 };
 
@@ -117,46 +117,54 @@ impl DiscoveryResult {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  Discovery Engine
+//  Config Discovery Pipeline
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// Orchestrates atomic discovery of global and vault config files.
+/// Reads config files from pre-discovered paths and queries database for
+/// cached views, combining both into a single [`DiscoveryResult`].
 ///
-/// The engine consolidates filesystem scanning and database queries into a
-/// single-pass pipeline, ensuring consistency and performance.
-pub(crate) struct DiscoveryEngine;
+/// The pipeline does not perform filesystem discovery itself — it receives
+/// the discovered file paths via [`ConfigDiscoveryResult`] and reads
+/// metadata + content from those paths.
+pub(crate) struct ConfigDiscoveryPipeline;
 
-impl DiscoveryEngine {
-    /// Performs an atomic discovery run.
+impl ConfigDiscoveryPipeline {
+    /// Performs the config discovery pipeline.
     ///
-    /// This method orchestrates the discovery pipeline:
-    /// 1. Scan filesystem for global config (system-wide locations)
-    /// 2. Scan filesystem for vault config (.lithos/lithos.toml)
-    /// 3. Query DB for cached views (single transaction)
-    /// 4. Combine filesystem + DB data into result
+    /// This method:
+    /// 1. Reads files from the paths in `discovery_result`
+    /// 2. Maps them to `FsEntry` with filesystem metadata
+    /// 3. Queries DB for cached views
+    /// 4. Combines into [`DiscoveryResult`]
     ///
     /// # Errors
     ///
     /// Returns `ConfigIngestError` if filesystem or repository operations fail.
+    /// # Parameters
+    ///
+    /// - `vault_id`: The vault ID for DB view lookup. Pass `None` when the
+    ///   vault is not yet persisted (e.g., first-time initialization); in that
+    ///   case only the global view is fetched and the vault view is `None`.
     pub(crate) fn run<R>(
-        vault_root: &VaultRoot,
+        discovery_result: &ConfigDiscoveryResult,
+        vault_id: Option<VaultId>,
         repo: &R,
     ) -> Result<DiscoveryResult, ConfigIngestError>
     where
         R: crate::config::repository::Repository,
     {
-        // Step 1: Scan filesystem for config files
-        let (global_entry, vault_entry) = Self::scan_filesystem(vault_root)?;
+        // Step 1: Map discovered config files to FsEntry
+        let global_entry = match &discovery_result.global {
+            Some(file) => Some(Self::entry_from_discovered_file(file)?),
+            None => None,
+        };
+        let vault_entry = match &discovery_result.local {
+            Some(file) => Some(Self::entry_from_discovered_file(file)?),
+            None => None,
+        };
 
-        // Step 2: Resolve vault id for view lookup and query cached views.
-        let vault_id =
-            repo.find_vault_id_by_path(vault_root).map_err(|error| {
-                ConfigIngestError::Io {
-                    path: std::path::PathBuf::from("<db:vault_id_by_path>"),
-                    source: std::io::Error::other(error.to_string()),
-                }
-            })?;
-
+        // Step 2: Query cached views. When vault_id is None (vault not yet
+        // persisted), only the global view is available.
         let (global_view, vault_view) = match vault_id {
             Some(vault_id) => Self::query_cached_views(repo, vault_id)?,
             None => (
@@ -180,120 +188,40 @@ impl DiscoveryEngine {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Filesystem Operations
+    // File Mapping
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Scans filesystem for global and vault config files.
-    ///
-    /// Returns `(Option<FsEntry>, Option<FsEntry>)` for global and vault.
+    /// Maps a [`DiscoveredConfigFile`] to an [`FsEntry`] by reading its
+    /// filesystem metadata.
     ///
     /// # Errors
     ///
-    /// Returns error if filesystem operations fail.
-    #[expect(
-        clippy::type_complexity,
-        reason = "Return tuple matches discovery pattern; will be \
-                  destructured by caller"
-    )]
-    fn scan_filesystem(
-        vault_root: &VaultRoot,
-    ) -> Result<(Option<FsEntry>, Option<FsEntry>), ConfigIngestError> {
-        let global_entry = Self::find_global_config()?;
-        let vault_entry = Self::find_vault_config(vault_root)?;
-
-        Ok((global_entry, vault_entry))
-    }
-
-    /// Finds the global config file using priority order.
-    ///
-    /// Priority order (matches
-    /// [`crate::config::location::GlobalConfigLocation`]):
-    /// 1. `$LITHOS_CONFIG_FILE`
-    /// 2. `$XDG_CONFIG_HOME/lithos/lithos.toml`
-    /// 3. `~/.config/lithos/lithos.toml`
-    /// 4. `/etc/lithos/lithos.toml`
-    ///
-    /// Returns the first existing file with its `FileMetadata`.
-    fn find_global_config() -> Result<Option<FsEntry>, ConfigIngestError> {
-        // Try each location in priority order
-        for path in Self::global_config_paths() {
-            if let Ok(metadata) = FsMetadata::from_path(&path) {
-                let info = metadata.as_file().cloned().ok_or_else(|| {
-                    ConfigIngestError::Io {
-                        path: path.clone(),
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "global config path is not a file",
-                        ),
-                    }
-                })?;
-
-                let file_path = FilePath::try_new(path.clone())
-                    .map_err(ConfigIngestError::from)?;
-
-                return Ok(Some(FsEntry::File(FsFile::new(file_path, info))));
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Finds the vault config file.
-    ///
-    /// Looks for `{vault_root}/.lithos/lithos.toml`.
-    fn find_vault_config(
-        vault_root: &VaultRoot,
-    ) -> Result<Option<FsEntry>, ConfigIngestError> {
-        let scanner = DirScanner::new(vault_root.as_path());
-        let results = scanner
-            .entries(DirScanInput::new().with_pattern(".lithos/lithos.toml"))
-            .map_err(|error| ConfigIngestError::Io {
-                path: vault_root.as_path().to_path_buf(),
+    /// Returns `ConfigIngestError` if the path does not exist, is not a file,
+    /// or metadata cannot be read.
+    fn entry_from_discovered_file(
+        file: &DiscoveredConfigFile,
+    ) -> Result<FsEntry, ConfigIngestError> {
+        let metadata = FsMetadata::from_path(&file.path).map_err(|error| {
+            ConfigIngestError::Io {
+                path: file.path.clone(),
                 source: std::io::Error::other(error.to_string()),
-            })?;
+            }
+        })?;
 
-        let Some(entry) = results.into_iter().next() else {
-            return Ok(None);
-        };
+        let info = metadata.as_file().cloned().ok_or_else(|| {
+            ConfigIngestError::Io {
+                path: file.path.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "discovered config path is not a file",
+                ),
+            }
+        })?;
 
-        Ok(Some(entry))
-    }
+        let file_path = FilePath::try_new(file.path.clone())
+            .map_err(ConfigIngestError::from)?;
 
-    /// Returns the priority-ordered list of global config paths.
-    ///
-    /// Order matches [`crate::config::location::GlobalConfigLocation`]
-    /// precedence.
-    fn global_config_paths() -> Vec<std::path::PathBuf> {
-        let mut paths = Vec::new();
-
-        // 1. $LITHOS_CONFIG_FILE
-        if let Ok(path) = std::env::var("LITHOS_CONFIG_FILE") {
-            paths.push(std::path::PathBuf::from(path));
-        }
-
-        // 2. $XDG_CONFIG_HOME/lithos/lithos.toml
-        if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
-            paths.push(
-                std::path::PathBuf::from(xdg_config)
-                    .join("lithos")
-                    .join("lithos.toml"),
-            );
-        }
-
-        // 3. ~/.config/lithos/lithos.toml
-        if let Ok(home) = std::env::var("HOME") {
-            paths.push(
-                std::path::PathBuf::from(home)
-                    .join(".config")
-                    .join("lithos")
-                    .join("lithos.toml"),
-            );
-        }
-
-        // 4. /etc/lithos/lithos.toml
-        paths.push(std::path::PathBuf::from("/etc/lithos/lithos.toml"));
-
-        paths
+        Ok(FsEntry::File(FsFile::new(file_path, info)))
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 //!
 //! [`FoundRootMarker`] carries the path and format of the marker file found
 //! during ascending vault root discovery. It is the handoff type from
-//! [`crate::discovery::resolver`] to the Config context.
+//! [`crate::discovery::engine`] to the Config context.
 
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ use crate::fs::format::StructuredFileFormat;
 /// the base directory it was found in. Does not include Config location
 /// taxonomy; that classification is Config-owned.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FoundRootMarker {
     /// Base directory the marker was found in (the vault root candidate).
     pub(crate) base: PathBuf,

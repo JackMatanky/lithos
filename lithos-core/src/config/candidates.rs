@@ -8,10 +8,10 @@ use std::{io, path::Path};
 
 use crate::{
     config::{
+        diagnostics::{ConfigWarning, FormatDiscoveryWarning},
         location::{ConfigLocation, LocalConfigLocation},
         root::DiscoveredConfigFile,
     },
-    discovery::{DiscoveryWarning, FormatDiscoveryWarning},
     fs::format::StructuredFileFormat,
 };
 
@@ -28,7 +28,7 @@ pub(crate) struct ConfigSelectionResult {
     /// The final selected config candidate.
     pub(crate) candidate: DiscoveredConfigFile,
     /// A structured warning if multiple formats were available.
-    pub(crate) warning: Option<DiscoveryWarning>,
+    pub(crate) warning: Option<ConfigWarning>,
 }
 
 /// Finds all existing local config candidates for a logical location.
@@ -82,7 +82,7 @@ pub(crate) fn find_local_config_candidates(
 ///
 /// ### Ambiguity Handling
 ///
-/// If multiple candidates are present, a [`DiscoveryWarning::Format`] warning
+/// If multiple candidates are present, a [`ConfigWarning::Format`] warning
 /// is generated and emitted via `tracing::warn!`, even if a successful
 /// selection is made. This warning is also returned inside the
 /// [`ConfigSelectionResult`] for deterministic testing and CLI reporting.
@@ -131,7 +131,7 @@ pub(crate) fn select_config_candidate(
     let mut paths: Vec<_> = candidates.into_iter().map(|c| c.path).collect();
     paths.push(candidate.path.clone());
 
-    let warning = DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+    let warning = ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
         base: candidate.base.clone(),
         candidates: paths,
     });
@@ -420,7 +420,7 @@ mod tests {
             .expect("expected a candidate to be selected");
 
             let expected_warning =
-                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
                     base,
                     candidates: vec![
                         PathBuf::from("/vault/lithos.toml"),
@@ -474,7 +474,7 @@ mod tests {
             .expect("expected a candidate to be selected");
 
             let expected_warning =
-                DiscoveryWarning::Format(FormatDiscoveryWarning::Ambiguity {
+                ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
                     base,
                     candidates: vec![
                         PathBuf::from("/vault/lithos.yaml"),

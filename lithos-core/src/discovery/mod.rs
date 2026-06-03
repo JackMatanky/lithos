@@ -14,18 +14,25 @@
 //!
 //! # Exports
 //!
-//! - [`resolver`] — [`RootResolver`] and supporting types for vault root
-//!   resolution via explicit flag, environment variable, or ascending search.
-//! - [`marker`] — [`FoundRootMarker`], the typed handoff from resolver to
-//!   Config.
+//! - [`engine`] — [`DiscoveryEngine`] orchestrating vault discovery via
+//!   explicit flag, environment variable, or ascending walk.
+//! - [`error`] — [`DiscoveryError`] and [`VaultDiscoveryWarning`] types.
+//! - [`policy`] — [`DiscoveryPolicy`], [`VaultSourceType`],
+//!   [`GlobalSourceType`].
+//! - [`marker`] — [`FoundRootMarker`], the typed handoff to Config.
 //! - [`diagnostics`] — Non-fatal warning types emitted during discovery.
+//! - [`probe`] — [`VaultRootProbe`], [`DiscoveryProbe`] trait, marker patterns.
+//! - [`selector`] — Candidate selection and format promotion functions.
+//! - [`walk`] — [`AscendingWalker`], [`DiscoveryBoundaries`], ceiling parsing.
+
+pub(crate) mod engine;
+pub(crate) mod error;
+pub(crate) mod policy;
+pub(crate) mod probe;
+pub(crate) mod selector;
+pub(crate) mod walk;
 
 /// Diagnostics and warnings during discovery.
-pub mod diagnostics;
+pub(crate) mod diagnostics;
 /// Root marker contract: the typed output of vault root resolution.
-pub mod marker;
-/// Root resolution logic.
-pub mod resolver;
-
-pub(crate) use diagnostics::*;
-pub(crate) use marker::*;
+pub(crate) mod marker;
