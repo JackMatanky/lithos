@@ -86,6 +86,8 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
 **Summary:** Transform Discovery into a Modular Engine (Traversal, Detection, Policy) and wire it into Config.
 
 **Architecture Note:**
+Maintain strict context boundaries. Discovery handles the "how to find" (using dumb constants like `ROOT_MARKER_FILES`); Config handles the "what it means" (using rich enums like `LocalConfigLocation`). Mapping occurs at the `config/root.rs` seam.
+
 Maintain strict context boundaries. Discovery handles path-finding via un-classified probes; Config handles the rich domain classification (`LocalConfigLocation`). `07-phase-2-environment-config-discovery.md` will later introduce `GlobalConfigProbe` and `discover_global`.
 
 ## Blocked by
