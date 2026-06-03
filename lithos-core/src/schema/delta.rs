@@ -164,7 +164,13 @@ impl ExtendsDelta {
     /// Returns `true` when no extends changes exist.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API for slice 02+"))]
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "Used by base processor before Builder integration"
+        )
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.added.is_empty() && self.removed.is_empty()
     }
@@ -194,7 +200,10 @@ impl ExtendsDelta {
     #[must_use]
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "API constructor for slice 02+")
+        allow(
+            dead_code,
+            reason = "Used by base processor before Builder integration"
+        )
     )]
     pub(crate) fn from_slices(
         old_extends: &[SchemaName],
