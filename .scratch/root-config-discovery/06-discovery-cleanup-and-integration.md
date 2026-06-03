@@ -33,7 +33,7 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
             - `current: Option<PathBuf>`: Current traversal state.
             - `visited: HashSet<PathBuf>`: Physical paths (canonicalized) to prevent symlink cycles.
             - `ceilings: HashSet<PathBuf>`: Physical paths (canonicalized) that terminate the walk.
-        - [ ] **`DiscoveryBoundaries`**: Resolved context containing canonicalized `start_dir` and `ceilings`.
+        - [ ] **`DiscoveryBoundaries`**: Resolved context containing `start_dir` (canonicalized) and `ceilings` (HashSet of canonicalized physical paths).
     - [ ] **Detection (`discovery/probe.rs`)**:
         - [ ] **`DiscoveryProbe<Output>` Trait**: Interface for directory-level probing.
         - [ ] **`VaultRootProbe`**: Uses internal `MarkerPattern` templates to find root markers.
