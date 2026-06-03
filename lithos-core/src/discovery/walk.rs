@@ -1,3 +1,5 @@
+//! Directory traversal and boundary enforcement for ascending discovery.
+
 use std::{
     collections::HashSet,
     env,
@@ -7,44 +9,54 @@ use std::{
 
 use super::diagnostics::VaultDiscoveryWarning;
 
+/// An iterator that ascends from a directory up to defined boundary ceilings.
+///
+/// This walker is zero-allocation during traversal as it operates on purely
+/// lexical parents of the starting path.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) struct AscendingWalker {
-    current: Option<PathBuf>,
-    visited: HashSet<PathBuf>,
-    ceilings: HashSet<PathBuf>,
+pub(crate) struct BoundedAscent<'a> {
+    current: Option<&'a Path>,
+    ceilings: &'a HashSet<PathBuf>,
+    allow_marker_at_ceiling: bool,
 }
 
-impl AscendingWalker {
-    pub(crate) fn new(start: PathBuf, ceilings: HashSet<PathBuf>) -> Self {
+impl<'a> BoundedAscent<'a> {
+    /// Creates a new bounded walker starting at `start`.
+    pub(crate) fn new(
+        start: &'a Path,
+        ceilings: &'a HashSet<PathBuf>,
+        allow_marker_at_ceiling: bool,
+    ) -> Self {
         Self {
             current: Some(start),
-            visited: HashSet::new(),
             ceilings,
+            allow_marker_at_ceiling,
         }
     }
 }
 
-impl Iterator for AscendingWalker {
-    type Item = PathBuf;
+impl<'a> Iterator for BoundedAscent<'a> {
+    type Item = &'a Path;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current.take()?;
+        let current = self.current?;
+        let is_ceiling = self.ceilings.contains(current);
 
-        if !self.visited.insert(current.clone()) {
-            return None;
+        self.current = if is_ceiling {
+            None
+        } else {
+            current.parent()
+        };
+
+        if is_ceiling && !self.allow_marker_at_ceiling {
+            None
+        } else {
+            Some(current)
         }
-
-        let parent = current
-            .parent()
-            .map(Path::canonicalize)
-            .and_then(Result::ok)
-            .filter(|parent| parent != &current);
-
-        self.current = parent;
-        Some(current)
     }
 }
 
+/// Start and stop constraints for the discovery traversal.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryBoundaries {
     pub(crate) start_dir: PathBuf,
@@ -53,6 +65,7 @@ pub(crate) struct DiscoveryBoundaries {
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl DiscoveryBoundaries {
+    /// Creates a new boundaries container.
     pub(crate) fn new(start_dir: PathBuf, ceilings: HashSet<PathBuf>) -> Self {
         Self {
             start_dir,
@@ -60,14 +73,21 @@ impl DiscoveryBoundaries {
         }
     }
 
+    /// The starting directory for the walk.
     pub(crate) fn start_dir(&self) -> &Path {
         &self.start_dir
     }
 
+    /// The set of ceiling directories that bound the walk.
     pub(crate) fn ceilings(&self) -> &HashSet<PathBuf> {
         &self.ceilings
     }
 
+    /// Parses a raw platform-specific path list into a set of validated ceiling
+    /// directories.
+    ///
+    /// Non-fatal issues like empty segments or non-existent directories are
+    /// reported via the `warnings` vector.
     pub(crate) fn parse_ceilings(
         ceiling_dirs_raw: Option<&OsStr>,
         warnings: &mut Vec<VaultDiscoveryWarning>,
@@ -110,22 +130,24 @@ mod tests {
 
     use super::*;
 
-    mod ascending_walker {
+    mod bounded_ascent {
         use super::*;
 
-        fn walker(
-            start: PathBuf,
-            ceilings: HashSet<PathBuf>,
-        ) -> AscendingWalker {
-            AscendingWalker::new(start, ceilings)
+        fn ascent<'a>(
+            start: &'a Path,
+            ceilings: &'a HashSet<PathBuf>,
+            allow_marker_at_ceiling: bool,
+        ) -> BoundedAscent<'a> {
+            BoundedAscent::new(start, ceilings, allow_marker_at_ceiling)
         }
 
         #[test]
         fn yields_start_dir_first() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
-            let mut w = walker(start.clone(), HashSet::new());
-            assert_eq!(w.next(), Some(start));
+            let ceilings = HashSet::new();
+            let mut w = ascent(&start, &ceilings, true);
+            assert_eq!(w.next(), Some(start.as_path()));
         }
 
         #[test]
@@ -135,9 +157,10 @@ mod tests {
             std::fs::create_dir_all(&child).expect("child");
             let start = child.canonicalize().expect("canonical");
             let parent = root.path().canonicalize().expect("parent canonical");
+            let ceilings = HashSet::new();
 
-            let results: Vec<PathBuf> = walker(start, HashSet::new()).collect();
-            assert!(results.contains(&parent));
+            let results: Vec<&Path> = ascent(&start, &ceilings, true).collect();
+            assert!(results.contains(&parent.as_path()));
         }
 
         #[test]
@@ -146,15 +169,15 @@ mod tests {
             let child = root.path().join("a");
             std::fs::create_dir_all(&child).expect("child");
             let start = child.canonicalize().expect("canonical");
+            let ceilings = HashSet::new();
 
-            let results: Vec<PathBuf> =
-                walker(start.clone(), HashSet::new()).collect();
-            assert_eq!(results.first(), Some(&start));
+            let results: Vec<&Path> = ascent(&start, &ceilings, true).collect();
+            assert_eq!(results.first(), Some(&start.as_path()));
             assert!(results.len() >= 2);
         }
 
         #[test]
-        fn yields_ceiling_directory() {
+        fn yields_ceiling_directory_if_allowed() {
             let root = tempdir().expect("root");
             let stop = root.path().join("stop");
             let cwd = stop.join("deep");
@@ -164,36 +187,48 @@ mod tests {
 
             let mut ceilings = HashSet::new();
             ceilings.insert(ceiling.clone());
-            let results: Vec<PathBuf> = walker(start, ceilings).collect();
-            assert!(results.contains(&ceiling));
+            let results: Vec<&Path> = ascent(&start, &ceilings, true).collect();
+            assert!(results.contains(&ceiling.as_path()));
+            assert_eq!(results.last(), Some(&ceiling.as_path()));
         }
 
-        #[cfg(unix)]
         #[test]
-        fn stops_at_symlink_loop() {
-            use std::os::unix::fs as unix_fs;
-
+        fn stops_before_ceiling_if_not_allowed() {
             let root = tempdir().expect("root");
-            let base = root.path().join("base");
-            std::fs::create_dir_all(&base).expect("base");
-            let loop_link = base.join("loop");
-            unix_fs::symlink(&base, &loop_link).expect("symlink");
-            let cwd = loop_link.join("loop").join("loop");
-
+            let stop = root.path().join("stop");
+            let cwd = stop.join("deep");
+            std::fs::create_dir_all(&cwd).expect("cwd");
             let start = cwd.canonicalize().expect("canonical start");
-            let results: Vec<PathBuf> = walker(start, HashSet::new()).collect();
-            assert!(!results.is_empty());
+            let ceiling = stop.canonicalize().expect("canonical ceiling");
+
+            let mut ceilings = HashSet::new();
+            ceilings.insert(ceiling.clone());
+            let results: Vec<&Path> =
+                ascent(&start, &ceilings, false).collect();
+            assert!(!results.contains(&ceiling.as_path()));
         }
 
         #[test]
-        fn starts_from_ceiling_and_yields_it() {
+        fn starts_from_ceiling_and_yields_it_if_allowed() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
             let mut ceilings = HashSet::new();
             ceilings.insert(start.clone());
 
-            let results: Vec<PathBuf> = walker(start, ceilings).collect();
-            assert!(!results.is_empty());
+            let results: Vec<&Path> = ascent(&start, &ceilings, true).collect();
+            assert_eq!(results, vec![start.as_path()]);
+        }
+
+        #[test]
+        fn starts_from_ceiling_and_yields_none_if_not_allowed() {
+            let root = tempdir().expect("root");
+            let start = root.path().canonicalize().expect("canonical");
+            let mut ceilings = HashSet::new();
+            ceilings.insert(start.clone());
+
+            let results: Vec<&Path> =
+                ascent(&start, &ceilings, false).collect();
+            assert!(results.is_empty());
         }
     }
 

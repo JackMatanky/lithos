@@ -1,32 +1,49 @@
+//! Error types for the discovery process.
+
 use std::{io, path::PathBuf};
 
+/// Fatal errors encountered during vault or global configuration discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DiscoveryError {
+    /// A path provided via CLI flag does not exist on disk.
     #[error("Explicit vault path does not exist: {path}")]
     ExplicitPathMissing {
+        /// The missing path.
         path: PathBuf,
     },
+    /// A path provided via CLI flag exists but is not a directory.
     #[error("Explicit vault path is not a directory: {path}")]
     ExplicitPathNotDirectory {
+        /// The non-directory path.
         path: PathBuf,
     },
+    /// A path provided via environment variable does not exist on disk.
     #[error("Environment vault path does not exist: {path}")]
     EnvironmentPathMissing {
+        /// The missing path.
         path: PathBuf,
     },
+    /// A path provided via environment variable exists but is not a directory.
     #[error("Environment vault path is not a directory: {path}")]
     EnvironmentPathNotDirectory {
+        /// The non-directory path.
         path: PathBuf,
     },
+    /// Failed to canonicalize the current working directory.
     #[error("Failed to canonicalize current directory {path}: {source}")]
     CurrentDirectoryCanonicalize {
+        /// The path that failed canonicalization.
         path: PathBuf,
+        /// The underlying I/O error.
         source: io::Error,
     },
+    /// Failed to canonicalize a specific path during discovery.
     #[error("Failed to canonicalize path {path}: {source}")]
     CanonicalizePath {
+        /// The path that failed canonicalization.
         path: PathBuf,
+        /// The underlying I/O error.
         source: io::Error,
     },
 }

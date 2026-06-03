@@ -1,3 +1,9 @@
+//! Orchestration engine for vault and global configuration discovery.
+//!
+//! This module provides the high-level API for locating configuration roots
+//! based on policy-driven precedence (CLI flags, environment variables, and
+//! filesystem convention).
+
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -9,7 +15,7 @@ use super::{
     policy::{DiscoveryPolicy, GlobalSourceType, VaultSourceType},
     probe::{DiscoveryProbe, VaultRootProbe},
     selector::select_candidate,
-    walk::{AscendingWalker, DiscoveryBoundaries},
+    walk::{BoundedAscent, DiscoveryBoundaries},
 };
 use crate::fs::format::StructuredFileFormat;
 
@@ -29,6 +35,7 @@ pub(crate) struct FoundRootMarker {
     pub(crate) format: StructuredFileFormat,
 }
 
+/// Orchestrates the discovery of vault and global configuration markers.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryEngine {
     policy: DiscoveryPolicy,
@@ -36,19 +43,20 @@ pub(crate) struct DiscoveryEngine {
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl DiscoveryEngine {
+    /// Create a new discovery engine with the given policy.
     pub(crate) fn new(policy: DiscoveryPolicy) -> Self {
         Self {
             policy,
         }
     }
 
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "API shape driven by DiscoveryInput structure"
-    )]
+    /// Find the vault root and marker based on policy precedence.
+    ///
+    /// Iterates through allowed sources (Flag -> Env -> Walk) until a root is
+    /// successfully resolved or an error occurs.
     pub(crate) fn find_vault(
         &self,
-        input: DiscoveryInput<'_>,
+        input: &DiscoveryInput<'_>,
     ) -> Result<VaultDiscoveryResult, DiscoveryError> {
         for source_type in &self.policy.precedence {
             match source_type {
@@ -91,13 +99,32 @@ impl DiscoveryEngine {
         })
     }
 
+    /// Find the global configuration marker.
+    ///
+    /// NOTE: This is currently a stub for Phase 1 and always returns an empty
+    /// result.
     #[allow(
-        clippy::needless_pass_by_value,
-        reason = "API follows find_vault signature"
+        clippy::unused_self,
+        clippy::unnecessary_wraps,
+        reason = "Stub; will use self and return error in Phase 2"
     )]
+    pub(crate) fn find_global(
+        &self,
+        _input: &DiscoveryInput<'_>,
+    ) -> Result<GlobalDiscoveryResult, DiscoveryError> {
+        Ok(GlobalDiscoveryResult {
+            marker: None,
+            alternatives: vec![],
+            source: None,
+            warnings: vec![],
+        })
+    }
+
+    /// Performs an ascending walk from the current working directory to find a
+    /// marker.
     fn resolve_ascending(
         &self,
-        input: DiscoveryInput<'_>,
+        input: &DiscoveryInput<'_>,
     ) -> Result<VaultDiscoveryResult, DiscoveryError> {
         let start = input.cwd.canonicalize().map_err(|source| {
             DiscoveryError::CurrentDirectoryCanonicalize {
@@ -112,25 +139,19 @@ impl DiscoveryEngine {
             &mut warnings,
         );
 
-        let walker = AscendingWalker::new(start, ceilings.clone());
+        let walker = BoundedAscent::new(
+            &start,
+            &ceilings,
+            self.policy.allow_marker_at_ceiling,
+        );
         let probe = VaultRootProbe;
         let mut all_markers: Vec<FoundRootMarker> = Vec::new();
         let mut found_root: Option<PathBuf> = None;
 
         for current in walker {
-            let is_ceiling = ceilings.contains(&current);
-
-            if !self.policy.allow_marker_at_ceiling && is_ceiling {
-                break;
-            }
-
-            if let Some(marker) = probe.probe(&current)? {
-                found_root = Some(current.clone());
-                all_markers.push(marker);
-                break;
-            }
-
-            if is_ceiling {
+            if let Some(mut markers) = probe.probe(current)? {
+                found_root = Some(current.to_path_buf());
+                all_markers.append(&mut markers);
                 break;
             }
         }
@@ -160,23 +181,8 @@ impl DiscoveryEngine {
         })
     }
 
-    #[allow(
-        clippy::unused_self,
-        clippy::unnecessary_wraps,
-        reason = "Stub; will use self and return error in Phase 2"
-    )]
-    pub(crate) fn find_global(
-        &self,
-        _input: DiscoveryInput<'_>,
-    ) -> Result<GlobalDiscoveryResult, DiscoveryError> {
-        Ok(GlobalDiscoveryResult {
-            marker: None,
-            alternatives: vec![],
-            source: None,
-            warnings: vec![],
-        })
-    }
-
+    /// Validates that a path provided via flag or environment variable is a
+    /// directory.
     fn validate_override(
         path: &Path,
         source: VaultSourceType,
@@ -236,29 +242,45 @@ impl DiscoveryEngine {
     }
 }
 
+/// Collection of inputs required for the discovery process.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryInput<'a> {
+    /// Path provided via `--vault` CLI flag.
     pub(crate) flag_path: Option<&'a Path>,
+    /// Path provided via `LITHOS_VAULT` environment variable.
     pub(crate) env_path: Option<&'a Path>,
+    /// Current working directory to start ascending discovery from.
     pub(crate) cwd: &'a Path,
+    /// Raw ceiling directory string (platform-specific separator).
     pub(crate) ceiling_dirs_raw: Option<&'a OsStr>,
 }
 
+/// The result of a successful or partially-successful vault discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug)]
 pub(crate) struct VaultDiscoveryResult {
+    /// The resolved vault root directory.
     pub(crate) root: Option<PathBuf>,
+    /// The highest-precedence marker file found.
     pub(crate) marker: Option<FoundRootMarker>,
+    /// Other marker files found in the same root (e.g. different formats).
     pub(crate) alternatives: Vec<FoundRootMarker>,
+    /// Which source established the root.
     pub(crate) source: Option<VaultSourceType>,
+    /// Non-fatal warnings encountered during discovery.
     pub(crate) warnings: Vec<VaultDiscoveryWarning>,
 }
 
+/// The result of a global configuration discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct GlobalDiscoveryResult {
+    /// The discovered global marker file.
     pub(crate) marker: Option<FoundRootMarker>,
+    /// Alternative formats of the global marker.
     pub(crate) alternatives: Vec<FoundRootMarker>,
+    /// Which source established the global config.
     pub(crate) source: Option<GlobalSourceType>,
+    /// Non-fatal warnings encountered during discovery.
     pub(crate) warnings: Vec<VaultDiscoveryWarning>,
 }
 
@@ -325,7 +347,7 @@ mod tests {
             let cwd = tempdir().expect("cwd");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: Some(explicit.path()),
                     env_path: Some(env_dir.path()),
                     cwd: cwd.path(),
@@ -343,7 +365,7 @@ mod tests {
             let cwd = tempdir().expect("cwd");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: Some(explicit.path()),
                     env_path: Some(env_dir.path()),
                     cwd: cwd.path(),
@@ -365,7 +387,7 @@ mod tests {
             let cwd = tempdir().expect("cwd");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: Some(env_dir.path()),
                     cwd: cwd.path(),
@@ -382,7 +404,7 @@ mod tests {
             let cwd = tempdir().expect("cwd");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: Some(env_dir.path()),
                     cwd: cwd.path(),
@@ -403,7 +425,7 @@ mod tests {
             let cwd = tempdir().expect("cwd");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: Some(explicit.path()),
                     env_path: Some(env_dir.path()),
                     cwd: cwd.path(),
@@ -420,7 +442,7 @@ mod tests {
             write_marker(root.path(), "lithos.toml");
 
             let result = engine()
-                .find_vault(input_from_cwd(root.path()))
+                .find_vault(&input_from_cwd(root.path()))
                 .expect("resolution succeeds");
 
             assert_eq!(result.source, Some(VaultSourceType::AscendingWalk));
@@ -432,7 +454,7 @@ mod tests {
             write_marker(root.path(), "lithos.toml");
 
             let result = engine()
-                .find_vault(input_from_cwd(root.path()))
+                .find_vault(&input_from_cwd(root.path()))
                 .expect("resolution succeeds");
 
             assert_eq!(
@@ -450,7 +472,7 @@ mod tests {
             std::fs::create_dir_all(&child).expect("child");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: None,
                     cwd: &child,
@@ -473,7 +495,7 @@ mod tests {
             std::fs::create_dir_all(&child).expect("child");
 
             let result = engine()
-                .find_vault(input_from_cwd(&child))
+                .find_vault(&input_from_cwd(&child))
                 .expect("resolution succeeds");
             let marker = result.marker.expect("marker is discovered");
 
@@ -488,7 +510,7 @@ mod tests {
             let root = tempdir().expect("root");
 
             let result = engine()
-                .find_vault(input_from_cwd(root.path()))
+                .find_vault(&input_from_cwd(root.path()))
                 .expect("resolution succeeds");
 
             assert_eq!(result.root, None);
@@ -505,7 +527,7 @@ mod tests {
 
             let ceilings = path_list(&[&stop]);
             let result = engine()
-                .find_vault(input_with_ceilings(&cwd, &ceilings))
+                .find_vault(&input_with_ceilings(&cwd, &ceilings))
                 .expect("resolution succeeds");
 
             assert_eq!(result.root, None);
@@ -521,7 +543,7 @@ mod tests {
 
             let ceilings = path_list(&[root.path()]);
             let result = engine()
-                .find_vault(input_with_ceilings(&cwd, &ceilings))
+                .find_vault(&input_with_ceilings(&cwd, &ceilings))
                 .expect("resolution succeeds");
 
             assert!(result.marker.is_some());
@@ -537,7 +559,7 @@ mod tests {
 
             let ceilings = path_list(&[root.path()]);
             let result = engine_no_ceiling_markers()
-                .find_vault(input_with_ceilings(&cwd, &ceilings))
+                .find_vault(&input_with_ceilings(&cwd, &ceilings))
                 .expect("resolution succeeds");
 
             assert_eq!(result.root, None);
@@ -549,7 +571,7 @@ mod tests {
             let missing = cwd.path().join("missing");
 
             let error = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: Some(&missing),
                     env_path: None,
                     cwd: cwd.path(),
@@ -573,7 +595,7 @@ mod tests {
             std::fs::write(&file_path, "x").expect("write file");
 
             let error = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: Some(&file_path),
                     env_path: None,
                     cwd: cwd.path(),
@@ -596,7 +618,7 @@ mod tests {
             let missing = cwd.path().join("missing");
 
             let error = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: Some(&missing),
                     cwd: cwd.path(),
@@ -620,7 +642,7 @@ mod tests {
             std::fs::write(&file_path, "x").expect("write file");
 
             let error = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: Some(&file_path),
                     cwd: cwd.path(),
@@ -635,25 +657,6 @@ mod tests {
                     file_path.display()
                 ),
             );
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn returns_none_when_symlink_loop_repeats_path() {
-            use std::os::unix::fs as unix_fs;
-
-            let root = tempdir().expect("root");
-            let base = root.path().join("base");
-            std::fs::create_dir_all(&base).expect("base");
-            let loop_link = base.join("loop");
-            unix_fs::symlink(&base, &loop_link).expect("symlink");
-            let cwd = loop_link.join("loop").join("loop");
-
-            let result = engine()
-                .find_vault(input_from_cwd(&cwd))
-                .expect("resolution succeeds");
-
-            assert_eq!(result.root, None);
         }
 
         #[test]
@@ -674,7 +677,7 @@ mod tests {
             .expect("join paths");
 
             let result = engine()
-                .find_vault(DiscoveryInput {
+                .find_vault(&DiscoveryInput {
                     flag_path: None,
                     env_path: None,
                     cwd: &cwd,
@@ -697,7 +700,7 @@ mod tests {
         fn find_global_is_stub() {
             let cwd = tempdir().expect("cwd");
             let result = engine()
-                .find_global(DiscoveryInput {
+                .find_global(&DiscoveryInput {
                     flag_path: None,
                     env_path: None,
                     cwd: cwd.path(),

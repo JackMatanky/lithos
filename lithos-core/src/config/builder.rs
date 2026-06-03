@@ -220,7 +220,7 @@ where
 
         let disc_engine = DiscoveryEngine::new(DiscoveryPolicy::default());
         let vault_result = disc_engine
-            .find_vault(DiscoveryInput {
+            .find_vault(&DiscoveryInput {
                 flag_path: Some(vault_root.as_path()),
                 env_path: None,
                 cwd: vault_root.as_path(),

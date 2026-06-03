@@ -1,6 +1,13 @@
+//! Logic for selecting a single winning marker from multiple discovery
+//! candidates.
+
 use super::engine::FoundRootMarker;
 use crate::fs::format::StructuredFileFormat;
 
+/// Picks the highest-precedence marker from a slice of discovered markers.
+///
+/// Precedence is determined first by file format (e.g. TOML > JSON) and then
+/// by path name (alphabetical) as a tie-breaker.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) fn select_candidate(
     markers: &[FoundRootMarker],
@@ -10,6 +17,8 @@ pub(crate) fn select_candidate(
     })
 }
 
+/// Attempts to find a marker with the preferred format, falling back to
+/// standard selection.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) fn promote_alternative(
     markers: &[FoundRootMarker],
