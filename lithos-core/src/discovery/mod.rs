@@ -34,5 +34,3 @@ pub(crate) mod walk;
 
 /// Diagnostics and warnings during discovery.
 pub(crate) mod diagnostics;
-/// Root marker contract: the typed output of vault root resolution.
-pub(crate) mod marker;

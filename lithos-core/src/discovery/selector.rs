@@ -1,4 +1,4 @@
-use super::marker::FoundRootMarker;
+use super::engine::FoundRootMarker;
 use crate::fs::format::StructuredFileFormat;
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]

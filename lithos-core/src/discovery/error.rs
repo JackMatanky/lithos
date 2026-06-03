@@ -1,15 +1,6 @@
 use std::{io, path::PathBuf};
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum VaultDiscoveryWarning {
-    EmptyCeilingSegment,
-    InvalidCeilingSegment {
-        segment: PathBuf,
-    },
-}
-
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DiscoveryError {
     #[error("Explicit vault path does not exist: {path}")]
@@ -43,27 +34,6 @@ pub(crate) enum DiscoveryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod vault_discovery_warning {
-        use super::*;
-
-        #[test]
-        fn empty_segment_is_constructible() {
-            let w = VaultDiscoveryWarning::EmptyCeilingSegment;
-            assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
-        }
-
-        #[test]
-        fn invalid_segment_holds_path() {
-            let w = VaultDiscoveryWarning::InvalidCeilingSegment {
-                segment: PathBuf::from("/invalid"),
-            };
-            assert!(matches!(
-                w,
-                VaultDiscoveryWarning::InvalidCeilingSegment { .. }
-            ));
-        }
-    }
 
     mod discovery_error {
         use super::*;

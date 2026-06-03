@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::error::VaultDiscoveryWarning;
+use super::diagnostics::VaultDiscoveryWarning;
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct AscendingWalker {
@@ -47,8 +47,8 @@ impl Iterator for AscendingWalker {
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryBoundaries {
-    start_dir: PathBuf,
-    ceilings: HashSet<PathBuf>,
+    pub(crate) start_dir: PathBuf,
+    pub(crate) ceilings: HashSet<PathBuf>,
 }
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
@@ -67,40 +67,39 @@ impl DiscoveryBoundaries {
     pub(crate) fn ceilings(&self) -> &HashSet<PathBuf> {
         &self.ceilings
     }
-}
 
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) fn parse_ceilings(
-    ceiling_dirs_raw: Option<&OsStr>,
-    warnings: &mut Vec<VaultDiscoveryWarning>,
-) -> HashSet<PathBuf> {
-    ceiling_dirs_raw
-        .map(env::split_paths)
-        .into_iter()
-        .flatten()
-        .filter_map(|segment| {
-            let s = segment.to_string_lossy();
-            let trimmed = s.trim();
+    pub(crate) fn parse_ceilings(
+        ceiling_dirs_raw: Option<&OsStr>,
+        warnings: &mut Vec<VaultDiscoveryWarning>,
+    ) -> HashSet<PathBuf> {
+        ceiling_dirs_raw
+            .map(env::split_paths)
+            .into_iter()
+            .flatten()
+            .filter_map(|segment| {
+                let s = segment.to_string_lossy();
+                let trimmed = s.trim();
 
-            if trimmed.is_empty() {
-                warnings.push(VaultDiscoveryWarning::EmptyCeilingSegment);
-                return None;
-            }
-
-            let path = PathBuf::from(trimmed);
-            match path.canonicalize() {
-                Ok(canonical) if canonical.is_dir() => Some(canonical),
-                _ => {
-                    warnings.push(
-                        VaultDiscoveryWarning::InvalidCeilingSegment {
-                            segment: path,
-                        },
-                    );
-                    None
+                if trimmed.is_empty() {
+                    warnings.push(VaultDiscoveryWarning::EmptyCeilingSegment);
+                    return None;
                 }
-            }
-        })
-        .collect()
+
+                let path = PathBuf::from(trimmed);
+                match path.canonicalize() {
+                    Ok(canonical) if canonical.is_dir() => Some(canonical),
+                    _ => {
+                        warnings.push(
+                            VaultDiscoveryWarning::InvalidCeilingSegment {
+                                segment: path,
+                            },
+                        );
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -222,7 +221,8 @@ mod tests {
         #[test]
         fn returns_empty_set_when_env_is_absent() {
             let mut warnings = Vec::new();
-            let ceilings = parse_ceilings(None, &mut warnings);
+            let ceilings =
+                DiscoveryBoundaries::parse_ceilings(None, &mut warnings);
             assert!(ceilings.is_empty());
         }
 
@@ -232,7 +232,10 @@ mod tests {
             let raw = path_list(&[root.path()]);
             let mut warnings = Vec::new();
 
-            let ceilings = parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            let ceilings = DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(ceilings.contains(
                 &root.path().canonicalize().expect("canonical root")
@@ -244,7 +247,10 @@ mod tests {
             let raw = OsString::from(":");
             let mut warnings = Vec::new();
 
-            parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(
                 warnings.contains(&VaultDiscoveryWarning::EmptyCeilingSegment)
@@ -256,7 +262,10 @@ mod tests {
             let raw = OsString::from("   ");
             let mut warnings = Vec::new();
 
-            parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(
                 warnings.contains(&VaultDiscoveryWarning::EmptyCeilingSegment)
@@ -270,7 +279,10 @@ mod tests {
             let raw = path_list(&[&missing]);
             let mut warnings = Vec::new();
 
-            parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(result_contains_invalid_ceiling(&warnings));
         }
@@ -283,7 +295,10 @@ mod tests {
             let raw = path_list(&[&file_path]);
             let mut warnings = Vec::new();
 
-            parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(result_contains_invalid_ceiling(&warnings));
         }
@@ -301,7 +316,10 @@ mod tests {
             .expect("join paths");
             let mut warnings = Vec::new();
 
-            let ceilings = parse_ceilings(Some(raw.as_os_str()), &mut warnings);
+            let ceilings = DiscoveryBoundaries::parse_ceilings(
+                Some(raw.as_os_str()),
+                &mut warnings,
+            );
 
             assert!(ceilings.contains(
                 &valid.canonicalize().expect("canonical valid ceiling")

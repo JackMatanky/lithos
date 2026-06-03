@@ -8,6 +8,10 @@ pub(crate) enum VaultSourceType {
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl VaultSourceType {
+    /// Stable precedence used by deterministic candidate selection.
+    pub(crate) const PRECEDENCE: [Self; 3] =
+        [Self::ExplicitFlag, Self::EnvVar, Self::AscendingWalk];
+
     pub(crate) fn rank(self) -> u8 {
         match self {
             Self::ExplicitFlag => 0,
@@ -36,6 +40,10 @@ pub(crate) enum GlobalSourceType {
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl GlobalSourceType {
+    /// Stable precedence used by deterministic candidate selection.
+    pub(crate) const PRECEDENCE: [Self; 4] =
+        [Self::EnvVar, Self::XdgConfig, Self::UserConfig, Self::SystemConfig];
+
     pub(crate) fn rank(self) -> u8 {
         match self {
             Self::EnvVar => 0,
@@ -57,11 +65,7 @@ pub(crate) struct DiscoveryPolicy {
 impl Default for DiscoveryPolicy {
     fn default() -> Self {
         Self {
-            precedence: vec![
-                VaultSourceType::ExplicitFlag,
-                VaultSourceType::EnvVar,
-                VaultSourceType::AscendingWalk,
-            ],
+            precedence: VaultSourceType::PRECEDENCE.to_vec(),
             allow_marker_at_ceiling: true,
             strict_overrides: false,
         }

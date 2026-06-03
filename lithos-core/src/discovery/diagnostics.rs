@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use super::error::VaultDiscoveryWarning;
-
 /// Typed warning channel for non-fatal discovery diagnostics.
 ///
 /// Warnings are structured so CLI/reporting layers can render deterministic,
@@ -19,6 +17,15 @@ pub(crate) enum DiscoveryWarning {
     },
     /// Vault-discovery-specific warning payload.
     RootResolution(VaultDiscoveryWarning),
+}
+
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum VaultDiscoveryWarning {
+    EmptyCeilingSegment,
+    InvalidCeilingSegment {
+        segment: PathBuf,
+    },
 }
 
 #[cfg(test)]
@@ -45,5 +52,26 @@ mod tests {
                 VaultDiscoveryWarning::EmptyCeilingSegment
             )
         ));
+    }
+
+    mod vault_discovery_warning {
+        use super::*;
+
+        #[test]
+        fn empty_segment_is_constructible() {
+            let w = VaultDiscoveryWarning::EmptyCeilingSegment;
+            assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
+        }
+
+        #[test]
+        fn invalid_segment_holds_path() {
+            let w = VaultDiscoveryWarning::InvalidCeilingSegment {
+                segment: PathBuf::from("/invalid"),
+            };
+            assert!(matches!(
+                w,
+                VaultDiscoveryWarning::InvalidCeilingSegment { .. }
+            ));
+        }
     }
 }

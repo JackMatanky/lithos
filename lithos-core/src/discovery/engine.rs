@@ -4,13 +4,30 @@ use std::{
 };
 
 use super::{
-    error::{DiscoveryError, VaultDiscoveryWarning},
-    marker::FoundRootMarker,
+    diagnostics::VaultDiscoveryWarning,
+    error::DiscoveryError,
     policy::{DiscoveryPolicy, GlobalSourceType, VaultSourceType},
     probe::{DiscoveryProbe, VaultRootProbe},
     selector::select_candidate,
-    walk::{AscendingWalker, parse_ceilings},
+    walk::{AscendingWalker, DiscoveryBoundaries},
 };
+use crate::fs::format::StructuredFileFormat;
+
+/// A root marker file found during vault root resolution.
+///
+/// Carries the canonicalized path to the marker file (e.g. `lithos.toml`) and
+/// the base directory it was found in. Does not include Config location
+/// taxonomy; that classification is Config-owned.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FoundRootMarker {
+    /// Base directory the marker was found in (the vault root candidate).
+    pub(crate) base: PathBuf,
+    /// Absolute canonicalized path to the marker file.
+    pub(crate) path: PathBuf,
+    /// The detected structured format of the marker file.
+    pub(crate) format: StructuredFileFormat,
+}
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryEngine {
@@ -37,7 +54,7 @@ impl DiscoveryEngine {
             match source_type {
                 VaultSourceType::ExplicitFlag => {
                     if let Some(path) = input.flag_path {
-                        let root = validate_override(path, *source_type)?;
+                        let root = Self::validate_override(path, *source_type)?;
                         return Ok(VaultDiscoveryResult {
                             root: Some(root),
                             marker: None,
@@ -49,7 +66,7 @@ impl DiscoveryEngine {
                 }
                 VaultSourceType::EnvVar => {
                     if let Some(path) = input.env_path {
-                        let root = validate_override(path, *source_type)?;
+                        let root = Self::validate_override(path, *source_type)?;
                         return Ok(VaultDiscoveryResult {
                             root: Some(root),
                             marker: None,
@@ -90,7 +107,10 @@ impl DiscoveryEngine {
         })?;
 
         let mut warnings: Vec<VaultDiscoveryWarning> = Vec::new();
-        let ceilings = parse_ceilings(input.ceiling_dirs_raw, &mut warnings);
+        let ceilings = DiscoveryBoundaries::parse_ceilings(
+            input.ceiling_dirs_raw,
+            &mut warnings,
+        );
 
         let walker = AscendingWalker::new(start, ceilings.clone());
         let probe = VaultRootProbe;
@@ -156,6 +176,64 @@ impl DiscoveryEngine {
             warnings: vec![],
         })
     }
+
+    fn validate_override(
+        path: &Path,
+        source: VaultSourceType,
+    ) -> Result<PathBuf, DiscoveryError> {
+        if !path.exists() {
+            return Err(match source {
+                VaultSourceType::ExplicitFlag => {
+                    DiscoveryError::ExplicitPathMissing {
+                        path: path.to_path_buf(),
+                    }
+                }
+                VaultSourceType::EnvVar => {
+                    DiscoveryError::EnvironmentPathMissing {
+                        path: path.to_path_buf(),
+                    }
+                }
+                VaultSourceType::AscendingWalk => {
+                    DiscoveryError::CanonicalizePath {
+                        path: path.to_path_buf(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "ascending discovery path is missing",
+                        ),
+                    }
+                }
+            });
+        }
+
+        if !path.is_dir() {
+            return Err(match source {
+                VaultSourceType::ExplicitFlag => {
+                    DiscoveryError::ExplicitPathNotDirectory {
+                        path: path.to_path_buf(),
+                    }
+                }
+                VaultSourceType::EnvVar => {
+                    DiscoveryError::EnvironmentPathNotDirectory {
+                        path: path.to_path_buf(),
+                    }
+                }
+                VaultSourceType::AscendingWalk => {
+                    DiscoveryError::CanonicalizePath {
+                        path: path.to_path_buf(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "ascending discovery path is not a directory",
+                        ),
+                    }
+                }
+            });
+        }
+
+        path.canonicalize().map_err(|error| DiscoveryError::CanonicalizePath {
+            path: path.to_path_buf(),
+            source: error,
+        })
+    }
 }
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
@@ -182,62 +260,6 @@ pub(crate) struct GlobalDiscoveryResult {
     pub(crate) alternatives: Vec<FoundRootMarker>,
     pub(crate) source: Option<GlobalSourceType>,
     pub(crate) warnings: Vec<VaultDiscoveryWarning>,
-}
-
-fn validate_override(
-    path: &Path,
-    source: VaultSourceType,
-) -> Result<PathBuf, DiscoveryError> {
-    if !path.exists() {
-        return Err(match source {
-            VaultSourceType::ExplicitFlag => {
-                DiscoveryError::ExplicitPathMissing {
-                    path: path.to_path_buf(),
-                }
-            }
-            VaultSourceType::EnvVar => DiscoveryError::EnvironmentPathMissing {
-                path: path.to_path_buf(),
-            },
-            VaultSourceType::AscendingWalk => {
-                DiscoveryError::CanonicalizePath {
-                    path: path.to_path_buf(),
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "ascending discovery path is missing",
-                    ),
-                }
-            }
-        });
-    }
-
-    if !path.is_dir() {
-        return Err(match source {
-            VaultSourceType::ExplicitFlag => {
-                DiscoveryError::ExplicitPathNotDirectory {
-                    path: path.to_path_buf(),
-                }
-            }
-            VaultSourceType::EnvVar => {
-                DiscoveryError::EnvironmentPathNotDirectory {
-                    path: path.to_path_buf(),
-                }
-            }
-            VaultSourceType::AscendingWalk => {
-                DiscoveryError::CanonicalizePath {
-                    path: path.to_path_buf(),
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "ascending discovery path is not a directory",
-                    ),
-                }
-            }
-        });
-    }
-
-    path.canonicalize().map_err(|error| DiscoveryError::CanonicalizePath {
-        path: path.to_path_buf(),
-        source: error,
-    })
 }
 
 #[cfg(test)]

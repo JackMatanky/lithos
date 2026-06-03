@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{error::DiscoveryError, marker::FoundRootMarker};
+use super::{engine::FoundRootMarker, error::DiscoveryError};
 use crate::fs::format::StructuredFileFormat;
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
@@ -38,34 +38,36 @@ impl DiscoveryProbe<FoundRootMarker> for VaultRootProbe {
         &self,
         dir: &Path,
     ) -> Result<Option<FoundRootMarker>, DiscoveryError> {
-        for pattern in ROOT_MARKER_FILES {
-            for format in StructuredFileFormat::PRECEDENCE {
+        ROOT_MARKER_FILES
+            .iter()
+            .flat_map(|pattern| {
+                StructuredFileFormat::PRECEDENCE
+                    .iter()
+                    .map(move |format| (pattern, format))
+            })
+            .find_map(|(pattern, format)| {
                 let ext = format.extension();
                 let filename = format!("{}.{}", pattern.prefix, ext);
                 let path = dir.join(&filename);
 
                 if !path.is_file() {
-                    continue;
+                    return None;
                 }
 
-                let canonical = match path.canonicalize() {
-                    Ok(c) => c,
-                    Err(source) => {
-                        return Err(DiscoveryError::CanonicalizePath {
+                Some(
+                    path.canonicalize()
+                        .map(|canonical| FoundRootMarker {
+                            base: dir.to_path_buf(),
+                            path: canonical,
+                            format: *format,
+                        })
+                        .map_err(|source| DiscoveryError::CanonicalizePath {
                             path,
                             source,
-                        });
-                    }
-                };
-
-                return Ok(Some(FoundRootMarker {
-                    base: dir.to_path_buf(),
-                    path: canonical,
-                    format,
-                }));
-            }
-        }
-        Ok(None)
+                        }),
+                )
+            })
+            .transpose()
     }
 }
 

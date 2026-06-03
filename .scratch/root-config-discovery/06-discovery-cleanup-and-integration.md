@@ -265,6 +265,16 @@ All new types are `pub(crate)` unless explicitly needed wider.
 | `mise run verify` | ✅ all gates pass |
 
 **Test delta:** 1633 baseline → 1665 final (+32 new discovery tests)
-**Files added:** 7 (`discovery/error.rs`, `walk.rs`, `probe.rs`, `selector.rs`, `policy.rs`, `engine.rs`, `config/diagnostics.rs`)
-**Files deleted:** 1 (`discovery/resolver.rs`)
+**Files added:** 6 (`discovery/error.rs`, `walk.rs`, `probe.rs`, `selector.rs`, `policy.rs`, `engine.rs`, `config/diagnostics.rs`)
+**Files deleted:** 2 (`discovery/resolver.rs`, `discovery/marker.rs`)
 **Files modified:** 10
+
+### Post-Implementation Review Fixes
+
+After the initial implementation and quality gate checks, the following fixes were applied to adhere fully to Rust best practices and ACs:
+
+1. **VaultDiscoveryWarning Location**: Moved `VaultDiscoveryWarning` from `error.rs` to `diagnostics.rs`, matching the exact specification from the Acceptance Criteria.
+2. **Method Refactoring**: Refactored `validate_override()` into an associated method on `DiscoveryEngine` (`DiscoveryEngine::validate_override`) and `parse_ceilings()` into an associated method on `DiscoveryBoundaries` (`DiscoveryBoundaries::parse_ceilings`).
+3. **Iterator Chains over Loops**: Refactored the manual `for` loops in `VaultRootProbe::probe` to use a cleaner, idiomatic Rust iterator chain (`.flat_map`, `.find_map`, `.transpose()`).
+4. **Const Precedence**: Added `const PRECEDENCE` arrays to both `VaultSourceType` and `GlobalSourceType` to allow for idiomatic iteration over ordered source types, similar to `StructuredFileFormat`.
+5. **FoundRootMarker Relocation**: Moved the `FoundRootMarker` struct out of `marker.rs` and directly into `engine.rs` alongside the `*DiscoveryResult` types, and deleted `marker.rs` to reduce module fragmentation for tightly coupled discovery result types.
