@@ -29,7 +29,7 @@ This slice produces local `DiscoveredConfigFile` outcomes and typed warnings for
 
 ## Acceptance criteria
 
-- [ ] Local discovery consumes top-level Discovery root resolution output and supports not-found behavior without panic.
+- [ ] Local discovery consumes top-level Discovery `DiscoveryEngine` output and supports not-found behavior without panic.
 - [ ] All three local location patterns are checked with documented location precedence.
 - [ ] Candidate generation and selection integrate `find_local_config_candidates` and `select_config_candidate` seams.
 - [ ] Multi-location and multi-format ambiguities emit typed warnings while still producing deterministic winner.

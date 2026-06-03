@@ -53,6 +53,8 @@ non-fatal.
 
 **Key interfaces:**
 - `GlobalConfigLocation` variants
+- `discovery::engine::DiscoveryEngine`
+- `discovery::probe::GlobalConfigProbe` (or similar)
 - Config-owned `DiscoveredConfigFile`, `ConfigDiscoveryResult`, and `ConfigSelectionResult` contracts
 - Environment candidate enumerator
 - `--no-global-config` bypass path
