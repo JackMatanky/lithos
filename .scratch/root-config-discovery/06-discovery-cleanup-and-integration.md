@@ -41,8 +41,13 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
         - [ ] **`MarkerPattern` (Internal)**: `{ prefix: &'static str, is_nested: bool }` - used to generate candidate filenames across all `StructuredFileFormat` variants.
         - [ ] **`ROOT_MARKER_FILES`** & **`GLOBAL_MARKER_FILES`**: Define as `pub(crate)` constants used by probes.
     - [ ] **Policy (`discovery/policy.rs`)**:
-        - [ ] **`SourceType`**: `ExplicitFlag`, `EnvironmentVariable`, `AscendingWalk`.
-        - [ ] **`DiscoveryPolicy`**: Precedence (`Vec<SourceType>`), `allow_marker_at_ceiling: bool`, and `strict_overrides: bool`.
+        - [ ] **`VaultSourceType`**: `ExplicitFlag(0)`, `EnvVar(1)`, `AscendingWalk(2)`.
+        - [ ] **`GlobalSourceType`**: `EnvVar(0)`, `XdgConfig(1)`, `UserConfig(2)`, `SystemConfig(3)`.
+        - [ ] Implement `rank() -> u8` for both to drive deterministic tier-precedence.
+        - [ ] **`DiscoveryPolicy`**: Precedence (`Vec<VaultSourceType>`), `allow_marker_at_ceiling: bool`, and `strict_overrides: bool`.
+    - [ ] **Selector (`discovery/selector.rs`)**:
+        - [ ] **`select_candidate()`**: Pure function that picks a winner from `Vec<FoundRootMarker>` using `StructuredFileFormat::PRECEDENCE`.
+        - [ ] **`promote_alternative()`**: Pure function that swaps the winner for an alternative if it matches a provided `StructuredFileFormat` (Stability Hint).
     - [ ] **Engine (`discovery/engine.rs`)**:
         - [ ] **`DiscoveryEngine`**: Implement with the following interface:
             ```rust
@@ -53,19 +58,20 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
                     // 1. Resolution: Transform DiscoveryInput + Policy -> DiscoveryBoundaries
                     // 2. Precedence: Iterate through Policy.precedence (Explicit -> Env -> Walk)
                     // 3. Traversal: For AscendingWalk, drive AscendingWalker + VaultRootProbe
-                    // 4. Result: Assemble and return VaultDiscoveryResult (with winning marker)
+                    // 4. Selection: Use select_candidate() to pick winner and populate alternatives
+                    // 5. Result: Assemble and return VaultDiscoveryResult
                 }
                 pub fn find_global(&self, input: DiscoveryInput<'_>) -> Result<GlobalDiscoveryResult, DiscoveryError> {
-                    // 1. Precedence: Iterate tiers (Env -> XDG -> User -> System)
+                    // 1. Precedence: Iterate GlobalSourceType tiers
                     // 2. Detection: Use GlobalConfigProbe at each tier
-                    // 3. Selection: Use StructuredFileFormat::PRECEDENCE to pick winner
+                    // 3. Selection: Use select_candidate() to pick winner and populate alternatives
                     // 4. Result: Assemble and return GlobalDiscoveryResult
                 }
             }
             ```
         - [ ] **`DiscoveryInput` (Raw)**: `flag_path`, `env_path`, `cwd`, and `ceiling_dirs_raw` (OsStr).
-        - [ ] **`VaultDiscoveryResult`**: `root: Option<PathBuf>`, `marker: Option<FoundRootMarker>`, `source: Option<SourceType>`, `warnings: Vec<DiscoveryWarning>`.
-        - [ ] **`GlobalDiscoveryResult`**: `marker: Option<FoundRootMarker>`, `source: Option<SourceType>`, `warnings: Vec<DiscoveryWarning>`.
+        - [ ] **`VaultDiscoveryResult`**: `root: Option<PathBuf>`, `marker: Option<FoundRootMarker>`, `alternatives: Vec<FoundRootMarker>`, `source: Option<VaultSourceType>`, `warnings: Vec<DiscoveryWarning>`.
+        - [ ] **`GlobalDiscoveryResult`**: `marker: Option<FoundRootMarker>`, `alternatives: Vec<FoundRootMarker>`, `source: Option<GlobalSourceType>`, `warnings: Vec<DiscoveryWarning>`.
 - [ ] **Context Cleanup & Normalization**:
     - [ ] **Delete `discovery/resolver.rs`** entirely after migrating logic.
     - [ ] Move `LocalDiscoveryWarning` and `FormatDiscoveryWarning` to `config/diagnostics.rs`.
