@@ -63,9 +63,10 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
     - [ ] Move `LocalDiscoveryWarning` and `FormatDiscoveryWarning` to `config/diagnostics.rs`.
     - [ ] Rename `RootResolutionWarning` to `VaultDiscoveryWarning` in `discovery/diagnostics.rs`.
 - [ ] **Config Integration**:
-    - [ ] Refactor `config/discovery.rs` (`DiscoveryEngine`) to call the new `discovery::engine::DiscoveryEngine::find_vault`.
+    - [ ] Refactor `config/discovery.rs` into a "Consolidator" that is **passed** a `discovery::ConfigDiscoveryResult` (from Phase 2).
+    - [ ] `config/discovery.rs` orchestrates behavior **after** path selection: querying the `Repository` for cached views and combining them with the discovered paths.
     - [ ] Implement mapping from Discovery outputs to `config::DiscoveredConfigFile` in `config/root.rs`.
-    - [ ] **Delete** legacy manual scanning in `config/discovery.rs`.
+    - [ ] **Delete** legacy manual scanning and `find_vault_config`/`find_global_config` in `config/discovery.rs`.
 
 ## Migration Plan (from `resolver.rs`)
 
