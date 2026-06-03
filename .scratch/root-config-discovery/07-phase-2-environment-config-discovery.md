@@ -23,10 +23,13 @@ AFK
 
 Implement Environment Config discovery in Phase 2 with deterministic source precedence, multi-format candidate checks, and non-fatal missing behavior.
 
-This slice covers global config source resolution only (env-path, XDG, user, system), including suppression mode and diagnostics, while keeping parsing/validation out of scope.
+This slice introduces the **`GlobalConfigProbe`** and the **`DiscoveryEngine::find_global()`** method. It covers global config source resolution only (env-path, XDG, user, system), including suppression mode and diagnostics, while keeping parsing/validation out of scope.
 
 ## Acceptance criteria
 
+- [ ] **Global Discovery Implementation**:
+    - [ ] Implement `GlobalConfigProbe` in `discovery/probe.rs` to find environment-level config files.
+    - [ ] Add `find_global()` method to `DiscoveryEngine` in `discovery/engine.rs`.
 - [ ] Environment Config source precedence is implemented as: `LITHOS_CONFIG_FILE` > XDG config home > user config home > system config.
 - [ ] Each tier supports structured format candidates (`toml`, `json`, `yaml`, `yml`) with documented precedence.
 - [ ] Missing Environment Config at any tier is treated as a non-error and discovery continues.

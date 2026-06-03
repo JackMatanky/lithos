@@ -48,7 +48,7 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
             pub struct DiscoveryEngine { policy: DiscoveryPolicy }
             impl DiscoveryEngine {
                 pub fn new(policy: DiscoveryPolicy) -> Self { ... }
-                pub fn discover_vault(&self, input: DiscoveryInput<'_>) -> Result<VaultDiscoveryResult, DiscoveryError> {
+                pub fn find_vault(&self, input: DiscoveryInput<'_>) -> Result<VaultDiscoveryResult, DiscoveryError> {
                     // 1. Resolution: Transform DiscoveryInput + Policy -> DiscoveryBoundaries
                     // 2. Precedence: Iterate through Policy.precedence (Explicit -> Env -> Walk)
                     // 3. Traversal: For AscendingWalk, drive AscendingWalker + VaultRootProbe
@@ -63,7 +63,7 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
     - [ ] Move `LocalDiscoveryWarning` and `FormatDiscoveryWarning` to `config/diagnostics.rs`.
     - [ ] Rename `RootResolutionWarning` to `VaultDiscoveryWarning` in `discovery/diagnostics.rs`.
 - [ ] **Config Integration**:
-    - [ ] Refactor `config/discovery.rs` (`DiscoveryEngine`) to call the new `discovery::engine::DiscoveryEngine::discover_vault`.
+    - [ ] Refactor `config/discovery.rs` (`DiscoveryEngine`) to call the new `discovery::engine::DiscoveryEngine::find_vault`.
     - [ ] Implement mapping from Discovery outputs to `config::DiscoveredConfigFile` in `config/root.rs`.
     - [ ] **Delete** legacy manual scanning in `config/discovery.rs`.
 
@@ -86,9 +86,7 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
 **Summary:** Transform Discovery into a Modular Engine (Traversal, Detection, Policy) and wire it into Config.
 
 **Architecture Note:**
-Maintain strict context boundaries. Discovery handles the "how to find" (using dumb constants like `ROOT_MARKER_FILES`); Config handles the "what it means" (using rich enums like `LocalConfigLocation`).
-
-Maintain strict context boundaries. Discovery handles path-finding via un-classified probes; Config handles the rich domain classification (`LocalConfigLocation`). `07-phase-2-environment-config-discovery.md` will later introduce `GlobalConfigProbe` and `discover_global`.
+Maintain strict context boundaries. Discovery handles path-finding via un-classified probes (using internal helpers like `MarkerPattern`); Config handles the rich domain classification (`LocalConfigLocation`). `07-phase-2-environment-config-discovery.md` will later introduce `GlobalConfigProbe` and `find_global`.
 
 ## Blocked by
 

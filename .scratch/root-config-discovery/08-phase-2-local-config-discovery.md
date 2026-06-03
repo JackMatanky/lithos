@@ -23,12 +23,12 @@ AFK
 
 Implement local (vault) config discovery in Phase 2 by integrating resolved vault root context with local candidate generation and deterministic winner selection.
 
-This slice produces local `DiscoveredConfigFile` outcomes and typed warnings for ambiguity, while preserving strict separation from config parsing and validation.
-
-`DiscoveredConfigFile` is a Config-owned classified result contract after `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`; top-level Discovery remains limited to root resolution and thin path/source/format discovery outputs.
+This slice introduces the **`CandidateProbe`** which is used to find specific config file candidates within the vault root once it has been resolved. It produces local `DiscoveredConfigFile` outcomes and typed warnings for ambiguity, while preserving strict separation from config parsing and validation.
 
 ## Acceptance criteria
 
+- [ ] **Candidate Discovery Implementation**:
+    - [ ] Implement `CandidateProbe` in `discovery/probe.rs` to identify local config candidates (e.g., `lithos.toml`, `.lithos/config.toml`).
 - [ ] Local discovery consumes top-level Discovery `DiscoveryEngine` output and supports not-found behavior without panic.
 - [ ] All three local location patterns are checked with documented location precedence.
 - [ ] Candidate generation and selection integrate `find_local_config_candidates` and `select_config_candidate` seams.
