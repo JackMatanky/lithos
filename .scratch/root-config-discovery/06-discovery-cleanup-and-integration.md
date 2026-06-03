@@ -37,8 +37,9 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
     - [ ] **Detection (`discovery/probe.rs`)**:
         - [ ] **`DiscoveryProbe<Output>` Trait**: Interface for directory-level probing.
         - [ ] **`VaultRootProbe`**: Uses internal `MarkerPattern` templates to find root markers.
+        - [ ] **`GlobalConfigProbe`**: Uses `GLOBAL_MARKER_FILES` to find environment-level config.
         - [ ] **`MarkerPattern` (Internal)**: `{ prefix: &'static str, is_nested: bool }` - used to generate candidate filenames across all `StructuredFileFormat` variants.
-        - [ ] **`ROOT_MARKER_FILES`**: Define as a `pub(crate)` constant used by `VaultRootProbe`.
+        - [ ] **`ROOT_MARKER_FILES`** & **`GLOBAL_MARKER_FILES`**: Define as `pub(crate)` constants used by probes.
     - [ ] **Policy (`discovery/policy.rs`)**:
         - [ ] **`SourceType`**: `ExplicitFlag`, `EnvironmentVariable`, `AscendingWalk`.
         - [ ] **`DiscoveryPolicy`**: Precedence (`Vec<SourceType>`), `allow_marker_at_ceiling: bool`, and `strict_overrides: bool`.
@@ -52,12 +53,19 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
                     // 1. Resolution: Transform DiscoveryInput + Policy -> DiscoveryBoundaries
                     // 2. Precedence: Iterate through Policy.precedence (Explicit -> Env -> Walk)
                     // 3. Traversal: For AscendingWalk, drive AscendingWalker + VaultRootProbe
-                    // 4. Result: Assemble and return VaultDiscoveryResult
+                    // 4. Result: Assemble and return VaultDiscoveryResult (with winning marker)
+                }
+                pub fn find_global(&self, input: DiscoveryInput<'_>) -> Result<GlobalDiscoveryResult, DiscoveryError> {
+                    // 1. Precedence: Iterate tiers (Env -> XDG -> User -> System)
+                    // 2. Detection: Use GlobalConfigProbe at each tier
+                    // 3. Selection: Use StructuredFileFormat::PRECEDENCE to pick winner
+                    // 4. Result: Assemble and return GlobalDiscoveryResult
                 }
             }
             ```
         - [ ] **`DiscoveryInput` (Raw)**: `flag_path`, `env_path`, `cwd`, and `ceiling_dirs_raw` (OsStr).
         - [ ] **`VaultDiscoveryResult`**: `root: Option<PathBuf>`, `marker: Option<FoundRootMarker>`, `source: Option<SourceType>`, `warnings: Vec<DiscoveryWarning>`.
+        - [ ] **`GlobalDiscoveryResult`**: `marker: Option<FoundRootMarker>`, `source: Option<SourceType>`, `warnings: Vec<DiscoveryWarning>`.
 - [ ] **Context Cleanup & Normalization**:
     - [ ] **Delete `discovery/resolver.rs`** entirely after migrating logic.
     - [ ] Move `LocalDiscoveryWarning` and `FormatDiscoveryWarning` to `config/diagnostics.rs`.
