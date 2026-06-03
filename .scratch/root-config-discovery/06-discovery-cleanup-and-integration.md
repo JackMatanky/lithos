@@ -29,25 +29,41 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
 
 - [ ] **Core Discovery Architecture (The Modular Engine)**:
     - [ ] **Traversal (`discovery/walk.rs`)**:
-        - [ ] Implement `AscendingWalker` iterator.
-        - [ ] **`DiscoveryBoundaries`**: Resolved context containing `start_dir` (canonicalized) and `ceilings` (HashSet of canonicalized physical paths).
+        - [ ] **`AscendingWalker`**: Implement as an IO-aware iterator with the following attributes:
+            - `current: Option<PathBuf>`: Current traversal state.
+            - `visited: HashSet<PathBuf>`: Physical paths (canonicalized) to prevent symlink cycles.
+            - `ceilings: HashSet<PathBuf>`: Physical paths (canonicalized) that terminate the walk.
+        - [ ] **`DiscoveryBoundaries`**: Resolved context containing canonicalized `start_dir` and `ceilings`.
     - [ ] **Detection (`discovery/probe.rs`)**:
         - [ ] **`DiscoveryProbe<Output>` Trait**: Interface for directory-level probing.
         - [ ] **`VaultRootProbe`**: Uses internal `MarkerPattern` templates to find root markers.
         - [ ] **`MarkerPattern` (Internal)**: `{ prefix: &'static str, is_nested: bool }` - used to generate candidate filenames across all `StructuredFileFormat` variants.
+        - [ ] **`ROOT_MARKER_FILES`**: Define as a `pub(crate)` constant used by `VaultRootProbe`.
     - [ ] **Policy (`discovery/policy.rs`)**:
         - [ ] **`SourceType`**: `ExplicitFlag`, `EnvironmentVariable`, `AscendingWalk`.
         - [ ] **`DiscoveryPolicy`**: Precedence (`Vec<SourceType>`), `allow_marker_at_ceiling: bool`, and `strict_overrides: bool`.
     - [ ] **Engine (`discovery/engine.rs`)**:
-        - [ ] **`DiscoveryEngine`**: Orchestrator that transforms `DiscoveryInput` + `DiscoveryPolicy` into `DiscoveryBoundaries` and drives the search.
+        - [ ] **`DiscoveryEngine`**: Implement with the following interface:
+            ```rust
+            pub struct DiscoveryEngine { policy: DiscoveryPolicy }
+            impl DiscoveryEngine {
+                pub fn new(policy: DiscoveryPolicy) -> Self { ... }
+                pub fn discover_vault(&self, input: DiscoveryInput<'_>) -> Result<VaultDiscoveryResult, DiscoveryError> {
+                    // 1. Resolution: Transform DiscoveryInput + Policy -> DiscoveryBoundaries
+                    // 2. Precedence: Iterate through Policy.precedence (Explicit -> Env -> Walk)
+                    // 3. Traversal: For AscendingWalk, drive AscendingWalker + VaultRootProbe
+                    // 4. Result: Assemble and return VaultDiscoveryResult
+                }
+            }
+            ```
         - [ ] **`DiscoveryInput` (Raw)**: `flag_path`, `env_path`, `cwd`, and `ceiling_dirs_raw` (OsStr).
-        - [ ] **`VaultDiscoveryResult`**: `root`, `marker`, `source`, `warnings`.
+        - [ ] **`VaultDiscoveryResult`**: `root: Option<PathBuf>`, `marker: Option<FoundRootMarker>`, `source: Option<SourceType>`, `warnings: Vec<DiscoveryWarning>`.
 - [ ] **Context Cleanup & Normalization**:
-    - [ ] **Delete `discovery/resolver.rs`** after migrating all logic to the modular structure.
+    - [ ] **Delete `discovery/resolver.rs`** entirely after migrating logic.
     - [ ] Move `LocalDiscoveryWarning` and `FormatDiscoveryWarning` to `config/diagnostics.rs`.
-    - [ ] **`ROOT_MARKER_FILES`**: Define as a public `&[&str]` constant in `discovery/mod.rs` containing all literal filenames that can trigger root discovery.
+    - [ ] Rename `RootResolutionWarning` to `VaultDiscoveryWarning` in `discovery/diagnostics.rs`.
 - [ ] **Config Integration**:
-    - [ ] Refactor `config/discovery.rs` (`DiscoveryEngine`) to call the new `discovery::engine::DiscoveryEngine`.
+    - [ ] Refactor `config/discovery.rs` (`DiscoveryEngine`) to call the new `discovery::engine::DiscoveryEngine::discover_vault`.
     - [ ] Implement mapping from Discovery outputs to `config::DiscoveredConfigFile` in `config/root.rs`.
     - [ ] **Delete** legacy manual scanning in `config/discovery.rs`.
 
@@ -70,7 +86,7 @@ This transformation breaks the monolithic `resolver.rs` into specialized compone
 **Summary:** Transform Discovery into a Modular Engine (Traversal, Detection, Policy) and wire it into Config.
 
 **Architecture Note:**
-Maintain strict context boundaries. Discovery handles the "how to find" (using dumb constants like `ROOT_MARKER_FILES`); Config handles the "what it means" (using rich enums like `LocalConfigLocation`). Mapping occurs at the `config/root.rs` seam.
+Maintain strict context boundaries. Discovery handles path-finding via un-classified probes; Config handles the rich domain classification (`LocalConfigLocation`). `07-phase-2-environment-config-discovery.md` will later introduce `GlobalConfigProbe` and `discover_global`.
 
 ## Blocked by
 
