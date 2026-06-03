@@ -1,5 +1,5 @@
 ---
-title: 07-phase-2-local-config-discovery
+title: 08-phase-2-local-config-discovery
 category: enhancement
 label: ready-for-agent
 status: open
@@ -72,4 +72,5 @@ selects a deterministic winner, and records ambiguity warnings without failing.
 
 - `.scratch/root-config-discovery/04-phase-1-vault-root-resolution.md`
 - `.scratch/root-config-discovery/05-move-discovery-module-boundary.md`
-- `.scratch/root-config-discovery/06-phase-2-environment-config-discovery.md`
+- `.scratch/root-config-discovery/06-discovery-cleanup-and-integration.md`
+- `.scratch/root-config-discovery/07-phase-2-environment-config-discovery.md`
