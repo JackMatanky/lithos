@@ -33,9 +33,16 @@ Phase 4: Approval & Baseline
 - **Status:** in_progress
 
 ### Phase 4: Approval & Baseline
-- [ ] Present analysis and strategy to user
-- [ ] Stage and commit planning artifacts in `.scratch/base-schema/04-worktree-merge`
-- **Status:** pending
+- [x] Present analysis and strategy to user
+- [x] Stage and commit planning artifacts in `.scratch/base-schema/04-worktree-merge`
+- **Status:** complete
+
+### Phase 5: Execution & Validation
+- [x] Execute approved merge strategy
+- [x] Run full validation suite (`mise run verify`)
+- [x] Stage and commit merge-related changes
+- **Status:** complete
+
 
 ### Phase 5: Execution & Validation
 - [ ] Execute approved merge strategy
