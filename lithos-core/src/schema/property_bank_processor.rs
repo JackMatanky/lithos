@@ -197,6 +197,20 @@ impl PropertyBankResolution {
         }
     }
 
+    /// Returns a reference to the resolved bank.
+    #[inline]
+    #[must_use]
+    pub(crate) fn bank(&self) -> &PropertyBank {
+        &self.bank
+    }
+
+    /// Returns a reference to the bank delta, if present.
+    #[inline]
+    #[must_use]
+    pub(crate) fn delta(&self) -> Option<&HashSet<PropertyName>> {
+        self.delta.as_ref()
+    }
+
     /// Decompose the resolution into its constituent parts.
     pub(crate) fn into_parts(
         self,

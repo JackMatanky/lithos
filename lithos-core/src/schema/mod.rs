@@ -34,6 +34,7 @@ pub mod views;
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
 pub(crate) mod base_processor;
+pub(crate) mod base_processor_v2;
 /// Property-bank reference expansion pipeline stage.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
