@@ -20,7 +20,6 @@
 //! - Integer formatting: `itoa::Buffer` vs `.to_string()`
 //! - Float formatting: `ryu::Buffer` vs `.to_string()`
 //! - Constructor APIs: `&str` parameters vs `String` (forced allocation)
-//! - Aggregate workflow combining all optimizations
 //!
 //! **Excluded**:
 //! - Database key formatting (see `db_key_handling.rs`)
@@ -78,16 +77,8 @@
 //! - **`PropertyName::new(&str)`**: ~25 ns vs ~36 ns (String) → 31% faster
 //! - **`DateSpec::try_new(&str)`**: ~11 ns vs ~11 ns (String) → ~3% faster
 //!   (validation dominates)
-//! - **`Template::new(&str)`**: ~1.06 µs vs ~1.07 µs (String) → ~1% faster
-//!   (database-dominated)
 //! - **Trend**: Smaller constructors show larger relative benefit from `&str`
-//!
-//! **Aggregate Workflow** (~3.52 ms):
-//! - Combines all optimizations in realistic usage
-//! - Database operations dominate total time (writes ~3.5ms each)
-//! - String optimizations contribute <5% of total time improvement
-//! - Validates that micro-optimizations compound in production workflows
-//!
+
 //! # Interpreting Results
 //!
 //! **Expected improvements (from RESULTS.md)**:
@@ -141,8 +132,7 @@
 //! | Group                  | Expected Time (Optimized) | Focus                                            |
 //! | ---------------------- | ------------------------- | ------------------------------------------------ |
 //! | `numeric_formatting`   | ~135ns (int), ~2.76µs (float) | itoa/ryu vs .`to_string()` (integers and floats) |
-//! | `constructor_apis`     | ~22-25ns (simple), ~1µs (db) | &str vs String parameters (domain constructors)  |
-//! | `aggregate_workflow`   | ~3.52ms                   | Combined optimization impact (database-dominated)|
+//! | `constructor_apis`     | ~22-25ns                   | &str vs String parameters (domain constructors)  |
 //!
 //! # Safety
 //!
@@ -160,22 +150,12 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
-use std::{collections::HashMap, hint::black_box};
+use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use lithos_core::{
-    db::{ArchivedEntity, Store},
-    schema::{
-        identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
-    },
-    template::aggregate::{Template, TemplateName},
+use lithos_core::schema::{
+    identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
 };
-use redb::TableDefinition;
-use tempfile::TempDir;
-use uuid::Uuid;
-
-const TEMPLATES_TABLE: TableDefinition<[u8; 16], &[u8]> =
-    TableDefinition::new("templates_uuid");
 
 // ----------------------------------------------------------- //
 //                     Numeric Formatting                      //
@@ -274,18 +254,17 @@ fn bench_numeric_formatting(c: &mut Criterion) {
 /// # What is Measured
 ///
 /// - **Latency**: Single constructor call per iteration
-/// - **Types**: `SchemaName`, `PropertyName`, `DateSpec`, Template
+/// - **Types**: `SchemaName`, `PropertyName`, `DateSpec`
 /// - **Comparison**: Optimized (&str) vs baseline (allocate then pass)
 ///
 /// # Expected Characteristics
 ///
-/// - **&str variants**: 10-25 ns per call (small types), ~1 µs (Template)
+/// - **&str variants**: 10-25 ns per call (small types)
 /// - **String variants**: 30-36 ns per call (adds .`to_owned()` overhead)
 /// - **Improvement**: 30-32% faster for &str (from RESULTS.md)
 ///
 /// # Notes for Future
 ///
-/// - Template shows minimal difference (dominated by `HashMap` initialization)
 /// - Small types (`SchemaName`, `PropertyName`) show clearest benefit
 fn bench_constructor_apis(c: &mut Criterion) {
     let mut group = c.benchmark_group("constructor_apis");
@@ -336,120 +315,8 @@ fn bench_constructor_apis(c: &mut Criterion) {
         });
     });
 
-    // Optimized: Template with &str
-    group.bench_function("template_from_str", |b| {
-        b.iter(|| {
-            let name = TemplateName::try_from(black_box("my-template"))
-                .expect("valid name");
-            Template::try_new(&name, None, vec![], HashMap::new())
-                .expect("valid template")
-        });
-    });
-
-    // Baseline: Template from String
-    group.bench_function("template_from_owned_string", |b| {
-        b.iter(|| {
-            let owned = black_box("my-template").to_owned();
-            let name =
-                TemplateName::try_from(owned.as_str()).expect("valid name");
-            Template::try_new(&name, None, vec![], HashMap::new())
-                .expect("valid template")
-        });
-    });
-
     group.finish();
 }
 
-// ----------------------------------------------------------- //
-//                     Aggregate Workflow                      //
-// ----------------------------------------------------------- //
-
-/// Benchmarks aggregate workflow combining multiple optimizations.
-///
-/// # Purpose
-///
-/// Measures cumulative impact of all optimizations in realistic usage pattern
-/// (construct domain objects, format queries, store in database).
-///
-/// # What is Measured
-///
-/// - **Workflow**: `SchemaName` + `PropertyName` + `DateSpec` creation, numeric
-///   formatting, Template storage
-/// - **Latency**: Full workflow per iteration (~3.5 ms, database-dominated)
-///
-/// # Expected Characteristics
-///
-/// - Dominated by database write (~3.6 ms)
-/// - Optimization savings (~100-200 ns) small relative to total
-/// - Validates optimizations compose correctly
-fn bench_aggregate_workflow(c: &mut Criterion) {
-    let temp_dir = TempDir::new().expect("create temp dir");
-    let db_path = temp_dir.path().join("workflow.db");
-    let store = Store::open(&db_path).expect("open database");
-
-    let mut group = c.benchmark_group("aggregate_workflow");
-    group.throughput(Throughput::Elements(1));
-
-    group.bench_function("complete_optimized_workflow", |b| {
-        b.iter(|| {
-            // Task 6: Optimized constructors (&str)
-            let schema_name =
-                SchemaName::try_new("workflow-schema").expect("valid name");
-            let prop_name =
-                PropertyName::try_new("priority").expect("valid property");
-            let date_spec =
-                DateSpec::try_new("%Y-%m-%d").expect("valid format");
-
-            // Task 5: Optimized numeric formatting
-            let mut int_buffer = itoa::Buffer::new();
-            let priority_str = int_buffer.format(black_box(42i64));
-            black_box(priority_str);
-
-            let mut float_buffer = ryu::Buffer::new();
-            let score_str = float_buffer.format(black_box(2.5f64));
-            black_box(score_str);
-
-            // Task 2: UUID-native database operations
-            let template_uuid = Uuid::now_v7();
-            let name = TemplateName::try_from("workflow-template")
-                .expect("valid name");
-            let template =
-                Template::try_new(&name, None, vec![], HashMap::new())
-                    .expect("valid template");
-
-            store
-                .write(|tx| {
-                    let uuid_bytes = *template_uuid.as_bytes();
-                    let bytes = template.to_bytes()?;
-                    let mut table = tx.try_open_table(TEMPLATES_TABLE)?;
-                    table.insert(uuid_bytes, bytes.as_ref())?;
-                    Ok(())
-                })
-                .expect("put_by_uuid");
-
-            let retrieved: Option<Template> = store
-                .read(|tx| {
-                    if let Some(table) = tx.try_open_table(TEMPLATES_TABLE)?
-                        && let Some(guard) =
-                            table.get(*template_uuid.as_bytes())?
-                    {
-                        return Ok(Some(Template::from_bytes(guard.value())?));
-                    }
-                    Ok(None)
-                })
-                .expect("get_owned");
-
-            black_box((schema_name, prop_name, date_spec, retrieved));
-        });
-    });
-
-    group.finish();
-}
-
-criterion_group!(
-    benches,
-    bench_numeric_formatting,
-    bench_constructor_apis,
-    bench_aggregate_workflow,
-);
+criterion_group!(benches, bench_numeric_formatting, bench_constructor_apis,);
 criterion_main!(benches);
