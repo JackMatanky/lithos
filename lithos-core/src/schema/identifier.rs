@@ -293,6 +293,34 @@ impl TryFrom<Arc<str>> for SchemaName {
     }
 }
 
+impl TryFrom<BaseName> for SchemaName {
+    type Error = SchemaError;
+
+    /// Build a [`SchemaName`] from an owned [`BaseName`].
+    ///
+    /// Validates that the basename satisfies [`SchemaName`] constraints
+    /// (lowercase alphanumeric, hyphens, and underscores; max 64 chars).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaError`] if the basename does not match the required
+    /// pattern.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::{fs::BaseName, schema::identifier::SchemaName};
+    ///
+    /// let base = BaseName::new("daily-note".into());
+    /// let name = SchemaName::try_from(base).unwrap();
+    /// assert_eq!(name.as_str(), "daily-note");
+    /// ```
+    #[inline]
+    fn try_from(value: BaseName) -> Result<Self, Self::Error> {
+        Self::try_new(value.as_str())
+    }
+}
+
 impl TryFrom<&PathKey> for SchemaName {
     type Error = SchemaError;
 
@@ -379,5 +407,26 @@ mod tests {
         let path = PathKey::try_new("schemas/.json").unwrap();
         let result = SchemaName::try_from(path);
         result.unwrap_err();
+    }
+
+    #[test]
+    fn schema_name_try_from_basename_accepts_valid_name() {
+        let base = BaseName::new("daily-note".into());
+        let name = SchemaName::try_from(base).unwrap();
+        assert_eq!(name.as_str(), "daily-note");
+    }
+
+    #[test]
+    fn schema_name_try_from_basename_rejects_uppercase() {
+        let base = BaseName::new("DailyNote".into());
+        let result = SchemaName::try_from(base);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn schema_name_try_from_basename_rejects_spaces() {
+        let base = BaseName::new("daily note".into());
+        let result = SchemaName::try_from(base);
+        assert!(result.is_err());
     }
 }
