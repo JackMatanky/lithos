@@ -69,7 +69,8 @@ use crate::{
             ExcludesDelta, ExtendsDelta, PropertyDelta, PropertyDeltaEngine,
         },
         error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
+            PropertyRefError, SchemaError, SchemaIngestionError,
+            SchemaLoaderError, SchemaRepositoryError,
         },
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
@@ -103,7 +104,7 @@ use crate::{
     not(test),
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
-pub(crate) struct BaseSchemaProcessor<P, S> {
+pub struct BaseSchemaProcessor<P, S> {
     file: FsFile,
     path_key: PathKey,
     status: S,
@@ -157,7 +158,7 @@ impl<P, S> BaseSchemaProcessor<P, S> {
     reason = "Stale carries explicit BaseSchema and deltas per issue 04 \
               requirement"
 )]
-pub(crate) enum BaseSchemaResolution {
+pub enum BaseSchemaResolution {
     /// Base schema was already fresh in the repository.
     Fresh {
         /// The schema identifier.
@@ -195,7 +196,7 @@ pub(crate) enum BaseSchemaResolution {
     not(test),
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
-pub(crate) struct Unknown;
+pub struct Unknown;
 
 /// Entry-point stage: processor created from discovery data.
 #[derive(Debug)]
@@ -203,7 +204,7 @@ pub(crate) struct Unknown;
     not(test),
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
-pub(crate) struct Init;
+pub struct Init;
 
 /// Entry-state operations that bootstrap the pipeline.
 impl BaseSchemaProcessor<Init, Unknown> {
@@ -212,7 +213,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
-    pub(crate) fn from_discovery(
+    pub fn from_discovery(
         file: FsFile,
         root: &DirPath,
     ) -> Result<Self, crate::fs::PathError> {
@@ -239,7 +240,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
-    pub(crate) fn run<R: Repository>(
+    #[inline]
+    pub fn run<R: Repository>(
         self,
         view: Option<&RawSchemaView>,
         source: &FileReader,
@@ -319,7 +321,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
             TimestampBranch::StaleRefs(stale) => {
                 let parsed = stale.parse()?;
                 Self::run_analysis(
-                    parsed.analyze(bank),
+                    parsed.analyze(bank)?,
                     repository,
                     bank_resolution,
                 )
@@ -353,7 +355,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
             ContentBranch::StaleRefs(stale) => {
                 let parsed = stale.parse()?;
                 Self::run_analysis(
-                    parsed.analyze(bank),
+                    parsed.analyze(bank)?,
                     repository,
                     bank_resolution,
                 )
@@ -398,44 +400,55 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 }
             }
             AnalysisBranch::Corrupt(new) => {
+                let empty_bank = PropertyBank::new();
                 let (file, path_key, status) = new.into_parts();
-                let schema_name_result = SchemaName::try_new(status.raw.name());
+                let raw_for_fallback = status.raw.clone();
+                let id = status.id;
+
                 let new_proc = BaseSchemaProcessor::<Construction, New>::transition_from_parts(
                     file,
                     path_key,
                     New {
-                        id: status.id,
+                        id,
                         raw: status.raw,
                         content_hash: status.content_hash,
                     },
                 );
 
-                let empty_bank = PropertyBank::new();
-                if let Ok(completed) = new_proc.create(repository, &empty_bank)
-                {
-                    return Ok(BaseSchemaResolution::New {
+                match new_proc.create(repository, &empty_bank) {
+                    Ok(completed) => Ok(BaseSchemaResolution::New {
                         base_schema: completed.into_base(),
-                    });
+                    }),
+                    Err(SchemaLoaderError::Repository(e)) => {
+                        Err(SchemaLoaderError::Repository(e))
+                    }
+                    Err(_) => {
+                        let schema_name =
+                            SchemaName::try_new(raw_for_fallback.name())
+                                .unwrap_or_else(|_| {
+                                    // SAFETY: "unknown" always satisfies
+                                    // SchemaName validation
+                                    #[expect(
+                                        clippy::unwrap_used,
+                                        reason = "'unknown' is a hardcoded \
+                                                  literal that always \
+                                                  satisfies SchemaName \
+                                                  validation"
+                                    )]
+                                    SchemaName::try_new("unknown").unwrap()
+                                });
+
+                        Ok(BaseSchemaResolution::New {
+                            base_schema: BaseSchema::new(
+                                id,
+                                schema_name,
+                                PropertyMap::new(),
+                                Vec::new(),
+                                Vec::new(),
+                            ),
+                        })
+                    }
                 }
-                let schema_name = schema_name_result.unwrap_or_else(|_| {
-                    // SAFETY: "unknown" always satisfies SchemaName
-                    // validation
-                    #[expect(
-                        clippy::unwrap_used,
-                        reason = "'unknown' is a hardcoded literal that \
-                                  always satisfies SchemaName validation"
-                    )]
-                    SchemaName::try_new("unknown").unwrap()
-                });
-                Ok(BaseSchemaResolution::New {
-                    base_schema: BaseSchema::new(
-                        status.id,
-                        schema_name,
-                        PropertyMap::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                })
             }
         }
     }
@@ -940,11 +953,14 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
-    fn analyze(self, bank: &PropertyBank) -> AnalysisBranch {
+    fn analyze(
+        self,
+        bank: &PropertyBank,
+    ) -> Result<AnalysisBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
 
         let Some(version) = status.view.current() else {
-            return AnalysisBranch::Corrupt(Self::transition_from_parts(
+            return Ok(AnalysisBranch::Corrupt(Self::transition_from_parts(
                 file,
                 path_key,
                 New {
@@ -952,29 +968,36 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
                     raw: status.raw,
                     content_hash: status.content_hash,
                 },
-            ));
+            )));
         };
 
         let expander = RefExpander::new(bank);
-        let Ok(property_delta) = PropertyDeltaEngine::for_schema(
+        let property_delta = match PropertyDeltaEngine::for_schema(
             &status.raw,
             version.hashes().properties(),
         )
-        .diff_schema(&expander, &status.ref_delta) else {
-            // Structural conflict: bank target missing. Escalate to full
-            // rebuild.
-            return AnalysisBranch::Corrupt(Self::transition_from_parts(
-                file,
-                path_key,
-                New {
-                    id: SchemaId::new(),
-                    raw: status.raw,
-                    content_hash: status.content_hash,
+        .diff_schema(&expander, &status.ref_delta)
+        {
+            Ok(delta) => delta,
+            Err(SchemaLoaderError::Resolution(SchemaError::PropertyRef(
+                PropertyRefError::NotFound {
+                    ..
                 },
-            ));
+            ))) => {
+                // Structural conflict: bank target missing. Escalate to full
+                // rebuild.
+                return Ok(AnalysisBranch::Corrupt(
+                    Self::transition_from_parts(file, path_key, New {
+                        id: SchemaId::new(),
+                        raw: status.raw,
+                        content_hash: status.content_hash,
+                    }),
+                ));
+            }
+            Err(e) => return Err(e),
         };
 
-        AnalysisBranch::Delta(Self::transition_from_parts(
+        Ok(AnalysisBranch::Delta(Self::transition_from_parts(
             file,
             path_key,
             Changed {
@@ -986,7 +1009,7 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
                 excludes_delta: ExcludesDelta::default(),
                 extends_delta: ExtendsDelta::default(),
             },
-        ))
+        )))
     }
 }
 
