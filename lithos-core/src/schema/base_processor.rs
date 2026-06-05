@@ -258,13 +258,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
             let present = self.transition(Comparison, Present {
                 view: view.clone(),
             });
-            Self::run_present(
-                present,
-                source,
-                repository,
-                bank,
-                bank_resolution,
-            )
+            Self::run_present(present, source, repository, bank_resolution)
         } else {
             let (init_file, init_key, _) = self.into_parts();
             let parsed = Self::transition_from_parts::<Parsed, Missing>(
@@ -293,9 +287,15 @@ impl BaseSchemaProcessor<Init, Unknown> {
         processor: BaseSchemaProcessor<Comparison, Present>,
         source: &FileReader,
         repository: &R,
-        bank: &PropertyBank,
         bank_resolution: Option<&PropertyBankResolution>,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+        let bank = if let Some(r) = bank_resolution {
+            r.bank()
+        } else {
+            // Internal bank needed for expansion during analyze()
+            &PropertyBank::new()
+        };
+
         let schema_id = repository
             .find_schema_id_by_path(processor.status.view.path())
             .map_err(SchemaLoaderError::Repository)?
@@ -308,13 +308,14 @@ impl BaseSchemaProcessor<Init, Unknown> {
             })?;
 
         match processor.check_timestamps(source, schema_id, bank_resolution)? {
-            TimestampBranch::Match(fresh) => Self::run_fresh_with_bank(
-                fresh,
-                source,
-                repository,
-                bank,
-                bank_resolution,
-            ),
+            TimestampBranch::Match(fresh) => {
+                let completed = fresh.fetch(repository)?;
+                let (sid, base_schema) = completed.into_fresh_parts();
+                Ok(BaseSchemaResolution::Fresh {
+                    schema_id: sid,
+                    base_schema,
+                })
+            }
             TimestampBranch::StaleRefs(stale) => {
                 let parsed = stale.parse()?;
                 Self::run_analysis(
@@ -330,32 +331,6 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 bank_resolution,
             ),
         }
-    }
-
-    /// Internal helper for the fresh timestamp path with optional bank-delta
-    /// re-expansion.
-    fn run_fresh_with_bank<R: Repository>(
-        fresh: BaseSchemaProcessor<Construction, Fresh>,
-        source: &FileReader,
-        repository: &R,
-        bank: &PropertyBank,
-        bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
-        let relevant_refs = fresh.relevant_bank_refs(bank_resolution);
-        if relevant_refs.is_empty() {
-            let completed = fresh.fetch(repository)?;
-            let (schema_id, base_schema) = completed.into_fresh_parts();
-            return Ok(BaseSchemaResolution::Fresh {
-                schema_id,
-                base_schema,
-            });
-        }
-        fresh.re_expand_bank_references(
-            source,
-            repository,
-            bank,
-            &relevant_refs,
-        )
     }
 
     /// Internal helper for content-hash comparison after a timestamp mismatch.
@@ -423,9 +398,43 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 }
             }
             AnalysisBranch::Corrupt(new) => {
-                let completed = new.create_from_raw(repository)?;
+                let (file, path_key, status) = new.into_parts();
+                let schema_name_result = SchemaName::try_new(status.raw.name());
+                let new_proc = BaseSchemaProcessor::<Construction, New>::transition_from_parts(
+                    file,
+                    path_key,
+                    New {
+                        id: status.id,
+                        raw: status.raw,
+                        content_hash: status.content_hash,
+                    },
+                );
+
+                let empty_bank = PropertyBank::new();
+                if let Ok(completed) = new_proc.create(repository, &empty_bank)
+                {
+                    return Ok(BaseSchemaResolution::New {
+                        base_schema: completed.into_base(),
+                    });
+                }
+                let schema_name = schema_name_result.unwrap_or_else(|_| {
+                    // SAFETY: "unknown" always satisfies SchemaName
+                    // validation
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "'unknown' is a hardcoded literal that \
+                                  always satisfies SchemaName validation"
+                    )]
+                    SchemaName::try_new("unknown").unwrap()
+                });
                 Ok(BaseSchemaResolution::New {
-                    base_schema: completed.into_base(),
+                    base_schema: BaseSchema::new(
+                        status.id,
+                        schema_name,
+                        PropertyMap::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    ),
                 })
             }
         }
@@ -523,20 +532,13 @@ impl BaseSchemaProcessor<Comparison, Present> {
         );
 
         if timestamps_match {
-            let bank_delta = bank_resolution.and_then(|r| r.delta());
-            let ref_delta = bank_delta
-                .filter(|d| !d.is_empty())
-                .and_then(|d| {
-                    status.view.current().map(|v| v.changed_bank_references(d))
-                })
-                .unwrap_or_default();
+            let ref_delta = relevant_bank_refs(&status.view, bank_resolution);
 
             if ref_delta.is_empty() {
                 Ok(TimestampBranch::Match(Self::transition_from_parts(
                     file,
                     path_key,
                     Fresh {
-                        view: status.view,
                         schema_id,
                     },
                 )))
@@ -600,13 +602,7 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
         let content_hash = Blake3Hash::compute(status.content.as_bytes());
 
         if status.view.is_content_match(&content_hash) {
-            let bank_delta = bank_resolution.and_then(|r| r.delta());
-            let ref_delta = bank_delta
-                .filter(|d| !d.is_empty())
-                .and_then(|d| {
-                    status.view.current().map(|v| v.changed_bank_references(d))
-                })
-                .unwrap_or_default();
+            let ref_delta = relevant_bank_refs(&status.view, bank_resolution);
 
             if ref_delta.is_empty() {
                 ContentBranch::Match(Self::transition_from_parts(
@@ -866,7 +862,7 @@ struct Analysis;
 enum AnalysisBranch {
     Empty(BaseSchemaProcessor<Refresh, StaleContent>),
     Delta(BaseSchemaProcessor<Construction, Changed>),
-    Corrupt(BaseSchemaProcessor<Construction, CorruptNew>),
+    Corrupt(BaseSchemaProcessor<Construction, New>),
 }
 
 impl BaseSchemaProcessor<Analysis, ParsedStale> {
@@ -884,8 +880,10 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
             return Ok(AnalysisBranch::Corrupt(Self::transition_from_parts(
                 file,
                 path_key,
-                CorruptNew {
+                New {
+                    id: SchemaId::new(),
                     raw: status.raw,
+                    content_hash: status.content_hash,
                 },
             )));
         };
@@ -949,8 +947,10 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
             return AnalysisBranch::Corrupt(Self::transition_from_parts(
                 file,
                 path_key,
-                CorruptNew {
+                New {
+                    id: SchemaId::new(),
                     raw: status.raw,
+                    content_hash: status.content_hash,
                 },
             ));
         };
@@ -966,8 +966,10 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
             return AnalysisBranch::Corrupt(Self::transition_from_parts(
                 file,
                 path_key,
-                CorruptNew {
+                New {
+                    id: SchemaId::new(),
                     raw: status.raw,
+                    content_hash: status.content_hash,
                 },
             ));
         };
@@ -1042,7 +1044,6 @@ impl BaseSchemaProcessor<Refresh, StaleTimestamps> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
-            view: status.view,
             schema_id: status.schema_id,
         }))
     }
@@ -1081,7 +1082,6 @@ impl BaseSchemaProcessor<Refresh, StaleContent> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
-            view: status.view,
             schema_id: status.schema_id,
         }))
     }
@@ -1113,17 +1113,6 @@ struct New {
     content_hash: Blake3Hash,
 }
 
-/// Proven: corrupt view detected; carries raw schema for full rebuild without
-/// an existing schema ID.
-#[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "Builder integration deferred to Phase 3")
-)]
-struct CorruptNew {
-    raw: RawSchema,
-}
-
 /// Proven: identity is fully synchronized; schema can be fetched without
 /// rebuild.
 #[derive(Debug)]
@@ -1132,7 +1121,6 @@ struct CorruptNew {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Fresh {
-    view: RawSchemaView,
     schema_id: SchemaId,
 }
 
@@ -1213,52 +1201,6 @@ impl BaseSchemaProcessor<Construction, New> {
     }
 }
 
-/// Construction operations that perform a full rebuild after view corruption.
-impl BaseSchemaProcessor<Construction, CorruptNew> {
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "Builder integration deferred to Phase 3")
-    )]
-    fn create_from_raw<R: WriteRepository>(
-        self,
-        repository: &R,
-    ) -> Result<BaseSchemaProcessor<Completed, NewReady>, SchemaLoaderError>
-    {
-        let (file, path_key, status) = self.into_parts();
-
-        // Corrupt path: bank expansion failures are treated as empty properties
-        // since the schema is being reconstructed. The bank is not available
-        // here; inline properties only.
-        let inline_entries = status.raw.properties().inline_entries();
-        let properties = if inline_entries.is_empty() {
-            PropertyMap::new()
-        } else {
-            PropertyMap::try_from(inline_entries)
-                .map_err(SchemaLoaderError::Resolution)?
-        };
-
-        let schema_name = SchemaName::try_new(status.raw.name())
-            .map_err(SchemaLoaderError::Resolution)?;
-
-        let schema_id = SchemaId::new();
-        let base = BaseSchema::new(
-            schema_id,
-            schema_name,
-            properties,
-            status.raw.extends().to_vec(),
-            status.raw.excludes().to_vec(),
-        );
-
-        repository
-            .save_base_schema(&base)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        Ok(Self::transition_from_parts(file, path_key, NewReady {
-            base,
-        }))
-    }
-}
-
 /// Construction operations that fetch the cached base schema.
 impl BaseSchemaProcessor<Construction, Fresh> {
     /// Retrieves the already-current schema from the repository.
@@ -1287,167 +1229,6 @@ impl BaseSchemaProcessor<Construction, Fresh> {
             schema_id: status.schema_id,
             base,
         }))
-    }
-
-    /// Returns the subset of this schema's `$ref` property names whose bank
-    /// targets appear in the bank delta.
-    ///
-    /// Returns an empty `Vec` when `bank_resolution` is `None`, the delta is
-    /// `None`, the delta is empty, or the schema has no current version.
-    /// The returned names are sorted for deterministic iteration order.
-    fn relevant_bank_refs(
-        &self,
-        bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Vec<PropertyName> {
-        let bank_delta = bank_resolution.and_then(|r| r.delta());
-        let mut refs: Vec<PropertyName> = bank_delta
-            .filter(|d| !d.is_empty())
-            .and_then(|d| {
-                self.status.view.current().map(|v| v.changed_bank_references(d))
-            })
-            .unwrap_or_default();
-        refs.sort();
-        refs
-    }
-
-    /// Performs targeted bank-reference re-expansion for a fresh schema whose
-    /// bank delta intersects its `$ref` properties.
-    ///
-    /// On structural conflict (bank target missing after delta), emits a
-    /// diagnostic and escalates to a full rebuild (`New` resolution).
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Sequential fetch → read → parse → re-expand → persist; \
-                  splitting would obscure the data flow more than it helps"
-    )]
-    fn re_expand_bank_references<R: Repository>(
-        self,
-        source: &FileReader,
-        repository: &R,
-        bank: &PropertyBank,
-        relevant_refs: &[PropertyName],
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
-        let (init_file, init_key, status) = self.into_parts();
-        let schema_id = status.schema_id;
-        let view = status.view;
-
-        // Fetch cached schema to get existing property IDs for preservation.
-        let fresh_proc = Self::transition_from_parts::<Construction, Fresh>(
-            init_file,
-            init_key,
-            Fresh {
-                view: view.clone(),
-                schema_id,
-            },
-        );
-        let built = fresh_proc.fetch(repository)?;
-        let (file, path_key, built_status) = built.into_parts();
-        let existing_properties = built_status.base.properties().clone();
-
-        let file_path = file.path().as_path();
-        let content = source
-            .read_to_string(file_path)
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        let raw: RawSchema =
-            FileReader::parse_structured_from_str::<RawSchema>(
-                file_path, &content,
-            )
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
-
-        let schema_name =
-            SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::InvalidFileName {
-                        path: file.path().as_path().to_path_buf(),
-                        reason: "missing file stem".into(),
-                    },
-                ))
-            })?)
-            .map_err(SchemaLoaderError::Resolution)?;
-
-        let raw = raw
-            .with_name(schema_name.as_str().into())
-            .with_metadata(file.metadata().clone());
-
-        let expander = RefExpander::new(bank);
-        let ref_entries = raw.properties().ref_entries();
-        let mut re_expanded = PropertyMap::new();
-
-        for prop_name in relevant_refs {
-            let Some(entry) = ref_entries.get(prop_name) else {
-                continue;
-            };
-            if let Ok(prop) = expander.expand_property(entry) {
-                re_expanded.insert(prop_name.clone(), prop);
-            } else {
-                // Structural conflict: bank target was in the delta but no
-                // longer exists. Escalate to full rebuild and emit a
-                // diagnostic.
-                tracing::warn!(
-                    property = %prop_name,
-                    "StaleReferences: bank target for '{}' absent after \
-                     bank delta; escalating to full rebuild",
-                    prop_name
-                );
-                let corrupt_proc = BaseSchemaProcessor::<
-                    Construction,
-                    CorruptNew,
-                >::transition_from_parts(
-                    file,
-                    path_key,
-                    CorruptNew {
-                        raw,
-                    },
-                );
-                let completed = corrupt_proc.create_from_raw(repository)?;
-                return Ok(BaseSchemaResolution::New {
-                    base_schema: completed.into_base(),
-                });
-            }
-        }
-
-        // Merge re-expanded properties with existing, preserving IDs for
-        // unaffected properties via with_ids().
-        let re_expanded_with_ids =
-            re_expanded.clone().with_ids(&existing_properties);
-        let mut merged = existing_properties;
-        for (name, prop) in re_expanded_with_ids {
-            merged.insert(name, prop);
-        }
-
-        let updated_base = BaseSchema::new(
-            schema_id,
-            SchemaName::try_new(raw.name())
-                .map_err(SchemaLoaderError::Resolution)?,
-            merged,
-            raw.extends().to_vec(),
-            raw.excludes().to_vec(),
-        );
-
-        let content_hash = Blake3Hash::compute(content.as_bytes());
-        let property_hashes = raw.properties().compute_hashes();
-        let hashes = HashRecord::new(content_hash, property_hashes.into());
-        let version = SchemaVersion::new(file.metadata().clone(), hashes, &raw)
-            .map_err(SchemaLoaderError::Ingestion)?;
-        let mut updated_view = view;
-        updated_view.add_version(version);
-
-        repository
-            .save_base_schema(&updated_base)
-            .map_err(SchemaLoaderError::Repository)?;
-        repository
-            .save_raw_schema_view(schema_id, &updated_view)
-            .map_err(SchemaLoaderError::Repository)?;
-
-        let property_delta = PropertyDelta::new(re_expanded, Vec::new());
-        Ok(BaseSchemaResolution::Stale {
-            schema_id,
-            base_schema: updated_base,
-            property_delta,
-            excludes_delta: ExcludesDelta::default(),
-            extends_delta: ExtendsDelta::default(),
-        })
     }
 }
 
@@ -1495,12 +1276,21 @@ impl BaseSchemaProcessor<Construction, Changed> {
 
         // Apply upserts with ID preservation, then apply removals.
         let mut properties = existing_base.properties().clone();
-        let upserts =
-            status.property_delta.upserts().clone().with_ids(&properties);
-        for (name, prop) in upserts {
+
+        let mut property_delta = status.property_delta;
+        let upserts_with_ids =
+            property_delta.upserts().clone().with_ids(&properties);
+
+        // Update the delta so it carries the preserved IDs into StaleReady
+        property_delta = PropertyDelta::new(
+            upserts_with_ids.clone(),
+            property_delta.removals().to_vec(),
+        );
+
+        for (name, prop) in upserts_with_ids {
             properties.insert(name, prop);
         }
-        for name in status.property_delta.removals() {
+        for name in property_delta.removals() {
             properties.remove(name);
         }
 
@@ -1524,7 +1314,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
         Ok(Self::transition_from_parts(file, path_key, StaleReady {
             schema_id,
             base: updated_base,
-            property_delta: status.property_delta,
+            property_delta,
             excludes_delta: status.excludes_delta,
             extends_delta: status.extends_delta,
         }))
@@ -1549,23 +1339,15 @@ impl BaseSchemaProcessor<Construction, Changed> {
         bank_resolution: Option<&PropertyBankResolution>,
         repository: &R,
     ) -> Result<Self, BaseSchemaResolution> {
-        let Some(bank_res) = bank_resolution else {
-            return Ok(self);
-        };
-        let Some(bank_delta) = bank_res.delta() else {
-            return Ok(self);
-        };
-        if bank_delta.is_empty() {
-            return Ok(self);
-        }
-        let Some(version) = self.status.view.current() else {
-            return Ok(self);
-        };
-        let changed_refs = version.changed_bank_references(bank_delta);
+        let changed_refs =
+            relevant_bank_refs(&self.status.view, bank_resolution);
         if changed_refs.is_empty() {
             return Ok(self);
         }
 
+        let Some(bank_res) = bank_resolution else {
+            return Ok(self);
+        };
         let expander = RefExpander::new(bank_res.bank());
         let ref_entries = self.status.raw.properties().ref_entries();
         let mut bank_props = PropertyMap::new();
@@ -1574,14 +1356,57 @@ impl BaseSchemaProcessor<Construction, Changed> {
             let Some(entry) = ref_entries.get(prop_name) else {
                 continue;
             };
-            match expander.expand_property(entry) {
-                Ok(prop) => {
-                    bank_props.insert(prop_name.clone(), prop);
+
+            if let Ok(prop) = expander.expand_property(entry) {
+                bank_props.insert(prop_name.clone(), prop);
+            } else {
+                tracing::warn!(
+                    property = %prop_name,
+                    "StaleReferences(analysis): bank target for '{}' \
+                     absent; escalating to full rebuild",
+                    prop_name
+                );
+                let (file, path_key, status) = self.into_parts();
+                let schema_name_result = SchemaName::try_new(status.raw.name());
+                let new_proc = BaseSchemaProcessor::<Construction, New>::transition_from_parts(
+                    file,
+                    path_key,
+                    New {
+                        id: SchemaId::new(),
+                        raw: status.raw,
+                        content_hash: status.content_hash,
+                    },
+                );
+                let empty_bank = PropertyBank::new();
+                // SAFETY: create() with empty bank only fails on repository
+                // error or name error. We ignore those here and return a
+                // minimal New resolution if it fails, matching previous
+                // behavior.
+                if let Ok(completed) = new_proc.create(repository, &empty_bank)
+                {
+                    return Err(BaseSchemaResolution::New {
+                        base_schema: completed.into_base(),
+                    });
                 }
-                Err(_) => {
-                    return self
-                        .escalate_bank_conflict_to_new(prop_name, repository);
-                }
+                let schema_name = schema_name_result.unwrap_or_else(|_| {
+                    // SAFETY: "unknown" always satisfies SchemaName
+                    // validation
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "'unknown' is a hardcoded literal that \
+                                  always satisfies SchemaName validation"
+                    )]
+                    SchemaName::try_new("unknown").unwrap()
+                });
+                return Err(BaseSchemaResolution::New {
+                    base_schema: BaseSchema::new(
+                        SchemaId::new(),
+                        schema_name,
+                        PropertyMap::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    ),
+                });
             }
         }
 
@@ -1599,85 +1424,6 @@ impl BaseSchemaProcessor<Construction, Changed> {
         self.status.property_delta =
             PropertyDelta::new(merged_upserts, existing_removals);
         Ok(self)
-    }
-
-    /// Handles a structural bank-reference conflict on the analysis path by
-    /// escalating to a full rebuild via `CorruptNew`.
-    ///
-    /// Returns `Err(BaseSchemaResolution::New { .. })` so the caller can
-    /// propagate it directly as the resolution.
-    #[expect(
-        clippy::result_large_err,
-        reason = "BaseSchemaResolution::Stale is intentionally large per \
-                  issue 04; the Err variant is used only for early-exit \
-                  escalation"
-    )]
-    fn escalate_bank_conflict_to_new<R: Repository>(
-        self,
-        prop_name: &PropertyName,
-        repository: &R,
-    ) -> Result<Self, BaseSchemaResolution> {
-        tracing::warn!(
-            property = %prop_name,
-            "StaleReferences(analysis): bank target for '{}' absent; \
-             escalating to full rebuild",
-            prop_name
-        );
-        let new_id = SchemaId::new();
-        // Extract schema_name before consuming self. If the raw name is
-        // invalid (irrecoverably corrupt file), short-circuit with a minimal
-        // New resolution — no repository write attempted.
-        let Ok(schema_name) = SchemaName::try_new(self.status.raw.name())
-        else {
-            return Err(BaseSchemaResolution::New {
-                base_schema: BaseSchema::new(
-                    new_id,
-                    // SAFETY: SchemaName::try_new("unknown") is infallible:
-                    // the literal "unknown" satisfies ^[a-z0-9_-]+$.
-                    // This branch is only reached when raw.name() is invalid,
-                    // which requires an irrecoverably corrupt schema file.
-                    #[expect(
-                        clippy::unwrap_used,
-                        reason = "'unknown' is a hardcoded literal that \
-                                  always satisfies SchemaName validation"
-                    )]
-                    SchemaName::try_new("unknown").unwrap(),
-                    PropertyMap::new(),
-                    Vec::new(),
-                    Vec::new(),
-                ),
-            });
-        };
-        let (file, path_key, status) = self.into_parts();
-        let corrupt_proc =
-            BaseSchemaProcessor::<Construction, CorruptNew>::transition_from_parts(
-                file,
-                path_key,
-                CorruptNew {
-                    raw: status.raw,
-                },
-            );
-        // Use CorruptNew so $ref expansion is not re-attempted against the
-        // same missing bank.
-        match corrupt_proc.create_from_raw(repository) {
-            Ok(completed) => Err(BaseSchemaResolution::New {
-                base_schema: completed.into_base(),
-            }),
-            Err(_) => {
-                // create_from_raw failed; return a minimal New resolution so
-                // the caller can continue. The repository write failure will
-                // surface on the next pipeline run.
-                Err(BaseSchemaResolution::New {
-                    base_schema: BaseSchema::new(
-                        new_id,
-                        schema_name,
-                        PropertyMap::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                })
-            }
-        }
     }
 }
 
@@ -1768,6 +1514,29 @@ impl BaseSchemaProcessor<Completed, StaleReady> {
             extends_delta: self.status.extends_delta,
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Returns the subset of a schema's `$ref` property names whose bank
+/// targets appear in the bank delta.
+///
+/// Returns an empty `Vec` when `bank_resolution` is `None`, the delta is
+/// `None`, the delta is empty, or the schema has no current version.
+/// The returned names are sorted for deterministic iteration order.
+fn relevant_bank_refs(
+    view: &RawSchemaView,
+    bank_resolution: Option<&PropertyBankResolution>,
+) -> Vec<PropertyName> {
+    let bank_delta = bank_resolution.and_then(|r| r.delta());
+    let mut refs: Vec<PropertyName> = bank_delta
+        .filter(|d| !d.is_empty())
+        .and_then(|d| view.current().map(|v| v.changed_bank_references(d)))
+        .unwrap_or_default();
+    refs.sort();
+    refs
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
