@@ -147,8 +147,15 @@ Present -> check_timestamps -> Match(Fresh { view, schema_id })
 Suspect -> check_content -> Match(StaleTimestamps { view, schema_id })
   -> check_bank_references(view, bank_resolution)
   -> if non-empty:
-       parse content already held in Suspect
-       construct StaleReferences { content_string, content_hash, view, schema_id, ref_delta }
+       content_hash = Blake3Hash::compute(suspect.content.as_bytes())
+       // content was already read in check_timestamps and is in Suspect; no second read
+       construct StaleReferences {
+           content_string: suspect.content,
+           content_hash,
+           view,
+           schema_id,
+           ref_delta,
+       }
        -> parse -> ParsedStaleReferences
        -> analyze(bank) -> Changed
        -> update -> Completed
@@ -156,9 +163,10 @@ Suspect -> check_content -> Match(StaleTimestamps { view, schema_id })
        sync_metadata -> Fresh -> fetch -> Completed
 ```
 
-Note: on the content-match path the content string was already read during
-`check_timestamps`; it is carried in `Suspect` and does not need to be
-re-read.
+Note: `Suspect` already carries the content string read during
+`check_timestamps`. `check_content` computes the hash; that hash must be
+forwarded into `StaleReferences` so the new `SchemaVersion` recorded by
+`update()` reflects the actual file content hash.
 
 #### Modified routing — content mismatch path
 
