@@ -17,7 +17,7 @@
 //! This hybrid approach avoids unnecessary rebuilds while detecting all actual
 //! file changes.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tracing::instrument;
 
@@ -214,7 +214,7 @@ where
         // `flag_path` so the engine skips the ascending walk and directly
         // probes the directory for a marker file.
         use crate::discovery::{
-            engine::{DiscoveryEngine, DiscoveryInput},
+            engine::{DiscoveryEngine, DiscoveryInput, GlobalDiscoveryInput},
             policy::DiscoveryPolicy,
         };
 
@@ -227,9 +227,22 @@ where
                 ceiling_dirs_raw: None,
             })
             .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
+        // NOTE: `env_config_file`, `xdg_config_base`, and `user_config_base`
+        // are not yet wired here. They must be supplied by the CLI layer
+        // before global config lookup is fully production-ready. Until then,
+        // only the hardcoded system path is probed.
+        let global_result = disc_engine
+            .find_global(&GlobalDiscoveryInput {
+                env_config_file: None,
+                xdg_config_base: None,
+                user_config_base: None,
+                system_config_base: Some(Path::new("/etc/lithos")),
+                suppress_global: false,
+            })
+            .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
 
         let config_discovery =
-            ConfigDiscoveryResult::from_vault_discovery(vault_result);
+            ConfigDiscoveryResult::from_discovery(vault_result, global_result);
 
         // Step 4: Run config discovery pipeline (read files + query DB)
         let discovery = ConfigDiscoveryPipeline::run(

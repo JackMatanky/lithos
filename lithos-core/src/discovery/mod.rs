@@ -21,7 +21,8 @@
 //!   [`GlobalSourceType`].
 //! - [`marker`] — [`FoundRootMarker`], the typed handoff to Config.
 //! - [`diagnostics`] — Non-fatal warning types emitted during discovery.
-//! - [`probe`] — [`VaultRootProbe`], [`DiscoveryProbe`] trait, marker patterns.
+//! - [`probe`] — [`VaultRootProbe`], [`GlobalConfigProbe`], [`DiscoveryProbe`]
+//!   trait, marker patterns.
 //! - [`selector`] — Candidate selection and format promotion functions.
 //! - [`walk`] — [`AscendingWalker`], [`DiscoveryBoundaries`], ceiling parsing.
 

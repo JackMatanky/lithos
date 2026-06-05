@@ -2,20 +2,23 @@
 //!
 //! Receives [`crate::discovery::FoundRootMarker`] output from the Discovery
 //! context and classifies it into [`DiscoveredConfigFile`] with the appropriate
-//! [`crate::config::location::LocalConfigLocation`] variant.
+//! Config-owned location variant.
 //!
 //! [`ConfigDiscoveryResult`] aggregates both local and global classified files
 //! and will be consumed by [`crate::config::discovery`] as its input contract.
-//! It lives here until the global classification side is built in Phase 2.
+//! It lives here while discovery handoff remains isolated from parsing.
 
 use std::path::{Component, Path, PathBuf};
 
 use crate::{
     config::{
         diagnostics::ConfigWarning,
-        location::{ConfigLocation, LocalConfigLocation},
+        location::{ConfigLocation, GlobalConfigLocation, LocalConfigLocation},
     },
-    discovery::engine::VaultDiscoveryResult,
+    discovery::{
+        engine::{GlobalDiscoveryResult, VaultDiscoveryResult},
+        policy::GlobalSourceType,
+    },
     fs::format::StructuredFileFormat,
 };
 
@@ -49,14 +52,36 @@ pub(crate) struct ConfigDiscoveryResult {
 }
 
 impl ConfigDiscoveryResult {
-    /// Converts a [`VaultDiscoveryResult`] (from the Discovery engine) into a
-    /// [`ConfigDiscoveryResult`] for use by the config pipeline.
+    /// Converts Discovery engine results into a [`ConfigDiscoveryResult`] for
+    /// use by the config pipeline.
     ///
-    /// Maps the root marker to a [`DiscoveredConfigFile`] with the appropriate
-    /// [`LocalConfigLocation`] variant. Global config is `None` until the
-    /// `find_global` pipeline is implemented.
-    pub(crate) fn from_vault_discovery(result: VaultDiscoveryResult) -> Self {
-        let local = result.marker.map(|marker| {
+    /// Maps selected markers to [`DiscoveredConfigFile`] values with
+    /// Config-owned location classification.
+    pub(crate) fn from_discovery(
+        vault: VaultDiscoveryResult,
+        global: GlobalDiscoveryResult,
+    ) -> Self {
+        let global = match (global.marker, global.source) {
+            (Some(marker), Some(source)) => Some(DiscoveredConfigFile {
+                location: ConfigLocation::Global(
+                    classify_global_config_location(source),
+                ),
+                base: marker.base,
+                path: marker.path,
+                format: marker.format,
+            }),
+            (Some(_), None) => {
+                debug_assert!(
+                    false,
+                    "from_discovery: GlobalDiscoveryResult has marker but no \
+                     source; dropping global config"
+                );
+                None
+            }
+            _ => None,
+        };
+
+        let local = vault.marker.map(|marker| {
             let location =
                 classify_local_config_location(&marker.base, &marker.path);
             DiscoveredConfigFile {
@@ -68,10 +93,23 @@ impl ConfigDiscoveryResult {
         });
 
         Self {
-            global: None,
+            global,
             local,
             warnings: Vec::new(),
         }
+    }
+}
+
+/// Determines the [`GlobalConfigLocation`] variant for the global source
+/// returned by Discovery.
+fn classify_global_config_location(
+    source: GlobalSourceType,
+) -> GlobalConfigLocation {
+    match source {
+        GlobalSourceType::EnvVar => GlobalConfigLocation::EnvironmentOverride,
+        GlobalSourceType::XdgConfig => GlobalConfigLocation::XdgConfig,
+        GlobalSourceType::UserConfig => GlobalConfigLocation::UserConfig,
+        GlobalSourceType::SystemConfig => GlobalConfigLocation::SystemConfig,
     }
 }
 
@@ -128,51 +166,59 @@ mod tests {
     mod discovered_config_file {
         use super::*;
 
-        #[test]
-        fn returns_true_when_files_have_same_location_path_and_format() {
-            let a = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-            let b = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-            assert_eq!(a, b);
-        }
+        mod equality {
+            use super::*;
 
-        #[test]
-        fn returns_false_when_locations_differ() {
-            let a = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::RootConfigFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-            let b = DiscoveredConfigFile {
-                location: ConfigLocation::Local(
-                    LocalConfigLocation::HiddenRootConfigFile,
-                ),
-                base: PathBuf::from("/vault"),
-                path: PathBuf::from("/vault/lithos.toml"),
-                format: StructuredFileFormat::Toml,
-            };
-            assert_ne!(a, b);
+            #[test]
+            fn returns_equal_when_location_path_base_and_format_match() {
+                let a = DiscoveredConfigFile {
+                    location: ConfigLocation::Local(
+                        LocalConfigLocation::RootConfigFile,
+                    ),
+                    base: PathBuf::from("/vault"),
+                    path: PathBuf::from("/vault/lithos.toml"),
+                    format: StructuredFileFormat::Toml,
+                };
+                let b = DiscoveredConfigFile {
+                    location: ConfigLocation::Local(
+                        LocalConfigLocation::RootConfigFile,
+                    ),
+                    base: PathBuf::from("/vault"),
+                    path: PathBuf::from("/vault/lithos.toml"),
+                    format: StructuredFileFormat::Toml,
+                };
+                assert_eq!(a, b);
+            }
+
+            #[test]
+            fn returns_not_equal_when_locations_differ() {
+                let a = DiscoveredConfigFile {
+                    location: ConfigLocation::Local(
+                        LocalConfigLocation::RootConfigFile,
+                    ),
+                    base: PathBuf::from("/vault"),
+                    path: PathBuf::from("/vault/lithos.toml"),
+                    format: StructuredFileFormat::Toml,
+                };
+                let b = DiscoveredConfigFile {
+                    location: ConfigLocation::Local(
+                        LocalConfigLocation::HiddenRootConfigFile,
+                    ),
+                    base: PathBuf::from("/vault"),
+                    path: PathBuf::from("/vault/lithos.toml"),
+                    format: StructuredFileFormat::Toml,
+                };
+                assert_ne!(a, b);
+            }
         }
     }
 
     mod config_discovery_result {
         use super::*;
+        use crate::discovery::{
+            engine::FoundRootMarker,
+            policy::{GlobalSourceType, VaultSourceType},
+        };
 
         fn local_file() -> DiscoveredConfigFile {
             DiscoveredConfigFile {
@@ -185,64 +231,183 @@ mod tests {
             }
         }
 
-        #[test]
-        fn returns_true_when_results_match() {
-            let warning =
-                ConfigWarning::Local(LocalDiscoveryWarning::Ambiguity {
-                    candidates: vec![PathBuf::from("/vault/lithos.toml")],
-                });
-            let a = ConfigDiscoveryResult {
-                global: None,
-                local: Some(local_file()),
-                warnings: vec![warning],
-            };
-            let b = ConfigDiscoveryResult {
-                global: None,
-                local: Some(local_file()),
-                warnings: vec![ConfigWarning::Local(
-                    LocalDiscoveryWarning::Ambiguity {
-                        candidates: vec![PathBuf::from("/vault/lithos.toml")],
-                    },
-                )],
-            };
-            assert_eq!(a, b);
+        fn vault_result() -> VaultDiscoveryResult {
+            VaultDiscoveryResult {
+                root: Some(PathBuf::from("/vault")),
+                marker: Some(FoundRootMarker {
+                    base: PathBuf::from("/vault"),
+                    path: PathBuf::from("/vault/.lithos/config.toml"),
+                    format: StructuredFileFormat::Toml,
+                }),
+                alternatives: Vec::new(),
+                source: Some(VaultSourceType::AscendingWalk),
+                warnings: Vec::new(),
+            }
         }
 
-        #[test]
-        fn returns_false_when_local_files_differ() {
-            let with_local = ConfigDiscoveryResult {
-                global: None,
-                local: Some(local_file()),
+        fn global_result_with_source(
+            source: GlobalSourceType,
+        ) -> GlobalDiscoveryResult {
+            GlobalDiscoveryResult {
+                marker: Some(FoundRootMarker {
+                    base: PathBuf::from("/config/lithos"),
+                    path: PathBuf::from("/config/lithos/lithos.toml"),
+                    format: StructuredFileFormat::Toml,
+                }),
+                alternatives: Vec::new(),
+                source: Some(source),
                 warnings: Vec::new(),
-            };
-            let without_local = ConfigDiscoveryResult {
-                global: None,
-                local: None,
-                warnings: Vec::new(),
-            };
-            assert_ne!(with_local, without_local);
+            }
+        }
+
+        mod equality {
+            use super::*;
+
+            #[test]
+            fn returns_equal_when_global_local_and_warnings_match() {
+                let warning =
+                    ConfigWarning::Local(LocalDiscoveryWarning::Ambiguity {
+                        candidates: vec![PathBuf::from("/vault/lithos.toml")],
+                    });
+                let a = ConfigDiscoveryResult {
+                    global: None,
+                    local: Some(local_file()),
+                    warnings: vec![warning],
+                };
+                let b = ConfigDiscoveryResult {
+                    global: None,
+                    local: Some(local_file()),
+                    warnings: vec![ConfigWarning::Local(
+                        LocalDiscoveryWarning::Ambiguity {
+                            candidates: vec![PathBuf::from(
+                                "/vault/lithos.toml",
+                            )],
+                        },
+                    )],
+                };
+                assert_eq!(a, b);
+            }
+
+            #[test]
+            fn returns_not_equal_when_local_files_differ() {
+                let with_local = ConfigDiscoveryResult {
+                    global: None,
+                    local: Some(local_file()),
+                    warnings: Vec::new(),
+                };
+                let without_local = ConfigDiscoveryResult {
+                    global: None,
+                    local: None,
+                    warnings: Vec::new(),
+                };
+                assert_ne!(with_local, without_local);
+            }
+        }
+
+        mod from_discovery {
+            use super::*;
+
+            #[test]
+            fn returns_global_file_when_global_marker_is_xdg_config() {
+                let result = ConfigDiscoveryResult::from_discovery(
+                    vault_result(),
+                    global_result_with_source(GlobalSourceType::XdgConfig),
+                );
+
+                assert_eq!(
+                    result.global,
+                    Some(DiscoveredConfigFile {
+                        location: ConfigLocation::Global(
+                            GlobalConfigLocation::XdgConfig,
+                        ),
+                        base: PathBuf::from("/config/lithos"),
+                        path: PathBuf::from("/config/lithos/lithos.toml"),
+                        format: StructuredFileFormat::Toml,
+                    })
+                );
+            }
+
+            #[test]
+            fn returns_environment_override_location_when_source_is_env_var() {
+                let result = ConfigDiscoveryResult::from_discovery(
+                    vault_result(),
+                    global_result_with_source(GlobalSourceType::EnvVar),
+                );
+
+                assert_eq!(
+                    result.global.map(|f| f.location),
+                    Some(ConfigLocation::Global(
+                        GlobalConfigLocation::EnvironmentOverride
+                    ))
+                );
+            }
+
+            #[test]
+            fn returns_user_config_location_when_source_is_user_config() {
+                let result = ConfigDiscoveryResult::from_discovery(
+                    vault_result(),
+                    global_result_with_source(GlobalSourceType::UserConfig),
+                );
+
+                assert_eq!(
+                    result.global.map(|f| f.location),
+                    Some(ConfigLocation::Global(
+                        GlobalConfigLocation::UserConfig
+                    ))
+                );
+            }
+
+            #[test]
+            fn returns_system_config_location_when_source_is_system_config() {
+                let result = ConfigDiscoveryResult::from_discovery(
+                    vault_result(),
+                    global_result_with_source(GlobalSourceType::SystemConfig),
+                );
+
+                assert_eq!(
+                    result.global.map(|f| f.location),
+                    Some(ConfigLocation::Global(
+                        GlobalConfigLocation::SystemConfig
+                    ))
+                );
+            }
+
+            #[test]
+            fn returns_none_global_when_global_marker_is_absent() {
+                let result = ConfigDiscoveryResult::from_discovery(
+                    vault_result(),
+                    GlobalDiscoveryResult::default(),
+                );
+
+                assert_eq!(result.global, None);
+            }
         }
     }
 
     mod config_location {
         use super::*;
 
-        #[test]
-        fn returns_false_when_global_and_local_variants_compared() {
-            let global =
-                ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
-            let local = ConfigLocation::Local(
-                LocalConfigLocation::HiddenRootConfigFile,
-            );
-            assert_ne!(global, local);
-        }
+        mod equality {
+            use super::*;
 
-        #[test]
-        fn returns_true_when_global_locations_match() {
-            let first = ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
-            let second =
-                ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
-            assert_eq!(first, second);
+            #[test]
+            fn returns_not_equal_when_global_and_local_variants_compared() {
+                let global =
+                    ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
+                let local = ConfigLocation::Local(
+                    LocalConfigLocation::HiddenRootConfigFile,
+                );
+                assert_ne!(global, local);
+            }
+
+            #[test]
+            fn returns_equal_when_global_location_variants_match() {
+                let first =
+                    ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
+                let second =
+                    ConfigLocation::Global(GlobalConfigLocation::XdgConfig);
+                assert_eq!(first, second);
+            }
         }
     }
 }

@@ -65,7 +65,7 @@ impl VaultSourceType {
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum GlobalSourceType {
-    /// Provided via `LITHOS_CONFIG` environment variable.
+    /// Provided via `LITHOS_CONFIG_FILE` environment variable.
     EnvVar,
     /// Discovered via XDG Base Directory specification.
     XdgConfig,

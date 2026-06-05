@@ -23,19 +23,12 @@ pub(crate) enum ConfigLocation {
 
 /// Global configuration discovery locations.
 ///
-/// Discovery order: `ExplicitOverride` > `EnvironmentOverride` > `XdgConfig`
-/// > `UserConfig` > `SystemConfig`.
-#[expect(
-    dead_code,
-    reason = "Phase-1 taxonomy defined before pipeline integration; variants \
-              constructed in Phase 2"
-)]
+/// Discovery order: `EnvironmentOverride` > `XdgConfig` > `UserConfig` >
+/// `SystemConfig`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GlobalConfigLocation {
-    /// Explicit path from `--config`.
-    ExplicitOverride(PathBuf),
     /// Path from `$LITHOS_CONFIG_FILE`.
-    EnvironmentOverride(PathBuf),
+    EnvironmentOverride,
     /// `$XDG_CONFIG_HOME/lithos/lithos.{toml,json,yaml,yml}`
     XdgConfig,
     /// `~/.config/lithos/lithos.{toml,json,yaml,yml}`
@@ -163,25 +156,9 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_true_when_explicit_override_locations_match() {
-            let first = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
-                "/tmp/lithos.toml",
-            ));
-            let second = GlobalConfigLocation::ExplicitOverride(PathBuf::from(
-                "/tmp/lithos.toml",
-            ));
-
-            assert_eq!(first, second);
-        }
-
-        #[test]
         fn returns_true_when_environment_override_locations_match() {
-            let first = GlobalConfigLocation::EnvironmentOverride(
-                PathBuf::from("/env/lithos.toml"),
-            );
-            let second = GlobalConfigLocation::EnvironmentOverride(
-                PathBuf::from("/env/lithos.toml"),
-            );
+            let first = GlobalConfigLocation::EnvironmentOverride;
+            let second = GlobalConfigLocation::EnvironmentOverride;
 
             assert_eq!(first, second);
         }

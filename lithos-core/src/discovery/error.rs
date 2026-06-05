@@ -46,6 +46,14 @@ pub(crate) enum DiscoveryError {
         /// The underlying I/O error.
         source: io::Error,
     },
+    /// Failed to read a directory during discovery.
+    #[error("Failed to read directory {path}: {source}")]
+    ReadDirectory {
+        /// The directory that could not be read.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
 }
 
 #[cfg(test)]
@@ -125,6 +133,20 @@ mod tests {
             };
             let msg = err.to_string();
             assert!(msg.starts_with("Failed to canonicalize path /some/path"));
+            assert!(msg.contains("denied"));
+        }
+
+        #[test]
+        fn returns_read_directory_error_message() {
+            let err = DiscoveryError::ReadDirectory {
+                path: PathBuf::from("/some/dir"),
+                source: io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "denied",
+                ),
+            };
+            let msg = err.to_string();
+            assert!(msg.starts_with("Failed to read directory /some/dir"));
             assert!(msg.contains("denied"));
         }
     }

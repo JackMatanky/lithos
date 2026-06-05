@@ -23,6 +23,21 @@ pub(crate) enum DiscoveryWarning {
     },
     /// Vault-discovery-specific warning payload.
     RootResolution(VaultDiscoveryWarning),
+    /// Global-discovery-specific warning payload.
+    GlobalResolution(GlobalDiscoveryWarning),
+}
+
+/// Specific warnings emitted during global config discovery.
+#[allow(dead_code, reason = "Phase-2 seam; surfaced once CLI reporting lands")]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum GlobalDiscoveryWarning {
+    /// A recognized global config filename was found with non-canonical casing.
+    CaseCorrection {
+        /// The canonical path discovery expected.
+        requested: PathBuf,
+        /// The actual path found on disk.
+        resolved: PathBuf,
+    },
 }
 
 /// Specific warnings emitted during vault root resolution and boundary parsing.
@@ -61,6 +76,22 @@ mod tests {
             warning,
             DiscoveryWarning::RootResolution(
                 VaultDiscoveryWarning::EmptyCeilingSegment
+            )
+        ));
+    }
+
+    #[test]
+    fn returns_global_resolution_warning() {
+        let warning = DiscoveryWarning::GlobalResolution(
+            GlobalDiscoveryWarning::CaseCorrection {
+                requested: PathBuf::from("/config/lithos.toml"),
+                resolved: PathBuf::from("/config/Lithos.toml"),
+            },
+        );
+        assert!(matches!(
+            warning,
+            DiscoveryWarning::GlobalResolution(
+                GlobalDiscoveryWarning::CaseCorrection { .. }
             )
         ));
     }
