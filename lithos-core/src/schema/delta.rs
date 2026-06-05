@@ -373,9 +373,19 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     pub(crate) fn diff_schema(
         &self,
         expander: &RefExpander,
+        forced_refs: &[PropertyName],
     ) -> Result<PropertyDelta, SchemaLoaderError> {
-        let (raw_upserts, removals, _current_hashes) =
+        let (mut raw_upserts, removals, _current_hashes) =
             self.compute_change_set();
+
+        for name in forced_refs {
+            if raw_upserts.contains_key(name) {
+                continue;
+            }
+            if let Some(entry) = self.properties.get(name) {
+                raw_upserts.insert(name.clone(), entry.clone());
+            }
+        }
 
         let mut resolved_upserts = PropertyMap::new();
         let mut inline_map: HashMap<PropertyName, RawPropertyInline> =
@@ -970,6 +980,40 @@ mod tests {
             assert_eq!(
                 new_hashes.get(&fixtures::name("a")),
                 hashes.get(&fixtures::name("a"))
+            );
+        }
+
+        #[test]
+        fn diff_schema_should_inject_forced_refs_even_if_hash_matches() {
+            let entry_json = serde_json::json!({"type": "string"});
+            let entry: RawProperty =
+                serde_json::from_value(entry_json.clone()).expect("valid");
+            let hash = Blake3Hash::compute(hash_structured(&entry));
+
+            let map_json = serde_json::json!({
+                "stable": entry_json
+            });
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_value(map_json).expect("valid map");
+
+            let mut previous_hashes = RawPropertyHashIndex::default();
+            previous_hashes.insert(fixtures::name("stable"), hash);
+
+            let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
+
+            // Normally "stable" would be ignored because its hash matches.
+            // But if we force it, it should appear in upserts.
+            let bank = crate::schema::bank::PropertyBank::new();
+            let expander = RefExpander::new(&bank);
+            let forced_refs = vec![fixtures::name("stable")];
+
+            let delta = engine
+                .diff_schema(&expander, &forced_refs)
+                .expect("diff should succeed");
+
+            assert!(
+                delta.upserts().has(&fixtures::name("stable")),
+                "Forced property should be in upserts even if hash matches"
             );
         }
     }

@@ -1949,7 +1949,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             let expander = RefExpander::new(property_bank);
                             let property_delta =
                                 PropertyDeltaEngine::for_schema(&payload.raw, old_property_hashes)
-                                    .diff_schema(&expander)?;
+                                    .diff_schema(&expander, &[])?;
 
                             let needs_rebuild =
                                 !excludes_delta.is_empty()

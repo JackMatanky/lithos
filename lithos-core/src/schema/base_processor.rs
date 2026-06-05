@@ -750,7 +750,7 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
             &status.raw,
             version.hashes().properties(),
         )
-        .diff_schema(&expander)?;
+        .diff_schema(&expander, &[])?;
 
         let excludes_delta = ExcludesDelta::from_slices(
             version.excludes(),
