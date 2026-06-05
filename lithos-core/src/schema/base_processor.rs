@@ -307,7 +307,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 )
             })?;
 
-        match processor.check_timestamps(source, schema_id)? {
+        match processor.check_timestamps(source, schema_id, bank_resolution)? {
             TimestampBranch::Match(fresh) => Self::run_fresh_with_bank(
                 fresh,
                 source,
@@ -315,6 +315,14 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 bank,
                 bank_resolution,
             ),
+            TimestampBranch::StaleRefs(stale) => {
+                let parsed = stale.parse()?;
+                Self::run_analysis(
+                    parsed.analyze(bank),
+                    repository,
+                    bank_resolution,
+                )
+            }
             TimestampBranch::Mismatch(suspect) => Self::run_content_check(
                 suspect,
                 repository,
@@ -357,7 +365,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         bank: &PropertyBank,
         bank_resolution: Option<&PropertyBankResolution>,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
-        match processor.check_content() {
+        match processor.check_content(bank_resolution) {
             ContentBranch::Match(stale_timestamps) => {
                 let fresh = stale_timestamps.sync_metadata(repository)?;
                 let completed = fresh.fetch(repository)?;
@@ -366,6 +374,14 @@ impl BaseSchemaProcessor<Init, Unknown> {
                     schema_id,
                     base_schema,
                 })
+            }
+            ContentBranch::StaleRefs(stale) => {
+                let parsed = stale.parse()?;
+                Self::run_analysis(
+                    parsed.analyze(bank),
+                    repository,
+                    bank_resolution,
+                )
             }
             ContentBranch::Mismatch(stale) => {
                 let parsed = stale.parse()?;
@@ -463,6 +479,20 @@ struct Stale {
     schema_id: SchemaId,
 }
 
+/// Proven: bank references changed while content/timestamps matched.
+#[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    allow(dead_code, reason = "Builder integration deferred to Phase 3")
+)]
+struct StaleReferences {
+    content: String,
+    content_hash: Blake3Hash,
+    view: RawSchemaView,
+    schema_id: SchemaId,
+    ref_delta: Vec<PropertyName>,
+}
+
 #[derive(Debug)]
 #[must_use = "timestamp branches must continue the pipeline"]
 #[cfg_attr(
@@ -471,6 +501,7 @@ struct Stale {
 )]
 enum TimestampBranch {
     Match(BaseSchemaProcessor<Construction, Fresh>),
+    StaleRefs(BaseSchemaProcessor<Parsed, StaleReferences>),
     Mismatch(BaseSchemaProcessor<Comparison, Suspect>),
 }
 
@@ -483,6 +514,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
         self,
         source: &FileReader,
         schema_id: SchemaId,
+        bank_resolution: Option<&PropertyBankResolution>,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
         let timestamps_match = status.view.is_timestamp_match(
@@ -491,14 +523,41 @@ impl BaseSchemaProcessor<Comparison, Present> {
         );
 
         if timestamps_match {
-            Ok(TimestampBranch::Match(Self::transition_from_parts(
-                file,
-                path_key,
-                Fresh {
-                    view: status.view,
-                    schema_id,
-                },
-            )))
+            let bank_delta = bank_resolution.and_then(|r| r.delta());
+            let ref_delta = bank_delta
+                .filter(|d| !d.is_empty())
+                .and_then(|d| {
+                    status.view.current().map(|v| v.changed_bank_references(d))
+                })
+                .unwrap_or_default();
+
+            if ref_delta.is_empty() {
+                Ok(TimestampBranch::Match(Self::transition_from_parts(
+                    file,
+                    path_key,
+                    Fresh {
+                        view: status.view,
+                        schema_id,
+                    },
+                )))
+            } else {
+                let content = source
+                    .read_to_string(file.path().as_path())
+                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                let content_hash = Blake3Hash::compute(content.as_bytes());
+
+                Ok(TimestampBranch::StaleRefs(Self::transition_from_parts(
+                    file,
+                    path_key,
+                    StaleReferences {
+                        content,
+                        content_hash,
+                        view: status.view,
+                        schema_id,
+                        ref_delta,
+                    },
+                )))
+            }
         } else {
             let content = source
                 .read_to_string(file.path().as_path())
@@ -524,6 +583,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
 )]
 enum ContentBranch {
     Match(BaseSchemaProcessor<Refresh, StaleTimestamps>),
+    StaleRefs(BaseSchemaProcessor<Parsed, StaleReferences>),
     Mismatch(BaseSchemaProcessor<Parsed, Stale>),
 }
 
@@ -532,19 +592,44 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
         not(test),
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
-    fn check_content(self) -> ContentBranch {
+    fn check_content(
+        self,
+        bank_resolution: Option<&PropertyBankResolution>,
+    ) -> ContentBranch {
         let (file, path_key, status) = self.into_parts();
         let content_hash = Blake3Hash::compute(status.content.as_bytes());
 
         if status.view.is_content_match(&content_hash) {
-            ContentBranch::Match(Self::transition_from_parts(
-                file,
-                path_key,
-                StaleTimestamps {
-                    view: status.view,
-                    schema_id: status.schema_id,
-                },
-            ))
+            let bank_delta = bank_resolution.and_then(|r| r.delta());
+            let ref_delta = bank_delta
+                .filter(|d| !d.is_empty())
+                .and_then(|d| {
+                    status.view.current().map(|v| v.changed_bank_references(d))
+                })
+                .unwrap_or_default();
+
+            if ref_delta.is_empty() {
+                ContentBranch::Match(Self::transition_from_parts(
+                    file,
+                    path_key,
+                    StaleTimestamps {
+                        view: status.view,
+                        schema_id: status.schema_id,
+                    },
+                ))
+            } else {
+                ContentBranch::StaleRefs(Self::transition_from_parts(
+                    file,
+                    path_key,
+                    StaleReferences {
+                        content: status.content,
+                        content_hash,
+                        view: status.view,
+                        schema_id: status.schema_id,
+                        ref_delta,
+                    },
+                ))
+            }
         } else {
             ContentBranch::Mismatch(Self::transition_from_parts(
                 file,
@@ -602,6 +687,20 @@ struct ParsedStale {
     content_hash: Blake3Hash,
     view: RawSchemaView,
     schema_id: SchemaId,
+}
+
+/// Proven: stale bank references (content matched) parsed into a raw schema.
+#[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    allow(dead_code, reason = "Builder integration deferred to Phase 3")
+)]
+struct ParsedStaleReferences {
+    raw: RawSchema,
+    content_hash: Blake3Hash,
+    view: RawSchemaView,
+    schema_id: SchemaId,
+    ref_delta: Vec<PropertyName>,
 }
 
 /// Missing-path parse: reads the file and parses it into a `ParsedMissing`.
@@ -692,6 +791,52 @@ impl BaseSchemaProcessor<Parsed, Stale> {
             content_hash: status.content_hash,
             view: status.view,
             schema_id: status.schema_id,
+        }))
+    }
+}
+
+/// Stale bank-reference parse: parses already-read content into a
+/// `ParsedStaleReferences`.
+impl BaseSchemaProcessor<Parsed, StaleReferences> {
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "Builder integration deferred to Phase 3")
+    )]
+    fn parse(
+        self,
+    ) -> Result<
+        BaseSchemaProcessor<Analysis, ParsedStaleReferences>,
+        SchemaLoaderError,
+    > {
+        let (file, path_key, status) = self.into_parts();
+
+        let schema_name =
+            SchemaName::try_from(file.path().basename().ok_or_else(|| {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
+                    crate::schema::error::SchemaFileError::InvalidFileName {
+                        path: file.path().as_path().to_path_buf(),
+                        reason: "missing file stem".into(),
+                    },
+                ))
+            })?)
+            .map_err(SchemaLoaderError::Resolution)?;
+
+        let raw: RawSchema = FileReader::parse_structured_from_str(
+            file.path().as_path(),
+            &status.content,
+        )
+        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+
+        let raw = raw
+            .with_name(schema_name.as_str().into())
+            .with_metadata(file.metadata().clone());
+
+        Ok(Self::transition_from_parts(file, path_key, ParsedStaleReferences {
+            raw,
+            content_hash: status.content_hash,
+            view: status.view,
+            schema_id: status.schema_id,
+            ref_delta: status.ref_delta,
         }))
     }
 }
@@ -787,6 +932,59 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
                 },
             )))
         }
+    }
+}
+
+/// Stale bank-reference analysis: computes property deltas for the specific
+/// changed bank references.
+impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "Builder integration deferred to Phase 3")
+    )]
+    fn analyze(self, bank: &PropertyBank) -> AnalysisBranch {
+        let (file, path_key, status) = self.into_parts();
+
+        let Some(version) = status.view.current() else {
+            return AnalysisBranch::Corrupt(Self::transition_from_parts(
+                file,
+                path_key,
+                CorruptNew {
+                    raw: status.raw,
+                },
+            ));
+        };
+
+        let expander = RefExpander::new(bank);
+        let Ok(property_delta) = PropertyDeltaEngine::for_schema(
+            &status.raw,
+            version.hashes().properties(),
+        )
+        .diff_schema(&expander, &status.ref_delta) else {
+            // Structural conflict: bank target missing. Escalate to full
+            // rebuild.
+            return AnalysisBranch::Corrupt(Self::transition_from_parts(
+                file,
+                path_key,
+                CorruptNew {
+                    raw: status.raw,
+                },
+            ));
+        };
+
+        AnalysisBranch::Delta(Self::transition_from_parts(
+            file,
+            path_key,
+            Changed {
+                raw: status.raw,
+                view: status.view,
+                schema_id: status.schema_id,
+                content_hash: status.content_hash,
+                property_delta,
+                excludes_delta: ExcludesDelta::default(),
+                extends_delta: ExtendsDelta::default(),
+            },
+        ))
     }
 }
 
