@@ -31,7 +31,7 @@ use crate::{
 
 /// Delta for schema-level `excludes` lists.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ExcludesDelta {
+pub struct ExcludesDelta {
     /// Property names present in the new excludes list but not the old list.
     added: Vec<PropertyName>,
     /// Property names present in the old excludes list but not the new list.
@@ -44,8 +44,7 @@ impl ExcludesDelta {
     /// Both `added` and `removals` will be sorted and deduplicated.
     #[inline]
     #[must_use]
-    #[expect(dead_code, reason = "API constructor for future use")]
-    pub(crate) fn new(
+    pub fn new(
         mut added: Vec<PropertyName>,
         mut removals: Vec<PropertyName>,
     ) -> Self {
@@ -62,23 +61,21 @@ impl ExcludesDelta {
     /// Returns `true` when no excludes changes exist.
     #[inline]
     #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.added.is_empty() && self.removals.is_empty()
     }
 
     /// Returns property names that were added to the excludes list.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn added(&self) -> &[PropertyName] {
+    pub fn added(&self) -> &[PropertyName] {
         &self.added
     }
 
     /// Returns property names that were removed from the excludes list.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn removals(&self) -> &[PropertyName] {
+    pub fn removals(&self) -> &[PropertyName] {
         &self.removals
     }
 
@@ -87,7 +84,7 @@ impl ExcludesDelta {
     /// Uses ordered-set diffing to keep output deterministic.
     #[inline]
     #[must_use]
-    pub(crate) fn from_slices(
+    pub fn from_slices(
         old_excludes: &[PropertyName],
         new_excludes: &[PropertyName],
     ) -> Self {
@@ -127,7 +124,7 @@ impl ExcludesDelta {
 /// of a base schema's `extends` list. Ordering is not semantically meaningful;
 /// duplicates are removed via set semantics.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct ExtendsDelta {
+pub struct ExtendsDelta {
     /// Schema names present in the new extends list but not the old list.
     added: Box<[SchemaName]>,
     /// Schema names present in the old extends list but not the new list.
@@ -141,11 +138,7 @@ impl ExtendsDelta {
     /// deterministic order.
     #[inline]
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API constructor for slice 02+")
-    )]
-    pub(crate) fn new(
+    pub fn new(
         mut added: Vec<SchemaName>,
         mut removed: Vec<SchemaName>,
     ) -> Self {
@@ -171,23 +164,21 @@ impl ExtendsDelta {
             reason = "Used by base processor before Builder integration"
         )
     )]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.added.is_empty() && self.removed.is_empty()
     }
 
     /// Returns schema names that were added to the extends list.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn added(&self) -> &[SchemaName] {
+    pub fn added(&self) -> &[SchemaName] {
         &self.added
     }
 
     /// Returns schema names that were removed from the extends list.
     #[inline]
     #[must_use]
-    #[cfg_attr(not(test), expect(dead_code, reason = "API accessor"))]
-    pub(crate) fn removed(&self) -> &[SchemaName] {
+    pub fn removed(&self) -> &[SchemaName] {
         &self.removed
     }
 
@@ -205,7 +196,7 @@ impl ExtendsDelta {
             reason = "Used by base processor before Builder integration"
         )
     )]
-    pub(crate) fn from_slices(
+    pub fn from_slices(
         old_extends: &[SchemaName],
         new_extends: &[SchemaName],
     ) -> Self {
@@ -244,7 +235,7 @@ impl ExtendsDelta {
 /// - Enables true incremental update: apply changed properties without full
 ///   re-expansion.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct PropertyDelta {
+pub struct PropertyDelta {
     /// New/changed properties (resolved to domain types).
     upserts: PropertyMap,
     /// Removed property names (sorted deterministically).
@@ -257,10 +248,7 @@ impl PropertyDelta {
     /// The `removals` vector will be sorted and deduplicated.
     #[inline]
     #[must_use]
-    pub(crate) fn new(
-        upserts: PropertyMap,
-        mut removals: Vec<PropertyName>,
-    ) -> Self {
+    pub fn new(upserts: PropertyMap, mut removals: Vec<PropertyName>) -> Self {
         removals.sort();
         removals.dedup();
         Self {
@@ -272,28 +260,28 @@ impl PropertyDelta {
     /// Returns `true` when no property changes exist.
     #[inline]
     #[must_use]
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.upserts.is_empty() && self.removals.is_empty()
     }
 
     /// Returns the upsert map.
     #[inline]
     #[must_use]
-    pub(crate) fn upserts(&self) -> &PropertyMap {
+    pub fn upserts(&self) -> &PropertyMap {
         &self.upserts
     }
 
     /// Returns removed property names (sorted deterministically).
     #[inline]
     #[must_use]
-    pub(crate) fn removals(&self) -> &[PropertyName] {
+    pub fn removals(&self) -> &[PropertyName] {
         &self.removals
     }
 
     /// Returns `true` if the given name has an upsert.
     #[inline]
     #[must_use]
-    pub(crate) fn contains_upsert(&self, name: &PropertyName) -> bool {
+    pub fn contains_upsert(&self, name: &PropertyName) -> bool {
         self.upserts.has(name)
     }
 
@@ -301,7 +289,7 @@ impl PropertyDelta {
     #[cfg(test)]
     #[inline]
     #[must_use]
-    pub(crate) fn to_changed_name_set(&self) -> HashSet<PropertyName> {
+    pub fn to_changed_name_set(&self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
         );
@@ -315,7 +303,7 @@ impl PropertyDelta {
     /// This takes ownership to avoid cloning the upsert map's keys.
     #[inline]
     #[must_use]
-    pub(crate) fn into_changed_name_set(self) -> HashSet<PropertyName> {
+    pub fn into_changed_name_set(self) -> HashSet<PropertyName> {
         let mut names = HashSet::with_capacity(
             self.upserts.len().saturating_add(self.removals.len()),
         );
@@ -328,7 +316,7 @@ impl PropertyDelta {
 /// Generic delta engine over a raw property map and previous hash snapshot.
 ///
 /// This is the core engine used by both schema and property-bank delta flows.
-pub(crate) struct PropertyDeltaEngine<'data, T> {
+pub struct PropertyDeltaEngine<'data, T> {
     properties: &'data RawPropertyMap<T>,
     previous_hashes: &'data RawPropertyHashIndex,
 }
@@ -352,7 +340,7 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     /// Creates an engine for a raw schema's properties.
     #[inline]
     #[must_use]
-    pub(crate) fn for_schema(
+    pub fn for_schema(
         schema: &'data RawSchema,
         previous_hashes: &'data RawPropertyHashIndex,
     ) -> Self {
@@ -370,12 +358,22 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
-    pub(crate) fn diff_schema(
+    pub fn diff_schema(
         &self,
         expander: &RefExpander,
+        forced_refs: &[PropertyName],
     ) -> Result<PropertyDelta, SchemaLoaderError> {
-        let (raw_upserts, removals, _current_hashes) =
+        let (mut raw_upserts, removals, _current_hashes) =
             self.compute_change_set();
+
+        for name in forced_refs {
+            if raw_upserts.contains_key(name) {
+                continue;
+            }
+            if let Some(entry) = self.properties.get(name) {
+                raw_upserts.insert(name.clone(), entry.clone());
+            }
+        }
 
         let mut resolved_upserts = PropertyMap::new();
         let mut inline_map: HashMap<PropertyName, RawPropertyInline> =
@@ -416,7 +414,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     /// Creates an engine for a raw property bank's entries.
     #[inline]
     #[must_use]
-    pub(crate) fn for_property_bank(
+    pub fn for_property_bank(
         bank: &'data RawPropertyBank,
         previous_hashes: &'data RawPropertyHashIndex,
     ) -> Self {
@@ -430,7 +428,7 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
-    pub(crate) fn diff_property_bank(
+    pub fn diff_property_bank(
         &self,
     ) -> Result<(PropertyDelta, RawPropertyHashIndex), SchemaLoaderError> {
         let (raw_upserts, removals, property_hashes) =
@@ -493,16 +491,16 @@ mod tests {
         use super::*;
         use crate::schema::raw::RawPropertyBank;
 
-        pub(crate) fn name(s: &str) -> PropertyName {
+        pub fn name(s: &str) -> PropertyName {
             PropertyName::try_new(s).expect("valid test property name")
         }
 
-        pub(crate) fn inline_string() -> RawPropertyInline {
+        pub fn inline_string() -> RawPropertyInline {
             serde_json::from_value(serde_json::json!({"type": "string"}))
                 .expect("valid inline string")
         }
 
-        pub(crate) fn property_bank_fixture(
+        pub fn property_bank_fixture(
             names: &[&str],
         ) -> (RawPropertyBank, RawPropertyHashIndex) {
             let mut properties = serde_json::Map::new();
@@ -970,6 +968,40 @@ mod tests {
             assert_eq!(
                 new_hashes.get(&fixtures::name("a")),
                 hashes.get(&fixtures::name("a"))
+            );
+        }
+
+        #[test]
+        fn diff_schema_should_inject_forced_refs_even_if_hash_matches() {
+            let entry_json = serde_json::json!({"type": "string"});
+            let entry: RawProperty =
+                serde_json::from_value(entry_json.clone()).expect("valid");
+            let hash = Blake3Hash::compute(hash_structured(&entry));
+
+            let map_json = serde_json::json!({
+                "stable": entry_json
+            });
+            let map: RawPropertyMap<RawProperty> =
+                serde_json::from_value(map_json).expect("valid map");
+
+            let mut previous_hashes = RawPropertyHashIndex::default();
+            previous_hashes.insert(fixtures::name("stable"), hash);
+
+            let engine = PropertyDeltaEngine::for_map(&map, &previous_hashes);
+
+            // Normally "stable" would be ignored because its hash matches.
+            // But if we force it, it should appear in upserts.
+            let bank = crate::schema::bank::PropertyBank::new();
+            let expander = RefExpander::new(&bank);
+            let forced_refs = vec![fixtures::name("stable")];
+
+            let delta = engine
+                .diff_schema(&expander, &forced_refs)
+                .expect("diff should succeed");
+
+            assert!(
+                delta.upserts().has(&fixtures::name("stable")),
+                "Forced property should be in upserts even if hash matches"
             );
         }
     }

@@ -33,7 +33,12 @@ pub mod views;
 
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
-pub(crate) mod base_processor;
+/// Typed processing pipeline for base schemas.
+///
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// tests to use the base processor directly.
+#[doc(hidden)]
+pub mod base_processor;
 /// Property-bank reference expansion pipeline stage.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
@@ -42,6 +47,10 @@ pub(crate) mod base_processor;
 #[doc(hidden)]
 pub mod expander;
 /// PropertyBank state machine for incremental loading and staleness detection.
+///
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// tests to use the property bank processor directly.
+#[doc(hidden)]
 pub mod property_bank_processor;
 
 /// Batch-based schema processor pipeline.
@@ -61,7 +70,11 @@ pub(crate) mod index;
 pub(crate) mod discovery;
 
 /// Shared delta computation utilities for schema ingestion.
-pub(crate) mod delta;
+///
+/// **Pipeline utility**: This module is `#[doc(hidden)] pub` to allow
+/// tests to use delta types directly.
+#[doc(hidden)]
+pub mod delta;
 /// Schema errors.
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.

@@ -140,7 +140,7 @@ use crate::{
 /// - `S` (Status): the knowledge state carrying data and invariants.
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct PropertyBankProcessor<P, S> {
+pub struct PropertyBankProcessor<P, S> {
     file: FsFile,
     path_key: PathKey,
     status: S,
@@ -180,14 +180,16 @@ impl<P, S> PropertyBankProcessor<P, S> {
 }
 
 /// The result of a property bank resolution attempt.
-pub(crate) struct PropertyBankResolution {
+pub struct PropertyBankResolution {
     bank: PropertyBank,
     delta: Option<HashSet<PropertyName>>,
 }
 
 impl PropertyBankResolution {
     /// Create a new resolution result.
-    pub(crate) fn new(
+    #[must_use]
+    #[inline]
+    pub fn new(
         bank: PropertyBank,
         delta: Option<HashSet<PropertyName>>,
     ) -> Self {
@@ -197,10 +199,24 @@ impl PropertyBankResolution {
         }
     }
 
+    /// Returns a reference to the resolved bank.
+    #[inline]
+    #[must_use]
+    pub fn bank(&self) -> &PropertyBank {
+        &self.bank
+    }
+
+    /// Returns a reference to the bank delta, if present.
+    #[inline]
+    #[must_use]
+    pub fn delta(&self) -> Option<&HashSet<PropertyName>> {
+        self.delta.as_ref()
+    }
+
     /// Decompose the resolution into its constituent parts.
-    pub(crate) fn into_parts(
-        self,
-    ) -> (PropertyBank, Option<HashSet<PropertyName>>) {
+    #[must_use]
+    #[inline]
+    pub fn into_parts(self) -> (PropertyBank, Option<HashSet<PropertyName>>) {
         (self.bank, self.delta)
     }
 }
@@ -211,16 +227,16 @@ impl PropertyBankResolution {
 
 /// Initial state before any knowledge has been gathered.
 #[derive(Debug)]
-pub(crate) struct Unknown;
+pub struct Unknown;
 
 /// Entry-point stage: processor created from discovery data, not yet compared.
 #[derive(Debug)]
-pub(crate) struct Init;
+pub struct Init;
 
 /// Entry-state operations that bootstrap the comparison pipeline.
 impl PropertyBankProcessor<Init, Unknown> {
     #[inline]
-    pub(crate) fn from_discovery(
+    pub fn from_discovery(
         file: FsFile,
         root: &DirPath,
     ) -> Result<Self, crate::fs::PathError> {
@@ -239,7 +255,8 @@ impl PropertyBankProcessor<Init, Unknown> {
     /// (parse from scratch → create).
     /// When `view` is `Some(...)`, the processor runs the present path
     /// (check timestamps → check content → analyze → create/update/fetch).
-    pub(crate) fn run<R: Repository>(
+    #[inline]
+    pub fn run<R: Repository>(
         self,
         view: Option<&RawPropertyBankView>,
         source: &FileReader,
