@@ -6,7 +6,9 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveryPolicy {
     /// Ordered list of sources to check for vault roots.
-    pub(crate) precedence: Vec<VaultSourceType>,
+    pub(crate) vault_precedence: Vec<VaultSourceType>,
+    /// Ordered list of sources to check for global config roots.
+    pub(crate) global_precedence: Vec<GlobalSourceType>,
     /// Whether a marker file located exactly at a ceiling directory is valid.
     pub(crate) allow_marker_at_ceiling: bool,
     /// Whether discovery should fail immediately if an explicit path is
@@ -17,7 +19,8 @@ pub(crate) struct DiscoveryPolicy {
 impl Default for DiscoveryPolicy {
     fn default() -> Self {
         Self {
-            precedence: VaultSourceType::PRECEDENCE.to_vec(),
+            vault_precedence: VaultSourceType::PRECEDENCE.to_vec(),
+            global_precedence: GlobalSourceType::PRECEDENCE.to_vec(),
             allow_marker_at_ceiling: true,
             strict_overrides: false,
         }
@@ -67,28 +70,53 @@ impl VaultSourceType {
 pub(crate) enum GlobalSourceType {
     /// Provided via `LITHOS_CONFIG_FILE` environment variable.
     EnvVar,
-    /// Discovered via XDG Base Directory specification.
-    XdgConfig,
-    /// Discovered in standard user home configuration path (~/.lithos).
-    UserConfig,
-    /// Discovered in system-wide configuration path (/etc/lithos).
-    SystemConfig,
+    /// Discovered via a configured global source directory.
+    Directory(GlobalSourceDirectory),
 }
 
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 impl GlobalSourceType {
-    /// Stable precedence used by deterministic candidate selection.
-    pub(crate) const PRECEDENCE: [Self; 4] =
-        [Self::EnvVar, Self::XdgConfig, Self::UserConfig, Self::SystemConfig];
+    /// Stable precedence used by deterministic global source resolution.
+    pub(crate) const PRECEDENCE: [Self; 4] = [
+        Self::EnvVar,
+        Self::Directory(GlobalSourceDirectory::XdgConfig),
+        Self::Directory(GlobalSourceDirectory::UserConfig),
+        Self::Directory(GlobalSourceDirectory::SystemConfig),
+    ];
 
     /// Returns the precedence rank (lower is higher priority).
     pub(crate) fn rank(self) -> u8 {
         match self {
             Self::EnvVar => 0,
-            Self::XdgConfig => 1,
-            Self::UserConfig => 2,
-            Self::SystemConfig => 3,
+            Self::Directory(GlobalSourceDirectory::XdgConfig) => 1,
+            Self::Directory(GlobalSourceDirectory::UserConfig) => 2,
+            Self::Directory(GlobalSourceDirectory::SystemConfig) => 3,
         }
+    }
+}
+
+/// Enumerates global configuration directories probed after environment file
+/// overrides have been considered.
+#[allow(dead_code, reason = "Phase-2 seam; wired in once orchestration lands")]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "GlobalSourceDirectory variants mirror the approved source names"
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum GlobalSourceDirectory {
+    /// Discovered via XDG Base Directory specification.
+    XdgConfig,
+    /// Discovered in standard user home configuration path (~/.config/lithos).
+    UserConfig,
+    /// Discovered in system-wide configuration path (/etc/lithos).
+    SystemConfig,
+}
+
+#[allow(dead_code, reason = "Phase-2 seam; wired in once orchestration lands")]
+impl GlobalSourceDirectory {
+    /// Returns the corresponding discovery source identity.
+    pub(crate) fn source_type(self) -> GlobalSourceType {
+        GlobalSourceType::Directory(self)
     }
 }
 
@@ -112,15 +140,24 @@ mod tests {
     fn global_source_types_have_correct_rank_order() {
         assert!(
             GlobalSourceType::EnvVar.rank()
-                < GlobalSourceType::XdgConfig.rank()
+                < GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+                    .rank()
         );
         assert!(
-            GlobalSourceType::XdgConfig.rank()
-                < GlobalSourceType::UserConfig.rank()
+            GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+                .rank()
+                < GlobalSourceType::Directory(
+                    GlobalSourceDirectory::UserConfig
+                )
+                .rank()
         );
         assert!(
-            GlobalSourceType::UserConfig.rank()
-                < GlobalSourceType::SystemConfig.rank()
+            GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
+                .rank()
+                < GlobalSourceType::Directory(
+                    GlobalSourceDirectory::SystemConfig
+                )
+                .rank()
         );
     }
 
@@ -143,15 +180,23 @@ mod tests {
     #[test]
     fn default_policy_uses_standard_precedence() {
         let policy = DiscoveryPolicy::default();
-        assert_eq!(policy.precedence.len(), 3);
+        assert_eq!(policy.vault_precedence.len(), 3);
         assert_eq!(
-            policy.precedence.first(),
+            policy.vault_precedence.first(),
             Some(&VaultSourceType::ExplicitFlag)
         );
-        assert_eq!(policy.precedence.get(1), Some(&VaultSourceType::EnvVar));
         assert_eq!(
-            policy.precedence.get(2),
+            policy.vault_precedence.get(1),
+            Some(&VaultSourceType::EnvVar)
+        );
+        assert_eq!(
+            policy.vault_precedence.get(2),
             Some(&VaultSourceType::AscendingWalk)
+        );
+        assert_eq!(policy.global_precedence.len(), 4);
+        assert_eq!(
+            policy.global_precedence.first(),
+            Some(&GlobalSourceType::EnvVar)
         );
         assert!(policy.allow_marker_at_ceiling);
     }
@@ -164,8 +209,21 @@ mod tests {
 
     #[test]
     fn global_source_types_derive_ord() {
-        assert!(GlobalSourceType::EnvVar < GlobalSourceType::XdgConfig);
-        assert!(GlobalSourceType::XdgConfig < GlobalSourceType::UserConfig);
-        assert!(GlobalSourceType::UserConfig < GlobalSourceType::SystemConfig);
+        assert!(
+            GlobalSourceType::EnvVar
+                < GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+        );
+        assert!(
+            GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+                < GlobalSourceType::Directory(
+                    GlobalSourceDirectory::UserConfig
+                )
+        );
+        assert!(
+            GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
+                < GlobalSourceType::Directory(
+                    GlobalSourceDirectory::SystemConfig
+                )
+        );
     }
 }

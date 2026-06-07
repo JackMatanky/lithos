@@ -84,6 +84,111 @@ mod tests {
         }
     }
 
+    #[test]
+    fn config_must_not_import_discovery_diagnostics_or_source_policy() {
+        let files = glob("src/config/**/*.rs").expect("read config glob");
+
+        for entry in files {
+            let path = entry.expect("Glob entry error");
+            let content = fs::read_to_string(&path).expect("read config file");
+
+            assert!(
+                !content.contains("discovery::diagnostics"),
+                "Config file {path:?} must not import Discovery diagnostics"
+            );
+            assert!(
+                !content.contains("GlobalSourceType")
+                    && !content.contains("VaultSourceType")
+                    && !content.contains("GlobalSourceDirectory"),
+                "Config file {path:?} must not import or mention Discovery \
+                 source identity"
+            );
+        }
+    }
+
+    #[test]
+    fn config_must_not_own_filesystem_candidate_discovery_modules() {
+        assert!(
+            !std::path::Path::new("src/config/candidates.rs").exists(),
+            "Config must not own filesystem candidate discovery"
+        );
+        assert!(
+            !std::path::Path::new("src/config/location.rs").exists(),
+            "Config must not own source/location taxonomy for discovered paths"
+        );
+    }
+
+    #[test]
+    fn discovery_policy_names_vault_and_global_precedence_symmetrically() {
+        let content = fs::read_to_string("src/discovery/policy.rs")
+            .expect("read discovery policy");
+
+        assert!(
+            content.contains("vault_precedence"),
+            "DiscoveryPolicy should name vault precedence explicitly"
+        );
+        assert!(
+            !content.contains("pub(crate) precedence"),
+            "DiscoveryPolicy should not expose ambiguous `precedence` field"
+        );
+        assert!(
+            content.contains("global_precedence: Vec<GlobalSourceType>"),
+            "DiscoveryPolicy should model global precedence with source \
+             types, not only directory kinds"
+        );
+    }
+
+    #[test]
+    fn global_discovery_input_uses_directory_candidates() {
+        let content = fs::read_to_string("src/discovery/engine.rs")
+            .expect("read discovery engine");
+
+        assert!(
+            content.contains("struct GlobalDirectoryCandidate"),
+            "Global discovery should model source directory candidates \
+             explicitly"
+        );
+        assert!(
+            content.contains("directories: &'a [GlobalDirectoryCandidate<'a>]"),
+            "GlobalDiscoveryInput should receive directory candidates, not \
+             fixed runtime fields"
+        );
+        assert!(
+            !content.contains("xdg_config_base")
+                && !content.contains("user_config_base")
+                && !content.contains("system_config_base"),
+            "GlobalDiscoveryInput should not expose fixed XDG/user/system \
+             fields"
+        );
+    }
+
+    #[test]
+    fn builder_must_not_hardcode_system_global_config_path() {
+        let content = fs::read_to_string("src/config/builder.rs")
+            .expect("read config builder");
+
+        assert!(
+            !content.contains("/etc/lithos"),
+            "Builder must not hardcode partial global discovery runtime paths"
+        );
+    }
+
+    #[test]
+    fn builder_must_not_use_known_vault_root_discovery_shortcut() {
+        let content = fs::read_to_string("src/config/builder.rs")
+            .expect("read config builder");
+
+        assert!(
+            !content.contains("find_known_vault"),
+            "Builder must get the vault root through Discovery, not through a \
+             known-root shortcut"
+        );
+        assert!(
+            content.contains("find_vault"),
+            "Builder should call Discovery vault discovery"
+        );
+    }
+
     fn check_imports(
         ctx: &str,
         content: &str,

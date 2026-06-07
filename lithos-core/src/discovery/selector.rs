@@ -1,7 +1,7 @@
 //! Logic for selecting a single winning marker from multiple discovery
 //! candidates.
 
-use super::engine::FoundRootMarker;
+use super::engine::DiscoveredMarker;
 use crate::fs::format::StructuredFileFormat;
 
 /// Picks the highest-precedence marker from a slice of discovered markers.
@@ -10,8 +10,8 @@ use crate::fs::format::StructuredFileFormat;
 /// by path name (alphabetical) as a tie-breaker.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) fn select_candidate(
-    markers: &[FoundRootMarker],
-) -> Option<&FoundRootMarker> {
+    markers: &[DiscoveredMarker],
+) -> Option<&DiscoveredMarker> {
     markers.iter().min_by(|a, b| {
         a.format.rank().cmp(&b.format.rank()).then_with(|| a.path.cmp(&b.path))
     })
@@ -21,9 +21,9 @@ pub(crate) fn select_candidate(
 /// standard selection.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) fn promote_alternative(
-    markers: &[FoundRootMarker],
+    markers: &[DiscoveredMarker],
     preferred_format: StructuredFileFormat,
-) -> Option<&FoundRootMarker> {
+) -> Option<&DiscoveredMarker> {
     let preferred = markers.iter().find(|m| m.format == preferred_format);
     preferred.or_else(|| select_candidate(markers))
 }
@@ -38,8 +38,8 @@ mod tests {
         base: &str,
         path: &str,
         format: StructuredFileFormat,
-    ) -> FoundRootMarker {
-        FoundRootMarker {
+    ) -> DiscoveredMarker {
+        DiscoveredMarker {
             base: PathBuf::from(base),
             path: PathBuf::from(path),
             format,

@@ -19,9 +19,9 @@
 //! - [`error`] — [`DiscoveryError`] and [`VaultDiscoveryWarning`] types.
 //! - [`policy`] — [`DiscoveryPolicy`], [`VaultSourceType`],
 //!   [`GlobalSourceType`].
-//! - [`marker`] — [`FoundRootMarker`], the typed handoff to Config.
+//! - [`marker`] — [`DiscoveredMarker`], the typed handoff to Config.
 //! - [`diagnostics`] — Non-fatal warning types emitted during discovery.
-//! - [`probe`] — [`VaultRootProbe`], [`GlobalConfigProbe`], [`DiscoveryProbe`]
+//! - [`probe`] — [`VaultRootProbe`], [`GlobalRootProbe`], [`DiscoveryProbe`]
 //!   trait, marker patterns.
 //! - [`selector`] — Candidate selection and format promotion functions.
 //! - [`walk`] — [`AscendingWalker`], [`DiscoveryBoundaries`], ceiling parsing.
