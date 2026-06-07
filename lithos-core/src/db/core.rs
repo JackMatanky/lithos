@@ -116,6 +116,11 @@ impl Store {
     ///
     /// Returns `DbError` if the temporary directory or store cannot be created.
     #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "available for test helpers; unused until schema storage \
+                  tests need multi-handle patterns"
+    )]
     pub(crate) fn open_temp_arc()
     -> Result<(tempfile::TempDir, std::sync::Arc<Self>), DbError> {
         let (tempdir, store) = Self::open_temp()?;

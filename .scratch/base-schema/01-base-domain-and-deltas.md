@@ -114,7 +114,7 @@ This slice adds the new `BaseSchema` domain type in `schema/base.rs` and the `Ex
 
 **Out of scope:**
 - Repository / storage / redb table wiring (slice 02).
-- `BaseSchemaProcessor` and `BaseSchemaChange` envelope (slice 03+).
+- `BaseSchemaProcessor` and `BaseSchemaResolution` envelope (slice 03+).
 - Adding `Ord`/`PartialOrd` to `SchemaName` (broader change; not needed if we sort by `as_str()`).
 - Adding `Archive`/`Serialize`/`Deserialize` to `ExtendsDelta` (defer to the slice that persists it).
 - Any change to `Schema`, `PropertyBank`, or existing builder/processor flows.

@@ -24,7 +24,7 @@ use lithos_core::{
         base_processor::{BaseSchemaProcessor, BaseSchemaResolution},
         property::PropertyName,
         property_bank_processor::PropertyBankProcessor,
-        repository::ReadRepository as _,
+        repository::{ReadRepository as _, WriteRepository as _},
     },
 };
 use tempfile::TempDir;
@@ -81,6 +81,7 @@ fn cold_start_and_bank_change() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: base1,
+        ..
     } = res1
     else {
         panic!("Expected New resolution");
@@ -192,6 +193,7 @@ fn multiple_schemas_shared_bank_target() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: s1_base,
+        ..
     } = res1
     else {
         panic!("Expected New for schema 1");
@@ -200,6 +202,7 @@ fn multiple_schemas_shared_bank_target() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: s2_base,
+        ..
     } = res2
     else {
         panic!("Expected New for schema 2");
@@ -266,6 +269,56 @@ fn multiple_schemas_shared_bank_target() -> TestResult {
         panic!("Schema 2 should be stale, got {res2_v2:?}");
     };
     assert_eq!(sid2, id2);
+
+    Ok(())
+}
+
+#[test]
+fn caller_deletes_base_schema_and_constructs_resolution() -> TestResult {
+    let vault_dir = TempDir::new()?;
+    let test_db = TestDb::new()?;
+    let repository = setup_repository(test_db.store());
+    let source = FileReader::new(vault_dir.path());
+    let root = DirPath::try_new(vault_dir.path().to_path_buf())?;
+
+    write_file(
+        vault_dir.path(),
+        "schemas/task.json",
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+
+    let task_file = make_fs_file(vault_dir.path().join("schemas/task.json"))?;
+    let processor =
+        BaseSchemaProcessor::from_discovery(task_file.clone(), &root)?;
+    let resolution = processor.run(None, &source, &repository, None)?;
+
+    let BaseSchemaResolution::New {
+        schema_id,
+        ..
+    } = resolution
+    else {
+        panic!("Expected New resolution, got {resolution:?}");
+    };
+
+    assert!(
+        repository.find_base_schema_by_id(schema_id)?.is_some(),
+        "base schema should exist before deletion"
+    );
+
+    // Caller-level deletion: remove persistence then construct event.
+    repository.delete_base_schema(schema_id)?;
+    repository.delete_schema(schema_id)?;
+
+    assert!(
+        repository.find_base_schema_by_id(schema_id)?.is_none(),
+        "base schema should be removed after deletion"
+    );
+
+    let deleted = BaseSchemaResolution::Deleted {
+        schema_id,
+    };
+    assert_eq!(deleted.schema_id(), schema_id);
+    assert!(matches!(deleted, BaseSchemaResolution::Deleted { .. }));
 
     Ok(())
 }

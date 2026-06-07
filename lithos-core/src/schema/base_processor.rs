@@ -57,6 +57,15 @@
 //!   methods that require it (`create`, `update`).
 //! - `StaleReferences` handling is orthogonal: `Fresh` checks bank refs before
 //!   fetching; `Changed` augments the property delta before persisting.
+//!
+//! # Deletion
+//!
+//! Deletion is handled at the **caller level**, not by this processor. The
+//! caller (orchestrator) directly calls `repo.delete_base_schema(id)` and
+//! `repo.delete_schema(id)`, then constructs
+//! `BaseSchemaResolution::Deleted { schema_id }`. See the
+//! [`SchemaProcessor`](crate::schema::schema_processor::SchemaProcessor) for
+//! the production orchestration pattern.
 
 use std::marker::PhantomData;
 
@@ -168,8 +177,15 @@ pub enum BaseSchemaResolution {
     },
     /// Base schema was newly constructed.
     New {
+        /// The schema identifier.
+        schema_id: SchemaId,
         /// The newly constructed base schema.
         base_schema: BaseSchema,
+    },
+    /// Base schema was deleted.
+    Deleted {
+        /// The schema identifier.
+        schema_id: SchemaId,
     },
     /// Base schema changed semantically and was incrementally updated.
     Stale {
@@ -184,6 +200,32 @@ pub enum BaseSchemaResolution {
         /// Extends-list semantic changes.
         extends_delta: ExtendsDelta,
     },
+}
+
+impl BaseSchemaResolution {
+    /// Return the [`SchemaId`] carried by any resolution variant.
+    #[must_use]
+    #[inline]
+    pub fn schema_id(&self) -> SchemaId {
+        match self {
+            Self::Fresh {
+                schema_id,
+                ..
+            }
+            | Self::New {
+                schema_id,
+                ..
+            }
+            | Self::Deleted {
+                schema_id,
+                ..
+            }
+            | Self::Stale {
+                schema_id,
+                ..
+            } => *schema_id,
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,8 +317,10 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 content_hash: status.content_hash,
             });
             let completed = new_proc.create(repository, bank)?;
+            let base_schema = completed.into_base();
             Ok(BaseSchemaResolution::New {
-                base_schema: completed.into_base(),
+                schema_id,
+                base_schema,
             })
         }
     }
@@ -416,9 +460,14 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 );
 
                 match new_proc.create(repository, &empty_bank) {
-                    Ok(completed) => Ok(BaseSchemaResolution::New {
-                        base_schema: completed.into_base(),
-                    }),
+                    Ok(completed) => {
+                        let base = completed.into_base();
+                        let schema_id = *base.id();
+                        Ok(BaseSchemaResolution::New {
+                            schema_id,
+                            base_schema: base,
+                        })
+                    }
                     Err(SchemaLoaderError::Repository(e)) => {
                         Err(SchemaLoaderError::Repository(e))
                     }
@@ -439,6 +488,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
                                 });
 
                         Ok(BaseSchemaResolution::New {
+                            schema_id: id,
                             base_schema: BaseSchema::new(
                                 id,
                                 schema_name,
@@ -1219,6 +1269,7 @@ impl BaseSchemaProcessor<Construction, New> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
+            schema_id: status.id,
             base,
         }))
     }
@@ -1407,8 +1458,11 @@ impl BaseSchemaProcessor<Construction, Changed> {
                 // behavior.
                 if let Ok(completed) = new_proc.create(repository, &empty_bank)
                 {
+                    let base = completed.into_base();
+                    let schema_id = *base.id();
                     return Err(BaseSchemaResolution::New {
-                        base_schema: completed.into_base(),
+                        schema_id,
+                        base_schema: base,
                     });
                 }
                 let schema_name = schema_name_result.unwrap_or_else(|_| {
@@ -1421,9 +1475,11 @@ impl BaseSchemaProcessor<Construction, Changed> {
                     )]
                     SchemaName::try_new("unknown").unwrap()
                 });
+                let new_id = SchemaId::new();
                 return Err(BaseSchemaResolution::New {
+                    schema_id: new_id,
                     base_schema: BaseSchema::new(
-                        SchemaId::new(),
+                        new_id,
                         schema_name,
                         PropertyMap::new(),
                         Vec::new(),
@@ -1464,11 +1520,12 @@ struct Completed;
 
 /// Proven: terminal ingestion goal reached with newly built schema.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "Builder integration deferred to Phase 3")
+#[allow(
+    dead_code,
+    reason = "SchemaProcessor builder integration deferred to Phase 3"
 )]
 struct NewReady {
+    schema_id: SchemaId,
     base: BaseSchema,
 }
 
@@ -1495,6 +1552,16 @@ struct StaleReady {
     property_delta: PropertyDelta,
     excludes_delta: ExcludesDelta,
     extends_delta: ExtendsDelta,
+}
+
+/// Proven: terminal ingestion goal reached with deleted schema.
+#[derive(Debug)]
+#[allow(
+    dead_code,
+    reason = "SchemaProcessor builder integration deferred to Phase 3"
+)]
+struct DeletedReady {
+    schema_id: SchemaId,
 }
 
 impl BaseSchemaProcessor<Completed, NewReady> {
@@ -1535,6 +1602,20 @@ impl BaseSchemaProcessor<Completed, StaleReady> {
             property_delta: self.status.property_delta,
             excludes_delta: self.status.excludes_delta,
             extends_delta: self.status.extends_delta,
+        }
+    }
+}
+
+impl BaseSchemaProcessor<Completed, DeletedReady> {
+    #[inline]
+    #[must_use]
+    #[allow(
+        dead_code,
+        reason = "SchemaProcessor builder integration deferred to Phase 3"
+    )]
+    fn into_deleted_resolution(self) -> BaseSchemaResolution {
+        BaseSchemaResolution::Deleted {
+            schema_id: self.status.schema_id,
         }
     }
 }
@@ -1600,6 +1681,7 @@ mod tests {
         ($resolution:expr) => {{
             let resolution = $resolution;
             let BaseSchemaResolution::New {
+                schema_id: _,
                 base_schema,
             } = resolution
             else {
@@ -2752,6 +2834,173 @@ mod tests {
 
             let (_, base_schema) = expect_fresh!(resolution);
             assert_eq!(base_schema, expected);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Tests: deleted
+    // ─────────────────────────────────────────────────────────────────────────
+
+    mod deleted {
+        use super::*;
+
+        #[test]
+        fn carries_schema_id() {
+            let schema_id = SchemaId::new();
+            let resolution = BaseSchemaResolution::Deleted {
+                schema_id,
+            };
+            assert!(matches!(resolution, BaseSchemaResolution::Deleted {
+                schema_id: _
+            }));
+            if let BaseSchemaResolution::Deleted {
+                schema_id: sid,
+            } = resolution
+            {
+                assert_eq!(sid, schema_id);
+            }
+        }
+
+        #[test]
+        fn into_deleted_resolution_produces_deleted_variant() {
+            let fixture = make_fixture();
+            let schema_id = SchemaId::new();
+            let processor = BaseSchemaProcessor::<Completed, DeletedReady>::transition_from_parts(
+                fixture.file,
+                fixture.key.clone(),
+                DeletedReady { schema_id },
+            );
+            let resolution = processor.into_deleted_resolution();
+            assert!(matches!(resolution, BaseSchemaResolution::Deleted { .. }));
+            if let BaseSchemaResolution::Deleted {
+                schema_id: sid,
+            } = resolution
+            {
+                assert_eq!(sid, schema_id);
+            }
+        }
+    }
+
+    mod contract {
+        use super::*;
+
+        #[test]
+        fn schema_id_is_sortable() {
+            let id_a = SchemaId::new();
+            let id_b = SchemaId::new();
+            let id_c = SchemaId::new();
+
+            let mut ids = vec![id_c, id_a, id_b];
+            ids.sort();
+
+            let mut sorted = ids.clone();
+            sorted.sort();
+            assert_eq!(
+                ids, sorted,
+                "sorting SchemaIds should be deterministic"
+            );
+        }
+
+        #[test]
+        fn resolutions_are_sortable_by_schema_id() {
+            let id_a = SchemaId::new();
+            let id_b = SchemaId::new();
+            let id_c = SchemaId::new();
+
+            let base = BaseSchema::new(
+                id_a,
+                SchemaName::try_new("a").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+
+            let mut resolutions = [
+                BaseSchemaResolution::Deleted {
+                    schema_id: id_c,
+                },
+                BaseSchemaResolution::New {
+                    schema_id: id_b,
+                    base_schema: base.clone(),
+                },
+                BaseSchemaResolution::Fresh {
+                    schema_id: id_a,
+                    base_schema: base.clone(),
+                },
+            ];
+
+            resolutions.sort_by_key(BaseSchemaResolution::schema_id);
+
+            assert_eq!(resolutions[0].schema_id(), id_a);
+            assert_eq!(resolutions[1].schema_id(), id_b);
+            assert_eq!(resolutions[2].schema_id(), id_c);
+        }
+
+        #[test]
+        fn fresh_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let base = BaseSchema::new(
+                schema_id,
+                SchemaName::try_new("test").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            let fresh = BaseSchemaResolution::Fresh {
+                schema_id,
+                base_schema: base,
+            };
+            assert!(matches!(fresh, BaseSchemaResolution::Fresh { .. }));
+            assert_eq!(fresh.schema_id(), schema_id);
+        }
+
+        #[test]
+        fn new_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let base = BaseSchema::new(
+                schema_id,
+                SchemaName::try_new("test").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            let new_res = BaseSchemaResolution::New {
+                schema_id,
+                base_schema: base,
+            };
+            assert!(matches!(new_res, BaseSchemaResolution::New { .. }));
+            assert_eq!(new_res.schema_id(), schema_id);
+        }
+
+        #[test]
+        fn stale_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let base = BaseSchema::new(
+                schema_id,
+                SchemaName::try_new("test").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            let stale = BaseSchemaResolution::Stale {
+                schema_id,
+                base_schema: base,
+                property_delta: PropertyDelta::default(),
+                excludes_delta: ExcludesDelta::default(),
+                extends_delta: ExtendsDelta::default(),
+            };
+            assert!(matches!(stale, BaseSchemaResolution::Stale { .. }));
+            assert_eq!(stale.schema_id(), schema_id);
+        }
+
+        #[test]
+        fn deleted_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let deleted = BaseSchemaResolution::Deleted {
+                schema_id,
+            };
+            assert!(matches!(deleted, BaseSchemaResolution::Deleted { .. }));
+            assert_eq!(deleted.schema_id(), schema_id);
         }
     }
 }
