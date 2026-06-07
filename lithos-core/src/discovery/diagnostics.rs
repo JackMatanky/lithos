@@ -1,8 +1,15 @@
 //! Structured non-fatal diagnostics for the discovery process.
 //!
-//! These types are used to report recoverable issues (like malformed
-//! configuration ceiling paths) that do not stop discovery but should be
-//! surfaced to the user.
+//! While [`DiscoveryError`] handles fatal failures, this module provides types
+//! for reporting recoverable issues encountered during discovery. These
+//! diagnostics should be surfaced to the user to explain why certain paths or
+//! sources were skipped or ignored.
+//!
+//! # Diagnostics
+//!
+//! - [`VaultDiscoveryWarning`]: Reports issues during vault root resolution,
+//!   primarily focusing on malformed or inaccessible discovery ceiling
+//!   segments.
 
 use std::path::PathBuf;
 

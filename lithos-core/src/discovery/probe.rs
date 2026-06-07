@@ -1,4 +1,21 @@
 //! Logic for examining individual directories for configuration marker files.
+//!
+//! This module provides the [`DiscoveryProbe`] trait and implementations for
+//! detecting marker files in a single directory. It abstracts the filesystem
+//! mechanics of checking for supported filename patterns and structured
+//! formats.
+//!
+//! # Probes
+//!
+//! - [`VaultRootProbe`]: Searches for root markers (e.g., `lithos.toml`,
+//!   `.lithos/config.toml`) that establish a vault boundary.
+//! - [`GlobalRootProbe`]: Searches for global configuration markers (e.g.,
+//!   `lithos/config.json`) in standard system or user locations.
+//!
+//! # Patterns and Formats
+//!
+//! Probes use [`MarkerPattern`]s combined with supported
+//! [`StructuredFileFormat`] extensions to generate and check candidate paths.
 
 use std::path::Path;
 

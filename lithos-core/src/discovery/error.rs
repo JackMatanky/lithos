@@ -1,4 +1,17 @@
 //! Error types for the discovery process.
+//!
+//! This module defines the [`DiscoveryError`] enum, which consolidates all
+//! fatal failure conditions that can occur during vault or global configuration
+//! discovery.
+//!
+//! # Error Classification
+//!
+//! - **Source Errors**: Missing or invalid paths provided via CLI flags or
+//!   environment variables.
+//! - **Filesystem Errors**: Issues canonicalizing paths, reading directories,
+//!   or permission failures.
+//! - **Current Directory Errors**: Failures when establishing the starting
+//!   point for ascending discovery.
 
 use std::{io, path::PathBuf};
 

@@ -1,4 +1,22 @@
 //! Directory traversal and boundary enforcement for ascending discovery.
+//!
+//! This module implements the mechanics of walking up the directory tree to
+//! find configuration markers. It enforces "ceiling" boundaries to prevent
+//! discovery from escaping authorized project or system areas.
+//!
+//! # Main Components
+//!
+//! - [`BoundedAscent`]: An iterator that yields parent directories from a
+//!   starting path up to a set of boundary ceilings.
+//! - [`DiscoveryBoundaries`]: Manages the starting directory and the collection
+//!   of parsed and validated ceiling paths.
+//!
+//! # Ceiling Parsing
+//!
+//! Ceiling paths are typically provided as a platform-specific path list string
+//! (e.g., from an environment variable). The
+//! [`DiscoveryBoundaries::parse_ceilings`] method handles splitting,
+//! canonicalization, and validation of these paths.
 
 use std::{
     collections::HashSet,

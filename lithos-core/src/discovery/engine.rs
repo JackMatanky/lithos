@@ -1,8 +1,23 @@
 //! Orchestration engine for vault and global configuration discovery.
 //!
-//! This module provides the high-level API for locating configuration roots
-//! based on policy-driven precedence (CLI flags, environment variables, and
-//! filesystem convention).
+//! The [`DiscoveryEngine`] is the primary entry point for the discovery
+//! context. It coordinates between filesystem [`crate::discovery::probe`]s and
+//! [`crate::discovery::selector`]s to resolve configuration roots based on the
+//! precedence rules defined in a [`DiscoveryPolicy`].
+//!
+//! # Primary Workflows
+//!
+//! 1. **Vault Discovery** ([`DiscoveryEngine::find_vault`]): Locates the
+//!    runtime vault root (e.g. from a CLI flag or by walking up parent
+//!    directories).
+//! 2. **Global Discovery** ([`DiscoveryEngine::find_global`]): Locates system
+//!    or user-level global configuration.
+//!
+//! # Safety and Canonicalization
+//!
+//! The engine ensures all returned paths are canonicalized and validated
+//! against the local filesystem. It does not perform any case-correction;
+//! discovery is strictly based on exact filename matches.
 
 use std::{
     ffi::OsStr,

@@ -1,4 +1,23 @@
 //! Precedence and behavioral policies for configuration discovery.
+//!
+//! This module defines the [`DiscoveryPolicy`] which configures how the
+//! [`crate::discovery::engine::DiscoveryEngine`] prioritizes different
+//! configuration sources. It provides the ranking and taxonomy for vault and
+//! global configuration origins.
+//!
+//! # Precedence Tiers
+//!
+//! Precedence is modeled as a list of [`VaultSourceType`] or
+//! [`GlobalSourceType`] variants. The engine probes these sources in the
+//! order they appear in the policy.
+//!
+//! # Defaults
+//!
+//! The [`Default`] implementation for `DiscoveryPolicy` provides the standard
+//! Lithos precedence:
+//! - **Vault**: Explicit Flag > Environment Variable > Ascending Walk.
+//! - **Global**: Environment Variable > XDG Config > User Config > System
+//!   Config.
 
 /// Defines the behavior and precedence rules for configuration discovery.
 ///

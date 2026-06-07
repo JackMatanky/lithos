@@ -1,5 +1,17 @@
 //! Logic for selecting a single winning marker from multiple discovery
 //! candidates.
+//!
+//! When a probe identifies multiple markers in a single directory (e.g., both
+//! `lithos.toml` and `lithos.json`), this module provides the logic to
+//! deterministically select the primary marker based on format and path
+//! precedence.
+//!
+//! # Selection Criteria
+//!
+//! 1. **Format Rank**: Markers are prioritized based on their file format. TOML
+//!    is generally preferred over JSON or YAML.
+//! 2. **Lexical Tie-break**: If formats are identical, the path that comes
+//!    first alphabetically is selected.
 
 use super::engine::DiscoveredMarker;
 use crate::fs::format::StructuredFileFormat;
