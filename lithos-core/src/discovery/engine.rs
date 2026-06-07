@@ -125,7 +125,21 @@ impl DiscoveryEngine {
                     source,
                 }
             })?;
-            let base = path.parent().unwrap_or_else(|| Path::new(""));
+            // `path` is a file, so `.parent()` should always return a valid
+            // directory. A root-component path (e.g. `/`) has no parent and
+            // cannot be a regular file, so `None` here indicates a broken
+            // invariant; return a canonicalization error rather than silently
+            // falling back to an empty base which would corrupt later path
+            // resolution.
+            let base = path.parent().ok_or_else(|| {
+                DiscoveryError::CanonicalizePath {
+                    path: path.to_path_buf(),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "LITHOS_CONFIG_FILE path has no parent directory",
+                    ),
+                }
+            })?;
 
             return Ok(GlobalDiscoveryResult {
                 marker: Some(FoundRootMarker {
@@ -310,18 +324,22 @@ pub(crate) struct DiscoveryInput<'a> {
     pub(crate) ceiling_dirs_raw: Option<&'a OsStr>,
 }
 
-/// Collection of inputs required for global configuration discovery.
+/// Inputs for global configuration discovery.
+///
+/// `env_config_file` is a direct **file path**; the `*_base` fields are
+/// **directories** probed for `lithos.{toml,json,yaml,yml}`.
 #[allow(dead_code, reason = "Phase-2 seam; wired in once orchestration lands")]
 pub(crate) struct GlobalDiscoveryInput<'a> {
-    /// Path provided via `LITHOS_CONFIG_FILE` environment variable.
+    /// Full file path from `LITHOS_CONFIG_FILE` (not a directory).
     pub(crate) env_config_file: Option<&'a Path>,
-    /// XDG configuration base directory.
+    /// XDG base directory, e.g. `$XDG_CONFIG_HOME/lithos`.
     pub(crate) xdg_config_base: Option<&'a Path>,
-    /// User configuration fallback base directory.
+    /// User config base directory, e.g. `~/.config/lithos`.
     pub(crate) user_config_base: Option<&'a Path>,
-    /// System configuration fallback base directory.
+    /// System config base directory, e.g. `/etc/lithos`.
     pub(crate) system_config_base: Option<&'a Path>,
-    /// Whether global configuration lookup should be skipped.
+    /// Skip all global lookup and return empty; corresponds to
+    /// `--no-global-config`.
     pub(crate) suppress_global: bool,
 }
 
@@ -343,7 +361,7 @@ pub(crate) struct VaultDiscoveryResult {
 
 /// The result of a global configuration discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct GlobalDiscoveryResult {
     /// The discovered global marker file.
     pub(crate) marker: Option<FoundRootMarker>,
@@ -770,6 +788,7 @@ mod tests {
 
     mod find_global {
         use super::*;
+        #[cfg(target_os = "linux")]
         use crate::discovery::diagnostics::{
             DiscoveryWarning, GlobalDiscoveryWarning,
         };
@@ -985,6 +1004,32 @@ mod tests {
         }
 
         #[test]
+        fn returns_none_when_env_config_file_has_unrecognised_extension() {
+            let dir = tempdir().expect("dir");
+            let conf_path = dir.path().join("lithos.conf");
+            std::fs::write(&conf_path, "").expect("write conf file");
+
+            let result = engine()
+                .find_global(&input(Some(&conf_path), None, None, None))
+                .expect("global resolution succeeds");
+
+            assert_eq!(
+                result.marker, None,
+                "unrecognised extension should yield no marker"
+            );
+            assert_eq!(result.source, None);
+        }
+
+        // Case-correction relies on reading directory entries and comparing
+        // names with `eq_ignore_ascii_case`. On case-sensitive filesystems
+        // (Linux) `Lithos.TOML` and `lithos.toml` are distinct; only the
+        // mis-cased entry is present so the warning fires deterministically.
+        // On macOS (HFS+, case-insensitive) `probe_exact` may already
+        // resolve `lithos.toml` via the OS, so the mis-cased probe path
+        // may not be reached — gate to Linux only to keep the assertion
+        // semantics stable.
+        #[cfg(target_os = "linux")]
+        #[test]
         fn returns_warning_when_global_filename_has_incorrect_case() {
             let root = tempdir().expect("root");
             let xdg = root.path().join("xdg");
@@ -1004,7 +1049,7 @@ mod tests {
             assert_eq!(result.warnings.len(), 1);
             assert_eq!(
                 result.warnings.first(),
-                Some(&DiscoveryWarning::GlobalResolution(
+                Some(&DiscoveryWarning::Global(
                     GlobalDiscoveryWarning::CaseCorrection {
                         requested: requested_path,
                         resolved: resolved_path

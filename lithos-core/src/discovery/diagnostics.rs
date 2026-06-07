@@ -13,18 +13,10 @@ use std::path::PathBuf;
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum DiscoveryWarning {
-    /// Path casing was corrected during discovery on case-insensitive
-    /// filesystems.
-    CaseCorrection {
-        /// The path as requested or derived from convention.
-        requested: PathBuf,
-        /// The actual correctly-cased path found on disk.
-        resolved: PathBuf,
-    },
     /// Vault-discovery-specific warning payload.
-    RootResolution(VaultDiscoveryWarning),
+    Vault(VaultDiscoveryWarning),
     /// Global-discovery-specific warning payload.
-    GlobalResolution(GlobalDiscoveryWarning),
+    Global(GlobalDiscoveryWarning),
 }
 
 /// Specific warnings emitted during global config discovery.
@@ -58,62 +50,65 @@ pub(crate) enum VaultDiscoveryWarning {
 mod tests {
     use super::*;
 
-    #[test]
-    fn returns_case_correction_warning() {
-        let warning = DiscoveryWarning::CaseCorrection {
-            requested: PathBuf::from("/Vault/.Lithos/lithos.toml"),
-            resolved: PathBuf::from("/vault/.lithos/lithos.toml"),
-        };
-        assert!(matches!(warning, DiscoveryWarning::CaseCorrection { .. }));
-    }
+    mod discovery_warning {
+        use super::*;
 
-    #[test]
-    fn returns_root_resolution_warning() {
-        let warning = DiscoveryWarning::RootResolution(
-            VaultDiscoveryWarning::EmptyCeilingSegment,
-        );
-        assert!(matches!(
-            warning,
-            DiscoveryWarning::RootResolution(
-                VaultDiscoveryWarning::EmptyCeilingSegment
-            )
-        ));
-    }
+        mod equality {
+            use super::*;
 
-    #[test]
-    fn returns_global_resolution_warning() {
-        let warning = DiscoveryWarning::GlobalResolution(
-            GlobalDiscoveryWarning::CaseCorrection {
-                requested: PathBuf::from("/config/lithos.toml"),
-                resolved: PathBuf::from("/config/Lithos.toml"),
-            },
-        );
-        assert!(matches!(
-            warning,
-            DiscoveryWarning::GlobalResolution(
-                GlobalDiscoveryWarning::CaseCorrection { .. }
-            )
-        ));
+            #[test]
+            fn returns_vault_variant_when_wrapping_vault_warning() {
+                let warning = DiscoveryWarning::Vault(
+                    VaultDiscoveryWarning::EmptyCeilingSegment,
+                );
+                assert!(matches!(
+                    warning,
+                    DiscoveryWarning::Vault(
+                        VaultDiscoveryWarning::EmptyCeilingSegment
+                    )
+                ));
+            }
+
+            #[test]
+            fn returns_global_variant_when_wrapping_global_warning() {
+                let warning = DiscoveryWarning::Global(
+                    GlobalDiscoveryWarning::CaseCorrection {
+                        requested: PathBuf::from("/config/lithos.toml"),
+                        resolved: PathBuf::from("/config/Lithos.toml"),
+                    },
+                );
+                assert!(matches!(
+                    warning,
+                    DiscoveryWarning::Global(
+                        GlobalDiscoveryWarning::CaseCorrection { .. }
+                    )
+                ));
+            }
+        }
     }
 
     mod vault_discovery_warning {
         use super::*;
 
-        #[test]
-        fn empty_segment_is_constructible() {
-            let w = VaultDiscoveryWarning::EmptyCeilingSegment;
-            assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
-        }
+        mod equality {
+            use super::*;
 
-        #[test]
-        fn invalid_segment_holds_path() {
-            let w = VaultDiscoveryWarning::InvalidCeilingSegment {
-                segment: PathBuf::from("/invalid"),
-            };
-            assert!(matches!(
-                w,
-                VaultDiscoveryWarning::InvalidCeilingSegment { .. }
-            ));
+            #[test]
+            fn returns_equal_when_empty_segment_variants_compared() {
+                let w = VaultDiscoveryWarning::EmptyCeilingSegment;
+                assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
+            }
+
+            #[test]
+            fn returns_true_when_invalid_segment_matches_pattern() {
+                let w = VaultDiscoveryWarning::InvalidCeilingSegment {
+                    segment: PathBuf::from("/invalid"),
+                };
+                assert!(matches!(
+                    w,
+                    VaultDiscoveryWarning::InvalidCeilingSegment { .. }
+                ));
+            }
         }
     }
 }

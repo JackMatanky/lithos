@@ -227,10 +227,10 @@ where
                 ceiling_dirs_raw: None,
             })
             .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
-        // NOTE: `env_config_file`, `xdg_config_base`, and `user_config_base`
-        // are not yet wired here. They must be supplied by the CLI layer
-        // before global config lookup is fully production-ready. Until then,
-        // only the hardcoded system path is probed.
+        // TODO(issue #08): Wire `env_config_file`, `xdg_config_base`, and
+        // `user_config_base` once the CLI layer can inject runtime base paths.
+        // Until then only the hardcoded system path (`/etc/lithos`) is probed,
+        // meaning XDG and user-level global configs are silently skipped.
         let global_result = disc_engine
             .find_global(&GlobalDiscoveryInput {
                 env_config_file: None,

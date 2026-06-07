@@ -186,7 +186,7 @@ impl GlobalConfigProbe {
             };
 
             let marker = Self::marker_from_path(dir, &path, format)?;
-            warnings.push(DiscoveryWarning::GlobalResolution(
+            warnings.push(DiscoveryWarning::Global(
                 GlobalDiscoveryWarning::CaseCorrection {
                     requested,
                     resolved: marker.path.clone(),
@@ -287,11 +287,11 @@ mod tests {
 
             assert_eq!(markers.len(), 2);
             assert_eq!(
-                markers.first().unwrap().path,
+                markers.first().expect("first marker").path,
                 expected_path.canonicalize().expect("canonical marker")
             );
             assert_eq!(
-                markers.get(1).unwrap().path,
+                markers.get(1).expect("second marker").path,
                 hidden_path.canonicalize().expect("canonical marker")
             );
         }
@@ -331,11 +331,11 @@ mod tests {
             // Since TOML is higher precedence in StructuredFileFormat, it comes
             // first due to PRECEDENCE array iteration order.
             assert_eq!(
-                markers.first().unwrap().format,
+                markers.first().expect("first marker").format,
                 StructuredFileFormat::Toml
             );
             assert_eq!(
-                markers.get(1).unwrap().format,
+                markers.get(1).expect("second marker").format,
                 StructuredFileFormat::Json
             );
         }
@@ -398,7 +398,7 @@ mod tests {
             assert_eq!(warnings.len(), 1);
             assert_eq!(
                 warnings.first(),
-                Some(&DiscoveryWarning::GlobalResolution(
+                Some(&DiscoveryWarning::Global(
                     GlobalDiscoveryWarning::CaseCorrection {
                         requested: requested_path,
                         resolved: expected_path
