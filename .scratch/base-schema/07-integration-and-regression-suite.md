@@ -23,7 +23,7 @@ AFK
 
 Add the full phase-1 integration and contract verification suite for base schema processing.
 
-This slice creates `lithos-core/tests/base_processor.rs` and `lithos-core/tests/base_schema_handoff_contract.rs` using `InMemoryRepository`-first patterns and verifies mixed lifecycle batches plus stale-reference scenarios.
+This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos-core/tests/base_processor.rs` and creates `lithos-core/tests/base_schema_handoff_contract.rs`, using `InMemoryRepository`-first patterns to verify mixed lifecycle batches plus stale-reference scenarios.
 
 ## Acceptance criteria
 
@@ -43,19 +43,44 @@ This slice creates `lithos-core/tests/base_processor.rs` and `lithos-core/tests/
 
 **Recommendation**: keep `ready-for-agent`.
 
-**Primary touchpoints:**
-- `lithos-core/tests/base_processor.rs` (new)
-- `lithos-core/tests/base_schema_handoff_contract.rs` (new)
-- Existing regression reference: `lithos-core/tests/schema_loader.rs`
+**Decisions (from review with maintainer):**
+1. Rename `base_processor_integration.rs` → `base_processor.rs` to match PRD spec.
+2. New integration tests go into the renamed file alongside existing tests.
+3. Contract tests go into new `base_schema_handoff_contract.rs`.
+4. Tests that depend on `BaseSchemaResolution::Deleted` (issue 06) are deferred — write ordering/payload/normalization/stale-ref tests first.
 
-**GitNexus context:**
-- `load_all` orchestration has medium blast radius with strong test coupling, so this slice is the safety net for phased rollout.
+**Primary touchpoints:**
+- `lithos-core/tests/base_processor_integration.rs` — rename to `base_processor.rs`, add mixed-lifecycle tests
+- `lithos-core/tests/base_schema_handoff_contract.rs` — create with ordering, completeness, lifecycle-accuracy tests
+- `lithos-core/tests/common/mod.rs` — add `BaseSchema` builder if needed for contract tests
+- Existing regression reference: `lithos-core/tests/schema_loader.rs`
 
 **Rust testing constraints:**
 - Favor behavior-first assertions through public APIs (avoid private-state coupling).
 - Keep test names scenario-specific and deterministic.
 - Cover normalization and stale-reference branches without snapshot brittleness.
+- Use `InMemoryRepository` for contract tests (fast, counter introspection); use `TestDb` + real files for integration tests (cold start, stale refs).
+- Reference `common/mod.rs` for shared utilities (`TestDb`, `PropertyBuilder`, `RepositoryExt`).
+
+**PRD AC → Test mapping (for AC 5 verifiability):**
+
+| PRD AC | Test Location | Assertion |
+|---|---|---|
+| All tests pass | CI gates | — |
+| BaseSchema persisted/retrieved | `base_processor` (existing) | `find_base_schema_by_id` returns saved schema |
+| Correct `BaseSchemaResolution` handoff | `base_processor` (existing) + `handoff_contract` | Variant matches expected lifecycle state |
+| PropertyId stability | `base_processor` (existing unit/integration) | IDs preserved across incremental updates |
+| StaleReferences → targeted re-expand | `base_processor` (existing stale_refs tests) | Only affected properties updated |
+| Metadata-only → Fresh | `base_processor` (existing normalization tests) | Returns `Fresh`, no base write |
+| Deleted → persistence removed + `Deleted` event | `handoff_contract` (new, blocked on 06) | `find_base_schema_by_id` returns `None` + resolution is `Deleted` |
+| Deterministic SchemaId ordering | `handoff_contract` (new) | Sorted output matches expected order |
+| No legacy flow changes | `schema_loader` (existing regression) | All existing loader tests pass unchanged |
 
 **Verification checklist:**
-- Mixed lifecycle integration run (fresh/new/stale/deleted) with deterministic ordering assertions.
-- Regression coverage for property-bank-driven stale references and ID stability outcomes.
+- [ ] `base_processor_integration.rs` renamed → `base_processor.rs`; existing tests still pass
+- [ ] Mixed lifecycle integration test (cold start + incremental run with fresh/stale/new)
+- [ ] Contract tests: SchemaId ordering, delta completeness, lifecycle accuracy
+- [ ] Deletion tests deferred (blocked on 06); not required for this issue to close
+- [ ] No snapshot brittleness — behavioral assertions only
+- [ ] `cargo clippy --all-targets -- -D warnings` — 0 warnings
+- [ ] `cargo fmt --check` — clean
