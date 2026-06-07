@@ -57,6 +57,15 @@
 //!   methods that require it (`create`, `update`).
 //! - `StaleReferences` handling is orthogonal: `Fresh` checks bank refs before
 //!   fetching; `Changed` augments the property delta before persisting.
+//!
+//! # Deletion
+//!
+//! Deletion is handled at the **caller level**, not by this processor. The
+//! caller (orchestrator) directly calls `repo.delete_base_schema(id)` and
+//! `repo.delete_schema(id)`, then constructs
+//! `BaseSchemaResolution::Deleted { schema_id }`. See the
+//! [`SchemaProcessor`](crate::schema::schema_processor::SchemaProcessor) for
+//! the production orchestration pattern.
 
 use std::marker::PhantomData;
 
@@ -191,6 +200,32 @@ pub enum BaseSchemaResolution {
         /// Extends-list semantic changes.
         extends_delta: ExtendsDelta,
     },
+}
+
+impl BaseSchemaResolution {
+    /// Return the [`SchemaId`] carried by any resolution variant.
+    #[must_use]
+    #[inline]
+    pub fn schema_id(&self) -> SchemaId {
+        match self {
+            Self::Fresh {
+                schema_id,
+                ..
+            }
+            | Self::New {
+                schema_id,
+                ..
+            }
+            | Self::Deleted {
+                schema_id,
+                ..
+            }
+            | Self::Stale {
+                schema_id,
+                ..
+            } => *schema_id,
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2825,12 +2860,32 @@ mod tests {
                 assert_eq!(sid, schema_id);
             }
         }
+
+        #[test]
+        fn into_deleted_resolution_produces_deleted_variant() {
+            let fixture = make_fixture();
+            let schema_id = SchemaId::new();
+            let processor = BaseSchemaProcessor::<Completed, DeletedReady>::transition_from_parts(
+                fixture.file,
+                fixture.key.clone(),
+                DeletedReady { schema_id },
+            );
+            let resolution = processor.into_deleted_resolution();
+            assert!(matches!(resolution, BaseSchemaResolution::Deleted { .. }));
+            if let BaseSchemaResolution::Deleted {
+                schema_id: sid,
+            } = resolution
+            {
+                assert_eq!(sid, schema_id);
+            }
+        }
     }
+
     mod contract {
         use super::*;
 
         #[test]
-        fn resolutions_sortable_by_schema_id() {
+        fn schema_id_is_sortable() {
             let id_a = SchemaId::new();
             let id_b = SchemaId::new();
             let id_c = SchemaId::new();
@@ -2847,9 +2902,43 @@ mod tests {
         }
 
         #[test]
-        fn all_variants_carry_expected_fields() {
-            let schema_id = SchemaId::new();
+        fn resolutions_are_sortable_by_schema_id() {
+            let id_a = SchemaId::new();
+            let id_b = SchemaId::new();
+            let id_c = SchemaId::new();
 
+            let base = BaseSchema::new(
+                id_a,
+                SchemaName::try_new("a").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+
+            let mut resolutions = [
+                BaseSchemaResolution::Deleted {
+                    schema_id: id_c,
+                },
+                BaseSchemaResolution::New {
+                    schema_id: id_b,
+                    base_schema: base.clone(),
+                },
+                BaseSchemaResolution::Fresh {
+                    schema_id: id_a,
+                    base_schema: base.clone(),
+                },
+            ];
+
+            resolutions.sort_by_key(BaseSchemaResolution::schema_id);
+
+            assert_eq!(resolutions[0].schema_id(), id_a);
+            assert_eq!(resolutions[1].schema_id(), id_b);
+            assert_eq!(resolutions[2].schema_id(), id_c);
+        }
+
+        #[test]
+        fn fresh_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
             let base = BaseSchema::new(
                 schema_id,
                 SchemaName::try_new("test").expect("name"),
@@ -2857,33 +2946,42 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
             );
-
             let fresh = BaseSchemaResolution::Fresh {
                 schema_id,
-                base_schema: base.clone(),
+                base_schema: base,
             };
             assert!(matches!(fresh, BaseSchemaResolution::Fresh { .. }));
-            if let BaseSchemaResolution::Fresh {
-                schema_id: sid,
-                base_schema: _,
-            } = fresh
-            {
-                assert_eq!(sid, schema_id);
-            }
+            assert_eq!(fresh.schema_id(), schema_id);
+        }
 
+        #[test]
+        fn new_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let base = BaseSchema::new(
+                schema_id,
+                SchemaName::try_new("test").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
             let new_res = BaseSchemaResolution::New {
                 schema_id,
-                base_schema: base.clone(),
+                base_schema: base,
             };
             assert!(matches!(new_res, BaseSchemaResolution::New { .. }));
-            if let BaseSchemaResolution::New {
-                schema_id: sid,
-                base_schema: _,
-            } = new_res
-            {
-                assert_eq!(sid, schema_id);
-            }
+            assert_eq!(new_res.schema_id(), schema_id);
+        }
 
+        #[test]
+        fn stale_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
+            let base = BaseSchema::new(
+                schema_id,
+                SchemaName::try_new("test").expect("name"),
+                PropertyMap::new(),
+                Vec::new(),
+                Vec::new(),
+            );
             let stale = BaseSchemaResolution::Stale {
                 schema_id,
                 base_schema: base,
@@ -2892,27 +2990,17 @@ mod tests {
                 extends_delta: ExtendsDelta::default(),
             };
             assert!(matches!(stale, BaseSchemaResolution::Stale { .. }));
-            if let BaseSchemaResolution::Stale {
-                schema_id: sid,
-                base_schema: _,
-                property_delta: _,
-                excludes_delta: _,
-                extends_delta: _,
-            } = stale
-            {
-                assert_eq!(sid, schema_id);
-            }
+            assert_eq!(stale.schema_id(), schema_id);
+        }
 
+        #[test]
+        fn deleted_variant_carries_expected_fields() {
+            let schema_id = SchemaId::new();
             let deleted = BaseSchemaResolution::Deleted {
                 schema_id,
             };
             assert!(matches!(deleted, BaseSchemaResolution::Deleted { .. }));
-            if let BaseSchemaResolution::Deleted {
-                schema_id: sid,
-            } = deleted
-            {
-                assert_eq!(sid, schema_id);
-            }
+            assert_eq!(deleted.schema_id(), schema_id);
         }
     }
 }
