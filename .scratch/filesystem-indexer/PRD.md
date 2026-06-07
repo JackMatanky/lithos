@@ -313,6 +313,8 @@ Context routing should use Config-resolved boundaries and Indexer result entries
 
 The initial contract should be conservative: Indexer returns all indexed file and directory entries in scope, plus deleted records. `lithos-core::app` partitions entries for Schema, Note, and Template based on Config specs.
 
+**Accepted decision**: `lithos-core::app` routes only for the requested command. A `lithos index` run returns index diagnostics only; it does not automatically trigger Schema, Note, or Template ingestion. Follow-on commands request downstream context processing explicitly. This keeps the Indexer as a standalone, independently executable use case and avoids coupling index runs to full ingestion pipelines.
+
 ### 13. CLI Command Intent And Execution Flow
 
 The CLI remains a thin executable adapter. It defines user-facing command syntax and diagnostic output, then delegates typed command intent to `lithos-core::app`. The app composition root wires core adapters and runs the execution flow.
