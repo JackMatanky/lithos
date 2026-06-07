@@ -6,18 +6,33 @@ use super::{engine::DiscoveredMarker, error::DiscoveryError};
 use crate::fs::format::StructuredFileFormat;
 
 /// Trait for types that can examine a directory and return discovery results.
+///
+/// Implementations of this trait define the logic for finding specific types
+/// of marker files (e.g., vault markers vs. global markers) in a given
+/// directory.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) trait DiscoveryProbe<Output> {
     /// Examine the given directory and return any discovered markers.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DiscoveryError`] if the directory cannot be read or if
+    /// discovered markers cannot be canonicalized.
     fn probe(&self, dir: &Path) -> Result<Option<Output>, DiscoveryError>;
 }
 
 /// Naming pattern used to identify a marker file.
+///
+/// A pattern consists of a filename prefix and a nesting flag. During probing,
+/// the engine appends supported format extensions (e.g., `.toml`, `.json`) to
+/// the prefix to construct candidate paths.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct MarkerPattern {
     /// The filename prefix (e.g. `lithos` or `.lithos`).
     pub(crate) prefix: &'static str,
     /// Whether the marker is nested inside a configuration directory.
+    ///
+    /// If true, the marker is expected to be at `{dir}/{prefix}.{ext}`.
     pub(crate) is_nested: bool,
 }
 

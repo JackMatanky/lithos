@@ -39,6 +39,10 @@ pub(crate) struct DiscoveredMarker {
 }
 
 /// Orchestrates the discovery of vault and global configuration markers.
+///
+/// The `DiscoveryEngine` applies a [`DiscoveryPolicy`] to various inputs (CLI
+/// flags, environment variables, filesystem state) to locate the configuration
+/// roots and their associated marker files.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryEngine {
     policy: DiscoveryPolicy,
@@ -55,8 +59,17 @@ impl DiscoveryEngine {
 
     /// Find the vault root and marker based on policy precedence.
     ///
-    /// Iterates through allowed sources (Flag -> Env -> Walk) until a root is
-    /// successfully resolved or an error occurs.
+    /// Iterates through allowed sources ([`VaultSourceType::ExplicitFlag`] ->
+    /// [`VaultSourceType::EnvVar`] -> [`VaultSourceType::AscendingWalk`]) until
+    /// a root is successfully resolved or an error occurs.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DiscoveryError`] if:
+    /// - An explicit flag or environment path is provided but does not exist.
+    /// - An explicit path is not a directory.
+    /// - Filesystem permissions prevent reading a directory during traversal.
+    /// - The current working directory cannot be canonicalized.
     pub(crate) fn find_vault(
         &self,
         input: &DiscoveryInput<'_>,
@@ -91,6 +104,14 @@ impl DiscoveryEngine {
     }
 
     /// Find the global configuration marker.
+    ///
+    /// Probes the sources defined in [`DiscoveryPolicy::global_precedence`]. If
+    /// `input.suppress` is true, returns a default empty result immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DiscoveryError`] if a directory probe fails due to
+    /// filesystem permissions or other I/O errors.
     pub(crate) fn find_global(
         &self,
         input: &GlobalDiscoveryInput<'_>,

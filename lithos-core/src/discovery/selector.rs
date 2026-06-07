@@ -6,8 +6,11 @@ use crate::fs::format::StructuredFileFormat;
 
 /// Picks the highest-precedence marker from a slice of discovered markers.
 ///
-/// Precedence is determined first by file format (e.g. TOML > JSON) and then
-/// by path name (alphabetical) as a tie-breaker.
+/// Precedence is determined by:
+/// 1. **File Format**: Formats are ranked according to
+///    [`StructuredFileFormat::rank`] (typically TOML > JSON > YAML).
+/// 2. **Path Lexicographical Order**: If formats are identical, the path closer
+///    to the start of the alphabet wins (tie-breaker).
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) fn select_candidate(
     markers: &[DiscoveredMarker],

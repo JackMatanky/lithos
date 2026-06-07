@@ -1,15 +1,23 @@
 //! Precedence and behavioral policies for configuration discovery.
 
-/// Configuration defining the behavior and precedence rules for the discovery
-/// engine.
+/// Defines the behavior and precedence rules for configuration discovery.
+///
+/// This policy controls which sources are checked, in what order, and how
+/// boundary conditions (like discovery ceilings) are handled.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveryPolicy {
     /// Ordered list of sources to check for vault roots.
+    ///
+    /// The engine iterates through this list and stops at the first source
+    /// that yields a valid root.
     pub(crate) vault_precedence: Vec<VaultSourceType>,
     /// Ordered list of sources to check for global config roots.
     pub(crate) global_precedence: Vec<GlobalSourceType>,
     /// Whether a marker file located exactly at a ceiling directory is valid.
+    ///
+    /// If true, the walk stops *after* probing the ceiling. If false, it
+    /// stops *before* probing.
     pub(crate) allow_marker_at_ceiling: bool,
     /// Whether discovery should fail immediately if an explicit path is
     /// invalid.

@@ -12,7 +12,8 @@ use super::diagnostics::VaultDiscoveryWarning;
 /// An iterator that ascends from a directory up to defined boundary ceilings.
 ///
 /// This walker is zero-allocation during traversal as it operates on purely
-/// lexical parents of the starting path.
+/// lexical parents of the starting path. It stops when a parent directory
+/// matches one of the provided `ceilings`.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct BoundedAscent<'a> {
     current: Option<&'a Path>,
@@ -86,8 +87,13 @@ impl DiscoveryBoundaries {
     /// Parses a raw platform-specific path list into a set of validated ceiling
     /// directories.
     ///
+    /// Segments are split using the platform's path separator (e.g., `:` on
+    /// Unix, `;` on Windows).
+    ///
+    /// # Diagnostics
+    ///
     /// Non-fatal issues like empty segments or non-existent directories are
-    /// reported via the `warnings` vector.
+    /// reported via the `warnings` vector using [`VaultDiscoveryWarning`].
     pub(crate) fn parse_ceilings(
         ceiling_dirs_raw: Option<&OsStr>,
         warnings: &mut Vec<VaultDiscoveryWarning>,
