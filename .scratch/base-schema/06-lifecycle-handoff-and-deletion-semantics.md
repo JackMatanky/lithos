@@ -23,15 +23,17 @@ AFK
 
 Finalize phase-1 lifecycle handoff contract for downstream inheritance processing.
 
-This slice ensures all processor outcomes emit deterministic `BaseSchemaChange` events (`Fresh`, `New`, `Stale`, `Deleted`) in `SchemaId` order and that deletion semantics keep persisted base state truthful.
+This slice ensures all processor outcomes emit deterministic `BaseSchemaResolution` events (`Fresh`, `New`, `Stale`, `Deleted`) in `SchemaId` order and that deletion semantics keep persisted base state truthful.
 
 ## Acceptance criteria
 
-- [ ] `BaseSchemaChange` variants are fully wired through processor terminal states.
-- [ ] `Fresh` emits schema ID only; `New` and `Stale` carry base payload as defined in PRD.
+- [ ] `Deleted` variant added to `BaseSchemaResolution` with `schema_id: SchemaId`.
+- [ ] `New` variant gains standalone `schema_id: SchemaId` field.
+- [ ] `Fresh` retains `base_schema` (exists in current code; no change needed).
 - [ ] `Deleted` removes persisted `BaseSchema` and emits lifecycle event in same run.
+- [ ] Deletion detection already handled by `schema/discovery.rs` — processor only performs deletion when told.
 - [ ] Output stream is deterministically ordered by `SchemaId`.
-- [ ] No-op semantic changes do not emit `Stale`.
+- [ ] No-op semantic changes do not emit `Stale` (already works per issue 04).
 - [ ] Contract tests validate ordering, payload completeness, and lifecycle accuracy.
 
 ## Blocked by
@@ -44,16 +46,33 @@ This slice ensures all processor outcomes emit deterministic `BaseSchemaChange` 
 
 **Recommendation**: keep `ready-for-agent`.
 
+**Decisions (from review with maintainer):**
+1. Name stays `BaseSchemaResolution` (not changed to `BaseSchemaChange`).
+2. Add `Deleted { schema_id: SchemaId }` variant; add `schema_id` to `New`.
+3. `Fresh` keeps `base_schema` — no reason to drop what's already constructed.
+4. Deletion detection is handled upstream in `schema/discovery.rs` — the processor receives a list of schemas-to-process; it never needs to detect absence.
+5. Deterministic ordering happens at the batch collection level (caller sorts before emitting), not inside the per-schema processor.
+
 **Primary touchpoints:**
-- `lithos-core/src/schema/base_processor.rs`
-- `lithos-core/src/schema/repository.rs`
-- `lithos-core/src/schema/storage/write.rs`
+- `lithos-core/src/schema/base_processor.rs` — add `Deleted` variant, add `schema_id` to `New`
+- `lithos-core/src/schema/base_processor.rs` — wire `Deleted` event through existing test infrastructure
+- `lithos-core/src/schema/repository.rs` — `delete_base_schema` already exists (idempotent)
+- `lithos-core/src/schema/storage/write.rs` — `delete_base_schema` already implemented
+- `lithos-core/src/schema/discovery.rs` — confirm deletion-handoff contract (read-only reference)
 
 **Rust implementation constraints:**
-- Emit lifecycle events from a deterministic, sorted collection (`SchemaId` total ordering).
-- Keep deletion behavior transactional: persistence removal and `Deleted` emission in same logical run.
-- Use exhaustive enum matching to prevent silent lifecycle drift as variants evolve.
+- Add `Deleted` variant to `BaseSchemaResolution` enum.
+- Add `schema_id: SchemaId` to `New` variant (breaking change — update `expect_new!` macro and tests).
+- `Fresh` and `Stale` already carry `schema_id` — no change needed.
+- Keep deletion behavior transactional: caller (discovery layer) removes persistence and passes deletion signal to processor.
+- Use exhaustive `match` on `BaseSchemaResolution` to prevent silent drift as variants evolve.
+- Deterministic `SchemaId` ordering is a caller concern (collect all resolutions, sort, emit).
+- Rename `BaseSchemaChange` references in PRD to `BaseSchemaResolution` (or note they are the same thing).
 
 **Verification checklist:**
-- Contract tests for ordering, payload completeness, and no-op normalization to `Fresh`.
-- Deletion tests validating persisted state is removed and handoff includes `Deleted`.
+- [ ] `Deleted` variant compiles and all existing tests still pass
+- [ ] `expect_new!` macro and all callers updated for `schema_id` field
+- [ ] Contract tests for ordering, payload completeness, lifecycle accuracy
+- [ ] Deletion tests validating persisted state is removed and resolution includes `Deleted`
+- [ ] `cargo clippy --all-targets -- -D warnings` — 0 warnings
+- [ ] `cargo fmt --check` — clean
