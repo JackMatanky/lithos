@@ -31,7 +31,7 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 
 - File-local processing (no cross-schema existence checks)
 - Incremental updates with targeted property re-expansion for StaleReferences
-- Deterministic handoff contract (`BaseSchemaChange` lifecycle events)
+- Deterministic handoff contract (`BaseSchemaResolution` lifecycle events)
 - PropertyId stability preservation across updates
 
 ## User Stories (Phase 1 Focused)
@@ -91,7 +91,7 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 - Supports single-parent and multi-parent updates uniformly
 - Name-based (not ID-based) to keep BaseSchemaProcessor file-local
 
-**BaseSchemaChange Handoff Envelope**
+**BaseSchemaResolution Handoff Envelope**
 - Location: `lithos-core/src/schema/base_processor.rs` (export from processor module)
 - Enum variants:
   - `Fresh { schema_id: SchemaId }` (unchanged, Phase 2 can fetch if needed)
@@ -156,7 +156,7 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 
 ### Handoff Contract for Phase 2
 
-The `BaseSchemaChange` enum serves as the contract between BaseSchemaProcessor (Phase 1) and InheritanceProcessor (Phase 2):
+The `BaseSchemaResolution` enum serves as the contract between BaseSchemaProcessor (Phase 1) and InheritanceProcessor (Phase 2):
 
 **Contract guarantees:**
 - Deterministic emission order (sorted by `SchemaId`)
@@ -227,7 +227,7 @@ Avoid:
 
 **Location**: `lithos-core/tests/base_schema_handoff_contract.rs`
 
-**Scope**: verify `BaseSchemaChange` envelope determinism
+**Scope**: verify `BaseSchemaResolution` envelope determinism
 
 **Coverage**:
 - `SchemaId` ordering
@@ -247,7 +247,7 @@ Avoid:
 2. **`lithos-core/src/schema/base_processor.rs`** (~800-1000 lines)
    - Typestate stages + statuses (mirror current `property_bank_processor`)
    - Entry + branch orchestration (`Init::run`, `TimestampBranch`, `ContentBranch`, `AnalysisBranch`)
-   - `BaseSchemaChange` handoff envelope
+   - `BaseSchemaResolution` handoff envelope
    - Terminal `.into_base()` / `.into_base_with_changes()` APIs
 
 3. **`lithos-core/tests/base_processor.rs`** (~200-300 lines)
@@ -342,7 +342,7 @@ Avoid:
 
 - [ ] All tests pass (unit, component, integration, contract)
 - [ ] BaseSchema can be persisted and retrieved
-- [ ] BaseSchemaProcessor produces correct `BaseSchemaChange` handoff
+- [ ] BaseSchemaProcessor produces correct `BaseSchemaResolution` handoff
 - [ ] PropertyId stability preserved across incremental updates
 - [ ] StaleReferences triggers targeted re-expansion (not full rebuild)
 - [ ] Metadata-only changes normalize to `Fresh`
@@ -363,7 +363,7 @@ Avoid:
 
 - This phase is intentionally **non-breaking**: it adds new infrastructure without changing existing vault loading behavior
 - The BaseSchemaProcessor pattern deliberately mirrors PropertyBankProcessor for consistency and proven reliability
-- The handoff contract (`BaseSchemaChange`) is carefully designed for Phase 2 consumption with minimal coupling
+- The handoff contract (`BaseSchemaResolution`) is carefully designed for Phase 2 consumption with minimal coupling
 - PropertyId stability is critical for downstream inheritance processor correctness
 - StaleReferences handling is the most complex branch - requires careful testing of incremental re-expansion logic
 - After implementation, create Phase 2 PRD for InheritanceProcessor rewrite

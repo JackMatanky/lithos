@@ -81,6 +81,7 @@ fn cold_start_and_bank_change() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: base1,
+        ..
     } = res1
     else {
         panic!("Expected New resolution");
@@ -192,6 +193,7 @@ fn multiple_schemas_shared_bank_target() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: s1_base,
+        ..
     } = res1
     else {
         panic!("Expected New for schema 1");
@@ -200,6 +202,7 @@ fn multiple_schemas_shared_bank_target() -> TestResult {
 
     let BaseSchemaResolution::New {
         base_schema: s2_base,
+        ..
     } = res2
     else {
         panic!("Expected New for schema 2");
