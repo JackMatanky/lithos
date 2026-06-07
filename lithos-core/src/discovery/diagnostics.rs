@@ -18,7 +18,7 @@ use std::path::PathBuf;
 /// These warnings indicate issues that are not fatal but might result in
 /// unexpected discovery behavior (e.g., ignoring a malformed ceiling path).
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(crate) enum VaultDiscoveryWarning {
     /// A segment in the ceiling path list was empty (e.g. `::` or
     /// leading/trailing `:`).

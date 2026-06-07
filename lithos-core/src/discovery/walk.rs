@@ -27,54 +27,6 @@ use std::{
 
 use super::diagnostics::VaultDiscoveryWarning;
 
-/// An iterator that ascends from a directory up to defined boundary ceilings.
-///
-/// This walker is zero-allocation during traversal as it operates on purely
-/// lexical parents of the starting path. It stops when a parent directory
-/// matches one of the provided `ceilings`.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) struct BoundedAscent<'a> {
-    current: Option<&'a Path>,
-    ceilings: &'a HashSet<PathBuf>,
-    allow_marker_at_ceiling: bool,
-}
-
-impl<'a> BoundedAscent<'a> {
-    /// Creates a new bounded walker starting at `start`.
-    pub(crate) fn new(
-        start: &'a Path,
-        ceilings: &'a HashSet<PathBuf>,
-        allow_marker_at_ceiling: bool,
-    ) -> Self {
-        Self {
-            current: Some(start),
-            ceilings,
-            allow_marker_at_ceiling,
-        }
-    }
-}
-
-impl<'a> Iterator for BoundedAscent<'a> {
-    type Item = &'a Path;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current?;
-        let is_ceiling = self.ceilings.contains(current);
-
-        self.current = if is_ceiling {
-            None
-        } else {
-            current.parent()
-        };
-
-        if is_ceiling && !self.allow_marker_at_ceiling {
-            None
-        } else {
-            Some(current)
-        }
-    }
-}
-
 /// Start and stop constraints for the discovery traversal.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryBoundaries {
@@ -143,6 +95,54 @@ impl DiscoveryBoundaries {
                 }
             })
             .collect()
+    }
+}
+
+/// An iterator that ascends from a directory up to defined boundary ceilings.
+///
+/// This walker is zero-allocation during traversal as it operates on purely
+/// lexical parents of the starting path. It stops when a parent directory
+/// matches one of the provided `ceilings`.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+pub(crate) struct BoundedAscent<'a> {
+    current: Option<&'a Path>,
+    ceilings: &'a HashSet<PathBuf>,
+    allow_marker_at_ceiling: bool,
+}
+
+impl<'a> BoundedAscent<'a> {
+    /// Creates a new bounded walker starting at `start`.
+    pub(crate) fn new(
+        start: &'a Path,
+        ceilings: &'a HashSet<PathBuf>,
+        allow_marker_at_ceiling: bool,
+    ) -> Self {
+        Self {
+            current: Some(start),
+            ceilings,
+            allow_marker_at_ceiling,
+        }
+    }
+}
+
+impl<'a> Iterator for BoundedAscent<'a> {
+    type Item = &'a Path;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current?;
+        let is_ceiling = self.ceilings.contains(current);
+
+        self.current = if is_ceiling {
+            None
+        } else {
+            current.parent()
+        };
+
+        if is_ceiling && !self.allow_marker_at_ceiling {
+            None
+        } else {
+            Some(current)
+        }
     }
 }
 

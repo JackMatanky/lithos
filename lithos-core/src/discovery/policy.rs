@@ -24,7 +24,7 @@
 /// This policy controls which sources are checked, in what order, and how
 /// boundary conditions (like discovery ceilings) are handled.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DiscoveryPolicy {
     /// Ordered list of sources to check for vault roots.
     ///
@@ -56,7 +56,7 @@ impl Default for DiscoveryPolicy {
 
 /// Enumerates the possible origins for a vault configuration root.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum VaultSourceType {
     /// Provided via `--vault` CLI flag.
     ExplicitFlag,
@@ -93,7 +93,7 @@ impl VaultSourceType {
 
 /// Enumerates the possible origins for global system/user configuration.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum GlobalSourceType {
     /// Provided via `LITHOS_CONFIG_FILE` environment variable.
     EnvVar,
@@ -129,7 +129,7 @@ impl GlobalSourceType {
     clippy::enum_variant_names,
     reason = "GlobalSourceDirectory variants mirror the approved source names"
 )]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum GlobalSourceDirectory {
     /// Discovered via XDG Base Directory specification.
     XdgConfig,

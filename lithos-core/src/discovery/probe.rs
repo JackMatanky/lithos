@@ -38,68 +38,6 @@ pub(crate) trait DiscoveryProbe<Output> {
     fn probe(&self, dir: &Path) -> Result<Option<Output>, DiscoveryError>;
 }
 
-/// Naming pattern used to identify a marker file.
-///
-/// A pattern consists of a filename prefix and a nesting flag. During probing,
-/// the engine appends supported format extensions (e.g., `.toml`, `.json`) to
-/// the prefix to construct candidate paths.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) struct MarkerPattern {
-    /// The filename prefix (e.g. `lithos` or `.lithos`).
-    pub(crate) prefix: &'static str,
-    /// Whether the marker is nested inside a configuration directory.
-    ///
-    /// If true, the marker is expected to be at `{dir}/{prefix}.{ext}`.
-    pub(crate) is_nested: bool,
-}
-
-/// Standard marker patterns used for vault root resolution.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) const ROOT_MARKER_FILES: &[MarkerPattern] = &[
-    MarkerPattern {
-        prefix: "lithos",
-        is_nested: false,
-    },
-    MarkerPattern {
-        prefix: ".lithos",
-        is_nested: false,
-    },
-    MarkerPattern {
-        prefix: ".lithos/config",
-        is_nested: true,
-    },
-];
-
-/// Standard marker patterns used for global config resolution.
-#[allow(dead_code, reason = "Phase-2 seam; wired into global discovery")]
-pub(crate) const GLOBAL_MARKER_FILES: &[MarkerPattern] = &[
-    MarkerPattern {
-        prefix: "lithos",
-        is_nested: false,
-    },
-    MarkerPattern {
-        prefix: "lithos/config",
-        is_nested: true,
-    },
-];
-
-fn marker_from_path(
-    base: &Path,
-    path: &Path,
-    format: StructuredFileFormat,
-) -> Result<DiscoveredMarker, DiscoveryError> {
-    path.canonicalize()
-        .map(|canonical| DiscoveredMarker {
-            base: base.to_path_buf(),
-            path: canonical,
-            format,
-        })
-        .map_err(|source| DiscoveryError::CanonicalizePath {
-            path: path.to_path_buf(),
-            source,
-        })
-}
-
 /// Probes directories for vault root markers using standard patterns.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct VaultRootProbe;
@@ -170,6 +108,68 @@ impl DiscoveryProbe<Vec<DiscoveredMarker>> for GlobalRootProbe {
             Ok(Some(markers))
         }
     }
+}
+
+/// Naming pattern used to identify a marker file.
+///
+/// A pattern consists of a filename prefix and a nesting flag. During probing,
+/// the engine appends supported format extensions (e.g., `.toml`, `.json`) to
+/// the prefix to construct candidate paths.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+pub(crate) struct MarkerPattern {
+    /// The filename prefix (e.g. `lithos` or `.lithos`).
+    pub(crate) prefix: &'static str,
+    /// Whether the marker is nested inside a configuration directory.
+    ///
+    /// If true, the marker is expected to be at `{dir}/{prefix}.{ext}`.
+    pub(crate) is_nested: bool,
+}
+
+/// Standard marker patterns used for vault root resolution.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+pub(crate) const ROOT_MARKER_FILES: &[MarkerPattern] = &[
+    MarkerPattern {
+        prefix: "lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: ".lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: ".lithos/config",
+        is_nested: true,
+    },
+];
+
+/// Standard marker patterns used for global config resolution.
+#[allow(dead_code, reason = "Phase-2 seam; wired into global discovery")]
+pub(crate) const GLOBAL_MARKER_FILES: &[MarkerPattern] = &[
+    MarkerPattern {
+        prefix: "lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: "lithos/config",
+        is_nested: true,
+    },
+];
+
+fn marker_from_path(
+    base: &Path,
+    path: &Path,
+    format: StructuredFileFormat,
+) -> Result<DiscoveredMarker, DiscoveryError> {
+    path.canonicalize()
+        .map(|canonical| DiscoveredMarker {
+            base: base.to_path_buf(),
+            path: canonical,
+            format,
+        })
+        .map_err(|source| DiscoveryError::CanonicalizePath {
+            path: path.to_path_buf(),
+            source,
+        })
 }
 
 #[cfg(test)]
