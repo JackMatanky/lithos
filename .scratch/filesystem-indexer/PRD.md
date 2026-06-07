@@ -84,6 +84,22 @@ The Indexer context should be introduced as a new top-level core context. The ex
 
 The long-term context name should be `indexer`, not `discovery` and not `vault`. The existing Vault processor and storage code are prior art and possible migration source, but not the target module language.
 
+The application composition root should be introduced separately as a minimal
+`app` module in `lithos-core`. It should not revive the deprecated
+`application` module, and `lithos-core` should remain a library crate rather
+than gaining its own `main.rs`. The process entrypoint remains `lithos-cli`.
+The `app` module exists to compose core ports/adapters and expose reusable
+execution flows to executable adapters.
+
+The initial `app` module should stay intentionally small. Its module-level
+documentation should describe likely growth paths without requiring all of
+them immediately:
+
+- `commands`: typed app commands, such as `IndexCommand`.
+- `flows` or `services`: execution flows, such as `run_index`.
+- `composition`: construction of core adapters from runtime resources.
+- `diagnostics`: app-level result summaries, not CLI formatting.
+
 ### 3. Hexagonal Architecture Alignment
 
 The Indexer follows a ports-and-adapters structure.
@@ -293,13 +309,13 @@ This preserves the global invariant that filesystem interaction happens through 
 
 Schema, Note, and Template processors should consume Indexer output or query Indexer repository ports rather than performing their own vault-wide scans.
 
-Context routing should use Config-resolved boundaries and Indexer result entries. Routing should not live in Discovery. It may live in Indexer if it is purely filesystem-node partitioning, or in orchestration if routing requires cross-context dependency decisions.
+Context routing should use Config-resolved boundaries and Indexer result entries. Routing must not live in Discovery. `lithos-core::app` owns routing orchestration because it composes Config specs with Indexer results and downstream context execution order. Indexer should return filesystem truth through `IndexResult`; it should not own Schema, Note, or Template routing semantics.
 
-The initial contract should be conservative: Indexer returns all indexed file and directory entries in scope, plus deleted records. Orchestration or a small routing module partitions entries for Schema, Note, and Template based on Config specs.
+The initial contract should be conservative: Indexer returns all indexed file and directory entries in scope, plus deleted records. `lithos-core::app` partitions entries for Schema, Note, and Template based on Config specs.
 
 ### 13. CLI Command Intent And Execution Flow
 
-The CLI remains a thin orchestration layer. It defines command intent and diagnostic output, then delegates to core contexts.
+The CLI remains a thin executable adapter. It defines user-facing command syntax and diagnostic output, then delegates typed command intent to `lithos-core::app`. The app composition root wires core adapters and runs the execution flow.
 
 Recommended command surface:
 
@@ -317,12 +333,15 @@ The exact command shape can be refined during CLI implementation, but these inte
 CLI execution flow for `lithos index`:
 
 1. Parse command intent and flags.
-2. Run Discovery to resolve Vault Root and config paths.
-3. Run Config to load, validate, merge, hash, and produce narrowed specs.
-4. Map CLI flags plus Config specs into `IndexScope`.
-5. Construct Indexer adapters.
-6. Run Indexer service.
-7. Print diagnostic output from `IndexResult`.
+2. Convert CLI input into an app-level `IndexCommand`.
+3. Call the app composition root.
+4. App runs Discovery to resolve Vault Root and config paths.
+5. App runs Config to load, validate, merge, hash, and produce narrowed specs.
+6. App maps command intent plus Config specs into `IndexScope`.
+7. App constructs Indexer adapters.
+8. App runs the Indexer service.
+9. App owns routing orchestration for downstream context execution.
+10. CLI renders diagnostic output from the app result.
 
 CLI must not own filesystem freshness rules, path-key conversion invariants, repository transaction semantics, or context routing semantics. CLI errors should map Indexer errors into actionable diagnostic output.
 
