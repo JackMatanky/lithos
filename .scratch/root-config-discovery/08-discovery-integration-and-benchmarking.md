@@ -53,18 +53,29 @@ The previous issue (08) focused on implementing the module itself, which has now
 **Category:** enhancement
 **Summary:** Implement integration tests and benchmarks for the `discovery` module to ensure stability and monitor performance regressions for filesystem traversal.
 
-**Testing Strategy:**
-Use `tempfile` for creating real, isolated directory trees. This ensures accurate reproduction of OS-level filesystem behavior, which is critical for discovery logic (canonicalization, symlinks, permissions).
+**Current behavior:**
+The `discovery` module lacks comprehensive integration tests exercising real filesystem behavior (symlinks, complex directory structures, ceiling boundaries) and performance benchmarks for traversal and probing logic.
 
-**Benchmarking Strategy:**
-Use `criterion` to measure:
-1. Traversal speed (AscendingWalker performance).
-2. Probing cost (Directory-level I/O).
-3. Overall `DiscoveryEngine` overhead.
+**Desired behavior:**
+Implement integration tests in `tests/discovery.rs` and benchmarks in `benches/discovery.rs` following the project's testing and benchmarking standards.
+
+**Key interfaces:**
+- `DiscoveryEngine` — core orchestrator to be tested
+- `AscendingWalker` — traversal logic
+- `VaultRootProbe` — probing logic
+- `DiscoveryPolicy` — precedence logic
+
+**Acceptance criteria:**
+- [ ] Create `tests/discovery.rs` and `benches/discovery.rs`.
+- [ ] **Integration Tests**:
+    - [ ] `tempfile` based filesystem tests for: Ascending Walk (multi-level), Ceiling Enforcement, Symlink Cycle Detection, Policy Precedence (Explicit > Env > Walk), Ambiguity Handling.
+- [ ] **Benchmarks**:
+    - [ ] `criterion` based benchmarks for: Cold-Cache Traversal (deep structure), Directory Probing (varying marker counts), Precedence Resolution (competing sources).
+- [ ] Ensure all tests/benchmarks pass using `mise run test:integration` and `mise run test:bench:core`.
 
 **Out of scope:**
-- Modifying core discovery logic (except to fix bugs discovered during testing).
-- Mocking or trait-based filesystems (stick to `tempfile`).
+- Modifying core discovery logic (unless bugs are found).
+- Mocking or trait-based filesystems.
 
 ## Blocked by
 
