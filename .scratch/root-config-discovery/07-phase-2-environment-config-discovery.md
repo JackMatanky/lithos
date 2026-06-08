@@ -156,3 +156,34 @@ Discovery should mechanically check Environment Config candidates in strict tier
 - Use GitNexus impact analysis before editing Rust symbols.
 - Follow `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md` for all new tests.
 - If implementation reveals a material deviation from this issue or plan, stop and update this issue before continuing.
+
+## Implementation Notes Update (2026-06-08)
+
+> *This was generated during acceptance review and implementation cleanup.*
+
+**Clarified MVP decisions:**
+
+- `LITHOS_CONFIG_FILE` is treated as an Environment Config directory/base for
+  this MVP, mirroring `LITHOS_VAULT` source semantics. Discovery probes that
+  base for exact lowercase conventional filenames. Supporting both file and
+  directory inputs may be revisited later with an `FsPath`-style abstraction,
+  but is out of scope for this slice.
+- Config only needs path, base, and format handoff data from Discovery for this
+  slice. Reintroducing Config-owned source/location taxonomy in `config/` would
+  duplicate Discovery responsibilities and risks drifting outside Config's
+  domain boundary.
+- The top-level acceptance criteria are authoritative for casing behavior:
+  Discovery recognizes exact lowercase conventional filenames only and does not
+  scan for, correct, accept, or warn about mis-cased filenames. Older addendum
+  references to case-correction diagnostics are superseded.
+
+**Acceptance review follow-up:**
+
+- Discovery implementation behavior is accepted under the clarified MVP
+  decisions above.
+- Discovery module test suites should be cleaned up to fully align with
+  `docs/engineering/testing/unit.md`,
+  `docs/engineering/testing/unit-naming.md`, and Rust best-practices testing
+  guidance: Structure A for multi-unit files, focused one-behavior tests,
+  canonical module names, verb-first names, and explicit Arrange/Act/Assert
+  discipline.
