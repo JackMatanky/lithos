@@ -81,6 +81,73 @@ impl HasContentHash for RawTemplateView { ... }
 impl HasContentHashMut for RawTemplateView { ... }
 ```
 
+## Template Engine Port
+
+Following hexagonal architecture, MiniJinja is wrapped behind a domain port (trait). The domain defines only what it needs; the adapter implements it with MiniJinja.
+
+```rust
+/// Domain port — no MiniJinja types exposed.
+pub trait TemplateEngine: Send + Sync {
+    /// Render a compiled template with context.
+    fn render(
+        &self,
+        name: &str,
+        ctx: &serde_json::Value,
+    ) -> Result<String, EngineError>;
+
+    /// Register a template source by name (cached at the adapter layer).
+    fn add_template(
+        &mut self,
+        name: &str,
+        source: &str,
+    ) -> Result<(), EngineError>;
+
+    /// Register a global variable or function.
+    fn add_global(
+        &mut self,
+        name: &str,
+        value: serde_json::Value,
+    ) -> Result<(), EngineError>;
+}
+
+/// Extension modules register globals/functions onto any TemplateEngine.
+pub trait TemplateExtension: Send + Sync {
+    fn register(&self, engine: &mut dyn TemplateEngine);
+}
+```
+
+Adapter (infrastructure layer, NOT in the template domain module):
+
+```rust
+/// Adapter wrapping MiniJinja behind the domain TemplateEngine port.
+pub struct MiniJinjaAdapter {
+    env: Environment<'static>,
+}
+
+impl TemplateEngine for MiniJinjaAdapter {
+    fn render(&self, name: &str, ctx: &serde_json::Value) -> Result<String, EngineError> {
+        let tmpl = self.env.get_template(name)?;
+        Ok(tmpl.render(ctx)?)
+    }
+
+    fn add_template(&mut self, name: &str, source: &str) -> Result<(), EngineError> {
+        self.env.add_template_owned(name.to_owned(), source.to_owned())?;
+        Ok(())
+    }
+
+    fn add_global(&mut self, name: &str, value: serde_json::Value) -> Result<(), EngineError> {
+        self.env.add_global(name, value);
+        Ok(())
+    }
+}
+```
+
+Design decisions:
+- `Environment<'static>` + `add_template_owned()` avoids lifetime coupling between source strings and the environment.
+- `Context` is `serde_json::Value` because MiniJinja renders any `Serialize` type, and JSON Value is the simplest portable representation.
+- Extensions register via `add_global()` — filters/functions are registered as callable globals internally.
+- Stateful side effects (e.g., `file.write()`) use MiniJinja's `State::set_temp`/`get_temp` under the hood, exposed through `serde_json::Value` return values on registered globals.
+
 ## Repository Traits
 
 Template repositories must follow ADR 016:
