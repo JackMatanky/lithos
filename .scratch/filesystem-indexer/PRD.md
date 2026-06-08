@@ -142,7 +142,13 @@ Rationale:
 
 `FileNode` and `DirNode` are domain state, not adapter DTOs. Storage adapters may archive and persist them, but the names should remain meaningful outside DB reads.
 
-### 5. Identity Model: Evaluate `FsNodeId` Against `FileId` / `DirId`
+### 5. Identity Model: `FsNodeId` Generation And Storage
+
+**Accepted decision**: `FsNodeId` is a newtype over `UuidV7`, following the same pattern as every other context ID in the codebase (`UuidV7` is the project-wide canonical identity primitive in `lithos-core::utils`). The Indexer typestate pipeline generates `FsNodeId` for each new node at the point of first classification (i.e., when a scanned node has no matching persisted record). Generation uses `UuidV7::new()` directly — no `IdPort` abstraction is needed because `UuidV7` is already a stable shared utility, not a hard third-party dependency. Tests construct known IDs via `UuidV7::parse()` or fixed-byte construction. The domain stores `FsNodeId` as the canonical identity for the lifetime of the node.
+
+The `IdPort` / clock-port pattern remains a valid fallback if generation behavior ever needs to be injected (e.g., for deterministic bulk-import scenarios), but is not required for the initial design.
+
+### 5c. Identity Model: Evaluate `FsNodeId` Against `FileId` / `DirId`
 
 The PRD recommends using a single canonical `FsNodeId` with file/dir-specific node structs:
 
@@ -187,24 +193,30 @@ Indexer path behavior must follow the accepted three-tier path taxonomy:
 
 The Indexer converts filesystem paths to `PathKey` only with an explicit Vault Root. Rootless path-key conversion is not allowed.
 
-`FileNode` should carry at minimum:
+**Accepted decision**: `FileNode` and `DirNode` fields are canonicalised against the previously locked `FileView` / `DirView` shape from the centralized-discovery PRD, with names updated to match current domain language:
 
-- `FsNodeId`
-- parent `FsNodeId` for the containing directory, when present
-- `PathKey`
-- `FileName`
-- `FileFormat`
-- `FileMetadata`
-- recorded/indexed timestamp if needed for observability
+```rust
+pub struct FileNode {
+    id: FsNodeId,
+    parent_id: Option<FsNodeId>,
+    path: PathKey,              // vault-relative, forward-slash normalised
+    name: FileName,
+    format: FileFormat,
+    metadata: FileMetadata,
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,    // when node was persisted
+}
 
-`DirNode` should carry at minimum:
-
-- `FsNodeId`
-- parent `FsNodeId`, when present
-- `PathKey`
-- `DirName`
-- `DirMetadata`
-- recorded/indexed timestamp if needed for observability
+pub struct DirNode {
+    id: FsNodeId,
+    parent_id: Option<FsNodeId>,
+    path: PathKey,              // vault-relative, forward-slash normalised
+    name: DirName,
+    metadata: DirMetadata,
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,    // when node was persisted
+}
+```
 
 The Indexer must not store context-owned content hashes in `FileNode`. Schema, Note, and Template own content hashing and semantic freshness checks after filesystem freshness has been classified.
 
@@ -239,11 +251,27 @@ The Indexer must not store context-owned content hashes in `FileNode`. Schema, N
 
 Deleted nodes should be separate from live entries because no current filesystem path/metadata exists for them. Use deleted-node records rather than fake file/dir entries. A deletion record should carry the `FsNodeId`, previous `PathKey`, and previous kind when available.
 
+**Accepted decision**: `FileIndexEntry` and `IndexResult` follow the locked Discovery Result Contract pattern — embedded node struct, not flattened fields; deleted nodes in a separate collection, not mixed into live entries:
+
+```rust
+pub struct FileIndexEntry {
+    node: FileNode,       // embedded, not flattened
+    path: FilePath,       // live filesystem path for immediate context reads
+    status: IndexStatus,
+}
+
+pub struct DirIndexEntry {
+    node: DirNode,        // embedded, not flattened
+    path: DirPath,
+    status: IndexStatus,
+}
+```
+
 `IndexResult` should include:
 
 - file entries for new, fresh, and stale files
 - directory entries for new, fresh, and stale directories
-- deleted node records
+- deleted node IDs in a separate `Vec<FsNodeId>` (not mixed with live entries)
 - summary counts
 - non-fatal per-node failures when the indexing run can continue safely
 
@@ -280,7 +308,17 @@ Future-compatible scope:
 
 The Indexer should always prefer the narrowest correct scope. If Config detects a localized context boundary change, orchestration should request a `Partial` scan rather than `Full`.
 
-### 10. Repository Ports And Storage Adapter
+### 10. Table Naming And Cross-Context Access
+
+**Accepted decision**: The Indexer defines two redb tables: `FILES` and `DIRS` (not `file_nodes` / `dir_nodes`, not the Vault's `file_views` / `dir_views`). These are the canonical filesystem node tables for the entire codebase.
+
+**Accepted decision**: The Indexer owns `FILES` and `DIRS` exclusively — it is the only context with write access. Other contexts (Schema, Note, Template) resolve path → `FsNodeId` → `FileNode` / `DirNode` by calling the Indexer's `ReadRepository` port at the **application-service level**, not by accessing the raw redb tables directly from their own storage adapters. This is the correct dependency direction (`Indexer → Context processors`) enforced at the storage level, not just the application level.
+
+Rationale: redb is a KV store with no joins. Every cross-context lookup that needs to go from a path or ID to a filesystem node must traverse `FILES` / `DIRS` regardless of architecture. Routing that traversal through an Indexer port costs nothing in query performance and prevents downstream adapters from coupling to the raw table key schema. If the `FILES` / `DIRS` key layout changes, only the Indexer adapter needs updating.
+
+Known tradeoff: downstream context services take a dependency on `IndexerReadRepository`. If this proves too rigid (e.g., a context needs a combined traversal that the port does not expose), the escape hatch is promoting `FILES` / `DIRS` definitions to a shared schema layer and allowing read-only table accessors. This tradeoff should be recorded in an ADR alongside the `lithos-core::app` composition root decision.
+
+### 10b. Repository Ports And Storage Adapter
 
 The Indexer owns repository ports. They should follow the project pattern:
 
@@ -305,7 +343,21 @@ Write operations should support:
 - deleting nodes by ID
 - pruning batches atomically
 
-Storage adapter implementation should use Indexer-owned table definitions. redb primitives and table mechanics stay inside the adapter. Public repository ports expose Indexer domain errors, not redb errors.
+**Accepted decision**: The Indexer storage adapter defines the following redb tables, migrated and renamed from the Vault's table inventory. `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` are dropped (the primary nodes carry enough data for deletion without a reverse index at this stage):
+
+| Table | Key | Value | Purpose |
+|---|---|---|---|
+| `FILES` | `FsNodeId` | `&[u8]` (rkyv `FileNode`) | Primary file node store |
+| `DIRS` | `FsNodeId` | `&[u8]` (rkyv `DirNode`) | Primary directory node store |
+| `FILE_ID_BY_PATH` | `PathKey` string | `FsNodeId` | Path → ID resolution |
+| `DIR_ID_BY_PATH` | `PathKey` string | `FsNodeId` | Path → ID resolution |
+| `FILE_IDS_BY_BASENAME` | `&str` | `FsNodeId` | Wikilink-style lookup |
+| `FILE_IDS_BY_PARENT` | `FsNodeId` (parent) | `FsNodeId` (child) | Child listing queries |
+| `FILE_IDS_BY_FORMAT` | `&str` | `FsNodeId` | Format-filtered queries |
+
+All tables are updated atomically within the same `redb::WriteTransaction`. Indexes must never diverge from primary data.
+
+redb primitives and table mechanics stay inside the adapter. Public repository ports expose Indexer domain errors, not redb errors.
 
 ### 11. Scanner Port And FS Adapter
 
@@ -366,6 +418,8 @@ If Indexer-specific events are added later, they should reuse foundation contrac
 For this PRD, restartability is optional and deferred unless implementation sequencing requires it.
 
 ### 15. Migration Notes
+
+**Accepted decision**: `lithos-core::vault` is kept in place until the Indexer storage adapter passes full integration tests. Once the adapter is proven stable, Vault is deleted in a dedicated follow-on PR. This keeps Indexer issues focused and makes the deletion reviewable in isolation.
 
 The existing Vault processor contains useful prior art:
 
