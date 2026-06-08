@@ -61,3 +61,6 @@ pub(super) mod walk;
 
 /// Diagnostics and warnings during discovery.
 pub(super) mod diagnostics;
+
+#[cfg(test)]
+pub(crate) mod tests;
