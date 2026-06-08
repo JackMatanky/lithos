@@ -1,9 +1,10 @@
 ---
 title: 07-integration-and-regression-suite
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 date_created: 2026-06-01
+date_completed: 2026-06-08
 ---
 
 ## Type
