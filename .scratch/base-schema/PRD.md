@@ -60,7 +60,7 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 
 12. As a developer, I want deletion lifecycle events emitted and BaseSchema persistence removed immediately, so that storage and downstream processors stay consistent.
 
-13. As a developer, I want deterministic `SchemaId` ordering in handoff output, so that tests and replay runs are reproducible.
+13. As a developer, I want reproducible handoff output, so that tests and replay runs are stable.
 
 14. As a developer, I want unit/component tests colocated with processor code and integration tests in `lithos-core/tests`, so that test boundaries are explicit.
 
@@ -98,7 +98,7 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
   - `New { schema_id: SchemaId, base_schema: BaseSchema }` (newly created)
   - `Stale { schema_id: SchemaId, base_schema: BaseSchema, property_delta: PropertyDelta, excludes_delta: ExcludesDelta, extends_delta: ExtendsDelta }` (semantic changes)
   - `Deleted { schema_id: SchemaId }` (removed from source)
-- Emission order: deterministic `SchemaId` sort for test stability
+- Emission order: order-agnostic batch (caller handles sorting if needed for specific use cases)
 - Normalization: `StaleTimestamps` + `StaleContent` => `Fresh` when semantic state unchanged
 
 ### BaseSchemaProcessor Architecture
@@ -159,7 +159,6 @@ Implement **BaseSchemaProcessor** using the proven typestate pattern from `prope
 The `BaseSchemaResolution` enum serves as the contract between BaseSchemaProcessor (Phase 1) and InheritanceProcessor (Phase 2):
 
 **Contract guarantees:**
-- Deterministic emission order (sorted by `SchemaId`)
 - Complete coverage (every schema in source produces exactly one event)
 - Semantic normalization (metadata-only changes emit `Fresh`, not `Stale`)
 - Explicit deltas in `Stale` variant (all three deltas always present, using empty deltas to denote no-op)
@@ -340,14 +339,13 @@ Avoid:
 
 ## Acceptance Criteria
 
-- [ ] All tests pass (unit, component, integration, contract)
+- [ ] All tests pass (unit, component, integration)
 - [ ] BaseSchema can be persisted and retrieved
 - [ ] BaseSchemaProcessor produces correct `BaseSchemaResolution` handoff
 - [ ] PropertyId stability preserved across incremental updates
 - [ ] StaleReferences triggers targeted re-expansion (not full rebuild)
 - [ ] Metadata-only changes normalize to `Fresh`
 - [ ] Deleted schemas remove persistence and emit lifecycle event
-- [ ] Handoff output is deterministic (SchemaId-ordered)
 - [ ] No changes to existing `Builder` or `schema_processor` flow (old code still runs)
 
 ## Out of Scope (Phase 1)

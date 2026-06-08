@@ -23,12 +23,12 @@ AFK
 
 Add the full phase-1 integration and contract verification suite for base schema processing.
 
-This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos-core/tests/base_processor.rs` and creates `lithos-core/tests/base_schema_handoff_contract.rs`, using `InMemoryRepository`-first patterns to verify mixed lifecycle batches plus stale-reference scenarios.
+This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos-core/tests/base_processor.rs`, using `InMemoryRepository`-first patterns to verify mixed lifecycle batches plus stale-reference scenarios. Persistence round-trips for the new domain type are added to `schema_storage.rs`.
 
 ## Acceptance criteria
 
-- [ ] Integration tests cover cold start, mixed incremental run, and property-bank-driven stale references.
-- [ ] Contract tests verify deterministic `SchemaId` ordering and delta payload completeness.
+- [ ] Integration tests in `base_processor.rs` cover cold start, mixed incremental run, and property-bank-driven stale references.
+- [ ] Round-trip persistence tests for `BaseSchema` (save/load/delete) added to `lithos-core/tests/schema_storage.rs`.
 - [ ] Tests verify metadata-only normalization to `Fresh` and deletion cleanup semantics.
 - [ ] Tests avoid private implementation coupling and assert via public behavior.
 - [ ] The phase-1 acceptance checklist in `.scratch/base-schema/PRD.md` is verifiably satisfiable by test outcomes.
@@ -44,15 +44,17 @@ This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos
 **Recommendation**: keep `ready-for-agent`.
 
 **Decisions (from review with maintainer):**
-1. Rename `base_processor_integration.rs` → `base_processor.rs` to match PRD spec.
-2. New integration tests go into the renamed file alongside existing tests.
-3. Contract tests go into new `base_schema_handoff_contract.rs`.
-4. Tests that depend on `BaseSchemaResolution::Deleted` (issue 06) are deferred — write ordering/payload/normalization/stale-ref tests first.
+1. Rename `base_processor_integration.rs` → `base_processor.rs`.
+2. Integration tests in `base_processor.rs` focus on I/O plumbing (FileReader, TestDb, PropertyBankProcessor integration).
+3. Logic/Lifecycle tests remain in `base_processor.rs` (colocated unit tests).
+4. Persistence round-trip tests move to `schema_storage.rs`.
+5. **Remove** deterministic ordering requirement; assertions should be order-agnostic.
+6. Tests that depend on `BaseSchemaResolution::Deleted` (issue 06) are deferred — write ordering/payload/normalization/stale-ref tests first.
 
 **Primary touchpoints:**
-- `lithos-core/tests/base_processor_integration.rs` — rename to `base_processor.rs`, add mixed-lifecycle tests
-- `lithos-core/tests/base_schema_handoff_contract.rs` — create with ordering, completeness, lifecycle-accuracy tests
-- `lithos-core/tests/common/mod.rs` — add `BaseSchema` builder if needed for contract tests
+- `lithos-core/tests/base_processor.rs` — mixed-lifecycle and cross-processor integration
+- `lithos-core/tests/schema_storage.rs` — BaseSchema rkyv/redb round-trip tests
+- `lithos-core/src/schema/base_processor.rs` — unit tests for normalization and delta logic
 - Existing regression reference: `lithos-core/tests/schema_loader.rs`
 
 **Rust testing constraints:**
@@ -67,20 +69,21 @@ This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos
 | PRD AC | Test Location | Assertion |
 |---|---|---|
 | All tests pass | CI gates | — |
-| BaseSchema persisted/retrieved | `base_processor` (existing) | `find_base_schema_by_id` returns saved schema |
-| Correct `BaseSchemaResolution` handoff | `base_processor` (existing) + `handoff_contract` | Variant matches expected lifecycle state |
-| PropertyId stability | `base_processor` (existing unit/integration) | IDs preserved across incremental updates |
-| StaleReferences → targeted re-expand | `base_processor` (existing stale_refs tests) | Only affected properties updated |
-| Metadata-only → Fresh | `base_processor` (existing normalization tests) | Returns `Fresh`, no base write |
-| Deleted → persistence removed + `Deleted` event | `handoff_contract` (new, blocked on 06) | `find_base_schema_by_id` returns `None` + resolution is `Deleted` |
-| Deterministic SchemaId ordering | `handoff_contract` (new) | Sorted output matches expected order |
+| BaseSchema persisted/retrieved | `schema_storage` | `save_base_schema` + `get_base_schema` round-trip |
+| Correct `BaseSchemaResolution` handoff | `base_processor` (unit/integration) | Variant matches expected lifecycle state |
+| PropertyId stability | `base_processor` (unit/integration) | IDs preserved across incremental updates |
+| StaleReferences → targeted re-expand | `base_processor` (stale_refs tests) | Only affected properties updated |
+| Metadata-only → Fresh | `base_processor` (normalization tests) | Returns `Fresh`, no base write |
+| Deleted → persistence removed + `Deleted` event | `base_processor` (integration, blocked on 06) | `find_base_schema_by_id` returns `None` + resolution is `Deleted` |
+| Handoff payload completeness | `base_processor` (unit) | All deltas present when expected |
 | No legacy flow changes | `schema_loader` (existing regression) | All existing loader tests pass unchanged |
 
 **Verification checklist:**
 - [ ] `base_processor_integration.rs` renamed → `base_processor.rs`; existing tests still pass
 - [ ] Mixed lifecycle integration test (cold start + incremental run with fresh/stale/new)
-- [ ] Contract tests: SchemaId ordering, delta completeness, lifecycle accuracy
+- [ ] `BaseSchema` persistence round-trip in `schema_storage.rs`
 - [ ] Deletion tests deferred (blocked on 06); not required for this issue to close
 - [ ] No snapshot brittleness — behavioral assertions only
+- [ ] Order-agnostic assertions for batch outcomes
 - [ ] `cargo clippy --all-targets -- -D warnings` — 0 warnings
 - [ ] `cargo fmt --check` — clean
