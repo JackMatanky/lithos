@@ -1,6 +1,6 @@
 # PRD: Filesystem Indexer
 
-**Status**: draft
+**Status**: accepted
 **Created**: 2026-06-07
 **Triage**: ready-for-agent
 **Supersedes**: `.scratch/centralized-discovery-processor/PRD.md` for filesystem node indexing scope
@@ -45,7 +45,7 @@ The implementation follows hexagonal architecture:
 13. As a test author, I want Indexer ports to be mockable, so that scan, compare, persist, and prune behavior can be tested without real disk or redb dependencies.
 14. As a CLI user, I want an explicit indexing command, so that I can refresh filesystem node state without running every downstream context processor.
 15. As a CLI user, I want command output that reports scanned, new, fresh, stale, deleted, and failed node counts, so that I can understand what changed.
-16. As a CLI user, I want `--force` and targeted scope flags, so that I can choose between normal freshness checking and explicit full scans.
+16. As a CLI user, I want `--reindex` and targeted scope flags (`--path`, `--context`), so that I can choose between incremental freshness checking and a full re-index from scratch.
 17. As an operator, I want actionable diagnostics for invalid paths, permission failures, and scan failures, so that I can fix vault issues without reading internal traces.
 18. As a future file-watcher maintainer, I want the Indexer scope model to allow event-driven inputs later, so that watcher integration does not require redesigning indexing.
 19. As a migration owner, I want the old Vault processor indexing behavior treated as prior art, so that implementation can migrate incrementally without preserving the Vault module as the long-term name.
@@ -115,7 +115,7 @@ Domain/application-owned contracts:
 
 Adapters:
 
-- FS adapter wraps the FS context's `DirScanner` and `DirScanInput` behavior.
+- walkdir adapter implements the Indexer's `ScannerPort` directly, translating `ScanFilters` into walkdir `filter_entry` predicates.
 - redb adapter implements Indexer repository ports using DB infrastructure and Indexer table definitions.
 - CLI adapter maps command intent into Config/Indexer execution flow and user-facing diagnostic output.
 
@@ -148,9 +148,9 @@ Rationale:
 
 The `IdPort` / clock-port pattern remains a valid fallback if generation behavior ever needs to be injected (e.g., for deterministic bulk-import scenarios), but is not required for the initial design.
 
-### 5c. Identity Model: Evaluate `FsNodeId` Against `FileId` / `DirId`
+#### 5b. `FsNodeId` vs. `FileId` / `DirId` Trade-off Analysis
 
-The PRD recommends using a single canonical `FsNodeId` with file/dir-specific node structs:
+The PRD uses a single canonical `FsNodeId` with file/dir-specific node structs:
 
 - `FileNode { id: FsNodeId, ... }`
 - `DirNode { id: FsNodeId, ... }`
@@ -316,7 +316,7 @@ The Indexer should always prefer the narrowest correct scope. If Config detects 
 
 Rationale: redb is a KV store with no joins. Every cross-context lookup that needs to go from a path or ID to a filesystem node must traverse `FILES` / `DIRS` regardless of architecture. Routing that traversal through an Indexer port costs nothing in query performance and prevents downstream adapters from coupling to the raw table key schema. If the `FILES` / `DIRS` key layout changes, only the Indexer adapter needs updating.
 
-Known tradeoff: downstream context services take a dependency on `IndexerReadRepository`. If this proves too rigid (e.g., a context needs a combined traversal that the port does not expose), the escape hatch is promoting `FILES` / `DIRS` definitions to a shared schema layer and allowing read-only table accessors. This tradeoff should be recorded in an ADR alongside the `lithos-core::app` composition root decision.
+Known tradeoff: downstream context services take a dependency on `IndexerReadRepository`. If this proves too rigid (e.g., a context needs a combined traversal that the port does not expose), the escape hatch is promoting `FILES` / `DIRS` definitions to a shared schema layer and allowing read-only table accessors. This tradeoff is recorded in ADR 022.
 
 ### 10b. Repository Ports And Storage Adapter
 
@@ -446,11 +446,11 @@ Test areas:
 1. Domain model construction rejects invalid node/path states and preserves valid `FsNodeId`, `FileNode`, and `DirNode` fields.
 2. `FsNodeId` identity behavior is stable, unique, ordered where needed, and compatible with DB key wrappers.
 3. Path conversion tests prove filesystem paths convert to `PathKey` only with an explicit Vault Root.
-4. Scanner adapter tests prove FS `DirScanner` output is translated into Indexer scan records without leaking FS adapter details into domain contracts.
+4. Scanner adapter tests prove the walkdir `ScannerPort` implementation translates `ScanFilters` into correct walkdir traversal without leaking walkdir details into domain contracts.
 5. Application-service tests classify missing persisted nodes as `New`.
 6. Application-service tests classify metadata-matching nodes as `Fresh`.
 7. Application-service tests classify changed metadata nodes as `Stale`.
-8. Application-service tests classify forced scans as `Stale` even when metadata matches.
+8. Application-service tests classify all nodes as `New` when `IndexOptions { reindex: true }` is set, regardless of stored metadata.
 9. Pruning tests remove persisted nodes missing from the current scan and report deleted node records.
 10. Repository contract tests prove primary node records and path/parent/format indexes stay consistent after save, batch save, delete, and prune operations.
 11. Dry-run tests prove classification can run without persisting changes.
