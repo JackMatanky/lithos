@@ -28,6 +28,10 @@
 //!   (deletion deferred).
 
 #![expect(
+    clippy::panic,
+    reason = "Integration tests use assertions which panic on failure."
+)]
+#![expect(
     clippy::panic_in_result_fn,
     reason = "Integration tests use assertions which panic on failure."
 )]
@@ -49,16 +53,35 @@ use common::*;
 use lithos_core::schema::{
     aggregate::Schema,
     bank::PropertyBank,
+    base::BaseSchema,
     identifier::{SchemaId, SchemaName},
-    property::{PropertyId, PropertyMap},
+    property::{PropertyId, PropertyMap, PropertyName},
     repository::{ReadRepository as _, WriteRepository as _},
 };
+
+fn base_schema_with_property(
+    name: &str,
+    property_name: &str,
+) -> TestResult<BaseSchema> {
+    let (prop_name, prop) =
+        PropertyBuilder::new(property_name).build_string_default()?;
+    let mut props = HashMap::new();
+    props.insert(prop_name, prop);
+
+    Ok(BaseSchema::new(
+        SchemaId::new(),
+        SchemaName::try_new(name)?,
+        PropertyMap::from(props),
+        vec![SchemaName::try_new("parent")?],
+        vec![PropertyName::try_new("archived")?],
+    ))
+}
 
 // ========================================================================
 //                          Roundtrip Tests
 // ========================================================================
 
-mod roundtrip_tests {
+mod create {
     use super::*;
 
     /// Integration test for `PropertyBank` save/load roundtrip.
@@ -80,7 +103,7 @@ mod roundtrip_tests {
     /// # Observability
     /// Asserts `PropertyBank` exists after retrieval.
     #[test]
-    fn property_bank_roundtrip() -> TestResult {
+    fn persists_property_bank_when_saved() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -118,7 +141,7 @@ mod roundtrip_tests {
     /// # Observability
     /// Asserts Schema exists after retrieval by ID.
     #[test]
-    fn schema_roundtrip() -> TestResult {
+    fn persists_schema_when_saved() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -147,11 +170,106 @@ mod roundtrip_tests {
     }
 }
 
+mod base_schema {
+    use super::*;
+
+    #[test]
+    fn persists_base_schema_when_saved() -> TestResult {
+        let test_db = TestDb::new()?;
+        let repository = setup_repository(test_db.store());
+        let base_schema = base_schema_with_property("task", "title")?;
+        let schema_id = *base_schema.id();
+
+        repository.save_base_schema(&base_schema)?;
+        let loaded = repository.find_base_schema_by_id(schema_id)?;
+
+        let Some(loaded) = loaded else {
+            panic!("BaseSchema should exist after save");
+        };
+        assert_eq!(loaded.id(), &schema_id, "schema ID should round-trip");
+        assert_eq!(loaded.name().as_str(), "task", "name should round-trip");
+        assert_eq!(
+            loaded.properties().len(),
+            1,
+            "properties should round-trip"
+        );
+        assert_eq!(
+            loaded.extends(),
+            &[SchemaName::try_new("parent")?],
+            "extends list should round-trip"
+        );
+        assert_eq!(
+            loaded.excludes(),
+            &[PropertyName::try_new("archived")?],
+            "exclude list should round-trip"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn returns_none_when_base_schema_deleted() -> TestResult {
+        let test_db = TestDb::new()?;
+        let repository = setup_repository(test_db.store());
+        let base_schema = base_schema_with_property("task", "title")?;
+        let schema_id = *base_schema.id();
+        repository.save_base_schema(&base_schema)?;
+
+        repository.delete_base_schema(schema_id)?;
+        let loaded = repository.find_base_schema_by_id(schema_id)?;
+
+        assert!(loaded.is_none(), "BaseSchema should be absent after deletion");
+
+        Ok(())
+    }
+
+    #[test]
+    fn returns_base_schemas_when_restarted() -> TestResult {
+        let mut test_db = TestDb::new()?;
+        let repository = setup_repository(test_db.store());
+        let task = base_schema_with_property("task", "title")?;
+        let project = base_schema_with_property("project", "summary")?;
+        let task_id = *task.id();
+        let project_id = *project.id();
+
+        repository.save_many_base_schemas(&[task, project])?;
+        drop(repository);
+        let _db = test_db.reopen()?;
+        let repository_after_restart = setup_repository(test_db.store());
+        let loaded = repository_after_restart
+            .find_base_schemas_by_ids(&[project_id, task_id])?;
+
+        assert_eq!(
+            loaded.len(),
+            2,
+            "all batched BaseSchemas should survive restart"
+        );
+        let Some(first_schema) = loaded.first() else {
+            panic!("first loaded BaseSchema");
+        };
+        assert_eq!(
+            first_schema.id(),
+            &project_id,
+            "batch lookup should preserve requested order after restart"
+        );
+        let Some(second_schema) = loaded.get(1) else {
+            panic!("second loaded BaseSchema");
+        };
+        assert_eq!(
+            second_schema.id(),
+            &task_id,
+            "batch lookup should preserve requested order after restart"
+        );
+
+        Ok(())
+    }
+}
+
 // ========================================================================
 //                          Lookup Tests
 // ========================================================================
 
-mod lookup_tests {
+mod lookup {
     use super::*;
 
     /// Integration test for Schema lookup by name.
@@ -173,7 +291,7 @@ mod lookup_tests {
     /// # Observability
     /// Asserts found ID matches original schema ID.
     #[test]
-    fn schema_find_by_name() -> TestResult {
+    fn returns_schema_id_when_name_exists() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -224,7 +342,7 @@ mod lookup_tests {
     /// **Note**: This test previously exposed a critical bug (wrong use of
     /// `list_owned` vs `list_key_value_pairs`). Kept as regression test.
     #[test]
-    fn schema_list() -> TestResult {
+    fn returns_all_schemas_when_listed() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -265,7 +383,7 @@ mod lookup_tests {
 //                          Durability Tests (Phase 7.1)
 // ========================================================================
 
-mod durability_tests {
+mod persistence {
     use super::*;
 
     /// Integration test for `PropertyBank` durability across restarts.
@@ -289,7 +407,7 @@ mod durability_tests {
     /// # Observability
     /// Asserts property count=1 and property ID matches original.
     #[test]
-    fn property_bank_survives_restart() -> TestResult {
+    fn returns_property_bank_when_restarted() -> TestResult {
         let mut test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -311,17 +429,18 @@ mod durability_tests {
         let repository_after_restart = setup_repository(test_db.store());
 
         // Verify PropertyBank survived restart
-        let loaded = repository_after_restart
-            .get_property_bank()?
-            .expect("PropertyBank should exist after restart");
+        let Some(loaded) = repository_after_restart.get_property_bank()? else {
+            panic!("PropertyBank should exist after restart");
+        };
 
         // Verify property count
         let loaded_count = loaded.all().count();
         assert_eq!(loaded_count, 1, "Should have exactly 1 property");
 
         // Verify specific property by name
-        let loaded_prop =
-            loaded.get(&prop_name).expect("Property should exist by name");
+        let Some(loaded_prop) = loaded.get(&prop_name) else {
+            panic!("Property should exist by name");
+        };
         assert_eq!(loaded_prop.id(), prop_id, "Property ID should match");
 
         Ok(())
@@ -349,7 +468,7 @@ mod durability_tests {
     /// Asserts name matches, property count=1, and name lookup works after
     /// restart.
     #[test]
-    fn schema_survives_restart() -> TestResult {
+    fn returns_schema_when_restarted() -> TestResult {
         let mut test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -381,9 +500,11 @@ mod durability_tests {
         let repository_after_restart = setup_repository(test_db.store());
 
         // Verify schema survived restart
-        let loaded = repository_after_restart
-            .find_schema_by_id(schema_id)?
-            .expect("Schema should exist after restart");
+        let Some(loaded) =
+            repository_after_restart.find_schema_by_id(schema_id)?
+        else {
+            panic!("Schema should exist after restart");
+        };
         assert_eq!(
             loaded.name().as_str(),
             schema_name.as_str(),
@@ -413,7 +534,7 @@ mod durability_tests {
 //                          Batch Operations Tests (Phase 7.1)
 // ========================================================================
 
-mod batch_operations {
+mod transactions {
     use super::*;
 
     /// Integration test for batch save atomicity (happy path).
@@ -440,7 +561,7 @@ mod batch_operations {
     /// **Note**: This test verifies happy path only. Negative testing (rollback
     /// on error) would require database mocking or intentional corruption.
     #[test]
-    fn batch_save_is_atomic() -> TestResult {
+    fn persists_all_schemas_when_batch_saved() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -513,7 +634,7 @@ mod batch_operations {
 /// Regression tests for specific bugs that were fixed.
 ///
 /// These tests ensure previously fixed bugs don't resurface.
-mod regression_tests {
+mod regression {
     use super::*;
 
     /// Regression test for empty schemas batch save and list.
@@ -540,7 +661,7 @@ mod regression_tests {
     /// **Bug Context**: Previously failed due to wrong API (`list_owned` vs
     /// `list_key_value_pairs`). This edge case exposed the issue most clearly.
     #[test]
-    fn empty_schemas_batch_save_and_list() -> TestResult {
+    fn returns_empty_schemas_when_batch_saved() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -604,7 +725,7 @@ mod regression_tests {
     /// **Bug Context**: Tests different transaction pattern than batch saves,
     /// ensuring the fix works for incremental saves too.
     #[test]
-    fn separate_saves_then_list() -> TestResult {
+    fn returns_all_schemas_when_saved_separately() -> TestResult {
         let test_db = TestDb::new()?;
         let repository = setup_repository(test_db.store());
 
@@ -691,7 +812,7 @@ mod regression_tests {
     /// prevent potential `AccessGuard` lifetime issues, though the actual
     /// bug was wrong API usage.
     #[test]
-    fn sequential_deserialization_pattern() -> TestResult {
+    fn returns_deserialized_schemas_when_scanned_sequentially() -> TestResult {
         use lithos_core::db::ArchivedEntity;
 
         // Create 2 schemas
