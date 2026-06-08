@@ -87,32 +87,41 @@ impl HasContentHashMut for RawTemplateView { ... }
 
 Following hexagonal architecture, MiniJinja must not leak into domain models, repository traits, or service requests/responses.
 
-Foundation does not decide a broad `TemplateEngine` port yet. A renderer seam may be introduced only if `TemplateService` needs a test seam or adapter boundary that cannot be kept local.
+Foundation includes `TemplateEngine` as the primary rendering port. The port is Lithos-shaped and must not mirror MiniJinja's API.
 
 ### Domain layer (lithos-core/src/template/)
 
 ```rust
-/// Candidate application seam if the service needs it.
-/// No MiniJinja types exposed.
-pub trait TemplateRenderer: Send + Sync {
+/// Primary rendering port — no MiniJinja types exposed.
+pub trait TemplateEngine: Send + Sync {
+    /// Compile or load a template into the configured engine.
+    ///
+    /// This is engine-level syntax/source checking, not service-level validation.
+    fn compile(
+        &mut self,
+        template: &Template,
+    ) -> Result<(), TemplateEngineError>;
+
+    /// Render a compiled or loadable template with the supplied context.
     fn render(
         &self,
         template: &Template,
         context: &serde_json::Map<String, serde_json::Value>,
-    ) -> Result<String, TemplateRenderError>;
+    ) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>;
 }
 ```
 
 ### Adapter layer (where MiniJinja lives — e.g., lithos-cli or mini_jinja_adapter/)
 
 ```rust
-pub struct MiniJinjaRenderer {
+pub struct MiniJinjaEngine {
     env: Environment<'static>,
 }
 
-impl MiniJinjaRenderer {
+impl TemplateEngine for MiniJinjaEngine {
     fn configured() -> Self { ... }
-    fn add_owned_template(&mut self, name: &TemplateName, body: &TemplateBody) -> Result<(), TemplateRenderError> { ... }
+    fn compile(&mut self, template: &Template) -> Result<(), TemplateEngineError> { ... }
+    fn render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError> { ... }
 }
 ```
 
@@ -125,6 +134,7 @@ impl MiniJinjaRenderer {
 - Context is a flat `serde_json::Map<String, serde_json::Value>` assembled from minimal CLI `--var key=value` flags.
 - The flat context is a foundation proving tool, not the long-term UX. Declared inputs, namespaces, prompts, and richer context construction belong to later phases.
 - Adapter setup remains localized so a later template extension registry can replace or extend it cleanly.
+- Do not split `TemplateEngine` into smaller capability traits in foundation unless implementation pressure proves a concrete need. This avoids trait proliferation while preserving the primary adapter boundary.
 
 ## TemplateProcessor (Typestate)
 

@@ -7,13 +7,17 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Interaction ports**: `InputProvider` and `SelectionProvider` do not belong in `template`. They are planned for a new top-level `lithos-core/src/interact/` or `lithos-core/src/prompt/` context/module.
 - **Adapters (Implementations)**: Defined at the edges. Example: `InquireAdapter` in `lithos-cli` using the `inquire` crate.
 - **Core Purity**: `lithos-core` remains free of terminal-specific or UI-specific dependencies.
-- **Service-first design**: `TemplateService` use cases are defined before deciding optional ports such as `TemplateRenderer`, `TemplateExtension`, or `ExtensionRegistry`.
+- **Service-first design**: `TemplateService` use cases are defined before deciding optional ports such as `TemplateExtension` or `ExtensionRegistry`.
 - **MiniJinja isolation**: MiniJinja types remain localized to the rendering adapter/factory. Domain models, repositories, service requests, and service responses do not expose `minijinja` types.
 
 ## Foundation Rendering Boundary
+- **Primary engine port**: Foundation defines `TemplateEngine` as the primary rendering port implemented by `MiniJinjaEngine`.
+- **Lithos-shaped API**: `TemplateEngine` exposes `compile` and `render`; it does not mirror MiniJinja registration, filter, global, loader, or environment APIs.
+- **Compile meaning**: `TemplateEngine::compile` is engine-level syntax/source checking and owned template loading. Service-level validation remains a `TemplateService` responsibility.
 - **Built-ins only**: `template-foundation` uses MiniJinja built-ins only. No Lithos custom extension modules are included.
 - **Engine configuration**: Foundation configures MiniJinja for Lithos semantics: owned template sources, strict undefined behavior, and no Markdown auto-escape.
 - **No extension registry**: `TemplateExtension` and `ExtensionRegistry` are explicitly out of scope for foundation.
+- **No capability trait split yet**: Foundation keeps `TemplateEngine` as one trait instead of splitting `TemplateCompiler` and `TemplateRenderer`; smaller traits can be introduced later only with concrete pressure.
 - **Follow-up phase**: A dedicated `template-extension-registry` phase should immediately follow foundation to design the extension model for prompt, query, file, path, date, string, and numeric modules.
 
 ## TemplateService Foundation Scope
@@ -48,6 +52,6 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 ## Open Decisions
 - Exact location name for interaction ports: `lithos-core/src/interact/` vs `lithos-core/src/prompt/`.
 - Exact shape of `TemplateArtifact<State>` fields and transition methods.
-- Whether rendering remains an adapter-local collaborator or requires a formal `TemplateRenderer` port for service tests.
+- Exact `TemplateEngine` method signatures and error type names.
 - Whether template file reads and writes call existing FS context ports directly or through template-specific ports that delegate to FS adapters.
 - Exact minimal CLI command shape and argument naming.
