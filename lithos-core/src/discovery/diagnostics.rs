@@ -1,38 +1,30 @@
 //! Structured non-fatal diagnostics for the discovery process.
 //!
-//! These types are used to report recoverable issues (like path casing
-//! mismatches or malformed configuration ceiling paths) that do not stop
-//! discovery but should be surfaced to the user.
+//! While [`DiscoveryError`] handles fatal failures, this module provides types
+//! for reporting recoverable issues encountered during discovery. These
+//! diagnostics should be surfaced to the user to explain why certain paths or
+//! sources were skipped or ignored.
+//!
+//! # Diagnostics
+//!
+//! - [`VaultDiscoveryWarning`]: Reports issues during vault root resolution,
+//!   primarily focusing on malformed or inaccessible discovery ceiling
+//!   segments.
 
 use std::path::PathBuf;
 
-/// Typed warning channel for non-fatal discovery diagnostics.
-///
-/// Warnings are structured so CLI/reporting layers can render deterministic,
-/// actionable diagnostics without parsing free-form strings.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum DiscoveryWarning {
-    /// Path casing was corrected during discovery on case-insensitive
-    /// filesystems.
-    CaseCorrection {
-        /// The path as requested or derived from convention.
-        requested: PathBuf,
-        /// The actual correctly-cased path found on disk.
-        resolved: PathBuf,
-    },
-    /// Vault-discovery-specific warning payload.
-    RootResolution(VaultDiscoveryWarning),
-}
-
 /// Specific warnings emitted during vault root resolution and boundary parsing.
+///
+/// These warnings indicate issues that are not fatal but might result in
+/// unexpected discovery behavior (e.g., ignoring a malformed ceiling path).
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(crate) enum VaultDiscoveryWarning {
     /// A segment in the ceiling path list was empty (e.g. `::` or
     /// leading/trailing `:`).
     EmptyCeilingSegment,
-    /// A ceiling directory path was either missing or not a directory.
+    /// A ceiling directory path was either missing, not a directory, or
+    /// inaccessible.
     InvalidCeilingSegment {
         /// The raw segment that failed validation.
         segment: PathBuf,
@@ -44,45 +36,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn returns_case_correction_warning() {
-        let warning = DiscoveryWarning::CaseCorrection {
-            requested: PathBuf::from("/Vault/.Lithos/lithos.toml"),
-            resolved: PathBuf::from("/vault/.lithos/lithos.toml"),
-        };
-        assert!(matches!(warning, DiscoveryWarning::CaseCorrection { .. }));
+    fn empty_segment_is_constructible() {
+        let w = VaultDiscoveryWarning::EmptyCeilingSegment;
+        assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
     }
 
     #[test]
-    fn returns_root_resolution_warning() {
-        let warning = DiscoveryWarning::RootResolution(
-            VaultDiscoveryWarning::EmptyCeilingSegment,
-        );
+    fn invalid_segment_holds_path() {
+        let w = VaultDiscoveryWarning::InvalidCeilingSegment {
+            segment: PathBuf::from("/invalid"),
+        };
         assert!(matches!(
-            warning,
-            DiscoveryWarning::RootResolution(
-                VaultDiscoveryWarning::EmptyCeilingSegment
-            )
+            w,
+            VaultDiscoveryWarning::InvalidCeilingSegment { .. }
         ));
-    }
-
-    mod vault_discovery_warning {
-        use super::*;
-
-        #[test]
-        fn empty_segment_is_constructible() {
-            let w = VaultDiscoveryWarning::EmptyCeilingSegment;
-            assert_eq!(w, VaultDiscoveryWarning::EmptyCeilingSegment);
-        }
-
-        #[test]
-        fn invalid_segment_holds_path() {
-            let w = VaultDiscoveryWarning::InvalidCeilingSegment {
-                segment: PathBuf::from("/invalid"),
-            };
-            assert!(matches!(
-                w,
-                VaultDiscoveryWarning::InvalidCeilingSegment { .. }
-            ));
-        }
     }
 }

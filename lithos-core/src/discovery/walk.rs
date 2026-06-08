@@ -1,4 +1,22 @@
 //! Directory traversal and boundary enforcement for ascending discovery.
+//!
+//! This module implements the mechanics of walking up the directory tree to
+//! find configuration markers. It enforces "ceiling" boundaries to prevent
+//! discovery from escaping authorized project or system areas.
+//!
+//! # Main Components
+//!
+//! - [`BoundedAscent`]: An iterator that yields parent directories from a
+//!   starting path up to a set of boundary ceilings.
+//! - [`DiscoveryBoundaries`]: Manages the starting directory and the collection
+//!   of parsed and validated ceiling paths.
+//!
+//! # Ceiling Parsing
+//!
+//! Ceiling paths are typically provided as a platform-specific path list string
+//! (e.g., from an environment variable). The
+//! [`DiscoveryBoundaries::parse_ceilings`] method handles splitting,
+//! canonicalization, and validation of these paths.
 
 use std::{
     collections::HashSet,
@@ -9,10 +27,82 @@ use std::{
 
 use super::diagnostics::VaultDiscoveryWarning;
 
+/// Start and stop constraints for the discovery traversal.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+pub(crate) struct DiscoveryBoundaries {
+    pub(crate) start_dir: PathBuf,
+    pub(crate) ceilings: HashSet<PathBuf>,
+}
+
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+impl DiscoveryBoundaries {
+    /// Creates a new boundaries container.
+    pub(crate) fn new(start_dir: PathBuf, ceilings: HashSet<PathBuf>) -> Self {
+        Self {
+            start_dir,
+            ceilings,
+        }
+    }
+
+    /// The starting directory for the walk.
+    pub(crate) fn start_dir(&self) -> &Path {
+        &self.start_dir
+    }
+
+    /// The set of ceiling directories that bound the walk.
+    pub(crate) fn ceilings(&self) -> &HashSet<PathBuf> {
+        &self.ceilings
+    }
+
+    /// Parses a raw platform-specific path list into a set of validated ceiling
+    /// directories.
+    ///
+    /// Segments are split using the platform's path separator (e.g., `:` on
+    /// Unix, `;` on Windows).
+    ///
+    /// # Diagnostics
+    ///
+    /// Non-fatal issues like empty segments or non-existent directories are
+    /// reported via the `warnings` vector using [`VaultDiscoveryWarning`].
+    pub(crate) fn parse_ceilings(
+        ceiling_dirs_raw: Option<&OsStr>,
+        warnings: &mut Vec<VaultDiscoveryWarning>,
+    ) -> HashSet<PathBuf> {
+        ceiling_dirs_raw
+            .map(env::split_paths)
+            .into_iter()
+            .flatten()
+            .filter_map(|segment| {
+                let s = segment.to_string_lossy();
+                let trimmed = s.trim();
+
+                if trimmed.is_empty() {
+                    warnings.push(VaultDiscoveryWarning::EmptyCeilingSegment);
+                    return None;
+                }
+
+                let path = PathBuf::from(trimmed);
+                match path.canonicalize() {
+                    Ok(canonical) if canonical.is_dir() => Some(canonical),
+                    _ => {
+                        warnings.push(
+                            VaultDiscoveryWarning::InvalidCeilingSegment {
+                                segment: path,
+                            },
+                        );
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+}
+
 /// An iterator that ascends from a directory up to defined boundary ceilings.
 ///
 /// This walker is zero-allocation during traversal as it operates on purely
-/// lexical parents of the starting path.
+/// lexical parents of the starting path. It stops when a parent directory
+/// matches one of the provided `ceilings`.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct BoundedAscent<'a> {
     current: Option<&'a Path>,
@@ -53,72 +143,6 @@ impl<'a> Iterator for BoundedAscent<'a> {
         } else {
             Some(current)
         }
-    }
-}
-
-/// Start and stop constraints for the discovery traversal.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-pub(crate) struct DiscoveryBoundaries {
-    pub(crate) start_dir: PathBuf,
-    pub(crate) ceilings: HashSet<PathBuf>,
-}
-
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-impl DiscoveryBoundaries {
-    /// Creates a new boundaries container.
-    pub(crate) fn new(start_dir: PathBuf, ceilings: HashSet<PathBuf>) -> Self {
-        Self {
-            start_dir,
-            ceilings,
-        }
-    }
-
-    /// The starting directory for the walk.
-    pub(crate) fn start_dir(&self) -> &Path {
-        &self.start_dir
-    }
-
-    /// The set of ceiling directories that bound the walk.
-    pub(crate) fn ceilings(&self) -> &HashSet<PathBuf> {
-        &self.ceilings
-    }
-
-    /// Parses a raw platform-specific path list into a set of validated ceiling
-    /// directories.
-    ///
-    /// Non-fatal issues like empty segments or non-existent directories are
-    /// reported via the `warnings` vector.
-    pub(crate) fn parse_ceilings(
-        ceiling_dirs_raw: Option<&OsStr>,
-        warnings: &mut Vec<VaultDiscoveryWarning>,
-    ) -> HashSet<PathBuf> {
-        ceiling_dirs_raw
-            .map(env::split_paths)
-            .into_iter()
-            .flatten()
-            .filter_map(|segment| {
-                let s = segment.to_string_lossy();
-                let trimmed = s.trim();
-
-                if trimmed.is_empty() {
-                    warnings.push(VaultDiscoveryWarning::EmptyCeilingSegment);
-                    return None;
-                }
-
-                let path = PathBuf::from(trimmed);
-                match path.canonicalize() {
-                    Ok(canonical) if canonical.is_dir() => Some(canonical),
-                    _ => {
-                        warnings.push(
-                            VaultDiscoveryWarning::InvalidCeilingSegment {
-                                segment: path,
-                            },
-                        );
-                        None
-                    }
-                }
-            })
-            .collect()
     }
 }
 
@@ -209,7 +233,7 @@ mod tests {
         }
 
         #[test]
-        fn starts_from_ceiling_and_yields_it_if_allowed() {
+        fn yields_ceiling_when_start_is_ceiling_if_allowed() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
             let mut ceilings = HashSet::new();
@@ -220,7 +244,7 @@ mod tests {
         }
 
         #[test]
-        fn starts_from_ceiling_and_yields_none_if_not_allowed() {
+        fn yields_none_when_start_is_ceiling_if_not_allowed() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
             let mut ceilings = HashSet::new();
@@ -236,17 +260,26 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_start_dir_and_ceilings() {
+        fn returns_start_dir() {
+            let start = PathBuf::from("/tmp");
+            let ceilings = HashSet::new();
+            let boundaries = DiscoveryBoundaries::new(start.clone(), ceilings);
+
+            assert_eq!(boundaries.start_dir(), &start);
+        }
+
+        #[test]
+        fn returns_ceilings() {
             let start = PathBuf::from("/tmp");
             let mut ceilings = HashSet::new();
             ceilings.insert(PathBuf::from("/"));
-            let b = DiscoveryBoundaries::new(start.clone(), ceilings.clone());
-            assert_eq!(b.start_dir(), &start);
-            assert_eq!(b.ceilings(), &ceilings);
+            let boundaries = DiscoveryBoundaries::new(start, ceilings.clone());
+
+            assert_eq!(boundaries.ceilings(), &ceilings);
         }
     }
 
-    mod parse_ceilings_tests {
+    mod parse_ceilings {
         use super::*;
 
         fn path_list(paths: &[&Path]) -> OsString {
@@ -339,7 +372,7 @@ mod tests {
         }
 
         #[test]
-        fn preserves_valid_ceilings_when_other_segments_are_invalid() {
+        fn preserves_valid_ceilings_when_segments_include_invalid_entries() {
             let root = tempdir().expect("root");
             let valid = root.path().join("stop");
             std::fs::create_dir_all(&valid).expect("valid ceiling");

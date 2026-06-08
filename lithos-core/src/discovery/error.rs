@@ -1,30 +1,46 @@
 //! Error types for the discovery process.
+//!
+//! This module defines the [`DiscoveryError`] enum, which consolidates all
+//! fatal failure conditions that can occur during vault or global configuration
+//! discovery.
+//!
+//! # Error Classification
+//!
+//! - **Source Errors**: Missing or invalid paths provided via CLI flags or
+//!   environment variables.
+//! - **Filesystem Errors**: Issues canonicalizing paths, reading directories,
+//!   or permission failures.
+//! - **Current Directory Errors**: Failures when establishing the starting
+//!   point for ascending discovery.
 
 use std::{io, path::PathBuf};
 
 /// Fatal errors encountered during vault or global configuration discovery.
+///
+/// These errors typically indicate a configuration error (e.g., pointing to a
+/// missing directory) or a system-level issue (e.g., permission denied).
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum DiscoveryError {
-    /// A path provided via CLI flag does not exist on disk.
+    /// A path provided via `--vault` CLI flag does not exist on disk.
     #[error("Explicit vault path does not exist: {path}")]
     ExplicitPathMissing {
         /// The missing path.
         path: PathBuf,
     },
-    /// A path provided via CLI flag exists but is not a directory.
+    /// A path provided via `--vault` CLI flag exists but is not a directory.
     #[error("Explicit vault path is not a directory: {path}")]
     ExplicitPathNotDirectory {
         /// The non-directory path.
         path: PathBuf,
     },
-    /// A path provided via environment variable does not exist on disk.
+    /// A path provided via `LITHOS_VAULT` environment variable does not exist.
     #[error("Environment vault path does not exist: {path}")]
     EnvironmentPathMissing {
         /// The missing path.
         path: PathBuf,
     },
-    /// A path provided via environment variable exists but is not a directory.
+    /// A path provided via `LITHOS_VAULT` exists but is not a directory.
     #[error("Environment vault path is not a directory: {path}")]
     EnvironmentPathNotDirectory {
         /// The non-directory path.
@@ -42,6 +58,14 @@ pub(crate) enum DiscoveryError {
     #[error("Failed to canonicalize path {path}: {source}")]
     CanonicalizePath {
         /// The path that failed canonicalization.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: io::Error,
+    },
+    /// Failed to read a directory during discovery.
+    #[error("Failed to read directory {path}: {source}")]
+    ReadDirectory {
+        /// The directory that could not be read.
         path: PathBuf,
         /// The underlying I/O error.
         source: io::Error,
@@ -125,6 +149,20 @@ mod tests {
             };
             let msg = err.to_string();
             assert!(msg.starts_with("Failed to canonicalize path /some/path"));
+            assert!(msg.contains("denied"));
+        }
+
+        #[test]
+        fn returns_read_directory_error_message() {
+            let err = DiscoveryError::ReadDirectory {
+                path: PathBuf::from("/some/dir"),
+                source: io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "denied",
+                ),
+            };
+            let msg = err.to_string();
+            assert!(msg.starts_with("Failed to read directory /some/dir"));
             assert!(msg.contains("denied"));
         }
     }
