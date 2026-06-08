@@ -323,8 +323,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
         let (file, path_key, status) = parsed.into_parts();
         let new_proc = Self::transition_from_parts(file, path_key, New {
             id: schema_id,
-            raw: status.raw,
             content_hash: status.content_hash,
+            raw: status.raw,
         });
         let completed = new_proc.create(repository, bank)?;
         let base_schema = completed.into_base();
@@ -516,9 +516,9 @@ struct Present {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Suspect {
-    view: RawSchemaView,
     id: SchemaId,
     content_str: String,
+    view: RawSchemaView,
 }
 
 /// Proven: content hash differs; content is retained for parsing.
@@ -528,10 +528,10 @@ struct Suspect {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Stale {
+    id: SchemaId,
     content_str: String,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -542,10 +542,10 @@ struct Stale {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct StaleReferences {
+    id: SchemaId,
     content_str: String,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -717,8 +717,8 @@ struct Missing;
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct ParsedMissing {
-    raw: RawSchema,
     content_hash: Blake3Hash,
+    raw: RawSchema,
 }
 
 /// Proven: stale content (content-hash mismatch) parsed into a raw schema.
@@ -728,10 +728,10 @@ struct ParsedMissing {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct ParsedStale {
-    raw: RawSchema,
-    content_hash: Blake3Hash,
-    view: RawSchemaView,
     id: SchemaId,
+    content_hash: Blake3Hash,
+    raw: RawSchema,
+    view: RawSchemaView,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -742,10 +742,10 @@ struct ParsedStale {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct ParsedStaleReferences {
-    raw: RawSchema,
-    content_hash: Blake3Hash,
-    view: RawSchemaView,
     id: SchemaId,
+    content_hash: Blake3Hash,
+    raw: RawSchema,
+    view: RawSchemaView,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -793,8 +793,8 @@ impl BaseSchemaProcessor<Parsed, Missing> {
         let content_hash = Blake3Hash::compute(content.as_bytes());
 
         Ok(Self::transition_from_parts(file, path_key, ParsedMissing {
-            raw,
             content_hash,
+            raw,
         }))
     }
 }
@@ -1120,8 +1120,8 @@ struct Refresh;
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct StaleTimestamps {
-    view: RawSchemaView,
     id: SchemaId,
+    view: RawSchemaView,
 }
 
 /// Proven: content hash changed but semantic state did not.
@@ -1131,9 +1131,9 @@ struct StaleTimestamps {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct StaleContent {
-    view: RawSchemaView,
     id: SchemaId,
     content_hash: Blake3Hash,
+    view: RawSchemaView,
 }
 
 impl BaseSchemaProcessor<Refresh, StaleTimestamps> {
@@ -1220,8 +1220,8 @@ struct Construction;
 )]
 struct New {
     id: SchemaId,
-    raw: RawSchema,
     content_hash: Blake3Hash,
+    raw: RawSchema,
 }
 
 /// Proven: identity is fully synchronized; schema can be fetched without
@@ -1242,10 +1242,10 @@ struct Fresh {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Changed {
-    raw: RawSchema,
-    view: RawSchemaView,
     id: SchemaId,
     content_hash: Blake3Hash,
+    raw: RawSchema,
+    view: RawSchemaView,
     property_delta: PropertyDelta,
     excludes_delta: ExcludesDelta,
     extends_delta: ExtendsDelta,
