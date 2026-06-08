@@ -24,7 +24,7 @@ Discovery is split into focused modules:
 - **`error`**: [`DiscoveryError`] for fallible operations, [`VaultDiscoveryWarning`] for non-fatal diagnostics.
 - **`policy`**: [`DiscoveryPolicy`] defines source precedence; [`VaultSourceType`], [`GlobalSourceType`] enumerate origins.
 - **`selector`**: [`select_candidate`] picks the highest-precedence marker; [`promote_alternative`] prefers a specific format.
-- **`walk`**: [`AscendingWalker`] iterates parent directories with symlink cycle detection; [`DiscoveryBoundaries`] holds start/ceiling context.
+- **`walk`**: [`BoundedAscent`] iterates parent directories with ceiling boundary enforcement; [`DiscoveryBoundaries`] holds start/ceiling context.
 - **`probe`**: [`DiscoveryProbe`] trait for directory probing; [`VaultRootProbe`] detects root marker files using [`MarkerPattern`] patterns.
 - **`marker`**: [`FoundRootMarker`] is the typed handoff to Config.
 - **`diagnostics`**: [`DiscoveryWarning`] enum for structured non-fatal diagnostics.

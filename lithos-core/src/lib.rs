@@ -17,7 +17,7 @@ pub mod bounds;
 pub mod config;
 pub mod db;
 /// Vault discovery and boundary resolution.
-pub mod discovery;
+pub(crate) mod discovery;
 pub mod fs;
 pub mod graph;
 pub mod note;
