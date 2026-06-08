@@ -1,15 +1,17 @@
 # Template Foundation Component Model
 
-This file is a working design surface for the foundation grilling session. It intentionally comes before the typestate processor design.
+This file is a working design surface for the foundation grilling session. It captures accepted foundation component decisions before implementation planning.
 
 ## Design Order
 
 1. Domain models.
 2. DTOs and raw views.
 3. Repository traits.
-4. Registry and extension modules.
-5. Typestate processor.
-6. Storage adapter tables and redb/rkyv details.
+4. Typestate processor.
+5. Template service orchestration.
+6. Single-output artifact commit pipeline.
+7. Minimal CLI vertical slice.
+8. Storage adapter tables and redb/rkyv details.
 
 ## Domain Models To Design
 
@@ -42,7 +44,7 @@ pub struct Template {
 Decisions:
 - `Template` starts as the minimal validated aggregate needed to identify and render a template asset.
 - The foundation shape is intentionally extensible; richer user-facing metadata can be added in later phases once frontmatter/query semantics are designed.
-- Extension registry is not stored on the aggregate; registered into `TemplateEngine` at runtime.
+- Extension registry is not part of foundation and is not stored on the aggregate.
 - Frontmatter postponed to `template-query`.
 - Both `TemplateName` and path are derived from `FilePath` at construction time.
 - MiniJinja receives `(name, source)` pairs at the adapter boundary, never a filesystem path directly.
@@ -81,72 +83,137 @@ impl HasContentHash for RawTemplateView { ... }
 impl HasContentHashMut for RawTemplateView { ... }
 ```
 
-## Template Engine Port
+## Template Rendering Boundary
 
-Following hexagonal architecture, MiniJinja is wrapped behind a domain port (trait). The domain defines only what it needs; the adapter implements it with MiniJinja.
+Following hexagonal architecture, MiniJinja must not leak into domain models, repository traits, or service requests/responses.
+
+Foundation does not decide a broad `TemplateEngine` port yet. A renderer seam may be introduced only if `TemplateService` needs a test seam or adapter boundary that cannot be kept local.
+
+### Domain layer (lithos-core/src/template/)
 
 ```rust
-/// Domain port — no MiniJinja types exposed.
-pub trait TemplateEngine: Send + Sync {
-    /// Render a compiled template with context.
+/// Candidate application seam if the service needs it.
+/// No MiniJinja types exposed.
+pub trait TemplateRenderer: Send + Sync {
     fn render(
         &self,
-        name: &str,
-        ctx: &serde_json::Value,
-    ) -> Result<String, EngineError>;
-
-    /// Register a template source by name (cached at the adapter layer).
-    fn add_template(
-        &mut self,
-        name: &str,
-        source: &str,
-    ) -> Result<(), EngineError>;
-
-    /// Register a global variable or function.
-    fn add_global(
-        &mut self,
-        name: &str,
-        value: serde_json::Value,
-    ) -> Result<(), EngineError>;
-}
-
-/// Extension modules register globals/functions onto any TemplateEngine.
-pub trait TemplateExtension: Send + Sync {
-    fn register(&self, engine: &mut dyn TemplateEngine);
+        template: &Template,
+        context: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<String, TemplateRenderError>;
 }
 ```
 
-Adapter (infrastructure layer, NOT in the template domain module):
+### Adapter layer (where MiniJinja lives — e.g., lithos-cli or mini_jinja_adapter/)
 
 ```rust
-/// Adapter wrapping MiniJinja behind the domain TemplateEngine port.
-pub struct MiniJinjaAdapter {
+pub struct MiniJinjaRenderer {
     env: Environment<'static>,
 }
 
-impl TemplateEngine for MiniJinjaAdapter {
-    fn render(&self, name: &str, ctx: &serde_json::Value) -> Result<String, EngineError> {
-        let tmpl = self.env.get_template(name)?;
-        Ok(tmpl.render(ctx)?)
-    }
-
-    fn add_template(&mut self, name: &str, source: &str) -> Result<(), EngineError> {
-        self.env.add_template_owned(name.to_owned(), source.to_owned())?;
-        Ok(())
-    }
-
-    fn add_global(&mut self, name: &str, value: serde_json::Value) -> Result<(), EngineError> {
-        self.env.add_global(name, value);
-        Ok(())
-    }
+impl MiniJinjaRenderer {
+    fn configured() -> Self { ... }
+    fn add_owned_template(&mut self, name: &TemplateName, body: &TemplateBody) -> Result<(), TemplateRenderError> { ... }
 }
 ```
 
-Design decisions:
+### Design decisions
+
 - `Environment<'static>` + `add_template_owned()` avoids lifetime coupling between source strings and the environment.
-- `Context` is `serde_json::Value` because MiniJinja renders any `Serialize` type, and JSON Value is the simplest portable representation.
-- Extensions register via `add_global()` — filters/functions are registered as callable globals internally.
-- Stateful side effects (e.g., `file.write()`) use MiniJinja's `State::set_temp`/`get_temp` under the hood, exposed through `serde_json::Value` return values on registered globals.
+- Foundation rendering uses MiniJinja built-ins only.
+- Foundation configures MiniJinja for Lithos semantics: no Markdown auto-escape, strict undefined behavior, owned template sources.
+- Foundation has no `TemplateExtension`, no `ExtensionRegistry`, and no Lithos custom modules (`date.*`, `str.*`, `path.*`, `file.*`, `prompt.*`, query helpers).
+- Context is a flat `serde_json::Map<String, serde_json::Value>` assembled from minimal CLI `--var key=value` flags.
+- The flat context is a foundation proving tool, not the long-term UX. Declared inputs, namespaces, prompts, and richer context construction belong to later phases.
+- Adapter setup remains localized so a later template extension registry can replace or extend it cleanly.
+
+## TemplateProcessor (Typestate)
+
+A dual-typestate pipeline for template ingestion, mirroring `PropertyBankProcessor`.
+
+### Stages (in logical order)
+
+| Stage          | Purpose                                                    |
+|----------------|------------------------------------------------------------|
+| `Discovery`    | FS read produces `(content, metadata, path)`               |
+| `Comparison`   | Check against `RawTemplateView` (timestamps, content hash) |
+| `Parsed`       | Content validated into `RawTemplate` / `Template` body     |
+| `Refresh`      | Early-commit when only metadata changed                    |
+| `Construction` | Build and persist `Template` aggregate                     |
+| `Completed`    | Terminal — `Template` owned                                |
+
+### Flow
+
+```text
+Discovery ─┬─ no view
+           │     → Comparison (Missing)
+           │     → Parsed (Missing) → parse content → Construction (New) → Completed
+           └─ view found
+                 → Comparison (Present) → check timestamps
+                       ├─ match → Construction (Fresh) → fetch cached → Completed
+                       └─ mismatch → Comparison (Suspect, content loaded)
+                             └─ check content hash
+                                   ├─ match → Refresh (StaleTimestamps, sync metadata)
+                                   │        → Construction (Fresh) → fetch cached → Completed
+                                   └─ mismatch → Parsed (Stale)
+                                               → Construction (New) → Completed
+```
+
+Individual paths skip stages (fresh path goes Comparison → Construction, skipping Parsed and Refresh).
+
+## TemplateService (Foundation Scope)
+
+`TemplateService` is the application/use-case orchestrator for the limited foundation vertical slice. It is not a MiniJinja wrapper and should not decide extension registry shape.
+
+Foundation use cases:
+- List available templates.
+- Ingest/index templates from configured template sources.
+- Validate a named template without rendering.
+- Render a named template to Markdown in memory.
+- Build a single-output `TemplateArtifact` for a vault-safe target.
+- Commit that artifact with basic safe filesystem behavior.
+
+Out of scope for foundation:
+- Lithos custom extensions and extension packs.
+- Prompt interaction and declared template inputs.
+- Query/runtime objects such as `li.*`.
+- Multi-file template packs.
+- Overwrite, skip, rename, append, or merge-frontmatter conflict policies.
+- Arbitrary hooks or script execution.
+
+## TemplateArtifact (Write Typestate)
+
+Foundation uses singular `TemplateArtifact<State>` for the write pipeline. The terminal state remains `TemplateArtifact<Committed>` rather than a separate committed type.
+
+```rust
+pub struct TemplateArtifact<State> {
+    template: TemplateName,
+    content: String,
+    target: Option<PathKey>,
+    _state: PhantomData<State>,
+}
+
+pub struct Rendered;
+pub struct TargetResolved;
+pub struct ReadyToCommit;
+pub struct Committed;
+```
+
+Accepted state meaning:
+- `Rendered`: MiniJinja has produced content, but the artifact is not writeable.
+- `TargetResolved`: the requested output target has been normalized into a safe vault-relative `PathKey`.
+- `ReadyToCommit`: the target passed conflict checks and can be written.
+- `Committed`: the filesystem write succeeded.
+
+Foundation commit behavior:
+- Create one file under a vault-safe target path.
+- Reject absolute paths and traversal.
+- Fail if the destination already exists.
+- No overwrite, skip, rename, append, merge, or multi-file operations.
+- Use the existing FS context writer/path validation rather than raw `std::fs`.
+
+Planned multi-file evolution:
+- Keep `TemplateArtifact<State>` for one output item.
+- Add `TemplateArtifactSet<State>` when template packs introduce multi-file generation.
 
 ## Repository Traits
 
@@ -193,6 +260,23 @@ Method rationale:
 - `save_template` takes `(path, template)` to atomically write template + path index.
 - FS materialization is not a repository concern; the processor reads via FS adapters and persists via repository.
 
+## Minimal CLI
+
+Foundation includes a minimal CLI vertical slice so the template module has usable output behavior.
+
+Proposed command shape:
+
+```text
+lithos template render <template-name> --output <vault-relative-path> --var key=value
+```
+
+CLI behavior:
+- Load config/vault context.
+- Ensure templates are indexed or load the named template through `TemplateService`.
+- Convert repeated `--var key=value` flags into a flat render context.
+- Render, resolve target, conflict-check, and commit through the foundation service.
+- Print the created path or a structured error.
+
 ## Interaction Ports
 
 Interaction ports are not template repository traits.
@@ -211,13 +295,9 @@ Adapter decision:
 
 The full planned extension registry is captured in `planned-extensions.md`.
 
-Foundation includes:
-- `file.*`
-- `path.*`
-- `date.*`
-- `str.*`
-- `num.*`
+Foundation includes no Lithos custom extensions. MiniJinja built-ins are allowed.
 
 Later phases include:
+- A dedicated `template-extension-registry` phase for extension registry design.
 - `prompt.*` in `template-user-interaction`.
 - Query and frontmatter handling in `template-query`.
