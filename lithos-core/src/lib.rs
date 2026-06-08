@@ -13,7 +13,6 @@ extern crate serde;
 
 // Module declarations
 pub mod app;
-pub mod application;
 pub mod bounds;
 pub mod config;
 pub mod db;

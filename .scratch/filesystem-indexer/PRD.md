@@ -419,6 +419,8 @@ For this PRD, restartability is optional and deferred unless implementation sequ
 
 ### 15. Migration Notes
 
+**Accepted decision**: `lithos-core::application` was a shell module with no exports or live imports. It was deleted before Indexer implementation to avoid carrying dead code into the scaffolding phase. Confirmed clean deletion: all 1588 tests pass after removal.
+
 **Accepted decision**: `lithos-core::vault` is kept in place until the Indexer storage adapter passes full integration tests. Once the adapter is proven stable, Vault is deleted in a dedicated follow-on PR. This keeps Indexer issues focused and makes the deletion reviewable in isolation.
 
 The existing Vault processor contains useful prior art:
@@ -476,6 +478,10 @@ Prior art:
 - Full filesystem watcher implementation.
 - Parallel execution strategy for downstream processors.
 - Rewriting CLI architecture beyond adding Indexer command intent and orchestration.
+
+## Deferred Actions
+
+**Accepted decision**: The `Indexer` context is not added to `CONTEXT-MAP.md` as a PRD-time artifact. A `(planned)` entry should be added to `CONTEXT-MAP.md` alongside a new `lithos-core/src/indexer/CONTEXT.md` stub as part of the first implementation issue (Indexer scaffolding). This ensures the context map entry is tied to real module structure and the glossary exists when the module is first opened.
 
 ## Further Notes
 
