@@ -369,7 +369,7 @@ mod lookup {
             vec![],
             PropertyMap::from(note_props),
         );
-        repository.save_many_schemas(&[schema1.clone(), schema2.clone()])?;
+        repository.save_many_schemas(&[schema1, schema2])?;
 
         // List all
         let all = repository.list_schemas()?;
@@ -599,11 +599,7 @@ mod transactions {
         let id_c = *schema_c.id();
 
         // Save batch
-        repository.save_many_schemas(&[
-            schema_a.clone(),
-            schema_b.clone(),
-            schema_c.clone(),
-        ])?;
+        repository.save_many_schemas(&[schema_a, schema_b, schema_c])?;
 
         // Verify ALL schemas were saved (atomic commit)
         let loaded_a = repository.find_schema_by_id(id_a)?;
@@ -685,7 +681,7 @@ mod regression {
         let id2 = *schema2.id();
 
         // Save both in batch
-        repository.save_many_schemas(&[schema1.clone(), schema2.clone()])?;
+        repository.save_many_schemas(&[schema1, schema2])?;
 
         // List all schemas (this is where the bug manifested)
         let all_schemas = repository.list_schemas()?;

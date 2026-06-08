@@ -268,7 +268,7 @@ mod resolution {
         else {
             panic!("Schema 1 should be stale, got {res1_v2:?}");
         };
-        assert_eq!(sid1, id1);
+        assert_eq!(sid1, id1, "Schema 1 ID should match original ID");
 
         let s2_path_key_v2 = s2_file.path().as_key(&root)?;
         let Some(s2_view_v2) =
@@ -293,7 +293,7 @@ mod resolution {
         else {
             panic!("Schema 2 should be stale, got {res2_v2:?}");
         };
-        assert_eq!(sid2, id2);
+        assert_eq!(sid2, id2, "Schema 2 ID should match original ID");
 
         Ok(())
     }
@@ -449,7 +449,7 @@ mod resolution {
         let new_file =
             make_fs_file(vault_dir.path().join("schemas/new_schema.json"))?;
 
-        let outcomes = vec![
+        let outcomes = [
             BaseSchemaProcessor::from_discovery(new_file, &root)?.run(
                 None,
                 &source,
