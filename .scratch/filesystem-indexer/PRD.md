@@ -17,7 +17,7 @@ Today, filesystem scanning and freshness behavior are still spread across Vault,
 
 ## Solution
 
-Introduce a new Filesystem Indexer bounded context that runs after Config is resolved. The Indexer consumes Config-owned, execution-facing specs and owns filesystem node indexing for the configured Vault Root. It scans through FS-owned filesystem ports, compares scanned nodes against persisted index state, classifies node freshness, persists deltas, prunes deleted nodes, and returns a deterministic indexing result for downstream context processors.
+Introduce a new Filesystem Indexer bounded context that runs after Config is resolved. The Indexer consumes Config-owned, execution-facing specs and owns filesystem node indexing for the configured Vault Root. It scans via an Indexer-owned scanner port, compares scanned nodes against persisted index state, classifies node freshness, persists deltas, prunes deleted nodes, and returns a deterministic indexing result for downstream context processors.
 
 The Indexer replaces the filesystem-node portion of the old centralized discovery processor design. It does not replace root/config path discovery. It does not parse Config files. It does not parse Schema, Note, or Template content. It provides canonical filesystem node state and routing-friendly output so downstream contexts can focus on context-owned parsing, validation, hashing, projection, and persistence.
 
@@ -39,7 +39,7 @@ The implementation follows hexagonal architecture:
 7. As a persistence maintainer, I want one canonical filesystem node identity model, so that file-backed contexts do not invent separate file identity systems.
 8. As a query maintainer, I want filesystem node state indexed by path, parent, kind, and file format, so that downstream queries can resolve nodes efficiently.
 9. As a cross-platform user, I want persisted paths to use `PathKey`, so that index storage remains portable across operating systems.
-10. As a filesystem safety maintainer, I want disk access to go through the FS context, so that Vault Root validation and path rules remain centralized.
+10. As a filesystem safety maintainer, I want the Indexer to enforce Vault Root boundaries on all scan paths, so that path rules and root scoping remain consistent.
 11. As a performance-focused engineer, I want freshness classification based on filesystem metadata before expensive context work runs, so that unchanged files can be skipped.
 12. As a reliability-focused engineer, I want deletion detection and pruning owned by the Indexer, so that stale node records are removed deterministically.
 13. As a test author, I want Indexer ports to be mockable, so that scan, compare, persist, and prune behavior can be tested without real disk or redb dependencies.
@@ -148,7 +148,7 @@ Rationale:
 
 The `IdPort` / clock-port pattern remains a valid fallback if generation behavior ever needs to be injected (e.g., for deterministic bulk-import scenarios), but is not required for the initial design.
 
-#### 5b. `FsNodeId` vs. `FileId` / `DirId` Trade-off Analysis
+### 5b. `FsNodeId` vs. `FileId` / `DirId` Trade-off Analysis
 
 The PRD uses a single canonical `FsNodeId` with file/dir-specific node structs:
 
@@ -224,7 +224,7 @@ The Indexer must not store context-owned content hashes in `FileNode`. Schema, N
 
 **Error handling boundary (accepted decision)**: Per-node I/O failures (permission denied, unreadable file, symlink loop) are non-fatal. They are accumulated in `IndexResult` as per-node failure records and do not abort the run. Only two categories cause a hard abort: configuration errors (invalid Vault Root, missing Config specs) and repository initialization failures (unable to open or create redb tables). A partially-indexed result with failures reported is preferred over aborting because one unreadable node in an irrelevant subdirectory should not prevent the rest of the vault from being indexed.
 
-`IndexedFile` and `IndexedDir` were placeholder names and should not be used as persistent domain entities. The PRD uses these clearer output terms instead:
+The canonical output terms for the indexing result contract are:
 
 - `IndexResult`
 - `FileIndexEntry`
@@ -247,7 +247,7 @@ The Indexer must not store context-owned content hashes in `FileNode`. Schema, N
 
 - `New`: node did not exist in the persisted index.
 - `Fresh`: node existed and filesystem metadata matched persisted metadata.
-- `Stale`: node existed and filesystem metadata changed, or the caller explicitly bypassed freshness checks.
+- `Stale`: node existed and filesystem metadata changed.
 
 Deleted nodes should be separate from live entries because no current filesystem path/metadata exists for them. Use deleted-node records rather than fake file/dir entries. A deletion record should carry the `FsNodeId`, previous `PathKey`, and previous kind when available.
 
@@ -279,7 +279,7 @@ pub struct DirIndexEntry {
 
 The initial freshness model is filesystem metadata based.
 
-For files, a node is `Fresh` only when stored metadata matches scanned metadata. The comparison should include size and available timestamps. A node is `Stale` when size or timestamp differs, or when the indexing scope bypasses freshness checks.
+For files, a node is `Fresh` only when stored metadata matches scanned metadata. The comparison should include size and available timestamps. A node is `Stale` when size or timestamp differs.
 
 For directories, a node is `Fresh` only when stored directory metadata matches scanned directory metadata. Directory size is not portable and must not be used.
 
@@ -401,7 +401,7 @@ CLI execution flow for `lithos index`:
 3. Call the app composition root.
 4. App runs Discovery to resolve Vault Root and config paths.
 5. App runs Config to load, validate, merge, hash, and produce narrowed specs.
-6. App maps command intent plus Config specs into `IndexScope`.
+6. App maps command intent plus Config specs into `IndexScope` and `IndexOptions`.
 7. App constructs Indexer adapters.
 8. App runs the Indexer service.
 9. App owns routing orchestration for downstream context execution.
@@ -425,7 +425,7 @@ For this PRD, restartability is optional and deferred unless implementation sequ
 
 The existing Vault processor contains useful prior art:
 
-- scanning directories and files through `DirScanner`
+- scanning directories and files through `DirScanner` (prior art only — the Indexer uses its own `ScannerPort`)
 - converting filesystem paths to `PathKey`
 - constructing file and directory records
 - comparing metadata
@@ -455,7 +455,7 @@ Test areas:
 10. Repository contract tests prove primary node records and path/parent/format indexes stay consistent after save, batch save, delete, and prune operations.
 11. Dry-run tests prove classification can run without persisting changes.
 12. Scope tests prove full, context, and targeted scans use the expected scan boundaries.
-13. CLI mapping tests prove command flags map to the expected `IndexScope` without duplicating domain rules.
+13. CLI mapping tests prove command flags map to the expected `IndexScope` and `IndexOptions` without duplicating domain rules.
 14. CLI diagnostic tests prove human and JSON output report summary counts and actionable errors.
 
 Prior art:
@@ -483,9 +483,11 @@ Prior art:
 
 **Accepted decision**: The `Indexer` context is not added to `CONTEXT-MAP.md` as a PRD-time artifact. A `(planned)` entry should be added to `CONTEXT-MAP.md` alongside a new `lithos-core/src/indexer/CONTEXT.md` stub as part of the first implementation issue (Indexer scaffolding). This ensures the context map entry is tied to real module structure and the glossary exists when the module is first opened.
 
+The first implementation issue should also update the `CONTEXT-MAP.md` Global Invariants entry for "Directory scanning via `DirScanner`". Once the Indexer module exists, that invariant is no longer accurate — scanning is performed via the Indexer's `ScannerPort`, not the FS context's `DirScanner`.
+
 ## Further Notes
 
 - This PRD should be implemented after root/config discovery and Config pipeline contracts can produce the narrowed specs the Indexer consumes.
-- This PRD should respect ADR 016, ADR 018, ADR 019, and ADR 020.
+- This PRD should respect ADR 016, ADR 018, ADR 019, ADR 020, ADR 021, and ADR 022.
 - The Indexer context may require a new `CONTEXT.md` glossary when implementation begins. Candidate terms include Filesystem Node, File Node, Directory Node, Index Scope, Index Status, Indexed Node, and Deleted Node.
 - If the choice of `FsNodeId` proves too weak for file-only or directory-only compile-time safety, implementation can add thin `FileNodeId` and `DirNodeId` wrappers over `FsNodeId` without changing the underlying canonical identity space.
