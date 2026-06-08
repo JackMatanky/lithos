@@ -27,11 +27,11 @@ This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos
 
 ## Acceptance criteria
 
-- [ ] Integration tests in `base_processor.rs` cover cold start, mixed incremental run, and property-bank-driven stale references.
-- [ ] Round-trip persistence tests for `BaseSchema` (save/load/delete) added to `lithos-core/tests/schema_storage.rs`.
-- [ ] Tests verify metadata-only normalization to `Fresh` and deletion cleanup semantics.
-- [ ] Tests avoid private implementation coupling and assert via public behavior.
-- [ ] The phase-1 acceptance checklist in `.scratch/base-schema/PRD.md` is verifiably satisfiable by test outcomes.
+- [x] Integration tests in `base_processor.rs` cover cold start, mixed incremental run, and property-bank-driven stale references.
+- [x] Round-trip persistence tests for `BaseSchema` (save/load/delete) added to `lithos-core/tests/schema_storage.rs`.
+- [x] Tests verify metadata-only normalization to `Fresh` and deletion cleanup semantics.
+- [x] Tests avoid private implementation coupling and assert via public behavior.
+- [x] The phase-1 acceptance checklist in `.scratch/base-schema/PRD.md` is verifiably satisfiable by test outcomes.
 
 ## Blocked by
 
@@ -79,14 +79,14 @@ This slice renames `lithos-core/tests/base_processor_integration.rs` → `lithos
 | No legacy flow changes | `schema_loader` (existing regression) | All existing loader tests pass unchanged |
 
 **Verification checklist:**
-- [ ] `base_processor_integration.rs` renamed → `base_processor.rs`; existing tests still pass
-- [ ] Mixed lifecycle integration test (cold start + incremental run with fresh/stale/new)
-- [ ] `BaseSchema` persistence round-trip in `schema_storage.rs`
-- [ ] Deletion tests deferred (blocked on 06); not required for this issue to close
-- [ ] No snapshot brittleness — behavioral assertions only
-- [ ] Order-agnostic assertions for batch outcomes
-- [ ] `cargo clippy --all-targets -- -D warnings` — 0 warnings
-- [ ] `cargo fmt --check` — clean
+- [x] `base_processor_integration.rs` renamed → `base_processor.rs`; existing tests still pass
+- [x] Mixed lifecycle integration test (cold start + incremental run with fresh/stale/new)
+- [x] `BaseSchema` persistence round-trip in `schema_storage.rs`
+- [x] Deletion tests deferred (blocked on 06); not required for this issue to close
+- [x] No snapshot brittleness — behavioral assertions only
+- [x] Order-agnostic assertions for batch outcomes
+- [x] `cargo clippy --all-targets -- -D warnings` — 0 warnings
+- [x] `cargo fmt --check` — clean
 
 ## Agent Brief Update - 2026-06-08
 
@@ -113,14 +113,14 @@ Issue 07 should close the remaining phase-1 verification gaps without changing p
 - Integration test utilities (`TestDb`, `FileReader`, `PropertyBuilder`, `RepositoryExt`) — preferred public-facing fixtures for storage and file-backed integration tests.
 
 **Acceptance criteria:**
-- [ ] `schema_storage.rs` includes `BaseSchema` save/load round-trip coverage through the repository traits.
-- [ ] `schema_storage.rs` includes `BaseSchema` delete coverage proving `find_base_schema_by_id()` returns `None` after deletion.
-- [ ] `schema_storage.rs` includes `BaseSchema` storage coverage that exercises an integration-only behavior such as redb restart/durability, batch persistence, or cross-operation save/delete/read semantics; avoid merely duplicating in-memory/unit storage tests with heavier setup.
-- [ ] `base_processor.rs` integration coverage verifies a mixed incremental scenario that includes fresh, stale, and new schema outcomes in one logical run, using order-agnostic assertions.
-- [ ] Existing stale-reference integration coverage remains behavioral and verifies targeted re-expansion effects through `BaseSchemaResolution::Stale` payloads and preserved property IDs.
-- [ ] Existing caller-level deletion cleanup coverage remains aligned with current architecture: deletion is caller/orchestrator behavior, not private processor absence detection.
-- [ ] Phase-1 PRD acceptance items are mapped to concrete tests or explicitly marked out of scope for later phases.
-- [ ] `mise run test:unit`, `mise run test:integration`, `mise run test`, and `mise run lint` pass before completion.
+- [x] `schema_storage.rs` includes `BaseSchema` save/load round-trip coverage through the repository traits.
+- [x] `schema_storage.rs` includes `BaseSchema` delete coverage proving `find_base_schema_by_id()` returns `None` after deletion.
+- [x] `schema_storage.rs` includes `BaseSchema` storage coverage that exercises an integration-only behavior such as redb restart/durability, batch persistence, or cross-operation save/delete/read semantics; avoid merely duplicating in-memory/unit storage tests with heavier setup.
+- [x] `base_processor.rs` integration coverage verifies a mixed incremental scenario that includes fresh, stale, and new schema outcomes in one logical run, using order-agnostic assertions.
+- [x] Existing stale-reference integration coverage remains behavioral and verifies targeted re-expansion effects through `BaseSchemaResolution::Stale` payloads and preserved property IDs.
+- [x] Existing caller-level deletion cleanup coverage remains aligned with current architecture: deletion is caller/orchestrator behavior, not private processor absence detection.
+- [x] Phase-1 PRD acceptance items are mapped to concrete tests or explicitly marked out of scope for later phases.
+- [x] `mise run test:unit`, `mise run test:integration`, `mise run test`, and `mise run lint` pass before completion.
 
 **Out of scope:**
 - Adding or resurrecting a `BaseSchemaProcessor::handle_deletions()` API.
@@ -137,3 +137,11 @@ Issue 07 should close the remaining phase-1 verification gaps without changing p
 5. Add one integration-only storage assertion, preferably restart/durability if it provides distinct value over existing unit tests.
 6. Add or refine `base_processor.rs` coverage for a mixed incremental run with fresh, stale, and new outcomes; keep assertions order-agnostic.
 7. Run targeted tests after each vertical slice, then run `mise run test:unit`, `mise run test:integration`, `mise run lint`, and `mise run test` before completion.
+
+## Implementation Notes - 2026-06-08
+- Implemented `BaseSchema` round-trip persistence tests in `lithos-core/tests/schema_storage.rs`.
+- Added test coverage for `delete_base_schema()` proving deletion works.
+- Added restart/durability integration coverage for `BaseSchema` batched persistence.
+- Added `mixed_incremental_run_returns_fresh_stale_and_new_outcomes_order_agnostically` in `lithos-core/tests/base_processor.rs` to verify a complex run involving fresh, stale, and new schemas simultaneously.
+- Addressed all code quality issues (e.g., using Structure A in test files, verb-first naming, avoiding `.expect()` in act/assert phases) in alignment with `rust-best-practices` and project standards.
+- Tests passed clean (unit, integration, e2e) and clippy warnings were fixed (`clippy::panic` allowed for tests where appropriate).
