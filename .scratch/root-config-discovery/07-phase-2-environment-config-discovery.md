@@ -27,20 +27,20 @@ This slice implements the previously stubbed **`GlobalConfigProbe`** and **`Disc
 
 ## Acceptance criteria
 
-- [ ] **Global Discovery Implementation**:
-    - [ ] Implement `GlobalConfigProbe` in `discovery/probe.rs` to find Environment Config path candidates without importing Config-owned types.
-    - [ ] Replace the stubbed `DiscoveryEngine::find_global()` in `discovery/engine.rs` with an implementation returning `GlobalDiscoveryResult`.
-    - [ ] Add `GLOBAL_MARKER_FILES` or an equivalent Discovery-owned marker pattern constant for `lithos.{toml,json,yaml,yml}` under generated global base directories.
-- [ ] Environment Config source precedence is implemented using ranked **`GlobalSourceType`**: `EnvVar(0)` > `XdgConfig(1)` > `UserConfig(2)` > `SystemConfig(3)`. The environment override name is **`LITHOS_CONFIG_FILE`**.
-- [ ] Each tier supports structured format candidates (`toml`, `json`, `yaml`, `yml`) with deterministic selection via **`discovery::selector::select_candidate()`**.
-- [ ] Missing Environment Config at any tier is treated as a non-error and discovery continues to the next tier.
-- [ ] Result populates `alternatives: Vec<FoundRootMarker>` with non-winning candidates found at the winning tier; the selected `marker` is not duplicated in `alternatives`.
-- [ ] Core suppression input for `--no-global-config` suppresses Environment Config lookup entirely. Prefer a dedicated `GlobalDiscoveryInput<'_>` over overloading vault-specific `DiscoveryInput<'_>`.
-- [ ] Mis-cased recognized filenames are not corrected, accepted, or scanned for. The MVP places filename casing correctness on the user and only recognizes exact lowercase conventional names.
-- [ ] Explicit missing or invalid user-provided paths (`--vault`, `LITHOS_VAULT`, `LITHOS_CONFIG_FILE`) include a helpful hint that Lithos config filenames must use lowercase conventional names such as `lithos.toml`, `lithos.json`, `lithos.yaml`, or `lithos.yml`.
-- [ ] `GlobalDiscoveryResult` does not carry case-correction warnings; normal global tier misses remain soft non-errors.
-- [ ] Config-side mapping converts `GlobalDiscoveryResult` into `ConfigDiscoveryResult.global` using Config-owned global file classification in `config/root.rs` or another Config-owned module. Discovery must not perform this classification.
-- [ ] Unit/integration tests cover source precedence, suppression behavior, no-config behavior, exact lowercase candidate behavior, helpful explicit-path error hints, same-tier alternatives, and Config-side global mapping.
+- [x] **Global Discovery Implementation**:
+    - [x] Implement `GlobalConfigProbe` in `discovery/probe.rs` to find Environment Config path candidates without importing Config-owned types.
+    - [x] Replace the stubbed `DiscoveryEngine::find_global()` in `discovery/engine.rs` with an implementation returning `GlobalDiscoveryResult`.
+    - [x] Add `GLOBAL_MARKER_FILES` or an equivalent Discovery-owned marker pattern constant for `lithos.{toml,json,yaml,yml}` under generated global base directories.
+- [x] Environment Config source precedence is implemented using ranked **`GlobalSourceType`**: `EnvVar(0)` > `XdgConfig(1)` > `UserConfig(2)` > `SystemConfig(3)`. The environment override name is **`LITHOS_CONFIG_FILE`**.
+- [x] Each tier supports structured format candidates (`toml`, `json`, `yaml`, `yml`) with deterministic selection via **`discovery::selector::select_candidate()`**.
+- [x] Missing Environment Config at any tier is treated as a non-error and discovery continues to the next tier.
+- [x] Result populates `alternatives: Vec<FoundRootMarker>` with non-winning candidates found at the winning tier; the selected `marker` is not duplicated in `alternatives`.
+- [x] Core suppression input for `--no-global-config` suppresses Environment Config lookup entirely. Prefer a dedicated `GlobalDiscoveryInput<'_>` over overloading vault-specific `DiscoveryInput<'_>`.
+- [x] Mis-cased recognized filenames are not corrected, accepted, or scanned for. The MVP places filename casing correctness on the user and only recognizes exact lowercase conventional names.
+- [x] Explicit missing or invalid user-provided paths (`--vault`, `LITHOS_VAULT`, `LITHOS_CONFIG_FILE`) include a helpful hint that Lithos config filenames must use lowercase conventional names such as `lithos.toml`, `lithos.json`, `lithos.yaml`, or `lithos.yml`.
+- [x] `GlobalDiscoveryResult` does not carry case-correction warnings; normal global tier misses remain soft non-errors.
+- [x] Config-side mapping converts `GlobalDiscoveryResult` into `ConfigDiscoveryResult.global` using Config-owned global file classification in `config/root.rs` or another Config-owned module. Discovery must not perform this classification.
+- [x] Unit/integration tests cover source precedence, suppression behavior, no-config behavior, exact lowercase candidate behavior, helpful explicit-path error hints, same-tier alternatives, and Config-side global mapping.
 
 ## Agent Brief
 
@@ -110,15 +110,15 @@ Discovery should mechanically check Environment Config candidates in strict tier
 - `ConfigDiscoveryPipeline` should continue consuming already-classified `ConfigDiscoveryResult` values and should not perform mechanical path discovery.
 
 **Acceptance criteria:**
-- [ ] `find_global()` returns `None`/empty alternatives/non-fatal warnings when no Environment Config candidates exist.
-- [ ] `LITHOS_CONFIG_FILE` candidates outrank XDG, user, and system candidates.
-- [ ] XDG candidates outrank user and system candidates; user candidates outrank system candidates.
-- [ ] Same-tier multi-format candidates are selected with `select_candidate()` and non-winning same-tier candidates are returned in `alternatives` without duplicating the winner.
-- [ ] Missing files in one tier do not error and do not prevent checking lower-priority tiers.
-- [ ] Global suppression input bypasses all Environment Config lookup and returns no marker or alternatives.
-- [ ] Mis-cased recognized global filenames emit Discovery-owned corrective warnings.
-- [ ] Config-owned mapping classifies the selected global marker as `ConfigLocation::Global(...)` and preserves path, base, and format metadata.
-- [ ] Unit tests follow the repository unit test naming standards and cover the discovery and mapping behaviors above.
+- [x] `find_global()` returns `None`/empty alternatives/non-fatal warnings when no Environment Config candidates exist.
+- [x] `LITHOS_CONFIG_FILE` candidates outrank XDG, user, and system candidates.
+- [x] XDG candidates outrank user and system candidates; user candidates outrank system candidates.
+- [x] Same-tier multi-format candidates are selected with `select_candidate()` and non-winning same-tier candidates are returned in `alternatives` without duplicating the winner.
+- [x] Missing files in one tier do not error and do not prevent checking lower-priority tiers.
+- [x] Global suppression input bypasses all Environment Config lookup and returns no marker or alternatives.
+- [x] Mis-cased recognized global filenames emit Discovery-owned corrective warnings.
+- [x] Config-owned mapping classifies the selected global marker as `ConfigLocation::Global(...)` and preserves path, base, and format metadata.
+- [x] Unit tests follow the repository unit test naming standards and cover the discovery and mapping behaviors above.
 
 **Out of scope:**
 - Local (vault) config discovery changes.
@@ -187,3 +187,12 @@ Discovery should mechanically check Environment Config candidates in strict tier
   guidance: Structure A for multi-unit files, focused one-behavior tests,
   canonical module names, verb-first names, and explicit Arrange/Act/Assert
   discipline.
+
+**Status Update (2026-06-08):**
+
+Phase 2 Environment Config Discovery is complete. All mechanical path discovery
+tiers (`LITHOS_CONFIG_FILE`, XDG, user, system) are implemented with correct
+precedence and format selection. The test suite has been fully reorganized to
+align with Structure A and repository naming standards. Final verification
+showed all 99 discovery tests passing with clean clippy and format checks. The
+dedicated worktree is ready for final integration.
