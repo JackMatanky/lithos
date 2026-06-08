@@ -261,18 +261,24 @@ Content hashing remains out of Indexer scope. The Indexer is allowed to prevent 
 
 The Indexer should accept an explicit `IndexScope` separate from Config. Config describes stable runtime boundaries. CLI and orchestration provide run-specific intent.
 
-Initial scopes:
+**Accepted decision**: `IndexScope` is a two-variant enum:
 
-- Full Vault scan with normal freshness checking.
-- Full Vault scan with freshness bypass.
-- Context scan for a configured context boundary.
-- Targeted scan for one file or subtree.
+```rust
+pub enum IndexScope {
+    Full { filters: ScanFilters },
+    Partial { root: PathKey, filters: ScanFilters },
+}
+```
+
+`Full` is the default: scan the entire configured Vault Root. `Partial` narrows the scan to a subtree rooted at `root`, which corresponds to a context boundary path or a targeted path supplied by the CLI. Each context maps to a path, so context-scoped and targeted scans are both expressed as `Partial` with the appropriate root.
+
+`ScanFilters` is an Indexer-owned type carrying narrowing criteria (extension, name patterns, or any other predicate mappable to walkdir's `filter_entry`). Filters are embedded in each variant rather than passed as a separate argument, so the scanner adapter receives one coherent input. The walkdir adapter is responsible for translating `ScanFilters` into concrete walkdir predicates.
 
 Future-compatible scope:
 
-- Event-driven scan from filesystem watcher events.
+- Event-driven scan from filesystem watcher events (deferred).
 
-The Indexer should always prefer the narrowest correct scope. If Config detects a localized context boundary change, orchestration should request a context scan rather than a full Vault scan.
+The Indexer should always prefer the narrowest correct scope. If Config detects a localized context boundary change, orchestration should request a `Partial` scan rather than `Full`.
 
 ### 10. Repository Ports And Storage Adapter
 
@@ -303,9 +309,9 @@ Storage adapter implementation should use Indexer-owned table definitions. redb 
 
 ### 11. Scanner Port And FS Adapter
 
-The Indexer should define a scanner port instead of depending directly on concrete `DirScanner` from application logic. The FS adapter can wrap `DirScanner` and translate `DirScanInput` output into Indexer scan records.
+**Accepted decision**: The Indexer owns a `ScannerPort` trait (its driven port for filesystem access). The walkdir adapter implements `ScannerPort` directly, wrapping walkdir and translating `ScanFilters` into walkdir `filter_entry` predicates. The existing FS-context `DirScanner` is not the seam; since filesystem scanning will only ever be performed by the Indexer, there is no reason to route through an intermediate FS-level abstraction. The walkdir adapter is the sole concrete implementation of `ScannerPort`.
 
-This preserves the global invariant that filesystem interaction happens through the FS context while keeping Indexer application logic testable. Tests can provide an in-memory scanner implementation with deterministic file and directory entries.
+This preserves hexagonal architecture's port ownership rule (the Indexer defines the port, the adapter conforms to it) while removing an unnecessary indirection. Indexer application logic remains testable: tests provide an in-memory `ScannerPort` implementation with deterministic file and directory entries, with no walkdir or real-disk dependency.
 
 ### 12. Context Processor Consumption
 
@@ -314,6 +320,8 @@ Schema, Note, and Template processors should consume Indexer output or query Ind
 Context routing should use Config-resolved boundaries and Indexer result entries. Routing must not live in Discovery. `lithos-core::app` owns routing orchestration because it composes Config specs with Indexer results and downstream context execution order. Indexer should return filesystem truth through `IndexResult`; it should not own Schema, Note, or Template routing semantics.
 
 The initial contract should be conservative: Indexer returns all indexed file and directory entries in scope, plus deleted records. `lithos-core::app` partitions entries for Schema, Note, and Template based on Config specs.
+
+**Accepted decision on run options**: `IndexScope` answers *what* to scan. A separate `IndexOptions { reindex: bool, dry_run: bool }` answers *how* to treat the results. `reindex: true` discards all persisted state before the scan so every node is classified `New`; it is not a freshness bypass — it is a full re-index from scratch. `dry_run: true` classifies nodes without persisting changes. These are orthogonal to scope and should not be embedded in `IndexScope` variants.
 
 **Accepted decision**: `lithos-core::app` routes only for the requested command. A `lithos index` run returns index diagnostics only; it does not automatically trigger Schema, Note, or Template ingestion. Follow-on commands request downstream context processing explicitly. This keeps the Indexer as a standalone, independently executable use case and avoids coupling index runs to full ingestion pipelines.
 
@@ -324,7 +332,7 @@ The CLI remains a thin executable adapter. It defines user-facing command syntax
 Recommended command surface:
 
 - `lithos index`: resolve Discovery and Config, run the Indexer, print summary diagnostic output.
-- `lithos index --force`: bypass freshness checks for the selected scope.
+- `lithos index --reindex`: discard all persisted index state and re-index from scratch, bypassing incremental freshness checks entirely. The flag name is provisional; exact CLI ergonomics can be refined during implementation.
 - `lithos index --path <path>`: run a targeted scan for one file or directory subtree.
 - `lithos index --context <schema|note|template>`: run indexing for the configured context boundary when that boundary can be derived from Config.
 - `lithos index --dry-run`: scan and classify without persisting changes, useful for diagnostics.
