@@ -77,7 +77,7 @@ pub struct BaseSchema {
 impl BaseSchema {
     /// Creates a new `BaseSchema` with current timestamp.
     ///
-    /// `extends` and `excludes` are deduplicated via [`HashSet`] and stored in
+    /// `extends` and `excludes` are deduplicated via sort + dedup and stored in
     /// a deterministic order.
     ///
     /// # Examples
@@ -166,6 +166,34 @@ impl BaseSchema {
     #[must_use]
     pub fn excludes(&self) -> &[PropertyName] {
         &self.excludes
+    }
+
+    /// Replaces the direct-declared properties.
+    #[inline]
+    #[must_use]
+    pub fn set_properties(mut self, properties: PropertyMap) -> Self {
+        self.properties = properties;
+        self
+    }
+
+    /// Replaces the file-local parent schema names.
+    #[inline]
+    #[must_use]
+    pub fn set_extends(mut self, mut extends: Vec<SchemaName>) -> Self {
+        extends.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        extends.dedup();
+        self.extends = extends.into_boxed_slice();
+        self
+    }
+
+    /// Replaces the inherited property names to omit.
+    #[inline]
+    #[must_use]
+    pub fn set_excludes(mut self, mut excludes: Vec<PropertyName>) -> Self {
+        excludes.sort();
+        excludes.dedup();
+        self.excludes = excludes.into_boxed_slice();
+        self
     }
 }
 

@@ -78,8 +78,7 @@ use crate::{
             ExcludesDelta, ExtendsDelta, PropertyDelta, PropertyDeltaEngine,
         },
         error::{
-            PropertyRefError, SchemaError, SchemaIngestionError,
-            SchemaLoaderError, SchemaRepositoryError,
+            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
         },
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
@@ -304,25 +303,35 @@ impl BaseSchemaProcessor<Init, Unknown> {
             });
             Self::run_present(present, source, repository, bank_resolution)
         } else {
-            let (init_file, init_key, _) = self.into_parts();
-            let parsed = Self::transition_from_parts::<Parsed, Missing>(
-                init_file, init_key, Missing,
-            )
-            .parse(source)?;
-            let schema_id = SchemaId::new();
-            let (file, path_key, status) = parsed.into_parts();
-            let new_proc = Self::transition_from_parts(file, path_key, New {
-                id: schema_id,
-                raw: status.raw,
-                content_hash: status.content_hash,
-            });
-            let completed = new_proc.create(repository, bank)?;
-            let base_schema = completed.into_base();
-            Ok(BaseSchemaResolution::New {
-                schema_id,
-                base_schema,
-            })
+            Self::run_missing(self, source, repository, bank)
         }
+    }
+
+    /// Internal helper for the missing path (no cached view).
+    fn run_missing<R: Repository>(
+        processor: BaseSchemaProcessor<Init, Unknown>,
+        source: &FileReader,
+        repository: &R,
+        bank: &PropertyBank,
+    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+        let (init_file, init_key, _) = processor.into_parts();
+        let parsed = Self::transition_from_parts::<Parsed, Missing>(
+            init_file, init_key, Missing,
+        )
+        .parse(source)?;
+        let schema_id = SchemaId::new();
+        let (file, path_key, status) = parsed.into_parts();
+        let new_proc = Self::transition_from_parts(file, path_key, New {
+            id: schema_id,
+            raw: status.raw,
+            content_hash: status.content_hash,
+        });
+        let completed = new_proc.create(repository, bank)?;
+        let base_schema = completed.into_base();
+        Ok(BaseSchemaResolution::New {
+            schema_id,
+            base_schema,
+        })
     }
 
     /// Internal helper for the present path (view exists).
@@ -364,11 +373,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
             }
             TimestampBranch::StaleRefs(stale) => {
                 let parsed = stale.parse()?;
-                Self::run_analysis(
-                    parsed.analyze(bank)?,
-                    repository,
-                    bank_resolution,
-                )
+                Self::run_analysis(parsed.analyze(bank)?, repository)
             }
             TimestampBranch::Mismatch(suspect) => Self::run_content_check(
                 suspect,
@@ -398,19 +403,11 @@ impl BaseSchemaProcessor<Init, Unknown> {
             }
             ContentBranch::StaleRefs(stale) => {
                 let parsed = stale.parse()?;
-                Self::run_analysis(
-                    parsed.analyze(bank)?,
-                    repository,
-                    bank_resolution,
-                )
+                Self::run_analysis(parsed.analyze(bank)?, repository)
             }
             ContentBranch::Mismatch(stale) => {
                 let parsed = stale.parse()?;
-                Self::run_analysis(
-                    parsed.analyze(bank)?,
-                    repository,
-                    bank_resolution,
-                )
+                Self::run_analysis(parsed.analyze(bank)?, repository)
             }
         }
     }
@@ -420,7 +417,6 @@ impl BaseSchemaProcessor<Init, Unknown> {
     fn run_analysis<R: Repository>(
         branch: AnalysisBranch,
         repository: &R,
-        bank_resolution: Option<&PropertyBankResolution>,
     ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
         match branch {
             AnalysisBranch::Empty(stale_content) => {
@@ -433,15 +429,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 })
             }
             AnalysisBranch::Delta(changed) => {
-                match changed
-                    .with_bank_delta_upserts(bank_resolution, repository)
-                {
-                    Ok(augmented) => {
-                        let completed = augmented.update(repository)?;
-                        Ok(completed.into_stale_resolution())
-                    }
-                    Err(resolved) => Ok(resolved),
-                }
+                let completed = changed.update(repository)?;
+                Ok(completed.into_stale_resolution())
             }
             AnalysisBranch::Corrupt(new) => {
                 let empty_bank = PropertyBank::new();
@@ -459,45 +448,39 @@ impl BaseSchemaProcessor<Init, Unknown> {
                     },
                 );
 
-                match new_proc.create(repository, &empty_bank) {
-                    Ok(completed) => {
-                        let base = completed.into_base();
-                        let schema_id = *base.id();
-                        Ok(BaseSchemaResolution::New {
-                            schema_id,
-                            base_schema: base,
-                        })
-                    }
-                    Err(SchemaLoaderError::Repository(e)) => {
-                        Err(SchemaLoaderError::Repository(e))
-                    }
-                    Err(_) => {
-                        let schema_name =
-                            SchemaName::try_new(raw_for_fallback.name())
-                                .unwrap_or_else(|_| {
-                                    // SAFETY: "unknown" always satisfies
-                                    // SchemaName validation
-                                    #[expect(
-                                        clippy::unwrap_used,
-                                        reason = "'unknown' is a hardcoded \
-                                                  literal that always \
-                                                  satisfies SchemaName \
-                                                  validation"
-                                    )]
-                                    SchemaName::try_new("unknown").unwrap()
-                                });
+                if let Ok(completed) = new_proc.create(repository, &empty_bank)
+                {
+                    let base = completed.into_base();
+                    let schema_id = *base.id();
+                    Ok(BaseSchemaResolution::New {
+                        schema_id,
+                        base_schema: base,
+                    })
+                } else {
+                    let schema_name =
+                        SchemaName::try_new(raw_for_fallback.name())
+                            .unwrap_or_else(|_| {
+                                // SAFETY: "unknown" always satisfies
+                                // SchemaName validation
+                                #[expect(
+                                    clippy::unwrap_used,
+                                    reason = "'unknown' is a hardcoded \
+                                              literal that always satisfies \
+                                              SchemaName validation"
+                                )]
+                                SchemaName::try_new("unknown").unwrap()
+                            });
 
-                        Ok(BaseSchemaResolution::New {
-                            schema_id: id,
-                            base_schema: BaseSchema::new(
-                                id,
-                                schema_name,
-                                PropertyMap::new(),
-                                Vec::new(),
-                                Vec::new(),
-                            ),
-                        })
-                    }
+                    Ok(BaseSchemaResolution::New {
+                        schema_id: id,
+                        base_schema: BaseSchema::new(
+                            id,
+                            schema_name,
+                            PropertyMap::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        ),
+                    })
                 }
             }
         }
@@ -549,6 +532,7 @@ struct Stale {
     content_hash: Blake3Hash,
     view: RawSchemaView,
     schema_id: SchemaId,
+    ref_delta: Vec<PropertyName>,
 }
 
 /// Proven: bank references changed while content/timestamps matched.
@@ -690,6 +674,7 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
                 ))
             }
         } else {
+            let ref_delta = relevant_bank_refs(&status.view, bank_resolution);
             ContentBranch::Mismatch(Self::transition_from_parts(
                 file,
                 path_key,
@@ -698,6 +683,7 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
                     content_hash,
                     view: status.view,
                     schema_id: status.schema_id,
+                    ref_delta,
                 },
             ))
         }
@@ -746,6 +732,7 @@ struct ParsedStale {
     content_hash: Blake3Hash,
     view: RawSchemaView,
     schema_id: SchemaId,
+    ref_delta: Vec<PropertyName>,
 }
 
 /// Proven: stale bank references (content matched) parsed into a raw schema.
@@ -850,6 +837,7 @@ impl BaseSchemaProcessor<Parsed, Stale> {
             content_hash: status.content_hash,
             view: status.view,
             schema_id: status.schema_id,
+            ref_delta: status.ref_delta,
         }))
     }
 }
@@ -952,11 +940,45 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
         };
 
         let expander = RefExpander::new(bank);
-        let property_delta = PropertyDeltaEngine::for_schema(
+        let ref_entries = status.raw.properties().ref_entries();
+
+        let (expandable_refs, missing_refs): (
+            Vec<PropertyName>,
+            Vec<PropertyName>,
+        ) = status.ref_delta.into_iter().partition(|name| {
+            ref_entries
+                .get(name)
+                .and_then(|entry| expander.expand_property(entry).ok())
+                .is_some()
+        });
+
+        for name in &missing_refs {
+            tracing::warn!(
+                property = %name,
+                "bank target missing for stale reference '{}'; \
+                 marking property as removed",
+                name
+            );
+        }
+
+        let mut property_delta = PropertyDeltaEngine::for_schema(
             &status.raw,
             version.hashes().properties(),
         )
-        .diff_schema(&expander, &[])?;
+        .diff_schema(&expander, &expandable_refs)?;
+
+        if !missing_refs.is_empty() {
+            let new_removals: Vec<PropertyName> = property_delta
+                .removals()
+                .iter()
+                .cloned()
+                .chain(missing_refs)
+                .collect();
+            property_delta = PropertyDelta::new(
+                property_delta.upserts().clone(),
+                new_removals,
+            );
+        }
 
         let excludes_delta = ExcludesDelta::from_slices(
             version.excludes(),
@@ -1022,30 +1044,46 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
         };
 
         let expander = RefExpander::new(bank);
-        let property_delta = match PropertyDeltaEngine::for_schema(
+        let ref_entries = status.raw.properties().ref_entries();
+
+        // Pre-filter forced refs: separate expandable from missing-bank-target
+        let (expandable_refs, missing_refs): (
+            Vec<PropertyName>,
+            Vec<PropertyName>,
+        ) = status.ref_delta.into_iter().partition(|name| {
+            ref_entries
+                .get(name)
+                .and_then(|entry| expander.expand_property(entry).ok())
+                .is_some()
+        });
+
+        for name in &missing_refs {
+            tracing::warn!(
+                property = %name,
+                "bank target missing for stale reference '{}'; \
+                 marking property as removed",
+                name
+            );
+        }
+
+        let mut property_delta = PropertyDeltaEngine::for_schema(
             &status.raw,
             version.hashes().properties(),
         )
-        .diff_schema(&expander, &status.ref_delta)
-        {
-            Ok(delta) => delta,
-            Err(SchemaLoaderError::Resolution(SchemaError::PropertyRef(
-                PropertyRefError::NotFound {
-                    ..
-                },
-            ))) => {
-                // Structural conflict: bank target missing. Escalate to full
-                // rebuild.
-                return Ok(AnalysisBranch::Corrupt(
-                    Self::transition_from_parts(file, path_key, New {
-                        id: SchemaId::new(),
-                        raw: status.raw,
-                        content_hash: status.content_hash,
-                    }),
-                ));
-            }
-            Err(e) => return Err(e),
-        };
+        .diff_schema(&expander, &expandable_refs)?;
+
+        if !missing_refs.is_empty() {
+            let new_removals: Vec<PropertyName> = property_delta
+                .removals()
+                .iter()
+                .cloned()
+                .chain(missing_refs)
+                .collect();
+            property_delta = PropertyDelta::new(
+                property_delta.upserts().clone(),
+                new_removals,
+            );
+        }
 
         Ok(AnalysisBranch::Delta(Self::transition_from_parts(
             file,
@@ -1338,9 +1376,9 @@ impl BaseSchemaProcessor<Construction, Changed> {
         updated_view.add_version(version);
 
         // Retrieve existing schema to build updated property map. The bank is
-        // not needed here: all ref-expansion happened in analyze() and any bank
-        // delta augmentation happened in with_bank_delta_upserts(). The
-        // property_delta already contains all required upserts.
+        // not needed here: all ref-expansion and missing-bank handling happened
+        // in analyze(). The property_delta already contains all required
+        // upserts and removals.
         let existing_base =
             repository.find_base_schema_by_id(schema_id)?.ok_or_else(|| {
                 SchemaLoaderError::Repository(
@@ -1392,117 +1430,6 @@ impl BaseSchemaProcessor<Construction, Changed> {
             excludes_delta: status.excludes_delta,
             extends_delta: status.extends_delta,
         }))
-    }
-
-    /// Folds bank delta re-expansions into this processor's `property_delta`,
-    /// if any of the changed bank targets are referenced by this schema.
-    ///
-    /// Returns `Ok(self)` when augmentation succeeds or no augmentation is
-    /// needed. Returns `Err(BaseSchemaResolution::New { .. })` when a
-    /// structural conflict is detected (bank target missing), having emitted a
-    /// diagnostic. The caller should propagate the `Err` as a resolution
-    /// directly.
-    #[expect(
-        clippy::result_large_err,
-        reason = "BaseSchemaResolution::Stale is intentionally large per \
-                  issue 04; the Err variant is used only for early-exit \
-                  escalation"
-    )]
-    fn with_bank_delta_upserts<R: Repository>(
-        mut self,
-        bank_resolution: Option<&PropertyBankResolution>,
-        repository: &R,
-    ) -> Result<Self, BaseSchemaResolution> {
-        let changed_refs =
-            relevant_bank_refs(&self.status.view, bank_resolution);
-        if changed_refs.is_empty() {
-            return Ok(self);
-        }
-
-        let Some(bank_res) = bank_resolution else {
-            return Ok(self);
-        };
-        let expander = RefExpander::new(bank_res.bank());
-        let ref_entries = self.status.raw.properties().ref_entries();
-        let mut bank_props = PropertyMap::new();
-
-        for prop_name in &changed_refs {
-            let Some(entry) = ref_entries.get(prop_name) else {
-                continue;
-            };
-
-            if let Ok(prop) = expander.expand_property(entry) {
-                bank_props.insert(prop_name.clone(), prop);
-            } else {
-                tracing::warn!(
-                    property = %prop_name,
-                    "StaleReferences(analysis): bank target for '{}' \
-                     absent; escalating to full rebuild",
-                    prop_name
-                );
-                let (file, path_key, status) = self.into_parts();
-                let schema_name_result = SchemaName::try_new(status.raw.name());
-                let new_proc = BaseSchemaProcessor::<Construction, New>::transition_from_parts(
-                    file,
-                    path_key,
-                    New {
-                        id: SchemaId::new(),
-                        raw: status.raw,
-                        content_hash: status.content_hash,
-                    },
-                );
-                let empty_bank = PropertyBank::new();
-                // SAFETY: create() with empty bank only fails on repository
-                // error or name error. We ignore those here and return a
-                // minimal New resolution if it fails, matching previous
-                // behavior.
-                if let Ok(completed) = new_proc.create(repository, &empty_bank)
-                {
-                    let base = completed.into_base();
-                    let schema_id = *base.id();
-                    return Err(BaseSchemaResolution::New {
-                        schema_id,
-                        base_schema: base,
-                    });
-                }
-                let schema_name = schema_name_result.unwrap_or_else(|_| {
-                    // SAFETY: "unknown" always satisfies SchemaName
-                    // validation
-                    #[expect(
-                        clippy::unwrap_used,
-                        reason = "'unknown' is a hardcoded literal that \
-                                  always satisfies SchemaName validation"
-                    )]
-                    SchemaName::try_new("unknown").unwrap()
-                });
-                let new_id = SchemaId::new();
-                return Err(BaseSchemaResolution::New {
-                    schema_id: new_id,
-                    base_schema: BaseSchema::new(
-                        new_id,
-                        schema_name,
-                        PropertyMap::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                });
-            }
-        }
-
-        if bank_props.is_empty() {
-            return Ok(self);
-        }
-
-        // Merge bank upserts into the existing property delta.
-        let existing_upserts = self.status.property_delta.upserts().clone();
-        let existing_removals = self.status.property_delta.removals().to_vec();
-        let mut merged_upserts = existing_upserts;
-        for (name, prop) in bank_props {
-            merged_upserts.insert(name, prop);
-        }
-        self.status.property_delta =
-            PropertyDelta::new(merged_upserts, existing_removals);
-        Ok(self)
     }
 }
 
@@ -2603,7 +2530,7 @@ mod tests {
         }
 
         #[test]
-        fn escalates_to_full_rebuild_when_bank_target_missing_fresh_path() {
+        fn warns_and_removes_prop_when_bank_target_missing_fresh_path() {
             let mut fixture = make_fixture();
             let content = r##"properties:
   my_prop:
@@ -2614,7 +2541,7 @@ mod tests {
             let schema_id = SchemaId::new();
             let view = matching_view_for_content(&fixture, content);
             seed_base_and_view(&fixture, schema_id, &view);
-            // Empty bank: "status" does not exist → structural conflict
+            // Empty bank: "status" does not exist → warn + removal
             let bank = PropertyBank::new();
             let mut delta = HashSet::new();
             delta.insert(PropertyName::try_new("status").expect("status"));
@@ -2635,10 +2562,13 @@ mod tests {
                 )
                 .expect("run");
 
+            let (_, _, property_delta, _, _) = expect_stale!(result);
             assert!(
-                matches!(result, BaseSchemaResolution::New { .. }),
-                "Expected New (full rebuild) when bank target missing on \
-                 fresh path"
+                property_delta.removals().contains(
+                    &PropertyName::try_new("my_prop").expect("my_prop")
+                ),
+                "Expected my_prop to be in removals when bank target missing \
+                 on fresh path"
             );
         }
 
@@ -2742,7 +2672,7 @@ mod tests {
         }
 
         #[test]
-        fn analysis_path_escalates_to_full_rebuild_when_bank_target_missing() {
+        fn analysis_path_warns_and_removes_prop_when_bank_target_missing() {
             let mut fixture = make_fixture();
             let old_content = r##"properties:
   my_prop:
@@ -2761,7 +2691,7 @@ mod tests {
     type: string
 "##;
             write_schema(&mut fixture, new_content);
-            // Bank does NOT contain "status" — structural conflict
+            // Bank does NOT contain "status" — warn + removal
             let bank = PropertyBank::new();
             let mut delta = HashSet::new();
             delta.insert(PropertyName::try_new("status").expect("status"));
@@ -2782,10 +2712,19 @@ mod tests {
                 )
                 .expect("run");
 
+            let (_, _, property_delta, _, _) = expect_stale!(result);
             assert!(
-                matches!(result, BaseSchemaResolution::New { .. }),
-                "Expected New (full rebuild) when bank target missing on \
-                 analysis path, got {result:?}"
+                property_delta.removals().contains(
+                    &PropertyName::try_new("my_prop").expect("my_prop")
+                ),
+                "Expected my_prop to be in removals when bank target missing \
+                 on analysis path, got property_delta: {property_delta:?}"
+            );
+            assert!(
+                property_delta.contains_upsert(
+                    &PropertyName::try_new("body").expect("body")
+                ),
+                "Expected body to be in upserts from content diff"
             );
         }
     }
