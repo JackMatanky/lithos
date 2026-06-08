@@ -233,7 +233,7 @@ mod tests {
         }
 
         #[test]
-        fn starts_from_ceiling_and_yields_it_if_allowed() {
+        fn yields_ceiling_when_start_is_ceiling_if_allowed() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
             let mut ceilings = HashSet::new();
@@ -244,7 +244,7 @@ mod tests {
         }
 
         #[test]
-        fn starts_from_ceiling_and_yields_none_if_not_allowed() {
+        fn yields_none_when_start_is_ceiling_if_not_allowed() {
             let root = tempdir().expect("root");
             let start = root.path().canonicalize().expect("canonical");
             let mut ceilings = HashSet::new();
@@ -260,17 +260,26 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_start_dir_and_ceilings() {
+        fn returns_start_dir() {
+            let start = PathBuf::from("/tmp");
+            let ceilings = HashSet::new();
+            let boundaries = DiscoveryBoundaries::new(start.clone(), ceilings);
+
+            assert_eq!(boundaries.start_dir(), &start);
+        }
+
+        #[test]
+        fn returns_ceilings() {
             let start = PathBuf::from("/tmp");
             let mut ceilings = HashSet::new();
             ceilings.insert(PathBuf::from("/"));
-            let b = DiscoveryBoundaries::new(start.clone(), ceilings.clone());
-            assert_eq!(b.start_dir(), &start);
-            assert_eq!(b.ceilings(), &ceilings);
+            let boundaries = DiscoveryBoundaries::new(start, ceilings.clone());
+
+            assert_eq!(boundaries.ceilings(), &ceilings);
         }
     }
 
-    mod parse_ceilings_tests {
+    mod parse_ceilings {
         use super::*;
 
         fn path_list(paths: &[&Path]) -> OsString {
@@ -363,7 +372,7 @@ mod tests {
         }
 
         #[test]
-        fn preserves_valid_ceilings_when_other_segments_are_invalid() {
+        fn preserves_valid_ceilings_when_segments_include_invalid_entries() {
             let root = tempdir().expect("root");
             let valid = root.path().join("stop");
             std::fs::create_dir_all(&valid).expect("valid ceiling");

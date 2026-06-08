@@ -938,7 +938,7 @@ mod tests {
         }
 
         #[test]
-        fn prefers_xdg_config_over_user_and_system_config() {
+        fn prefers_xdg_config_over_lower_precedence_sources() {
             let root = tempdir().expect("root");
             let xdg = root.path().join("xdg");
             let user = root.path().join("user");
@@ -1021,12 +1021,12 @@ mod tests {
         }
 
         #[test]
-        fn returns_same_tier_alternatives_without_selected_marker() {
+        fn returns_selected_marker_for_same_tier_candidates() {
             let root = tempdir().expect("root");
             let xdg = root.path().join("xdg");
             let selected_path = write_marker(&xdg, "lithos.toml");
-            let json_path = write_marker(&xdg, "lithos.json");
-            let yaml_path = write_marker(&xdg, "lithos.yaml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
             let system = root.path().join("system");
             write_marker(&system, "lithos.toml");
 
@@ -1043,16 +1043,107 @@ mod tests {
                 selected_path.canonicalize().expect("canonical toml");
 
             assert_eq!(marker.path, selected);
+        }
+
+        #[test]
+        fn returns_non_winning_same_tier_alternatives() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+
             assert_eq!(result.alternatives.len(), 2);
+        }
+
+        #[test]
+        fn omits_selected_marker_from_same_tier_alternatives() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let selected_path = write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let selected =
+                selected_path.canonicalize().expect("canonical toml");
+
             assert!(
-                !result.alternatives.iter().any(|alt| alt.path == selected)
+                !result.alternatives.iter().any(|alt| alt.path == selected),
+                "Expected alternatives not to contain selected marker"
             );
-            assert!(result.alternatives.iter().any(|alt| {
-                alt.path == json_path.canonicalize().expect("canonical json")
-            }));
-            assert!(result.alternatives.iter().any(|alt| {
-                alt.path == yaml_path.canonicalize().expect("canonical yaml")
-            }));
+        }
+
+        #[test]
+        fn returns_json_candidate_as_same_tier_alternative() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            let json_path = write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let json = json_path.canonicalize().expect("canonical json");
+
+            assert!(
+                result.alternatives.iter().any(|alt| alt.path == json),
+                "Expected alternatives to contain JSON candidate"
+            );
+        }
+
+        #[test]
+        fn returns_yaml_candidate_as_same_tier_alternative() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            let yaml_path = write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let yaml = yaml_path.canonicalize().expect("canonical yaml");
+
+            assert!(
+                result.alternatives.iter().any(|alt| alt.path == yaml),
+                "Expected alternatives to contain YAML candidate"
+            );
         }
 
         #[test]

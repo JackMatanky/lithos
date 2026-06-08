@@ -195,20 +195,60 @@ mod tests {
         #[test]
         fn returns_all_markers_when_multiple_exist() {
             let root = tempdir().expect("root");
-            let hidden_path = write_marker(root.path(), ".lithos.toml");
+            write_marker(root.path(), ".lithos.toml");
+            write_marker(root.path(), "lithos.toml");
+
+            let probe = VaultRootProbe;
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
+
+            assert_eq!(markers.len(), 2);
+        }
+
+        #[test]
+        fn returns_root_marker_before_hidden_marker() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), ".lithos.toml");
             let expected_path = write_marker(root.path(), "lithos.toml");
 
             let probe = VaultRootProbe;
-            let markers = probe
-                .probe(root.path())
-                .expect("marker lookup succeeds")
-                .expect("markers exist");
+            let result = probe.probe(root.path());
 
-            assert_eq!(markers.len(), 2);
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
+
             assert_eq!(
                 markers.first().expect("first marker").path,
                 expected_path.canonicalize().expect("canonical marker")
             );
+        }
+
+        #[test]
+        fn returns_hidden_marker_after_root_marker() {
+            let root = tempdir().expect("root");
+            let hidden_path = write_marker(root.path(), ".lithos.toml");
+            write_marker(root.path(), "lithos.toml");
+
+            let probe = VaultRootProbe;
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
+
             assert_eq!(
                 markers.get(1).expect("second marker").path,
                 hidden_path.canonicalize().expect("canonical marker")
@@ -222,14 +262,18 @@ mod tests {
                 write_marker(root.path(), ".lithos/config.toml");
 
             let probe = VaultRootProbe;
-            let markers = probe
-                .probe(root.path())
-                .expect("marker lookup succeeds")
-                .expect("markers exist");
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
 
             assert_eq!(markers.len(), 1);
             assert_eq!(
-                markers.first().unwrap().path,
+                markers.first().expect("first marker").path,
                 expected_path.canonicalize().expect("canonical marker")
             );
         }
@@ -241,16 +285,56 @@ mod tests {
             write_marker(root.path(), "lithos.toml");
 
             let probe = VaultRootProbe;
-            let markers = probe
-                .probe(root.path())
-                .expect("marker lookup succeeds")
-                .expect("markers exist");
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
 
             assert_eq!(markers.len(), 2);
+        }
+
+        #[test]
+        fn returns_toml_format_before_json_format() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.json");
+            write_marker(root.path(), "lithos.toml");
+
+            let probe = VaultRootProbe;
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
+
             assert_eq!(
                 markers.first().expect("first marker").format,
                 StructuredFileFormat::Toml
             );
+        }
+
+        #[test]
+        fn returns_json_format_after_toml_format() {
+            let root = tempdir().expect("root");
+            write_marker(root.path(), "lithos.json");
+            write_marker(root.path(), "lithos.toml");
+
+            let probe = VaultRootProbe;
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
+
             assert_eq!(
                 markers.get(1).expect("second marker").format,
                 StructuredFileFormat::Json
@@ -278,10 +362,14 @@ mod tests {
             let expected_path = write_marker(root.path(), "lithos.toml");
 
             let probe = GlobalRootProbe;
-            let markers = probe
-                .probe(root.path())
-                .expect("marker lookup succeeds")
-                .expect("markers exist");
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
 
             assert_eq!(markers.len(), 1);
             assert_eq!(
@@ -296,10 +384,14 @@ mod tests {
             let expected_path = write_marker(root.path(), "lithos/config.toml");
 
             let probe = GlobalRootProbe;
-            let markers = probe
-                .probe(root.path())
-                .expect("marker lookup succeeds")
-                .expect("markers exist");
+            let result = probe.probe(root.path());
+
+            assert!(
+                result.is_ok(),
+                "Expected marker lookup success, got: {:?}",
+                result.as_ref().err()
+            );
+            let markers = result.expect("checked ok").expect("markers exist");
 
             assert_eq!(markers.len(), 1);
             assert_eq!(

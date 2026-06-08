@@ -151,106 +151,161 @@ impl GlobalSourceDirectory {
 mod tests {
     use super::*;
 
-    #[test]
-    fn vault_source_types_have_correct_rank_order() {
-        assert!(
-            VaultSourceType::ExplicitFlag.rank()
-                < VaultSourceType::EnvVar.rank()
-        );
-        assert!(
-            VaultSourceType::EnvVar.rank()
-                < VaultSourceType::AscendingWalk.rank()
-        );
-    }
+    mod rank {
+        use super::*;
 
-    #[test]
-    fn global_source_types_have_correct_rank_order() {
-        assert!(
-            GlobalSourceType::EnvVar.rank()
-                < GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+        #[test]
+        fn returns_explicit_flag_before_vault_env_var() {
+            assert!(
+                VaultSourceType::ExplicitFlag.rank()
+                    < VaultSourceType::EnvVar.rank()
+            );
+        }
+
+        #[test]
+        fn returns_vault_env_var_before_ascending_walk() {
+            assert!(
+                VaultSourceType::EnvVar.rank()
+                    < VaultSourceType::AscendingWalk.rank()
+            );
+        }
+
+        #[test]
+        fn returns_env_var_before_xdg_config() {
+            assert!(
+                GlobalSourceType::EnvVar.rank()
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::XdgConfig,
+                    )
                     .rank()
-        );
-        assert!(
-            GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
-                .rank()
-                < GlobalSourceType::Directory(
-                    GlobalSourceDirectory::UserConfig
-                )
-                .rank()
-        );
-        assert!(
-            GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
-                .rank()
-                < GlobalSourceType::Directory(
-                    GlobalSourceDirectory::SystemConfig
-                )
-                .rank()
-        );
+            );
+        }
+
+        #[test]
+        fn returns_xdg_config_before_user_config() {
+            assert!(
+                GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+                    .rank()
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::UserConfig,
+                    )
+                    .rank()
+            );
+        }
+
+        #[test]
+        fn returns_user_config_before_system_config() {
+            assert!(
+                GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
+                    .rank()
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::SystemConfig,
+                    )
+                    .rank()
+            );
+        }
     }
 
-    #[test]
-    fn vault_source_type_description_is_human_readable() {
-        assert_eq!(
-            VaultSourceType::ExplicitFlag.description(),
-            "explicit CLI flag"
-        );
-        assert_eq!(
-            VaultSourceType::EnvVar.description(),
-            "environment variable"
-        );
-        assert_eq!(
-            VaultSourceType::AscendingWalk.description(),
-            "ascending directory walk"
-        );
+    mod description {
+        use super::*;
+
+        #[test]
+        fn returns_explicit_flag_description() {
+            assert_eq!(
+                VaultSourceType::ExplicitFlag.description(),
+                "explicit CLI flag"
+            );
+        }
+
+        #[test]
+        fn returns_env_var_description() {
+            assert_eq!(
+                VaultSourceType::EnvVar.description(),
+                "environment variable"
+            );
+        }
+
+        #[test]
+        fn returns_ascending_walk_description() {
+            assert_eq!(
+                VaultSourceType::AscendingWalk.description(),
+                "ascending directory walk"
+            );
+        }
     }
 
-    #[test]
-    fn default_policy_uses_standard_precedence() {
-        let policy = DiscoveryPolicy::default();
-        assert_eq!(policy.vault_precedence.len(), 3);
-        assert_eq!(
-            policy.vault_precedence.first(),
-            Some(&VaultSourceType::ExplicitFlag)
-        );
-        assert_eq!(
-            policy.vault_precedence.get(1),
-            Some(&VaultSourceType::EnvVar)
-        );
-        assert_eq!(
-            policy.vault_precedence.get(2),
-            Some(&VaultSourceType::AscendingWalk)
-        );
-        assert_eq!(policy.global_precedence.len(), 4);
-        assert_eq!(
-            policy.global_precedence.first(),
-            Some(&GlobalSourceType::EnvVar)
-        );
-        assert!(policy.allow_marker_at_ceiling);
+    mod defaults {
+        use super::*;
+
+        #[test]
+        fn returns_standard_vault_precedence() {
+            let policy = DiscoveryPolicy::default();
+
+            assert_eq!(
+                policy.vault_precedence,
+                VaultSourceType::PRECEDENCE.to_vec()
+            );
+        }
+
+        #[test]
+        fn returns_standard_global_precedence() {
+            let policy = DiscoveryPolicy::default();
+
+            assert_eq!(
+                policy.global_precedence,
+                GlobalSourceType::PRECEDENCE.to_vec()
+            );
+        }
+
+        #[test]
+        fn allows_markers_at_ceiling() {
+            let policy = DiscoveryPolicy::default();
+
+            assert!(policy.allow_marker_at_ceiling);
+        }
     }
 
-    #[test]
-    fn vault_source_types_derive_ord() {
-        assert!(VaultSourceType::ExplicitFlag < VaultSourceType::EnvVar);
-        assert!(VaultSourceType::EnvVar < VaultSourceType::AscendingWalk);
-    }
+    mod ordering {
+        use super::*;
 
-    #[test]
-    fn global_source_types_derive_ord() {
-        assert!(
-            GlobalSourceType::EnvVar
-                < GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
-        );
-        assert!(
-            GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
-                < GlobalSourceType::Directory(
-                    GlobalSourceDirectory::UserConfig
-                )
-        );
-        assert!(
-            GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
-                < GlobalSourceType::Directory(
-                    GlobalSourceDirectory::SystemConfig
-                )
-        );
+        #[test]
+        fn orders_explicit_flag_before_vault_env_var() {
+            assert!(VaultSourceType::ExplicitFlag < VaultSourceType::EnvVar);
+        }
+
+        #[test]
+        fn orders_vault_env_var_before_ascending_walk() {
+            assert!(VaultSourceType::EnvVar < VaultSourceType::AscendingWalk);
+        }
+
+        #[test]
+        fn orders_env_var_before_xdg_config() {
+            assert!(
+                GlobalSourceType::EnvVar
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::XdgConfig,
+                    )
+            );
+        }
+
+        #[test]
+        fn orders_xdg_config_before_user_config() {
+            assert!(
+                GlobalSourceType::Directory(GlobalSourceDirectory::XdgConfig)
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::UserConfig,
+                    )
+            );
+        }
+
+        #[test]
+        fn orders_user_config_before_system_config() {
+            assert!(
+                GlobalSourceType::Directory(GlobalSourceDirectory::UserConfig)
+                    < GlobalSourceType::Directory(
+                        GlobalSourceDirectory::SystemConfig,
+                    )
+            );
+        }
     }
 }
