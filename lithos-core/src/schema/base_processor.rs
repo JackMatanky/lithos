@@ -170,28 +170,28 @@ pub enum BaseSchemaResolution {
     /// Base schema was already fresh in the repository.
     Fresh {
         /// The schema identifier.
-        schema_id: SchemaId,
+        id: SchemaId,
         /// The cached base schema.
-        base_schema: BaseSchema,
+        base: BaseSchema,
     },
     /// Base schema was newly constructed.
     New {
         /// The schema identifier.
-        schema_id: SchemaId,
+        id: SchemaId,
         /// The newly constructed base schema.
-        base_schema: BaseSchema,
+        base: BaseSchema,
     },
     /// Base schema was deleted.
     Deleted {
         /// The schema identifier.
-        schema_id: SchemaId,
+        id: SchemaId,
     },
     /// Base schema changed semantically and was incrementally updated.
     Stale {
         /// The reused schema identifier.
-        schema_id: SchemaId,
+        id: SchemaId,
         /// The updated base schema.
-        base_schema: BaseSchema,
+        base: BaseSchema,
         /// Direct property semantic changes.
         property_delta: PropertyDelta,
         /// Exclude-list semantic changes.
@@ -208,19 +208,19 @@ impl BaseSchemaResolution {
     pub fn schema_id(&self) -> SchemaId {
         match self {
             Self::Fresh {
-                schema_id,
+                id: schema_id,
                 ..
             }
             | Self::New {
-                schema_id,
+                id: schema_id,
                 ..
             }
             | Self::Deleted {
-                schema_id,
+                id: schema_id,
                 ..
             }
             | Self::Stale {
-                schema_id,
+                id: schema_id,
                 ..
             } => *schema_id,
         }
@@ -329,8 +329,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
         let completed = new_proc.create(repository, bank)?;
         let base_schema = completed.into_base();
         Ok(BaseSchemaResolution::New {
-            schema_id,
-            base_schema,
+            id: schema_id,
+            base: base_schema,
         })
     }
 
@@ -367,8 +367,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 let completed = fresh.fetch(repository)?;
                 let (sid, base_schema) = completed.into_fresh_parts();
                 Ok(BaseSchemaResolution::Fresh {
-                    schema_id: sid,
-                    base_schema,
+                    id: sid,
+                    base: base_schema,
                 })
             }
             TimestampBranch::StaleRefs(stale) => {
@@ -397,8 +397,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 let completed = fresh.fetch(repository)?;
                 let (schema_id, base_schema) = completed.into_fresh_parts();
                 Ok(BaseSchemaResolution::Fresh {
-                    schema_id,
-                    base_schema,
+                    id: schema_id,
+                    base: base_schema,
                 })
             }
             ContentBranch::StaleRefs(stale) => {
@@ -424,8 +424,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                 let completed = fresh.fetch(repository)?;
                 let (schema_id, base_schema) = completed.into_fresh_parts();
                 Ok(BaseSchemaResolution::Fresh {
-                    schema_id,
-                    base_schema,
+                    id: schema_id,
+                    base: base_schema,
                 })
             }
             AnalysisBranch::Delta(changed) => {
@@ -443,8 +443,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                     path_key,
                     New {
                         id,
-                        raw: status.raw,
                         content_hash: status.content_hash,
+                        raw: status.raw,
                     },
                 );
 
@@ -453,8 +453,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                     let base = completed.into_base();
                     let schema_id = *base.id();
                     Ok(BaseSchemaResolution::New {
-                        schema_id,
-                        base_schema: base,
+                        id: schema_id,
+                        base,
                     })
                 } else {
                     let schema_name =
@@ -472,8 +472,8 @@ impl BaseSchemaProcessor<Init, Unknown> {
                             });
 
                     Ok(BaseSchemaResolution::New {
-                        schema_id: id,
-                        base_schema: BaseSchema::new(
+                        id,
+                        base: BaseSchema::new(
                             id,
                             schema_name,
                             PropertyMap::new(),
@@ -517,8 +517,8 @@ struct Present {
 )]
 struct Suspect {
     view: RawSchemaView,
-    schema_id: SchemaId,
-    content: String,
+    id: SchemaId,
+    content_str: String,
 }
 
 /// Proven: content hash differs; content is retained for parsing.
@@ -528,10 +528,10 @@ struct Suspect {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Stale {
-    content: String,
+    content_str: String,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -542,10 +542,10 @@ struct Stale {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct StaleReferences {
-    content: String,
+    content_str: String,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -569,7 +569,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
     fn check_timestamps(
         self,
         source: &FileReader,
-        schema_id: SchemaId,
+        id: SchemaId,
         bank_resolution: Option<&PropertyBankResolution>,
     ) -> Result<TimestampBranch, SchemaLoaderError> {
         let (file, path_key, status) = self.into_parts();
@@ -586,7 +586,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
                     file,
                     path_key,
                     Fresh {
-                        schema_id,
+                        id,
                     },
                 )))
             } else {
@@ -599,10 +599,10 @@ impl BaseSchemaProcessor<Comparison, Present> {
                     file,
                     path_key,
                     StaleReferences {
-                        content,
+                        id,
+                        content_str: content,
                         content_hash,
                         view: status.view,
-                        schema_id,
                         ref_delta,
                     },
                 )))
@@ -615,9 +615,9 @@ impl BaseSchemaProcessor<Comparison, Present> {
                 file,
                 path_key,
                 Suspect {
+                    id,
+                    content_str: content,
                     view: status.view,
-                    schema_id,
-                    content,
                 },
             )))
         }
@@ -646,7 +646,7 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
         bank_resolution: Option<&PropertyBankResolution>,
     ) -> ContentBranch {
         let (file, path_key, status) = self.into_parts();
-        let content_hash = Blake3Hash::compute(status.content.as_bytes());
+        let content_hash = Blake3Hash::compute(status.content_str.as_bytes());
 
         if status.view.is_content_match(&content_hash) {
             let ref_delta = relevant_bank_refs(&status.view, bank_resolution);
@@ -656,8 +656,8 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
                     file,
                     path_key,
                     StaleTimestamps {
+                        id: status.id,
                         view: status.view,
-                        schema_id: status.schema_id,
                     },
                 ))
             } else {
@@ -665,10 +665,10 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
                     file,
                     path_key,
                     StaleReferences {
-                        content: status.content,
+                        id: status.id,
+                        content_str: status.content_str,
                         content_hash,
                         view: status.view,
-                        schema_id: status.schema_id,
                         ref_delta,
                     },
                 ))
@@ -679,10 +679,10 @@ impl BaseSchemaProcessor<Comparison, Suspect> {
                 file,
                 path_key,
                 Stale {
-                    content: status.content,
+                    id: status.id,
+                    content_str: status.content_str,
                     content_hash,
                     view: status.view,
-                    schema_id: status.schema_id,
                     ref_delta,
                 },
             ))
@@ -731,7 +731,7 @@ struct ParsedStale {
     raw: RawSchema,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -745,7 +745,7 @@ struct ParsedStaleReferences {
     raw: RawSchema,
     content_hash: Blake3Hash,
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     ref_delta: Vec<PropertyName>,
 }
 
@@ -824,7 +824,7 @@ impl BaseSchemaProcessor<Parsed, Stale> {
 
         let raw: RawSchema = FileReader::parse_structured_from_str(
             file.path().as_path(),
-            &status.content,
+            &status.content_str,
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
@@ -833,10 +833,10 @@ impl BaseSchemaProcessor<Parsed, Stale> {
             .with_metadata(file.metadata().clone());
 
         Ok(Self::transition_from_parts(file, path_key, ParsedStale {
-            raw,
+            id: status.id,
             content_hash: status.content_hash,
+            raw,
             view: status.view,
-            schema_id: status.schema_id,
             ref_delta: status.ref_delta,
         }))
     }
@@ -870,7 +870,7 @@ impl BaseSchemaProcessor<Parsed, StaleReferences> {
 
         let raw: RawSchema = FileReader::parse_structured_from_str(
             file.path().as_path(),
-            &status.content,
+            &status.content_str,
         )
         .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
 
@@ -879,10 +879,10 @@ impl BaseSchemaProcessor<Parsed, StaleReferences> {
             .with_metadata(file.metadata().clone());
 
         Ok(Self::transition_from_parts(file, path_key, ParsedStaleReferences {
-            raw,
+            id: status.id,
             content_hash: status.content_hash,
+            raw,
             view: status.view,
-            schema_id: status.schema_id,
             ref_delta: status.ref_delta,
         }))
     }
@@ -933,8 +933,8 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
                 path_key,
                 New {
                     id: SchemaId::new(),
-                    raw: status.raw,
                     content_hash: status.content_hash,
+                    raw: status.raw,
                 },
             )));
         };
@@ -995,9 +995,9 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
                 file,
                 path_key,
                 StaleContent {
-                    view: status.view,
-                    schema_id: status.schema_id,
+                    id: status.id,
                     content_hash: status.content_hash,
+                    view: status.view,
                 },
             )))
         } else {
@@ -1005,10 +1005,10 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
                 file,
                 path_key,
                 Changed {
+                    id: status.id,
+                    content_hash: status.content_hash,
                     raw: status.raw,
                     view: status.view,
-                    schema_id: status.schema_id,
-                    content_hash: status.content_hash,
                     property_delta,
                     excludes_delta,
                     extends_delta,
@@ -1037,8 +1037,8 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
                 path_key,
                 New {
                     id: SchemaId::new(),
-                    raw: status.raw,
                     content_hash: status.content_hash,
+                    raw: status.raw,
                 },
             )));
         };
@@ -1089,10 +1089,10 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
             file,
             path_key,
             Changed {
+                id: status.id,
+                content_hash: status.content_hash,
                 raw: status.raw,
                 view: status.view,
-                schema_id: status.schema_id,
-                content_hash: status.content_hash,
                 property_delta,
                 excludes_delta: ExcludesDelta::default(),
                 extends_delta: ExtendsDelta::default(),
@@ -1121,7 +1121,7 @@ struct Refresh;
 )]
 struct StaleTimestamps {
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
 }
 
 /// Proven: content hash changed but semantic state did not.
@@ -1132,7 +1132,7 @@ struct StaleTimestamps {
 )]
 struct StaleContent {
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     content_hash: Blake3Hash,
 }
 
@@ -1151,11 +1151,11 @@ impl BaseSchemaProcessor<Refresh, StaleTimestamps> {
         let (file, path_key, mut status) = self.into_parts();
         status.view.update_metadata(file.metadata().clone());
         repository
-            .save_raw_schema_view(status.schema_id, &status.view)
+            .save_raw_schema_view(status.id, &status.view)
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
-            schema_id: status.schema_id,
+            id: status.id,
         }))
     }
 }
@@ -1189,11 +1189,11 @@ impl BaseSchemaProcessor<Refresh, StaleContent> {
         };
         status.view.add_version(version);
         repository
-            .save_raw_schema_view(status.schema_id, &status.view)
+            .save_raw_schema_view(status.id, &status.view)
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
-            schema_id: status.schema_id,
+            id: status.id,
         }))
     }
 }
@@ -1232,7 +1232,7 @@ struct New {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct Fresh {
-    schema_id: SchemaId,
+    id: SchemaId,
 }
 
 /// Proven: semantic divergence exists and must be persisted.
@@ -1244,7 +1244,7 @@ struct Fresh {
 struct Changed {
     raw: RawSchema,
     view: RawSchemaView,
-    schema_id: SchemaId,
+    id: SchemaId,
     content_hash: Blake3Hash,
     property_delta: PropertyDelta,
     excludes_delta: ExcludesDelta,
@@ -1307,7 +1307,7 @@ impl BaseSchemaProcessor<Construction, New> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
-            schema_id: status.id,
+            id: status.id,
             base,
         }))
     }
@@ -1329,16 +1329,15 @@ impl BaseSchemaProcessor<Construction, Fresh> {
     ) -> Result<BaseSchemaProcessor<Completed, FreshReady>, SchemaLoaderError>
     {
         let (file, path_key, status) = self.into_parts();
-        let base = repository
-            .find_base_schema_by_id(status.schema_id)?
-            .ok_or_else(|| {
+        let base =
+            repository.find_base_schema_by_id(status.id)?.ok_or_else(|| {
                 SchemaLoaderError::Repository(
-                    SchemaRepositoryError::NotFoundById(status.schema_id),
+                    SchemaRepositoryError::NotFoundById(status.id),
                 )
             })?;
 
         Ok(Self::transition_from_parts(file, path_key, FreshReady {
-            schema_id: status.schema_id,
+            id: status.id,
             base,
         }))
     }
@@ -1364,7 +1363,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
     ) -> Result<BaseSchemaProcessor<Completed, StaleReady>, SchemaLoaderError>
     {
         let (file, path_key, status) = self.into_parts();
-        let schema_id = status.schema_id;
+        let schema_id = status.id;
 
         let property_hashes = status.raw.properties().compute_hashes();
         let hashes =
@@ -1424,7 +1423,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
             .map_err(SchemaLoaderError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, StaleReady {
-            schema_id,
+            id: schema_id,
             base: updated_base,
             property_delta,
             excludes_delta: status.excludes_delta,
@@ -1452,7 +1451,7 @@ struct Completed;
     reason = "SchemaProcessor builder integration deferred to Phase 3"
 )]
 struct NewReady {
-    schema_id: SchemaId,
+    id: SchemaId,
     base: BaseSchema,
 }
 
@@ -1463,7 +1462,7 @@ struct NewReady {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct FreshReady {
-    schema_id: SchemaId,
+    id: SchemaId,
     base: BaseSchema,
 }
 
@@ -1474,7 +1473,7 @@ struct FreshReady {
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 struct StaleReady {
-    schema_id: SchemaId,
+    id: SchemaId,
     base: BaseSchema,
     property_delta: PropertyDelta,
     excludes_delta: ExcludesDelta,
@@ -1488,7 +1487,7 @@ struct StaleReady {
     reason = "SchemaProcessor builder integration deferred to Phase 3"
 )]
 struct DeletedReady {
-    schema_id: SchemaId,
+    id: SchemaId,
 }
 
 impl BaseSchemaProcessor<Completed, NewReady> {
@@ -1511,7 +1510,7 @@ impl BaseSchemaProcessor<Completed, FreshReady> {
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
     fn into_fresh_parts(self) -> (SchemaId, BaseSchema) {
-        (self.status.schema_id, self.status.base)
+        (self.status.id, self.status.base)
     }
 }
 
@@ -1524,8 +1523,8 @@ impl BaseSchemaProcessor<Completed, StaleReady> {
     )]
     fn into_stale_resolution(self) -> BaseSchemaResolution {
         BaseSchemaResolution::Stale {
-            schema_id: self.status.schema_id,
-            base_schema: self.status.base,
+            id: self.status.id,
+            base: self.status.base,
             property_delta: self.status.property_delta,
             excludes_delta: self.status.excludes_delta,
             extends_delta: self.status.extends_delta,
@@ -1542,7 +1541,7 @@ impl BaseSchemaProcessor<Completed, DeletedReady> {
     )]
     fn into_deleted_resolution(self) -> BaseSchemaResolution {
         BaseSchemaResolution::Deleted {
-            schema_id: self.status.schema_id,
+            id: self.status.id,
         }
     }
 }
@@ -1608,13 +1607,13 @@ mod tests {
         ($resolution:expr) => {{
             let resolution = $resolution;
             let BaseSchemaResolution::New {
-                schema_id: _,
-                base_schema,
+                id: _,
+                base,
             } = resolution
             else {
                 panic!("Expected New resolution, got {resolution:?}");
             };
-            base_schema
+            base
         }};
     }
 
@@ -1622,8 +1621,8 @@ mod tests {
         ($resolution:expr) => {{
             let resolution = $resolution;
             let BaseSchemaResolution::Fresh {
-                schema_id,
-                base_schema,
+                id: schema_id,
+                base: base_schema,
             } = resolution
             else {
                 panic!("Expected Fresh resolution, got {resolution:?}");
@@ -1635,8 +1634,8 @@ mod tests {
     macro_rules! expect_stale {
         ($resolution:expr) => {{
             let BaseSchemaResolution::Stale {
-                schema_id,
-                base_schema,
+                id: schema_id,
+                base: base_schema,
                 property_delta,
                 excludes_delta,
                 extends_delta,
@@ -1665,7 +1664,7 @@ mod tests {
         _vault_dir: TempDir,
         file: FsFile,
         key: PathKey,
-        content: String,
+        content_str: String,
     }
 
     fn make_fixture() -> Fixture {
@@ -1698,7 +1697,7 @@ mod tests {
             _vault_dir: vault_dir,
             file,
             key,
-            content,
+            content_str: content,
         }
     }
 
@@ -1713,7 +1712,7 @@ mod tests {
         .cloned()
         .expect("file metadata");
         fixture.file = FsFile::new(fixture.file.path().clone(), metadata);
-        fixture.content = content.to_owned();
+        fixture.content_str = content.to_owned();
     }
 
     fn parse_raw_schema(fixture: &Fixture, content: &str) -> RawSchema {
@@ -1728,7 +1727,7 @@ mod tests {
 
     /// Create a view whose timestamps match the current file metadata.
     fn matching_view(fixture: &Fixture) -> RawSchemaView {
-        matching_view_for_content(fixture, &fixture.content)
+        matching_view_for_content(fixture, &fixture.content_str)
     }
 
     fn matching_view_for_content(
@@ -1791,15 +1790,12 @@ mod tests {
 
     fn seed_base_and_view(
         fixture: &Fixture,
-        schema_id: SchemaId,
+        id: SchemaId,
         view: &RawSchemaView,
     ) -> BaseSchema {
-        let base = base_schema_with_id(schema_id);
+        let base = base_schema_with_id(id);
         fixture.repository.save_base_schema(&base).expect("save base");
-        fixture
-            .repository
-            .save_raw_schema_view(schema_id, view)
-            .expect("save view");
+        fixture.repository.save_raw_schema_view(id, view).expect("save view");
         base
     }
 
@@ -1985,7 +1981,7 @@ mod tests {
         fn returns_fresh_when_content_matches_after_timestamp_mismatch() {
             let fixture = make_fixture();
             let schema_id = SchemaId::new();
-            let view = stale_view(&fixture, &fixture.content);
+            let view = stale_view(&fixture, &fixture.content_str);
             seed_base_and_view(&fixture, schema_id, &view);
             let processor =
                 BaseSchemaProcessor::<Init, Unknown>::from_discovery(
@@ -2006,7 +2002,7 @@ mod tests {
         fn updates_view_timestamps_when_normalizing_stale_timestamps() {
             let fixture = make_fixture();
             let schema_id = SchemaId::new();
-            let view = stale_view(&fixture, &fixture.content);
+            let view = stale_view(&fixture, &fixture.content_str);
             seed_base_and_view(&fixture, schema_id, &view);
             let fixture_times = fixture.file.metadata().times().clone();
             let processor =
@@ -2035,7 +2031,7 @@ mod tests {
         fn does_not_write_base_schema_when_normalizing_stale_timestamps() {
             let fixture = make_fixture();
             let schema_id = SchemaId::new();
-            let view = stale_view(&fixture, &fixture.content);
+            let view = stale_view(&fixture, &fixture.content_str);
             seed_base_and_view(&fixture, schema_id, &view);
             fixture.repository.harness().counters().reset();
             let processor =
@@ -2257,7 +2253,7 @@ mod tests {
         fn returns_new_when_view_has_no_current_version() {
             let fixture = make_fixture();
             let schema_id = SchemaId::new();
-            let view = stale_view(&fixture, &fixture.content);
+            let view = stale_view(&fixture, &fixture.content_str);
             seed_base_and_view(&fixture, schema_id, &view);
             let corrupt_view =
                 RawSchemaView::empty_for_test(fixture.key.clone());
@@ -2787,13 +2783,13 @@ mod tests {
         fn carries_schema_id() {
             let schema_id = SchemaId::new();
             let resolution = BaseSchemaResolution::Deleted {
-                schema_id,
+                id: schema_id,
             };
             assert!(matches!(resolution, BaseSchemaResolution::Deleted {
-                schema_id: _
+                id: _
             }));
             if let BaseSchemaResolution::Deleted {
-                schema_id: sid,
+                id: sid,
             } = resolution
             {
                 assert_eq!(sid, schema_id);
@@ -2807,12 +2803,12 @@ mod tests {
             let processor = BaseSchemaProcessor::<Completed, DeletedReady>::transition_from_parts(
                 fixture.file,
                 fixture.key.clone(),
-                DeletedReady { schema_id },
+                DeletedReady { id: schema_id },
             );
             let resolution = processor.into_deleted_resolution();
             assert!(matches!(resolution, BaseSchemaResolution::Deleted { .. }));
             if let BaseSchemaResolution::Deleted {
-                schema_id: sid,
+                id: sid,
             } = resolution
             {
                 assert_eq!(sid, schema_id);
@@ -2856,15 +2852,15 @@ mod tests {
 
             let mut resolutions = [
                 BaseSchemaResolution::Deleted {
-                    schema_id: id_c,
+                    id: id_c,
                 },
                 BaseSchemaResolution::New {
-                    schema_id: id_b,
-                    base_schema: base.clone(),
+                    id: id_b,
+                    base: base.clone(),
                 },
                 BaseSchemaResolution::Fresh {
-                    schema_id: id_a,
-                    base_schema: base.clone(),
+                    id: id_a,
+                    base: base.clone(),
                 },
             ];
 
@@ -2886,8 +2882,8 @@ mod tests {
                 Vec::new(),
             );
             let fresh = BaseSchemaResolution::Fresh {
-                schema_id,
-                base_schema: base,
+                id: schema_id,
+                base,
             };
             assert!(matches!(fresh, BaseSchemaResolution::Fresh { .. }));
             assert_eq!(fresh.schema_id(), schema_id);
@@ -2904,8 +2900,8 @@ mod tests {
                 Vec::new(),
             );
             let new_res = BaseSchemaResolution::New {
-                schema_id,
-                base_schema: base,
+                id: schema_id,
+                base,
             };
             assert!(matches!(new_res, BaseSchemaResolution::New { .. }));
             assert_eq!(new_res.schema_id(), schema_id);
@@ -2922,8 +2918,8 @@ mod tests {
                 Vec::new(),
             );
             let stale = BaseSchemaResolution::Stale {
-                schema_id,
-                base_schema: base,
+                id: schema_id,
+                base,
                 property_delta: PropertyDelta::default(),
                 excludes_delta: ExcludesDelta::default(),
                 extends_delta: ExtendsDelta::default(),
@@ -2936,7 +2932,7 @@ mod tests {
         fn deleted_variant_carries_expected_fields() {
             let schema_id = SchemaId::new();
             let deleted = BaseSchemaResolution::Deleted {
-                schema_id,
+                id: schema_id,
             };
             assert!(matches!(deleted, BaseSchemaResolution::Deleted { .. }));
             assert_eq!(deleted.schema_id(), schema_id);

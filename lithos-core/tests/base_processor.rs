@@ -86,7 +86,7 @@ mod resolution {
             processor.run(None, &source, &repository, Some(&bank_res))?;
 
         let BaseSchemaResolution::New {
-            base_schema: base1,
+            base: base1,
             ..
         } = res1
         else {
@@ -139,8 +139,8 @@ mod resolution {
         )?;
 
         let BaseSchemaResolution::Stale {
-            base_schema: prop_base,
-            schema_id: sid,
+            base: prop_base,
+            id: sid,
             ..
         } = res2
         else {
@@ -208,7 +208,7 @@ mod resolution {
             .run(None, &source, &repository, Some(&bank_res))?;
 
         let BaseSchemaResolution::New {
-            base_schema: s1_base,
+            base: s1_base,
             ..
         } = res1
         else {
@@ -217,7 +217,7 @@ mod resolution {
         let id1 = *s1_base.id();
 
         let BaseSchemaResolution::New {
-            base_schema: s2_base,
+            base: s2_base,
             ..
         } = res2
         else {
@@ -262,7 +262,7 @@ mod resolution {
         )?;
 
         let BaseSchemaResolution::Stale {
-            schema_id: sid1,
+            id: sid1,
             ..
         } = res1_v2
         else {
@@ -287,7 +287,7 @@ mod resolution {
         )?;
 
         let BaseSchemaResolution::Stale {
-            schema_id: sid2,
+            id: sid2,
             ..
         } = res2_v2
         else {
@@ -319,7 +319,7 @@ mod resolution {
         let resolution = processor.run(None, &source, &repository, None)?;
 
         let BaseSchemaResolution::New {
-            schema_id,
+            id: schema_id,
             ..
         } = resolution
         else {
@@ -341,7 +341,7 @@ mod resolution {
         );
 
         let deleted = BaseSchemaResolution::Deleted {
-            schema_id,
+            id: schema_id,
         };
         assert_eq!(deleted.schema_id(), schema_id);
         assert!(matches!(deleted, BaseSchemaResolution::Deleted { .. }));
@@ -396,8 +396,8 @@ mod resolution {
             BaseSchemaProcessor::from_discovery(stale_file.clone(), &root)?
                 .run(None, &source, &repository, Some(&bank_res))?;
         let BaseSchemaResolution::New {
-            base_schema: stale_base,
-            schema_id: stale_id,
+            base: stale_base,
+            id: stale_id,
         } = stale_res
         else {
             panic!("Expected initial New resolution for stale_ref");
@@ -476,7 +476,7 @@ mod resolution {
         for outcome in outcomes {
             match outcome {
                 BaseSchemaResolution::Fresh {
-                    schema_id,
+                    id: schema_id,
                     ..
                 } => {
                     assert_eq!(
@@ -486,8 +486,8 @@ mod resolution {
                     saw_fresh = true;
                 }
                 BaseSchemaResolution::Stale {
-                    schema_id,
-                    base_schema,
+                    id: schema_id,
+                    base: base_schema,
                     ..
                 } => {
                     assert_eq!(
@@ -512,7 +512,7 @@ mod resolution {
                     saw_stale = true;
                 }
                 BaseSchemaResolution::New {
-                    base_schema,
+                    base: base_schema,
                     ..
                 } => {
                     assert_eq!(
@@ -523,7 +523,7 @@ mod resolution {
                     saw_new = true;
                 }
                 BaseSchemaResolution::Deleted {
-                    schema_id,
+                    id: schema_id,
                 } => panic!("Unexpected Deleted resolution for {schema_id}"),
                 _ => panic!("Unexpected unknown BaseSchemaResolution variant"),
             }
