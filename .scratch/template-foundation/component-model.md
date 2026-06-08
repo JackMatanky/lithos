@@ -17,10 +17,21 @@ This file is a working design surface for the foundation grilling session. It in
 
 The primary domain aggregate for a renderable template asset.
 
+Accepted foundation shape:
+ - `Template` starts as the minimal validated aggregate needed to identify and render a template asset.
+ - The foundation shape is intentionally extensible; richer user-facing metadata can be added in later phases once frontmatter/query semantics are designed.
+ - `recorded_at: SystemTime` is required as private ingestion/storage metadata and should use `#[rkyv(with = AsUnixTime)]`, matching the existing schema aggregate convention.
+
+Decisions:
+- `TemplateName` is a validated field stored on `Template`.
+- Both `TemplateName` and `TemplatePath` are derived from `FilePath` at construction time.
+- No `TemplatePath` newtype — use `PathKey` directly for vault-relative path identity.
+- `FilePath` (rooted, filesystem I/O) is an adapter-layer concern — never stored on the domain aggregate.
+- MiniJinja receives `(name, source)` pairs at the adapter boundary, never a filesystem path directly.
+- `Template` identity: stable `TemplateId` (UUIDv7) plus canonical `path: PathKey`.
+
 Open shape questions:
-- Identity: `TemplateId` only, or `TemplateId` plus stable path key?
-- Name: derived from path stem, frontmatter, or explicit validated `TemplateName`?
-- Body: raw Markdown template body as `String`.
+ - Body: raw Markdown template body as `String`.
 - Extension registry: not stored on the aggregate; registered into `TemplateEngine` at runtime.
 - Frontmatter: postponed to `template-query`; foundation should not make frontmatter semantics central.
 
@@ -28,25 +39,35 @@ Open shape questions:
 
 The raw file-backed DTO produced from reading a template file before parsing/validation.
 
-Open shape questions:
-- Include full raw text as read from disk.
-- Include path identity used by repositories and cache tables.
-- Include filesystem metadata only if it remains replaceable by the future vault filesystem indexer.
+Foundation shape:
+- `RawTemplate { content: String }` — a thin named wrapper for pipeline clarity.
+- No path (ingestion context assigns it), no metadata (on `RawTemplateView`).
+- Processor takes `(content, PathKey, FileMetadata)` from FS adapter and produces `Template` directly.
 
 ### `RawTemplateView`
 
-The lightweight cache view used for freshness and staleness checks.
+The lightweight cache view for freshness and staleness checks.
 
-Required constraints:
-- Use `Blake3Hash` from `lithos-core/src/support/content_hash.rs` for content identity.
-- Use `Blake3HashIndex` from `lithos-core/src/support/hash_index.rs` when the view carries per-section/per-key hashes.
-- Implement or expose `HasContentHash`/`HasHashIndex` where appropriate if the design benefits from common freshness comparisons.
-- Keep the freshness seam small because general file freshness will later move to the vault filesystem indexer.
+Foundation shape:
+- No `TemplatePath` newtype — use `PathKey` directly.
+- `FileMetadata` replaces separate `created_at`/`modified_at` fields.
+- Single `Blake3Hash` for content identity (no `Blake3HashIndex` until frontmatter/query phase).
+- Must implement `HasContentHash` and `HasContentHashMut` from `lithos-core/src/support/content_hash.rs`.
+- Seam kept small for future vault filesystem indexer takeover.
 
-Open shape questions:
-- Single content hash only vs. a hash index keyed by logical template sections.
-- Whether to store modified time now as a temporary optimization.
-- Whether archived `RawTemplateView` must support direct comparison against owned `Blake3HashIndex` via `ArchivedBlake3HashIndex::is_match_by`.
+```rust
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct RawTemplateView {
+    path: PathKey,
+    content_hash: Blake3Hash,
+    metadata: FileMetadata,
+    #[rkyv(with = AsUnixTime)]
+    recorded_at: SystemTime,
+}
+
+impl HasContentHash for RawTemplateView { ... }
+impl HasContentHashMut for RawTemplateView { ... }
+```
 
 ## Repository Traits
 
