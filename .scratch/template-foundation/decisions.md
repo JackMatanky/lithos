@@ -13,7 +13,10 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 ## Foundation Rendering Boundary
 - **Primary engine port**: Foundation defines `TemplateEngine` as the primary rendering port implemented by `MiniJinjaEngine`.
 - **Lithos-shaped API**: `TemplateEngine` exposes `compile` and `render`; it does not mirror MiniJinja registration, filter, global, loader, or environment APIs.
-- **Compile meaning**: `TemplateEngine::compile` is engine-level syntax/source checking and owned template loading. Service-level validation remains a `TemplateService` responsibility.
+- **Compile meaning**: `TemplateEngine::compile` is engine-level syntax/source checking and owned template loading for an already-supplied `Template`. Service-level validation remains a `TemplateService` responsibility.
+- **Compile boundary**: `compile` must not perform repository lookup, template discovery, indexing, target resolution, conflict checks, filesystem writes, or CLI context assembly.
+- **Service boundary**: `TemplateService` owns use-case orchestration and may call `compile` inside named-template validation or render preparation.
+- **Validation reporting**: Template correctness under the configured engine is modeled as a `TemplateService` validation/check result, not as a terminal `TemplateProcessor<State>` state.
 - **Built-ins only**: `template-foundation` uses MiniJinja built-ins only. No Lithos custom extension modules are included.
 - **Engine configuration**: Foundation configures MiniJinja for Lithos semantics: owned template sources, strict undefined behavior, and no Markdown auto-escape.
 - **No extension registry**: `TemplateExtension` and `ExtensionRegistry` are explicitly out of scope for foundation.
@@ -26,6 +29,11 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Single-output**: Foundation handles one rendered output file. Multi-file template packs are planned later.
 - **Minimal context**: Foundation CLI accepts flat `--var key=value` entries as a raw MiniJinja context. Namespaced inputs and UX-friendly collection are deferred.
 - **Minimal CLI**: Foundation includes a CLI vertical slice such as `lithos template render <template-name> --output <vault-relative-path> --var key=value`.
+
+## TemplateProcessor Boundary
+- **Ingestion responsibility**: `TemplateProcessor<State>` is responsible for reading, comparing, parsing, constructing, and persisting valid Lithos template assets.
+- **Terminal state**: `TemplateProcessor<State>` stops at `Completed`; it does not add `Compiled` or `Validated` as final states in foundation.
+- **Engine validation**: `TemplateService` reports whether persisted templates compile under the configured engine by orchestrating repository lookup and `TemplateEngine::compile`.
 
 ## TemplateArtifact Typestate
 - **Artifact pipeline**: Rendered output moves through `TemplateArtifact<State>` states before write.

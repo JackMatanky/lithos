@@ -96,7 +96,8 @@ Foundation includes `TemplateEngine` as the primary rendering port. The port is 
 pub trait TemplateEngine: Send + Sync {
     /// Compile or load a template into the configured engine.
     ///
-    /// This is engine-level syntax/source checking, not service-level validation.
+    /// This is engine-level syntax/source checking and owned template loading,
+    /// not service-level validation or workflow orchestration.
     fn compile(
         &mut self,
         template: &Template,
@@ -128,6 +129,10 @@ impl TemplateEngine for MiniJinjaEngine {
 ### Design decisions
 
 - `Environment<'static>` + `add_template_owned()` avoids lifetime coupling between source strings and the environment.
+- `compile` stays on `TemplateEngine` in foundation, but its scope is narrow: check/load the supplied `Template` source for the configured engine.
+- `compile` must not perform repository lookup, template discovery, indexing, target resolution, conflict checks, filesystem writes, or CLI context assembly.
+- `TemplateService` owns use-case orchestration and may call `compile` as one step of `validate_template` or render preparation.
+- Template correctness under the configured engine is reported by `TemplateService`, not encoded as a terminal `TemplateProcessor` state.
 - Foundation rendering uses MiniJinja built-ins only.
 - Foundation configures MiniJinja for Lithos semantics: no Markdown auto-escape, strict undefined behavior, owned template sources.
 - Foundation has no `TemplateExtension`, no `ExtensionRegistry`, and no Lithos custom modules (`date.*`, `str.*`, `path.*`, `file.*`, `prompt.*`, query helpers).
@@ -170,6 +175,8 @@ Discovery ─┬─ no view
 
 Individual paths skip stages (fresh path goes Comparison → Construction, skipping Parsed and Refresh).
 
+`TemplateProcessor<State>` stops at `Completed`. It is responsible for ingesting valid Lithos template assets, not proving those assets compile under a configured render engine. Engine compilation/check results belong to `TemplateService` validation reporting.
+
 ## TemplateService (Foundation Scope)
 
 `TemplateService` is the application/use-case orchestrator for the limited foundation vertical slice. It is not a MiniJinja wrapper and should not decide extension registry shape.
@@ -181,6 +188,13 @@ Foundation use cases:
 - Render a named template to Markdown in memory.
 - Build a single-output `TemplateArtifact` for a vault-safe target.
 - Commit that artifact with basic safe filesystem behavior.
+
+Boundary with `TemplateEngine`:
+- `TemplateService` finds the template and assembles the render context before invoking the engine.
+- `TemplateService` owns named-template validation workflow; `TemplateEngine::compile` only reports engine-level source/syntax/load failures for the supplied `Template`.
+- `TemplateService` reports whether a template compiles under the configured engine; this is not a `TemplateProcessor<State>` terminal state.
+- `TemplateService` owns all target resolution, conflict checks, and filesystem commit orchestration after rendering.
+- `TemplateEngine` must not know about repositories, config lookup, filesystem paths, CLI flags, or commit policy.
 
 Out of scope for foundation:
 - Lithos custom extensions and extension packs.
