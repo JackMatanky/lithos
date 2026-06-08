@@ -1,8 +1,23 @@
 //! Orchestration engine for vault and global configuration discovery.
 //!
-//! This module provides the high-level API for locating configuration roots
-//! based on policy-driven precedence (CLI flags, environment variables, and
-//! filesystem convention).
+//! The [`DiscoveryEngine`] is the primary entry point for the discovery
+//! context. It coordinates between filesystem [`crate::discovery::probe`]s and
+//! [`crate::discovery::selector`]s to resolve configuration roots based on the
+//! precedence rules defined in a [`DiscoveryPolicy`].
+//!
+//! # Primary Workflows
+//!
+//! 1. **Vault Discovery** ([`DiscoveryEngine::find_vault`]): Locates the
+//!    runtime vault root (e.g. from a CLI flag or by walking up parent
+//!    directories).
+//! 2. **Global Discovery** ([`DiscoveryEngine::find_global`]): Locates system
+//!    or user-level global configuration.
+//!
+//! # Safety and Canonicalization
+//!
+//! The engine ensures all returned paths are canonicalized and validated
+//! against the local filesystem. It does not perform any case-correction;
+//! discovery is strictly based on exact filename matches.
 
 use std::{
     ffi::OsStr,
@@ -12,30 +27,21 @@ use std::{
 use super::{
     diagnostics::VaultDiscoveryWarning,
     error::DiscoveryError,
-    policy::{DiscoveryPolicy, GlobalSourceType, VaultSourceType},
-    probe::{DiscoveryProbe, VaultRootProbe},
+    policy::{
+        DiscoveryPolicy, GlobalSourceDirectory, GlobalSourceType,
+        VaultSourceType,
+    },
+    probe::{DiscoveryProbe, GlobalRootProbe, VaultRootProbe},
     selector::select_candidate,
     walk::{BoundedAscent, DiscoveryBoundaries},
 };
 use crate::fs::format::StructuredFileFormat;
 
-/// A root marker file found during vault root resolution.
-///
-/// Carries the canonicalized path to the marker file (e.g. `lithos.toml`) and
-/// the base directory it was found in. Does not include Config location
-/// taxonomy; that classification is Config-owned.
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FoundRootMarker {
-    /// Base directory the marker was found in (the vault root candidate).
-    pub(crate) base: PathBuf,
-    /// Absolute canonicalized path to the marker file.
-    pub(crate) path: PathBuf,
-    /// The detected structured format of the marker file.
-    pub(crate) format: StructuredFileFormat,
-}
-
 /// Orchestrates the discovery of vault and global configuration markers.
+///
+/// The `DiscoveryEngine` applies a [`DiscoveryPolicy`] to various inputs (CLI
+/// flags, environment variables, filesystem state) to locate the configuration
+/// roots and their associated marker files.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 pub(crate) struct DiscoveryEngine {
     policy: DiscoveryPolicy,
@@ -52,36 +58,33 @@ impl DiscoveryEngine {
 
     /// Find the vault root and marker based on policy precedence.
     ///
-    /// Iterates through allowed sources (Flag -> Env -> Walk) until a root is
-    /// successfully resolved or an error occurs.
+    /// Iterates through allowed sources ([`VaultSourceType::ExplicitFlag`] ->
+    /// [`VaultSourceType::EnvVar`] -> [`VaultSourceType::AscendingWalk`]) until
+    /// a root is successfully resolved or an error occurs.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DiscoveryError`] if:
+    /// - An explicit flag or environment path is provided but does not exist.
+    /// - An explicit path is not a directory.
+    /// - Filesystem permissions prevent reading a directory during traversal.
+    /// - The current working directory cannot be canonicalized.
     pub(crate) fn find_vault(
         &self,
         input: &DiscoveryInput<'_>,
     ) -> Result<VaultDiscoveryResult, DiscoveryError> {
-        for source_type in &self.policy.precedence {
+        for source_type in &self.policy.vault_precedence {
             match source_type {
                 VaultSourceType::ExplicitFlag => {
                     if let Some(path) = input.flag_path {
                         let root = Self::validate_override(path, *source_type)?;
-                        return Ok(VaultDiscoveryResult {
-                            root: Some(root),
-                            marker: None,
-                            alternatives: vec![],
-                            source: Some(VaultSourceType::ExplicitFlag),
-                            warnings: vec![],
-                        });
+                        return Self::resolve_vault_root(root, *source_type);
                     }
                 }
                 VaultSourceType::EnvVar => {
                     if let Some(path) = input.env_path {
                         let root = Self::validate_override(path, *source_type)?;
-                        return Ok(VaultDiscoveryResult {
-                            root: Some(root),
-                            marker: None,
-                            alternatives: vec![],
-                            source: Some(VaultSourceType::EnvVar),
-                            warnings: vec![],
-                        });
+                        return Self::resolve_vault_root(root, *source_type);
                     }
                 }
                 VaultSourceType::AscendingWalk => {
@@ -101,23 +104,94 @@ impl DiscoveryEngine {
 
     /// Find the global configuration marker.
     ///
-    /// NOTE: This is currently a stub for Phase 1 and always returns an empty
-    /// result.
-    #[allow(
-        clippy::unused_self,
-        clippy::unnecessary_wraps,
-        reason = "Stub; will use self and return error in Phase 2"
-    )]
+    /// Probes the sources defined in [`DiscoveryPolicy::global_precedence`]. If
+    /// `input.suppress` is true, returns a default empty result immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DiscoveryError`] if a directory probe fails due to
+    /// filesystem permissions or other I/O errors.
     pub(crate) fn find_global(
         &self,
-        _input: &DiscoveryInput<'_>,
+        input: &GlobalDiscoveryInput<'_>,
     ) -> Result<GlobalDiscoveryResult, DiscoveryError> {
-        Ok(GlobalDiscoveryResult {
-            marker: None,
-            alternatives: vec![],
-            source: None,
+        if input.suppress {
+            return Ok(GlobalDiscoveryResult::default());
+        }
+
+        for source in &self.policy.global_precedence {
+            let base = match source {
+                GlobalSourceType::EnvVar => input.env_path,
+                GlobalSourceType::Directory(directory) => input
+                    .directories
+                    .iter()
+                    .find(|candidate| candidate.directory == *directory)
+                    .map(|candidate| candidate.base),
+            };
+            let Some(base) = base else {
+                continue;
+            };
+
+            if let Some(result) = Self::resolve_global_root(base, *source)? {
+                return Ok(result);
+            }
+        }
+
+        Ok(GlobalDiscoveryResult::default())
+    }
+
+    fn resolve_vault_root(
+        root: PathBuf,
+        source: VaultSourceType,
+    ) -> Result<VaultDiscoveryResult, DiscoveryError> {
+        let markers = VaultRootProbe.probe(&root)?.unwrap_or_default();
+        let (marker, alternatives) = Self::select_markers(markers);
+        Ok(VaultDiscoveryResult {
+            root: Some(root),
+            marker,
+            alternatives,
+            source: Some(source),
             warnings: vec![],
         })
+    }
+
+    fn resolve_global_root(
+        base: &Path,
+        source: GlobalSourceType,
+    ) -> Result<Option<GlobalDiscoveryResult>, DiscoveryError> {
+        let markers = GlobalRootProbe.probe(base)?.unwrap_or_default();
+        let (marker, alternatives) = Self::select_markers(markers);
+        if marker.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(GlobalDiscoveryResult {
+            marker,
+            alternatives,
+            source: Some(source),
+        }))
+    }
+
+    /// Deduplicates by canonical path, then selects the highest-precedence
+    /// marker and returns the remainder as alternatives.
+    fn select_markers(
+        markers: Vec<DiscoveredMarker>,
+    ) -> (Option<DiscoveredMarker>, Vec<DiscoveredMarker>) {
+        // Deduplicate by canonical path, preserving first-seen order.
+        let mut unique: Vec<DiscoveredMarker> = Vec::new();
+        for m in markers {
+            if !unique.iter().any(|u| u.path == m.path) {
+                unique.push(m);
+            }
+        }
+
+        let selected = select_candidate(&unique).cloned();
+        let Some(winner) = selected else {
+            return (None, vec![]);
+        };
+        let winner_path = winner.path.clone();
+        let alternatives =
+            unique.into_iter().filter(|m| m.path != winner_path).collect();
+        (Some(winner), alternatives)
     }
 
     /// Performs an ascending walk from the current working directory to find a
@@ -144,30 +218,18 @@ impl DiscoveryEngine {
             &ceilings,
             self.policy.allow_marker_at_ceiling,
         );
-        let probe = VaultRootProbe;
-        let mut all_markers: Vec<FoundRootMarker> = Vec::new();
         let mut found_root: Option<PathBuf> = None;
+        let mut marker: Option<DiscoveredMarker> = None;
+        let mut alternatives: Vec<DiscoveredMarker> = vec![];
 
         for current in walker {
-            if let Some(mut markers) = probe.probe(current)? {
+            let markers = VaultRootProbe.probe(current)?.unwrap_or_default();
+            if !markers.is_empty() {
                 found_root = Some(current.to_path_buf());
-                all_markers.append(&mut markers);
+                (marker, alternatives) = Self::select_markers(markers);
                 break;
             }
         }
-
-        let selected = select_candidate(&all_markers).cloned();
-        let (marker, alternatives) = match selected {
-            Some(ref selected) => {
-                let selected_path = selected.path.clone();
-                let alts: Vec<FoundRootMarker> = all_markers
-                    .into_iter()
-                    .filter(|m| m.path != selected_path)
-                    .collect();
-                (Some(selected.clone()), alts)
-            }
-            None => (None, vec![]),
-        };
 
         let source =
             found_root.as_ref().map(|_| VaultSourceType::AscendingWalk);
@@ -255,6 +317,30 @@ pub(crate) struct DiscoveryInput<'a> {
     pub(crate) ceiling_dirs_raw: Option<&'a OsStr>,
 }
 
+/// Inputs for global configuration discovery.
+///
+/// `env_path` and `directories` are probed for
+/// `lithos.{toml,json,yaml,yml}` and `lithos/config.{toml,json,yaml,yml}`.
+#[allow(dead_code, reason = "Phase-2 seam; wired in once orchestration lands")]
+pub(crate) struct GlobalDiscoveryInput<'a> {
+    /// Root directory from the global config environment source.
+    pub(crate) env_path: Option<&'a Path>,
+    /// Candidate global source directories to probe.
+    pub(crate) directories: &'a [GlobalDirectoryCandidate<'a>],
+    /// Skip all global lookup and return empty; corresponds to
+    /// `--no-global-config`.
+    pub(crate) suppress: bool,
+}
+
+/// A global source directory candidate passed into Discovery.
+#[allow(dead_code, reason = "Phase-2 seam; wired in once orchestration lands")]
+pub(crate) struct GlobalDirectoryCandidate<'a> {
+    /// Source directory category.
+    pub(crate) directory: GlobalSourceDirectory,
+    /// Base directory to probe for global marker files.
+    pub(crate) base: &'a Path,
+}
+
 /// The result of a successful or partially-successful vault discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug)]
@@ -262,9 +348,9 @@ pub(crate) struct VaultDiscoveryResult {
     /// The resolved vault root directory.
     pub(crate) root: Option<PathBuf>,
     /// The highest-precedence marker file found.
-    pub(crate) marker: Option<FoundRootMarker>,
+    pub(crate) marker: Option<DiscoveredMarker>,
     /// Other marker files found in the same root (e.g. different formats).
-    pub(crate) alternatives: Vec<FoundRootMarker>,
+    pub(crate) alternatives: Vec<DiscoveredMarker>,
     /// Which source established the root.
     pub(crate) source: Option<VaultSourceType>,
     /// Non-fatal warnings encountered during discovery.
@@ -273,15 +359,30 @@ pub(crate) struct VaultDiscoveryResult {
 
 /// The result of a global configuration discovery.
 #[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub(crate) struct GlobalDiscoveryResult {
     /// The discovered global marker file.
-    pub(crate) marker: Option<FoundRootMarker>,
+    pub(crate) marker: Option<DiscoveredMarker>,
     /// Alternative formats of the global marker.
-    pub(crate) alternatives: Vec<FoundRootMarker>,
+    pub(crate) alternatives: Vec<DiscoveredMarker>,
     /// Which source established the global config.
     pub(crate) source: Option<GlobalSourceType>,
-    /// Non-fatal warnings encountered during discovery.
-    pub(crate) warnings: Vec<VaultDiscoveryWarning>,
+}
+
+/// A marker file found during vault or global root resolution.
+///
+/// Carries the canonicalized path to the marker file (e.g. `lithos.toml`) and
+/// the base directory it was found in. Does not include Config source or
+/// location taxonomy.
+#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DiscoveredMarker {
+    /// Base directory the marker was found in (the vault root candidate).
+    pub(crate) base: PathBuf,
+    /// Absolute canonicalized path to the marker file.
+    pub(crate) path: PathBuf,
+    /// The detected structured format of the marker file.
+    pub(crate) format: StructuredFileFormat,
 }
 
 #[cfg(test)]
@@ -378,6 +479,28 @@ mod tests {
                 Some(
                     explicit.path().canonicalize().expect("canonical explicit")
                 )
+            );
+        }
+
+        #[test]
+        fn returns_marker_when_explicit_path_contains_marker() {
+            let explicit = tempdir().expect("explicit dir");
+            let marker_path = write_marker(explicit.path(), "lithos.toml");
+            let cwd = tempdir().expect("cwd");
+
+            let result = engine()
+                .find_vault(&DiscoveryInput {
+                    flag_path: Some(explicit.path()),
+                    env_path: None,
+                    cwd: cwd.path(),
+                    ceiling_dirs_raw: None,
+                })
+                .expect("resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                marker.path,
+                marker_path.canonicalize().expect("canonical marker")
             );
         }
 
@@ -695,23 +818,423 @@ mod tests {
                 VaultDiscoveryWarning::InvalidCeilingSegment { .. }
             )));
         }
+    }
+
+    mod find_global {
+        use super::*;
+
+        fn input<'a>(
+            env_path: Option<&'a Path>,
+            directories: &'a [GlobalDirectoryCandidate<'a>],
+        ) -> GlobalDiscoveryInput<'a> {
+            GlobalDiscoveryInput {
+                env_path,
+                directories,
+                suppress: false,
+            }
+        }
+
+        fn candidate(
+            directory: GlobalSourceDirectory,
+            base: &Path,
+        ) -> GlobalDirectoryCandidate<'_> {
+            GlobalDirectoryCandidate {
+                directory,
+                base,
+            }
+        }
 
         #[test]
-        fn find_global_is_stub() {
-            let cwd = tempdir().expect("cwd");
+        fn returns_marker_when_environment_config_file_exists() {
+            let global_dir = tempdir().expect("global dir");
+            let marker_path = write_marker(global_dir.path(), "lithos.toml");
+
             let result = engine()
-                .find_global(&DiscoveryInput {
-                    flag_path: None,
-                    env_path: None,
-                    cwd: cwd.path(),
-                    ceiling_dirs_raw: None,
-                })
-                .expect("stub returns ok");
+                .find_global(&input(Some(global_dir.path()), &[]))
+                .expect("global resolution succeeds");
+
+            let marker = result.marker.expect("global marker is discovered");
+            assert_eq!(
+                marker.path,
+                marker_path.canonicalize().expect("canonical marker")
+            );
+        }
+
+        #[test]
+        fn returns_none_when_no_global_config_exists() {
+            let root = tempdir().expect("root");
+            let missing_env = root.path().join("missing.toml");
+            let xdg = root.path().join("xdg");
+            let user = root.path().join("user");
+            let system = root.path().join("system");
+            std::fs::create_dir_all(&xdg).expect("xdg");
+            std::fs::create_dir_all(&user).expect("user");
+            std::fs::create_dir_all(&system).expect("system");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::UserConfig, &user),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(Some(&missing_env), &directories))
+                .expect("global resolution succeeds");
 
             assert_eq!(result.marker, None);
-            assert!(result.alternatives.is_empty());
             assert_eq!(result.source, None);
-            assert!(result.warnings.is_empty());
+            assert!(result.alternatives.is_empty());
+        }
+
+        #[test]
+        fn returns_none_when_global_lookup_is_suppressed() {
+            let global_dir = tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let result = engine()
+                .find_global(&GlobalDiscoveryInput {
+                    env_path: Some(global_dir.path()),
+                    directories: &[candidate(
+                        GlobalSourceDirectory::XdgConfig,
+                        global_dir.path(),
+                    )],
+                    suppress: true,
+                })
+                .expect("global resolution succeeds");
+
+            assert_eq!(result.marker, None);
+            assert_eq!(result.alternatives, Vec::<DiscoveredMarker>::new());
+            assert_eq!(result.source, None);
+        }
+
+        #[test]
+        fn prefers_environment_root_over_global_base_directories() {
+            let root = tempdir().expect("root");
+            let env_root = root.path().join("env");
+            let env_path = write_marker(&env_root, "lithos.json");
+            let xdg = root.path().join("xdg");
+            let user = root.path().join("user");
+            let system = root.path().join("system");
+            write_marker(&xdg, "lithos.toml");
+            write_marker(&user, "lithos.toml");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::UserConfig, &user),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(Some(&env_root), &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(result.source, Some(GlobalSourceType::EnvVar));
+            assert_eq!(
+                marker.path,
+                env_path.canonicalize().expect("canonical env marker")
+            );
+        }
+
+        #[test]
+        fn prefers_xdg_config_over_lower_precedence_sources() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let user = root.path().join("user");
+            let system = root.path().join("system");
+            let xdg_path = write_marker(&xdg, "lithos.json");
+            write_marker(&user, "lithos.toml");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::UserConfig, &user),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                result.source,
+                Some(GlobalSourceType::Directory(
+                    GlobalSourceDirectory::XdgConfig
+                ))
+            );
+            assert_eq!(
+                marker.path,
+                xdg_path.canonicalize().expect("canonical xdg marker")
+            );
+        }
+
+        #[test]
+        fn finds_nested_global_config_marker() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let marker_path = write_marker(&xdg, "lithos/config.toml");
+
+            let result = engine()
+                .find_global(&input(None, &[candidate(
+                    GlobalSourceDirectory::XdgConfig,
+                    &xdg,
+                )]))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                marker.path,
+                marker_path.canonicalize().expect("canonical marker")
+            );
+        }
+
+        #[test]
+        fn prefers_user_config_over_system_config() {
+            let root = tempdir().expect("root");
+            let user = root.path().join("user");
+            let system = root.path().join("system");
+            let user_path = write_marker(&user, "lithos.yaml");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::UserConfig, &user),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                result.source,
+                Some(GlobalSourceType::Directory(
+                    GlobalSourceDirectory::UserConfig
+                ))
+            );
+            assert_eq!(
+                marker.path,
+                user_path.canonicalize().expect("canonical user marker")
+            );
+        }
+
+        #[test]
+        fn returns_selected_marker_for_same_tier_candidates() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let selected_path = write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+            let selected =
+                selected_path.canonicalize().expect("canonical toml");
+
+            assert_eq!(marker.path, selected);
+        }
+
+        #[test]
+        fn returns_non_winning_same_tier_alternatives() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+
+            assert_eq!(result.alternatives.len(), 2);
+        }
+
+        #[test]
+        fn omits_selected_marker_from_same_tier_alternatives() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let selected_path = write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let selected =
+                selected_path.canonicalize().expect("canonical toml");
+
+            assert!(
+                !result.alternatives.iter().any(|alt| alt.path == selected),
+                "Expected alternatives not to contain selected marker"
+            );
+        }
+
+        #[test]
+        fn returns_json_candidate_as_same_tier_alternative() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            let json_path = write_marker(&xdg, "lithos.json");
+            write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let json = json_path.canonicalize().expect("canonical json");
+
+            assert!(
+                result.alternatives.iter().any(|alt| alt.path == json),
+                "Expected alternatives to contain JSON candidate"
+            );
+        }
+
+        #[test]
+        fn returns_yaml_candidate_as_same_tier_alternative() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            write_marker(&xdg, "lithos.toml");
+            write_marker(&xdg, "lithos.json");
+            let yaml_path = write_marker(&xdg, "lithos.yaml");
+            let system = root.path().join("system");
+            write_marker(&system, "lithos.toml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let yaml = yaml_path.canonicalize().expect("canonical yaml");
+
+            assert!(
+                result.alternatives.iter().any(|alt| alt.path == yaml),
+                "Expected alternatives to contain YAML candidate"
+            );
+        }
+
+        #[test]
+        fn continues_to_system_config_when_higher_tiers_are_missing() {
+            let root = tempdir().expect("root");
+            let missing_env = root.path().join("missing.toml");
+            let xdg = root.path().join("xdg");
+            let user = root.path().join("user");
+            let system = root.path().join("system");
+            std::fs::create_dir_all(&xdg).expect("xdg");
+            std::fs::create_dir_all(&user).expect("user");
+            let system_path = write_marker(&system, "lithos.yml");
+
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::UserConfig, &user),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+
+            let result = engine()
+                .find_global(&input(Some(&missing_env), &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                result.source,
+                Some(GlobalSourceType::Directory(
+                    GlobalSourceDirectory::SystemConfig
+                ))
+            );
+            assert_eq!(
+                marker.path,
+                system_path.canonicalize().expect("canonical system marker")
+            );
+        }
+
+        #[test]
+        fn respects_custom_global_precedence() {
+            let root = tempdir().expect("root");
+            let xdg = root.path().join("xdg");
+            let system = root.path().join("system");
+            write_marker(&xdg, "lithos.toml");
+            let system_path = write_marker(&system, "lithos.json");
+            let directories = [
+                candidate(GlobalSourceDirectory::XdgConfig, &xdg),
+                candidate(GlobalSourceDirectory::SystemConfig, &system),
+            ];
+            let engine = DiscoveryEngine::new(DiscoveryPolicy {
+                global_precedence: vec![
+                    GlobalSourceType::Directory(
+                        GlobalSourceDirectory::SystemConfig,
+                    ),
+                    GlobalSourceType::Directory(
+                        GlobalSourceDirectory::XdgConfig,
+                    ),
+                ],
+                ..DiscoveryPolicy::default()
+            });
+
+            let result = engine
+                .find_global(&input(None, &directories))
+                .expect("global resolution succeeds");
+            let marker = result.marker.expect("marker is discovered");
+
+            assert_eq!(
+                result.source,
+                Some(GlobalSourceType::Directory(
+                    GlobalSourceDirectory::SystemConfig
+                ))
+            );
+            assert_eq!(
+                marker.path,
+                system_path.canonicalize().expect("canonical system marker")
+            );
+        }
+
+        #[test]
+        fn returns_none_when_env_root_has_no_recognised_marker() {
+            let dir = tempdir().expect("dir");
+            let conf_path = dir.path().join("lithos.conf");
+            std::fs::write(&conf_path, "").expect("write conf file");
+
+            let result = engine()
+                .find_global(&input(Some(dir.path()), &[]))
+                .expect("global resolution succeeds");
+
+            assert_eq!(
+                result.marker, None,
+                "unrecognised extension should yield no marker"
+            );
+            assert_eq!(result.source, None);
         }
     }
 }

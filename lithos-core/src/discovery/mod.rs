@@ -3,27 +3,54 @@
 //! This context owns the first phase of the `Discovery -> Config -> Indexer`
 //! pipeline. It locates the vault root and the root marker file on disk and
 //! returns typed path/format metadata. It does **not** parse, merge, validate,
-//! or hash config contents — those responsibilities belong to `Config`.
+//! or hash config contents — those responsibilities belong to [`Config`].
 //!
-//! # Boundary invariants
+//! # Boundary Invariants
 //!
-//! - Discovery returns path, source, and format metadata only.
-//! - Discovery does not import `ConfigLocation`, `LocalConfigLocation`, or any
-//!   other Config-owned classification type.
-//! - Config consumes Discovery outputs; Discovery never imports Config types.
+//! - **Metadata Only**: Discovery returns path, source, and format metadata
+//!   only. It never reads file contents beyond existence checks.
+//! - **One-way Flow**: Config consumes Discovery outputs; Discovery never
+//!   imports Config types.
 //!
-//! # Exports
+//! # Usage Example
 //!
-//! - [`engine`] — [`DiscoveryEngine`] orchestrating vault discovery via
-//!   explicit flag, environment variable, or ascending walk.
-//! - [`error`] — [`DiscoveryError`] and [`VaultDiscoveryWarning`] types.
-//! - [`policy`] — [`DiscoveryPolicy`], [`VaultSourceType`],
-//!   [`GlobalSourceType`].
-//! - [`marker`] — [`FoundRootMarker`], the typed handoff to Config.
-//! - [`diagnostics`] — Non-fatal warning types emitted during discovery.
-//! - [`probe`] — [`VaultRootProbe`], [`DiscoveryProbe`] trait, marker patterns.
-//! - [`selector`] — Candidate selection and format promotion functions.
-//! - [`walk`] — [`AscendingWalker`], [`DiscoveryBoundaries`], ceiling parsing.
+//! ```rust,ignore
+//! use lithos_core::discovery::{DiscoveryEngine, DiscoveryPolicy, DiscoveryInput};
+//! use std::path::Path;
+//!
+//! let policy = DiscoveryPolicy::default();
+//! let engine = DiscoveryEngine::new(policy);
+//!
+//! let input = DiscoveryInput {
+//!     flag_path: None,
+//!     env_path: None,
+//!     cwd: Path::new("."),
+//!     ceiling_dirs_raw: None,
+//! };
+//!
+//! let result = engine.find_vault(&input)?;
+//! if let Some(root) = result.root {
+//!     println!("Found vault root at: {:?}", root);
+//! }
+//! ```
+//!
+//! # Architecture
+//!
+//! - **`engine`** — The main entry point ([`DiscoveryEngine`]).
+//! - **`policy`** — Precedence and behavioral configuration.
+//! - **`probe`** — Directory examination for marker patterns.
+//! - **`walk`** — Ascending directory traversal with boundary enforcement.
+//! - **`selector`** — Tie-breaking logic for multiple discovered markers.
+//! - **`marker`** — Shared metadata types ([`DiscoveredMarker`]).
+//! - **`diagnostics`** — Structured non-fatal warnings
+//!   ([`VaultDiscoveryWarning`]).
+//! - **`error`** — Fatal error types ([`DiscoveryError`]).
+//!
+//! [`Config`]: crate::config
+//! [`DiscoveryEngine`]: crate::discovery::engine::DiscoveryEngine
+//! [`DiscoveredMarker`]: crate::discovery::engine::DiscoveredMarker
+//! [`VaultDiscoveryWarning`]: crate::discovery::diagnostics::VaultDiscoveryWarning
+//! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
 
 pub(crate) mod engine;
 pub(crate) mod error;

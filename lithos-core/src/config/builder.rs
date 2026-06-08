@@ -114,16 +114,16 @@ pub fn build_from_layers(
 /// use lithos_core::config::{builder::Builder, storage::RedbStorage};
 ///
 /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let vault_root = PathBuf::from("/vault");
+/// let start_dir = PathBuf::from("/vault");
 /// // let repo = RedbStorage::new(...);
-/// // let builder = Builder::new(vault_root, repo);
+/// // let builder = Builder::new(start_dir, repo);
 /// // let config = builder.load()?;
 /// # Ok(())
 /// # }
 /// ```
 pub struct Builder<R> {
-    /// Vault root path for config resolution.
-    vault_root: PathBuf,
+    /// Directory where Discovery starts vault root resolution.
+    start_dir: PathBuf,
     /// Repository for database persistence.
     repository: R,
 }
@@ -132,11 +132,11 @@ impl<R> Builder<R>
 where
     R: Repository,
 {
-    /// Create a new builder for the given vault root.
+    /// Create a new builder for the given discovery start directory.
     ///
     /// # Parameters
     ///
-    /// - `vault_root`: Vault root directory for config resolution
+    /// - `start_dir`: Directory where vault discovery starts
     /// - `repository`: Database repository for persistence
     ///
     /// # Examples
@@ -147,17 +147,17 @@ where
     /// use lithos_core::config::{builder::Builder, storage::RedbStorage};
     ///
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let vault_root = PathBuf::from("/vault");
+    /// let start_dir = PathBuf::from("/vault");
     /// // let repo = RedbStorage::new(...);
-    /// // let builder = Builder::new(vault_root, repo);
+    /// // let builder = Builder::new(start_dir, repo);
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new<P: Into<PathBuf>>(vault_root: P, repository: R) -> Self {
+    pub fn new<P: Into<PathBuf>>(start_dir: P, repository: R) -> Self {
         Self {
-            vault_root: vault_root.into(),
+            start_dir: start_dir.into(),
             repository,
         }
     }
@@ -200,36 +200,49 @@ where
     #[instrument(
         skip(self),
         level = "debug",
-        fields(vault_root = %self.vault_root.display())
+        fields(start_dir = %self.start_dir.display())
     )]
     pub fn load(&self) -> Result<Config, ConfigError> {
-        // Step 1: Validate and get vault root
-        let vault_root = VaultRoot::try_new(self.vault_root.clone())?;
-
-        // Step 2: Get or create vault ID
-        let vault_id = self.get_or_create_vault_id()?;
-
-        // Step 3: Use discovery engine to classify the vault marker file.
-        // The vault root is already known to the Builder; we pass it via
-        // `flag_path` so the engine skips the ascending walk and directly
-        // probes the directory for a marker file.
+        // Step 1: Use discovery engine to find the vault root and classify the
+        // vault marker file.
         use crate::discovery::{
-            engine::{DiscoveryEngine, DiscoveryInput},
+            engine::{DiscoveryEngine, DiscoveryInput, GlobalDiscoveryInput},
             policy::DiscoveryPolicy,
         };
 
         let disc_engine = DiscoveryEngine::new(DiscoveryPolicy::default());
         let vault_result = disc_engine
             .find_vault(&DiscoveryInput {
-                flag_path: Some(vault_root.as_path()),
+                flag_path: None,
                 env_path: None,
-                cwd: vault_root.as_path(),
+                cwd: self.start_dir.as_path(),
                 ceiling_dirs_raw: None,
+            })
+            .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
+        let vault_root = vault_result
+            .root
+            .as_ref()
+            .ok_or_else(|| ConfigError::ValidationFailed {
+                field: "vault_root".into(),
+                message: "No vault root found by Discovery".into(),
+            })
+            .and_then(|root| VaultRoot::try_new(root.clone()))?;
+
+        // Step 2: Get or create vault ID
+        let vault_id = self.get_or_create_vault_id(&vault_root)?;
+
+        // TODO(issue #08): Wire global discovery inputs once the runtime layer
+        // can inject env/XDG/user/system paths into Discovery.
+        let global_result = disc_engine
+            .find_global(&GlobalDiscoveryInput {
+                env_path: None,
+                directories: &[],
+                suppress: false,
             })
             .map_err(|e| ConfigError::Ingestion(e.to_string().into()))?;
 
         let config_discovery =
-            ConfigDiscoveryResult::from_vault_discovery(vault_result);
+            ConfigDiscoveryResult::from_discovery(vault_result, global_result);
 
         // Step 4: Run config discovery pipeline (read files + query DB)
         let discovery = ConfigDiscoveryPipeline::run(
@@ -531,24 +544,56 @@ where
         })
     }
 
-    /// Get or create vault ID for the vault root.
+    /// Get or create vault ID for the discovered vault root.
     ///
     /// Looks up existing vault ID from path mapping, or creates a new one.
-    fn get_or_create_vault_id(&self) -> Result<VaultId, ConfigError> {
-        let vault_root = VaultRoot::try_new(self.vault_root.clone())?;
-
+    fn get_or_create_vault_id(
+        &self,
+        vault_root: &VaultRoot,
+    ) -> Result<VaultId, ConfigError> {
         if let Some(existing_id) = self
             .repository
-            .find_vault_id_by_path(&vault_root)
+            .find_vault_id_by_path(vault_root)
             .map_err(Into::<ConfigError>::into)?
         {
             Ok(existing_id)
         } else {
             let new_id = VaultId::new();
             self.repository
-                .save_vault_path_mapping(new_id, &vault_root)
+                .save_vault_path_mapping(new_id, vault_root)
                 .map_err(Into::<ConfigError>::into)?;
             Ok(new_id)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::config::storage::testing::InMemoryRepository;
+
+    #[test]
+    fn load_applies_local_config_from_vault_root_marker() {
+        let vault = tempdir().expect("vault dir");
+        std::fs::write(
+            vault.path().join("lithos.toml"),
+            r#"
+vault_path = "./"
+
+[paths]
+templates_dir = "custom-templates"
+"#,
+        )
+        .expect("write vault config");
+        let builder = Builder::new(vault.path(), InMemoryRepository::new());
+
+        let config = builder.load().expect("load config");
+
+        assert_eq!(
+            config.paths().template.templates_dir().as_str(),
+            "custom-templates"
+        );
     }
 }
