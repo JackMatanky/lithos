@@ -55,9 +55,9 @@
 pub(crate) mod engine;
 pub(crate) mod error;
 pub(crate) mod policy;
-pub(crate) mod probe;
-pub(crate) mod selector;
-pub(crate) mod walk;
+pub(super) mod probe;
+pub(super) mod selector;
+pub(super) mod walk;
 
 /// Diagnostics and warnings during discovery.
-pub(crate) mod diagnostics;
+pub(super) mod diagnostics;
