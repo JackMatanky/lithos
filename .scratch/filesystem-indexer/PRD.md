@@ -210,6 +210,8 @@ The Indexer must not store context-owned content hashes in `FileNode`. Schema, N
 
 ### 7. Indexing Result Contract
 
+**Error handling boundary (accepted decision)**: Per-node I/O failures (permission denied, unreadable file, symlink loop) are non-fatal. They are accumulated in `IndexResult` as per-node failure records and do not abort the run. Only two categories cause a hard abort: configuration errors (invalid Vault Root, missing Config specs) and repository initialization failures (unable to open or create redb tables). A partially-indexed result with failures reported is preferred over aborting because one unreadable node in an irrelevant subdirectory should not prevent the rest of the vault from being indexed.
+
 `IndexedFile` and `IndexedDir` were placeholder names and should not be used as persistent domain entities. The PRD uses these clearer output terms instead:
 
 - `IndexResult`
