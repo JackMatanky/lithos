@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "config.schema.json",
   "title": "Lithos Configuration",
-  "description": "Unified configuration schema for global and vault-level Lithos config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'vault_path', 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. For vault configs, 'vault_path' is required. Defaults shown reflect Rust implementation in lithos-core/src/config/raw.rs.",
+  "description": "Unified configuration schema for global and vault-level Lithos config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. Vault root is discovered at runtime, not configured. Defaults shown reflect Rust implementation in lithos-core/src/config/raw.rs.",
   "type": "object",
   "additionalProperties": false,
   "oneOf": [
@@ -10,13 +10,6 @@
     { "$ref": "#/$defs/VaultConfig" }
   ],
   "properties": {
-    "vault_path": {
-      "title": "Vault Path",
-      "description": "Absolute path to the vault root directory. Required for vault configs (ignored in global config). This identifies where the vault is located on disk.",
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^/|^[A-Za-z]:"
-    },
     "name": {
       "title": "Vault Name",
       "description": "Human-readable display name for the vault. Vault-only field (ignored in global config). If omitted, defaults to the vault root directory name.",
@@ -268,9 +261,7 @@
     "VaultConfig": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["vault_path"],
       "properties": {
-        "vault_path": { "$ref": "#/properties/vault_path" },
         "name": { "$ref": "#/properties/name" },
         "version": { "$ref": "#/properties/version" },
         "log_level": { "$ref": "#/properties/log_level" },
