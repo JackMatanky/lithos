@@ -105,6 +105,132 @@ already uses `..Default::default()` and passes `VaultRoot` separately to
 - Discovery traversal behavior changes
 - CLI subcommand behavior
 
+## TDD Implementation Plan
+
+### Data Flow Analysis: How Paths Reach Domain Models & Views
+
+Two independent path flows exist in the builder. **Neither reads `RawVaultConfig.vault_path`.**
+
+**Flow 1 — Vault Root → Domain Model (`Metadata.root`):**
+```
+DiscoveryEngine.find_vault() → vault_result.root: Option<PathBuf>
+  ↓ builder.rs:222-229
+VaultRoot::try_new(root) → vault_root: VaultRoot
+  ↓ builder.rs:232
+get_or_create_vault_id(&vault_root)
+  ↓ builder.rs:363-369 (Rebuild) / 313 (execute_plan)
+rebuild_with_configs(vault_id, vault_root, ...)
+  ↓ builder.rs:449-455
+build_from_layers(..., vault_root, ...)   ← vault_root param, NOT from DTO
+  ↓ builder.rs:62-63
+Metadata::new(vault_id, vault_root, ...)
+  ↓ builder.rs:90
+Config::new(vault_metadata, ...)
+```
+
+**Flow 2 — Config File Path → Raw Views (`RawVaultConfigView.file_path`):**
+```
+discovery.vault().entry().path()  →  file path on disk
+  ↓ builder.rs:344-356 (UpdateViews) / 474-485 (Rebuild)
+self.update_vault_view(vault_id, &vault, &path)
+  ↓ builder.rs:413-430
+RawVaultConfigView::new(file_path.into())
+```
+
+Both flows are fully independent of `RawVaultConfig.vault_path`. Removing the field changes **zero** production logic.
+
+### Staleness Hash Side-Effect
+
+`raw_vault_to_version()` (builder.rs:520) serializes `RawVaultConfig` via `toml::to_string(raw)` for BLAKE3 content hashing. Removing `vault_path` changes the serialized form → cached version hashes will not match on first post-upgrade load → config rebuilds once, then stabilizes. This is the expected invalidation for any DTO schema change.
+
+### Interface Changes
+
+| Interface                              | Change                              | Impact                                                               |
+| -------------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `RawVaultConfig` (`raw.rs`)                | Remove `pub vault_path: String` field | Old configs with `vault_path` still deserialize (serde ignores unknown keys) |
+| Builder error fields (`builder.rs:352,480`) | `"vault_path"` → `"vault_config_file"` | String literal only — describes missing discovery entry, not DTO field     |
+
+No changes to: `build_from_layers` signature, `Metadata`, `VaultRoot`, `RawVaultConfigView`, `ConfigFileProcessor`, `ConfigResolver`, `Config` aggregate, `hash_raw_vault`, or any discovery type.
+
+### Behaviors to Test
+
+1. Deserialization without `vault_path` — TOML lacking `vault_path` → valid `RawVaultConfig`
+2. Backward compat — TOML with `vault_path` still deserializes (unknown keys ignored)
+3. Serialization roundtrip without `vault_path` — roundtrip succeeds
+4. Config build without `vault_path` — `build_from_layers(Some(&vault), vault_root, ...)` → valid `Config`
+5. Root resolution preserved — `config.vault_metadata().root()` matches the `VaultRoot` arg
+6. Builder error renamed — `"vault_path"` → `"vault_config_file"` in error field
+
+### Tracer Bullets
+
+**Tracer 1 — Core: field removal + deserialization test**
+
+| Step | Action | File | Line(s) |
+|------|--------|------|---------|
+| RED | Add test `without_vault_path_deserializes_successfully` — TOML with no `vault_path` → `toml::from_str::<RawVaultConfig>` succeeds | `config/raw.rs` | new |
+| GREEN | Remove `pub vault_path: String` from struct | `config/raw.rs` | 48 |
+| GREEN | Remove `vault_path:` from roundtrip test struct literal | `config/raw.rs` | 462 |
+
+Backward compat confirmed: 3 existing TOML tests (`raw_vault_config_deserializes_from_toml`, `raw_vault_config_supports_partial_paths`, `raw_vault_config_with_all_sections`) still pass with `vault_path` present in TOML key (serde ignores unknown keys by default). Cleanup optional.
+
+**Tracer 2 — Test fixtures: fix compile errors (mechanical)**
+
+| Step | Action | File | Line(s) |
+|------|--------|------|---------|
+| GREEN | Remove `vault_path:` line from `create_raw_vault_config()` | `config/processor.rs` | 775 |
+| GREEN | Remove `vault_path:` line from `create_test_vault_config()` | `config/merger.rs` | 178 |
+| GREEN | Remove `vault_path:` line from `merged_config_with_sample_overrides` | `config/aggregate.rs` | 432 |
+| GREEN | Remove `vault_path:` line from `applies_paths_fields_from_raw` | `config/aggregate.rs` | 634 |
+| GREEN | Remove `vault_path:` line from `to_schema_spec_constructs_correct_paths` | `config/aggregate.rs` | 676 |
+| GREEN | Remove `vault_path:` line from `to_schema_spec_respects_custom_paths` | `config/aggregate.rs` | 734 |
+| GREEN | Remove `vault_path:` line from `to_schema_spec_returns_result_without_panicking` | `config/aggregate.rs` | 783 |
+| GREEN | Remove `vault_path:` line from `test_config_with_task_tag` | `note/aggregate.rs` | 957 |
+| GREEN | Remove `vault_path:` line from `config_with_fields` | `note/aggregate.rs` | 1005 |
+| GREEN | Remove `vault_path = "./"` from builder test TOML | `config/builder.rs` | 583 |
+
+Every test already uses `..Default::default()` — deletion-only, no refactor.
+
+**Tracer 3 — Builder error rename**
+
+| Step | Action | File | Line(s) |
+|------|--------|------|---------|
+| GREEN | `field: "vault_path"` → `field: "vault_config_file"` (2 occurrences) | `config/builder.rs` | 352, 480 |
+| GREEN | Migrate error.rs test examples: `"vault_path"` → `"templates_dir"` | `config/error.rs` | 393, 419, 426 |
+
+**Tracer 4 — Root resolution regression test**
+
+| Step | Action | File | Lines |
+|------|--------|------|-------|
+| RED | Write `root_resolution_comes_from_vault_root_param_not_config` — builds config without `vault_path`, asserts `config.vault_metadata().root()` matches `VaultRoot` param | `config/aggregate.rs` | new |
+| GREEN | Test passes already — root was never derived from `vault_path` | — | — |
+
+**Tracer 5 — Schema JSON** (already committed)
+
+### Execution Order
+
+1. `cargo test` — baseline: confirm all tests pass before changes
+2. **Tracer 1** — add new test, remove field, fix roundtrip test
+3. `cargo test` — backward compat confirmed (old-Toml-with-vault_path tests still pass)
+4. `cargo build` — confirm compile error count (10 expected)
+5. **Tracer 2** — fix 10 compile errors in test fixtures
+6. `cargo test` — all 200+ config/note tests pass
+7. **Tracer 3** — rename error field, migrate error.rs tests
+8. `cargo test` — error tests pass
+9. **Tracer 4** — add root resolution regression test
+10. `cargo test` — final verification
+11. `cargo clippy` — no warnings from removed pub field
+12. `cargo fmt` — format touched files
+
+### Risk Assessment
+
+| Concern | Status |
+|---------|--------|
+| `vault_path` read in production code? | **Never.** Confirmed at all 6 code paths. Builder uses `discovery.vault().entry().path()` for views and `VaultRoot` param for domain models. |
+| Old config files with `vault_path`? | Silent backward compat. Struct has `#[derive(Deserialize)]` without `deny_unknown_fields`. Unknown keys ignored. |
+| Staleness hash invalidation? | Expected. DTO schema change → different `toml::to_string` → cache miss → one rebuild. Correct behavior. |
+| `build_from_layers` API consumers? | Takes `VaultRoot` as explicit param — never reads `vault_path` from `RawVaultConfig`. No change needed. |
+| `hash_raw_vault` side effects? | Serializes `RawVaultConfig` without `vault_path`. Different hash → cache miss → rebuild once. Intentional. |
+
 ## Blocked by
 
 - `.scratch/root-config-discovery/08-phase-2-local-config-discovery.md`
