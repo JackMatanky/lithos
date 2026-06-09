@@ -24,7 +24,10 @@ _Avoid_: generated note, output file handle
 
 - Template Engine behavior is limited to engine-level source checking/loading and rendering.
 - Template Service owns repository lookup, indexing, validation workflow, target resolution, conflict checks, and commit orchestration.
+- Template Service may report compile health after template processing for tracing; this does not make engine compilation a Template Processor state.
+- Template use cases report failures through `TemplateError`; engine failures are embedded as `TemplateEngineError`.
 - MiniJinja types do not appear in Template domain models, repositories, service requests, or service responses.
+- MiniJinja may be used by an adapter inside `lithos-core`; the boundary is the Template domain/service public API, not the crate dependency graph.
 - Foundation rendering is non-interactive and single-output.
 
 ## Not Owned Here

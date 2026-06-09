@@ -112,7 +112,7 @@ pub trait TemplateEngine: Send + Sync {
 }
 ```
 
-### Adapter layer (where MiniJinja lives — e.g., lithos-cli or mini_jinja_adapter/)
+### Adapter layer (where MiniJinja lives — e.g., a template adapter module)
 
 ```rust
 pub struct MiniJinjaEngine {
@@ -185,6 +185,7 @@ Foundation use cases:
 - List available templates.
 - Ingest/index templates from configured template sources.
 - Validate a named template without rendering.
+- Check whether a processed template can compile, for post-ingestion tracing.
 - Render a named template to Markdown in memory.
 - Build a single-output `TemplateArtifact` for a vault-safe target.
 - Commit that artifact with basic safe filesystem behavior.
@@ -192,9 +193,62 @@ Foundation use cases:
 Boundary with `TemplateEngine`:
 - `TemplateService` finds the template and assembles the render context before invoking the engine.
 - `TemplateService` owns named-template validation workflow; `TemplateEngine::compile` only reports engine-level source/syntax/load failures for the supplied `Template`.
+- Missing templates are `TemplateError::NotFound`, not engine errors.
+- Foundation does not introduce a custom `TemplateDiagnostic` type. Invalid existing templates carry a Lithos-owned `TemplateEngineError` with source chaining.
 - `TemplateService` reports whether a template compiles under the configured engine; this is not a `TemplateProcessor<State>` terminal state.
+- `TemplateService` may expose `can_compile` or `is_compilable` so callers can run a boolean compile check after `TemplateProcessor` reaches `Completed` and emit tracing about template health.
 - `TemplateService` owns all target resolution, conflict checks, and filesystem commit orchestration after rendering.
 - `TemplateEngine` must not know about repositories, config lookup, filesystem paths, CLI flags, or commit policy.
+
+Foundation error shape:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateError {
+    #[error("template `{name}` was not found")]
+    NotFound { name: String },
+
+    #[error("failed to load template from `{path}`")]
+    Load {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error(transparent)]
+    Engine(#[from] TemplateEngineError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateEngineError {
+    #[error("failed to compile template `{name}`")]
+    Compile {
+        name: String,
+        #[source]
+        source: minijinja::Error,
+    },
+
+    #[error("failed to render template `{name}`")]
+    Render {
+        name: String,
+        #[source]
+        source: minijinja::Error,
+    },
+}
+```
+
+Error boundary:
+- `TemplateError` is the primary template use-case error type.
+- `TemplateError::Engine` embeds `TemplateEngineError` transparently.
+- `TemplateEngineError` exposes MiniJinja source errors because MiniJinja is the selected foundation engine adapter.
+- The dependency boundary is not crate-wide: `lithos-core` may depend on MiniJinja for an adapter module. The protected boundary is the Template domain/service/port API surface.
+- MiniJinja types must not appear in Template domain models, repository traits, service requests, or service responses. If an error type is returned by a domain port, keep its public contract Lithos-shaped even when the implementation preserves MiniJinja as a source error.
+
+Accepted validation/compile-check shape:
+- The service may expose `validate(...) -> Result<(), TemplateError>` for detailed compile validation that preserves error chains.
+- The service may also expose `can_compile(...) -> Result<bool, TemplateError>` or `is_compilable(...) -> Result<bool, TemplateError>` for post-ingestion tracing after `TemplateProcessor` completes.
+- The boolean compile-check method should log/tracing-report compile failures without replacing the detailed validation path.
+- Do not add `TemplateValidation` or `TemplateValidationStatus` unless the service needs richer non-error validation reporting.
 
 Out of scope for foundation:
 - Lithos custom extensions and extension packs.

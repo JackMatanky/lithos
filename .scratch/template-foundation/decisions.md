@@ -8,7 +8,7 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Adapters (Implementations)**: Defined at the edges. Example: `InquireAdapter` in `lithos-cli` using the `inquire` crate.
 - **Core Purity**: `lithos-core` remains free of terminal-specific or UI-specific dependencies.
 - **Service-first design**: `TemplateService` use cases are defined before deciding optional ports such as `TemplateExtension` or `ExtensionRegistry`.
-- **MiniJinja isolation**: MiniJinja types remain localized to the rendering adapter/factory. Domain models, repositories, service requests, and service responses do not expose `minijinja` types.
+- **MiniJinja isolation**: MiniJinja types remain localized to the rendering adapter/factory. Domain models, repositories, service requests, and service responses do not expose `minijinja` types. This is a domain/API boundary, not a blanket ban on a `minijinja` dependency inside `lithos-core`.
 
 ## Foundation Rendering Boundary
 - **Primary engine port**: Foundation defines `TemplateEngine` as the primary rendering port implemented by `MiniJinjaEngine`.
@@ -17,6 +17,11 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Compile boundary**: `compile` must not perform repository lookup, template discovery, indexing, target resolution, conflict checks, filesystem writes, or CLI context assembly.
 - **Service boundary**: `TemplateService` owns use-case orchestration and may call `compile` inside named-template validation or render preparation.
 - **Validation reporting**: Template correctness under the configured engine is modeled as a `TemplateService` validation/check result, not as a terminal `TemplateProcessor<State>` state.
+- **Primary error type**: Template use cases return `TemplateError` as the primary error type.
+- **Engine error type**: `TemplateError::Engine` embeds `TemplateEngineError` transparently.
+- **MiniJinja source errors**: Foundation `TemplateEngineError` variants preserve `minijinja::Error` as their source because MiniJinja is the selected foundation engine adapter.
+- **No custom diagnostics in foundation**: `TemplateDiagnostic` is deferred. Foundation uses well-written Lithos-owned error types and source chaining for user-facing validation failures.
+- **Compile health check**: `TemplateService` may expose `can_compile` or `is_compilable` so callers can check template compile health after `TemplateProcessor` reaches `Completed` and emit tracing.
 - **Built-ins only**: `template-foundation` uses MiniJinja built-ins only. No Lithos custom extension modules are included.
 - **Engine configuration**: Foundation configures MiniJinja for Lithos semantics: owned template sources, strict undefined behavior, and no Markdown auto-escape.
 - **No extension registry**: `TemplateExtension` and `ExtensionRegistry` are explicitly out of scope for foundation.
@@ -61,5 +66,6 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - Exact location name for interaction ports: `lithos-core/src/interact/` vs `lithos-core/src/prompt/`.
 - Exact shape of `TemplateArtifact<State>` fields and transition methods.
 - Exact `TemplateEngine` method signatures and error type names.
+- Exact service compile-check method name: `can_compile` vs `is_compilable`.
 - Whether template file reads and writes call existing FS context ports directly or through template-specific ports that delegate to FS adapters.
 - Exact minimal CLI command shape and argument naming.
