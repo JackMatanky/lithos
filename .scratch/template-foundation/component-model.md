@@ -345,12 +345,15 @@ Foundation includes a minimal CLI vertical slice so the template module has usab
 Proposed command shape:
 
 ```text
-lithos template render <template-name> --output <vault-relative-path> --var key=value
+lithos template --input <template-name> --output <vault-relative-path> --var key=value
 ```
+
+Shortened forms `lithos template -i <template-name> -o <vault-relative-path> --var key=value` accepted.
 
 CLI behavior:
 - Load config/vault context.
 - Ensure templates are indexed or load the named template through `TemplateService`.
+- Accept `--input`/`-i` for template name and `--output`/`-o` for vault-relative path.
 - Convert repeated `--var key=value` flags into a flat render context.
 - Render, resolve target, conflict-check, and commit through the foundation service.
 - Print the created path or a structured error.

@@ -86,7 +86,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 - Model single-output write flow with `TemplateArtifact<State>` and states `Rendered`, `TargetResolved`, `ReadyToCommit`, and `Committed`.
 - Commit behavior creates one file under a vault-safe target path, rejects absolute paths and traversal, and fails if the destination already exists.
 - Use the FS context for path validation, reads, and writes; do not use raw `std::fs` in Template use cases.
-- Add a minimal CLI shape: `lithos template render <template-name> --output <vault-relative-path> --var key=value`.
+- Add a minimal CLI shape: `lithos template --input <template-name> --output <vault-relative-path> --var key=value` (shortened forms `-i` and `-o` accepted).
 - Treat repeated `--var key=value` flags as flat raw MiniJinja context for foundation only.
 - Defer declared inputs, namespaces, prompt UX, query helpers, custom extension modules, multi-file packs, and rich conflict policies.
 

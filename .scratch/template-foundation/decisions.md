@@ -33,7 +33,7 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Non-interactive**: Foundation excludes prompts, suggesters, query/runtime objects, declared template inputs, and extension packs.
 - **Single-output**: Foundation handles one rendered output file. Multi-file template packs are planned later.
 - **Minimal context**: Foundation CLI accepts flat `--var key=value` entries as a raw MiniJinja context. Namespaced inputs and UX-friendly collection are deferred.
-- **Minimal CLI**: Foundation includes a CLI vertical slice such as `lithos template render <template-name> --output <vault-relative-path> --var key=value`.
+- **Minimal CLI**: Foundation includes a CLI vertical slice such as `lithos template --input <template-name> --output <vault-relative-path> --var key=value` (`-i`/`-o` accepted).
 
 ## TemplateProcessor Boundary
 - **Ingestion responsibility**: `TemplateProcessor<State>` is responsible for reading, comparing, parsing, constructing, and persisting valid Lithos template assets.
@@ -68,4 +68,4 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - Exact `TemplateEngine` method signatures and error type names.
 - Exact service compile-check method name: `can_compile` vs `is_compilable`.
 - Whether template file reads and writes call existing FS context ports directly or through template-specific ports that delegate to FS adapters.
-- Exact minimal CLI command shape and argument naming.
+- ~~Exact minimal CLI command shape and argument naming.~~ _(Resolved: `lithos template --input <name> --output <path> --var key=value`, shorthand `-i`/`-o` accepted.)_
