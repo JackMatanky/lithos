@@ -954,7 +954,6 @@ mod tests {
 
     fn test_config_with_task_tag() -> Config {
         let raw = RawVaultConfig {
-            vault_path: "/vault".to_owned(),
             task: Some(RawTaskConfig {
                 use_emoji: Some(true),
                 task_tags: Some(vec!["#task".into()]),
@@ -1002,7 +1001,6 @@ mod tests {
         });
 
         let raw = RawVaultConfig {
-            vault_path: "/vault".to_owned(),
             task: Some(RawTaskConfig {
                 enabled: Some(true),
                 task_tags: Some(vec!["#task".into()]),
