@@ -772,7 +772,6 @@ mod tests {
     fn create_raw_vault_config() -> RawVaultConfig {
         let now = SystemTime::now();
         RawVaultConfig {
-            vault_path: "/vault".to_owned(),
             name: Some("Test Vault".to_owned()),
             version: None,
             logging: None,

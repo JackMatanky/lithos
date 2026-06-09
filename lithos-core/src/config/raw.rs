@@ -44,9 +44,6 @@ pub struct RawGlobalConfig {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawVaultConfig {
-    /// Vault path (required for vault configs).
-    pub vault_path: String,
-
     /// Vault name override.
     pub name: Option<String>,
 
@@ -363,6 +360,16 @@ mod tests {
         use super::*;
 
         #[test]
+        fn without_vault_path_deserializes_successfully() {
+            let toml = r#"
+                [paths]
+                cache_dir = ".cache"
+            "#;
+            let result: Result<RawVaultConfig, _> = toml::from_str(toml);
+            assert!(result.is_ok(), "Should deserialize without vault_path");
+        }
+
+        #[test]
         fn raw_vault_config_deserializes_from_toml() {
             let toml = r#"
                 vault_path = "/vault"
@@ -459,7 +466,6 @@ mod tests {
         #[test]
         fn raw_vault_config_serializes_and_roundtrips() {
             let original = RawVaultConfig {
-                vault_path: "/vault".to_owned(),
                 paths: RawVaultPaths {
                     cache_dir: Some(".cache".to_owned()),
                     schemas_dir: Some("schemas".to_owned()),

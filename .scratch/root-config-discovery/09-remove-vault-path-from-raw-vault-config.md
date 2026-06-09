@@ -233,4 +233,12 @@ Every test already uses `..Default::default()` — deletion-only, no refactor.
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/08-phase-2-local-config-discovery.md`
+
+## Implementation Details
+
+- Removed `vault_path` field from `RawVaultConfig` in `config/raw.rs`.
+- Updated 10 test fixtures across `config/processor.rs`, `config/merger.rs`, `config/aggregate.rs`, `config/builder.rs`, and `note/aggregate.rs` to remove `vault_path` initialization.
+- Renamed error field `"vault_path"` to `"vault_config_file"` in `config/builder.rs` and updated corresponding tests in `config/error.rs`.
+- Added regression test `root_resolution_comes_from_vault_root_param_not_config` in `config/aggregate.rs` to confirm root resolution continues to rely on runtime parameters rather than the removed DTO field.
+- Verified all tests (unit, integration, e2e) and doc-tests pass successfully.
+- Verified schema update in `schema/config.schema.json`.

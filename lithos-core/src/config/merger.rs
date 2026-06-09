@@ -175,7 +175,6 @@ mod tests {
 
     fn create_test_vault_config() -> RawVaultConfig {
         RawVaultConfig {
-            vault_path: "/tmp/test-vault".into(),
             name: None,
             version: None,
             logging: None,

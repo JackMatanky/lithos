@@ -429,7 +429,6 @@ pub(crate) mod fixtures {
 
     pub fn merged_config_with_sample_overrides() -> Config {
         let vault = crate::config::raw::RawVaultConfig {
-            vault_path: "/vault".to_owned(),
             logging: Some(RawLogging {
                 log_level: Some("debug".to_owned()),
             }),
@@ -523,6 +522,29 @@ mod tests {
             assert_eq!(
                 config.vault_metadata().root().as_path(),
                 vault_root.as_path()
+            );
+        }
+
+        #[test]
+        fn root_resolution_comes_from_vault_root_param_not_config() {
+            let vault_root = fixtures::vault_root("/vault-param-root");
+            let vault = crate::config::raw::RawVaultConfig {
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                vault_root.clone(),
+                Version::initial(),
+            )
+            .expect("should build config without vault_path");
+
+            assert_eq!(
+                config.vault_metadata().root().as_path(),
+                vault_root.as_path(),
+                "Vault root should come from the explicit param, not config \
+                 struct"
             );
         }
 
@@ -631,7 +653,6 @@ mod tests {
         #[test]
         fn applies_paths_fields_from_raw() {
             let vault = crate::config::raw::RawVaultConfig {
-                vault_path: "/vault".to_owned(),
                 paths: crate::config::raw::RawVaultPaths {
                     cache_dir: Some(".lithos-cache".to_owned()),
                     schemas_dir: Some("my-schemas".to_owned()),
@@ -673,7 +694,6 @@ mod tests {
                 .expect("property bank should be writable");
 
             let vault = crate::config::raw::RawVaultConfig {
-                vault_path: root.path().to_string_lossy().to_string(),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -731,7 +751,6 @@ mod tests {
                 .expect("custom property bank should be writable");
 
             let vault = crate::config::raw::RawVaultConfig {
-                vault_path: root.path().to_string_lossy().to_string(),
                 paths: crate::config::raw::RawVaultPaths {
                     schemas_dir: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
@@ -780,7 +799,6 @@ mod tests {
                 .expect("property bank should be writable");
 
             let vault = crate::config::raw::RawVaultConfig {
-                vault_path: root.path().to_string_lossy().to_string(),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(

@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn config_repository_error_converts_from_domain_error() {
         let domain_err = ConfigError::MissingRequiredField {
-            field: "vault_path".into(),
+            field: "templates_dir".into(),
         };
         let err: ConfigRepositoryError = domain_err.into();
         assert!(matches!(err, ConfigRepositoryError::Domain(_)));
@@ -416,14 +416,14 @@ mod tests {
     #[rstest]
     #[case::validation_field(
         ConfigError::ValidationFailed {
-            field: "vault_path".into(),
+            field: "templates_dir".into(),
             message: "cannot be empty".into()
         },
-        "vault_path"
+        "templates_dir"
     )]
     #[case::validation_message(
         ConfigError::ValidationFailed {
-            field: "vault_path".into(),
+            field: "templates_dir".into(),
             message: "cannot be empty".into()
         },
         "cannot be empty"

@@ -349,7 +349,7 @@ where
                             e.path().as_path().to_string_lossy().into_owned()
                         })
                         .ok_or(ConfigError::ValidationFailed {
-                            field: "vault_path".into(),
+                            field: "vault_config_file".into(),
                             message: "missing file path for vault view update"
                                 .into(),
                         })?;
@@ -580,8 +580,6 @@ mod tests {
         std::fs::write(
             vault.path().join("lithos.toml"),
             r#"
-vault_path = "./"
-
 [paths]
 templates_dir = "custom-templates"
 "#,
