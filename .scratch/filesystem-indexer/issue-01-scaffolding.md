@@ -1,7 +1,10 @@
 # Issue 01: Indexer scaffolding
 
-**Status**: ready-for-agent
+**Status**: implemented
 **Created**: 2026-06-09
+**Resolved**: 2026-06-11
+**Branch**: issue-01-indexer-scaffolding
+**Merge commit**: 6a9b0737
 
 ## What to build
 
@@ -16,32 +19,76 @@ anchors — no domain logic yet.
 
 ## Acceptance criteria
 
-- [ ] `lithos-core/src/indexer/mod.rs` exists and is declared in
+- [x] `lithos-core/src/indexer/mod.rs` exists and is declared in
       `lithos-core/src/lib.rs`; the crate compiles with no warnings.
-- [ ] `lithos-core/src/indexer/mod.rs` includes a `//!` module-level doc
+- [x] `lithos-core/src/indexer/mod.rs` includes a `//!` module-level doc
       comment explaining the Indexer context purpose, following the
       bounded context doc pattern (see `lithos-core/src/schema/mod.rs`,
       `lithos-core/src/note/mod.rs`).
-- [ ] `#[cfg(test)] mod tests {}` stub in `mod.rs` (living-documentation
+- [x] `#[cfg(test)] mod tests {}` stub in `mod.rs` (living-documentation
       pattern marker; no test logic required yet).
-- [ ] `lithos-core/src/indexer/CONTEXT.md` exists with at minimum stub
+- [x] `lithos-core/src/indexer/CONTEXT.md` exists with at minimum stub
       entries for: Filesystem Node, File Node, Directory Node, Index Scope,
       Index Status, Indexed Node, Deleted Node, Scanner Port.
-- [ ] `CONTEXT-MAP.md` contains a `(planned)` entry for the Indexer context
+- [x] `CONTEXT-MAP.md` contains a `(planned)` entry for the Indexer context
       pointing at `lithos-core/src/indexer/CONTEXT.md`.
-- [ ] `CONTEXT-MAP.md` Global Invariants no longer list `DirScanner` as the
+- [x] `CONTEXT-MAP.md` Global Invariants no longer list `DirScanner` as the
       sole scanning mechanism; the entry is updated to reflect `ScannerPort`.
-- [ ] `CONTEXT-MAP.md` Relationships section includes
+- [x] `CONTEXT-MAP.md` Relationships section includes
       `Config -> Indexer (planned)` and
       `Indexer -> Schema, Note, Template (planned)`.
-- [ ] All existing tests pass (`mise run test`).
-- [ ] No clippy warnings (`mise run lint`).
-
-## Blocked by
-
-None — can start immediately.
+- [x] All existing tests pass (`mise run test`).
+- [x] No clippy warnings (`mise run lint`).
 
 ---
+
+## Implementation Notes
+
+### Files created
+
+| Path                          | Lines | Purpose                                           |
+| ----------------------------- | ----- | ------------------------------------------------- |
+| `lithos-core/src/indexer/mod.rs` | 12    | Module declaration with `//!` doc + `#[cfg(test)] mod tests {}` stub |
+| `lithos-core/src/indexer/CONTEXT.md` | 53    | 8 domain terms + Invariants + Interfaces + Not Owned Here |
+
+### Files modified
+
+| Path                 | Diff                                | Change                                           |
+| -------------------- | ----------------------------------- | ------------------------------------------------ |
+| `lithos-core/src/lib.rs` | +1 line                             | Inserted `pub mod indexer;` between `graph` and `note` |
+| `CONTEXT-MAP.md`       | +5/-1 (3 edits)                     | Added Indexer entry, 2 relationships, updated Global Invariant |
+| `docs/index.md`        | +1 line                             | Added Indexer to module context docs list        |
+
+### Key design decisions
+
+- **Visibility**: `pub mod indexer` (bounded context pattern), not `pub(crate)` which is reserved for internal infrastructure like `discovery`. Matches existing bounded contexts (config, note, schema, fs).
+- **Module placement**: Alphabetically between `graph` and `note` in `lithos-core/src/lib.rs`.
+- **Active declaration**: Unlike `template` (commented out at `lib.rs:27`), indexer is fully active.
+- **Scanner Port wording**: Invariant reads "Directory scanning via `ScannerPort` (delegated to Indexer context)" — this will be refined in issue 03 when the actual `ScannerPort` trait is defined.
+- **CONTEXT.md structure**: Follows the exact template of `lithos-core/src/fs/CONTEXT.md` — `# Header` → description → `## Language` (terms with `_Avoid_` synonyms) → `## Invariants` → `## Not Owned Here` → `## Interfaces` → `## Resources`.
+
+### Verification gates passed
+
+| Gate    | Result |
+| ------- | ------ |
+| `cargo check`     | ✅ Clean |
+| `mise run fmt`    | ✅ Formatted |
+| `mise run lint`   | ✅ 0 warnings |
+| `mise run test`   | ✅ 1596 unit + 49 integration + 1 E2E + 156 doc tests |
+| `cargo doc --no-deps` | ✅ No broken intra-doc links |
+
+### Side effects accounted for
+
+- `docs/index.md` — updated with Indexer context link
+- `lithos-core/src/discovery/CONTEXT.md` — line 43 already references Indexer; wording remains accurate
+- No existing code symbols touched — GitNexus confirmed LOW risk on all modified files
+- `schema/discovery.rs` still imports `DirScanner` — migration to `ScannerPort` is scoped to issue 03
+
+### Merge
+
+- Worktree branch: `issue-01-indexer-scaffolding`
+- Branch merged into `main` via `--no-ff` at commit `6a9b0737` (parallel branch `923318f7` had agent briefs for template issues)
+- Both branches' work preserved; no conflicts
 
 ## Triage Notes
 
