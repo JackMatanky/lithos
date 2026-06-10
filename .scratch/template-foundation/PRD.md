@@ -19,7 +19,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 1. As a Lithos user, I want to list available Templates, so that I can discover what note-generation assets are available.
 2. As a Lithos user, I want Templates to be indexed from configured template sources, so that rendering does not depend on ad hoc file reads.
 3. As a Lithos user, I want a named Template to be validated before rendering, so that syntax/source problems can be caught early.
-4. As a Lithos user, I want to dry-run a named Template, so that I can verify the rendered output, check for compilability, and catch load errors before committing a file to disk.
+4. As a Lithos user, I want to dry-run a named Template, so that I can verify the rendered output and catch load errors before committing a file to disk.
 5. As a Lithos user, I want to render a named Template with simple variables, so that I can generate Markdown from reusable source text.
 6. As a Lithos user, I want repeated `--var key=value` CLI flags to provide a minimal render context, so that foundation rendering is usable without prompts or declared inputs.
 7. As a Lithos user, I want rendered output to be written to a vault-relative path, so that generated content stays inside the vault boundary.
@@ -112,8 +112,9 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 
 ### Template Service
 
-- Let `TemplateService` own repository lookup, indexing, validation workflow, render context assembly, render orchestration, target resolution, conflict checks, and commit orchestration.
-- `TemplateService` exposes `validate` for detailed compile validation (used before rendering) and `can_compile` (or `is_compilable`) as an explicit, on-demand live check that calls the engine's `compile` method. Compilability is not stored on `Template` or in any registry; it is always a live engine call. `TemplateService` uses `can_compile` when executing the `--dry-run` CLI command to verify health.
+- `TemplateService` owns orchestration of the Template lifecycle via two primary methods:
+  - `load()`: Orchestrates the `TemplateProcessor` pipeline to ingest/index templates from the configured source into the repository.
+  - `create()`: Orchestrates the `TemplateEngine` rendering, target resolution, conflict checks, and commit orchestration. Rendering implicitly triggers compile-time validation.
 - The render context passed to the engine is `HashMap<String, String>`. The `MiniJinjaEngine` adapter converts `String → minijinja::Value::String` internally. This keeps all `minijinja` types out of the Service request and response types.
 - Use `TemplateError` as the primary template use-case error type.
 - Use `TemplateEngineError` for compile/render engine failures and preserve `minijinja::Error` as source.
@@ -132,9 +133,9 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 
 ### CLI
 
-- Add a minimal CLI shape with two commands:
+- Add a minimal CLI shape with one command:
   - `lithos template --input <template-name> --output <vault-relative-path> --var key=value` (shortened forms `-i`, `-o` accepted)
-  - `lithos template --input <template-name> --dry-run` (shortened form `-n`) for verification and on-demand compile health check
+  - `lithos template --input <template-name> --dry-run` for verification of rendered output
 - Treat repeated `--var key=value` flags as a `HashMap<String, String>` render context. The `=` in values is handled by splitting on the first `=` only.
 - The CLI adapter maps `TemplateError` variants to user-facing messages explicitly; it does not forward raw `TemplateError::to_string()` output to users.
 - Defer declared inputs, namespaces, prompt UX, query helpers, custom extension modules, multi-file packs, and rich conflict policies.
@@ -146,7 +147,10 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 - Repository contract tests should cover read/write methods, path identity mappings, raw view persistence, batch operations, delete behavior, and missing-entity behavior.
 - Processor tests should cover fresh, missing, stale timestamp, stale content, metadata-only refresh, and deleted-cache scenarios.
 - Template Engine adapter tests should cover compile success, compile failure with preserved source error, render success, render failure, strict undefined behavior, no Markdown auto-escape, and build-once source registration.
-- Template Service tests should cover list, ingest/index, validate, `can_compile` live checks, render in memory, artifact creation, commit orchestration, missing Template errors, repository errors, and engine errors.
+- Template Service tests should cover:
+  - `load()`: Verifies orchestration of `TemplateProcessor` and interaction with repository.
+  - `create()`: Verifies orchestration of `TemplateEngine`, target resolution, conflict checks, and commit.
+  - Error propagation: Verifies that engine and repository errors are correctly wrapped as `TemplateError`.
 - Artifact typestate tests should cover legal transitions using the `From`-based API and externally observable write behavior; invalid transitions should be impossible by type construction rather than runtime tests.
 - Commit pipeline tests should cover vault-relative target success, absolute target rejection, traversal rejection, existing destination failure (via `File::create_new` `AlreadyExists`), and single-file creation.
 - CLI tests should cover the render command, the dry-run command, repeated `--var` flags with `=` in values, output path reporting, and structured failure paths.
