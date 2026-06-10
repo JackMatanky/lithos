@@ -20,6 +20,7 @@ pub mod db;
 pub(crate) mod discovery;
 pub mod fs;
 pub mod graph;
+pub mod indexer;
 pub mod note;
 pub mod prelude;
 pub mod schema;
