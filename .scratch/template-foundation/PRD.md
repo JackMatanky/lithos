@@ -19,7 +19,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 1. As a Lithos user, I want to list available Templates, so that I can discover what note-generation assets are available.
 2. As a Lithos user, I want Templates to be indexed from configured template sources, so that rendering does not depend on ad hoc file reads.
 3. As a Lithos user, I want a named Template to be validated before rendering, so that syntax/source problems can be caught early.
-4. As a Lithos user, I want to check whether a named Template can compile via a CLI command, so that template health can be verified on demand without triggering a render.
+4. As a Lithos user, I want to dry-run a named Template, so that I can verify the rendered output, check for compilability, and catch load errors before committing a file to disk.
 5. As a Lithos user, I want to render a named Template with simple variables, so that I can generate Markdown from reusable source text.
 6. As a Lithos user, I want repeated `--var key=value` CLI flags to provide a minimal render context, so that foundation rendering is usable without prompts or declared inputs.
 7. As a Lithos user, I want rendered output to be written to a vault-relative path, so that generated content stays inside the vault boundary.
@@ -113,7 +113,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 ### Template Service
 
 - Let `TemplateService` own repository lookup, indexing, validation workflow, render context assembly, render orchestration, target resolution, conflict checks, and commit orchestration.
-- `TemplateService` exposes `validate` for detailed compile validation (used before rendering) and `can_compile` (or `is_compilable`) as an explicit, on-demand live check that calls the engine's `compile` method. Compilability is not stored on `Template` or in any registry; it is always a live engine call.
+- `TemplateService` exposes `validate` for detailed compile validation (used before rendering) and `can_compile` (or `is_compilable`) as an explicit, on-demand live check that calls the engine's `compile` method. Compilability is not stored on `Template` or in any registry; it is always a live engine call. `TemplateService` uses `can_compile` when executing the `--dry-run` CLI command to verify health.
 - The render context passed to the engine is `HashMap<String, String>`. The `MiniJinjaEngine` adapter converts `String → minijinja::Value::String` internally. This keeps all `minijinja` types out of the Service request and response types.
 - Use `TemplateError` as the primary template use-case error type.
 - Use `TemplateEngineError` for compile/render engine failures and preserve `minijinja::Error` as source.
@@ -134,7 +134,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 
 - Add a minimal CLI shape with two commands:
   - `lithos template --input <template-name> --output <vault-relative-path> --var key=value` (shortened forms `-i`, `-o` accepted)
-  - `lithos template check --input <template-name>` for on-demand compile health check
+  - `lithos template --input <template-name> --dry-run` (shortened form `-n`) for verification and on-demand compile health check
 - Treat repeated `--var key=value` flags as a `HashMap<String, String>` render context. The `=` in values is handled by splitting on the first `=` only.
 - The CLI adapter maps `TemplateError` variants to user-facing messages explicitly; it does not forward raw `TemplateError::to_string()` output to users.
 - Defer declared inputs, namespaces, prompt UX, query helpers, custom extension modules, multi-file packs, and rich conflict policies.
@@ -149,7 +149,7 @@ The foundation deliberately excludes Lithos custom extensions, prompts, query/ru
 - Template Service tests should cover list, ingest/index, validate, `can_compile` live checks, render in memory, artifact creation, commit orchestration, missing Template errors, repository errors, and engine errors.
 - Artifact typestate tests should cover legal transitions using the `From`-based API and externally observable write behavior; invalid transitions should be impossible by type construction rather than runtime tests.
 - Commit pipeline tests should cover vault-relative target success, absolute target rejection, traversal rejection, existing destination failure (via `File::create_new` `AlreadyExists`), and single-file creation.
-- CLI tests should cover the render command, the check command, repeated `--var` flags with `=` in values, output path reporting, and structured failure paths.
+- CLI tests should cover the render command, the dry-run command, repeated `--var` flags with `=` in values, output path reporting, and structured failure paths.
 - Architecture tests should continue enforcing FS isolation and context import boundaries, extended to cover the Template context's own isolation (no cross-imports from `note` or `schema`; MiniJinja only in the adapter module).
 - Prior art includes Schema repository/error tests, Schema discovery/processor patterns, FS path validation behavior, and existing architecture tests for ports and filesystem isolation.
 
