@@ -12,6 +12,7 @@
 ## Module context docs
 
 - [Config Context](../lithos-core/src/config/CONTEXT.md)
+- [Indexer Context](../lithos-core/src/indexer/CONTEXT.md)
 - [Note Context](../lithos-core/src/note/CONTEXT.md)
 - [Schema Context](../lithos-core/src/schema/CONTEXT.md)
 - [Template Context](../lithos-core/src/template/CONTEXT.md)
