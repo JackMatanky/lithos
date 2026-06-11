@@ -47,7 +47,9 @@ Isolate the schema difference computation from the schema resolution computation
   - `pub fn new() -> Self`
   - `pub fn with_bank(bank: &'bank PropertyBank) -> Self`
   - `pub fn build(self, raw: RawPropertyMap) -> Result<PropertyMap, SchemaError>`
-  - `pub fn update(self, existing: PropertyMap, raw_upserts: HashMap<PropertyName, RawProperty>, removals: &[PropertyName]) -> Result<PropertyMap, SchemaError>` (or a raw delta wrapper).
+  - `pub fn update(self, existing: PropertyMap, raw_upserts: RawPropertyMap<RawProperty>) -> Result<PropertyMap, SchemaError>`
+  - `pub fn update_refs(self, existing: PropertyMap, raw_refs: RawPropertyMap<RawPropertyRef>) -> Result<PropertyMap, SchemaError>`
+  - `pub fn remove(self, existing: PropertyMap, removals: &[PropertyName]) -> PropertyMap`
 
 ### Code Deletions
 - Delete the `TryFrom<RawPropertyMap>` trait implementations in `property.rs`.
