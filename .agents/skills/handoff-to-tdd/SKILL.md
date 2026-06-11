@@ -1,19 +1,18 @@
 ---
 name: handoff-to-tdd
-description: Orchestrates structured handoff from issue triage to TDD implementation planning. Invokes the handoff skill to compact the session, then produces a ready-to-use opening prompt for the next agent containing review, gap analysis, and TDD plan generation instructions using GitNexus, rust-best-practices, and tdd skills. Use when user provides an issue file path and a scratch folder path for TDD planning, or says "handoff to tdd", "prepare for implementation", "create handoff for planning", "triage to tdd".
-argument-hint: "<issue-file-path> <scratch-folder-path>"
+description: Orchestrates structured handoff from issue triage to TDD implementation planning. Invokes the handoff skill to compact the session, then produces a ready-to-use opening prompt for the next agent containing review, gap analysis, and TDD plan generation instructions using GitNexus, rust-best-practices, and tdd skills. Use when user provides an issue file path for TDD planning, or says "handoff to tdd", "prepare for implementation", "create handoff for planning", "triage to tdd".
+argument-hint: "<issue-file-path>"
 ---
 
 # Handoff to TDD
 
 ## Arguments
 
-Two positional arguments:
+One positional argument. `scratch-folder-path` is derived as `dirname(<issue-file-path>)`.
 
-| # | Argument | Example |
-|---|----------|---------|
-| 1 | issue-file-path | `.scratch/feature/ISSUE-42.md` |
-| 2 | scratch-folder-path | `.scratch/feature/` |
+| Argument | Example |
+|----------|---------|
+| issue-file-path | `.scratch/feature/ISSUE-42.md` — scratch folder derived as `.scratch/feature/` |
 
 ## Workflow
 
@@ -35,6 +34,8 @@ Collect factual state to seed the handoff:
 - Any relevant ADRs discovered during this session (paths only).
 
 ### Step 2 — Create handoff document
+
+Derive `scratch-folder-path` as `dirname(<issue-file-path>)` (the parent directory of the issue file).
 
 Invoke the `handoff` skill with argument:
 
@@ -68,7 +69,7 @@ Follow the instructions in the handoff document. Do not modify the issue file. D
 
 ## Next Agent Instructions
 
-Copy into the handoff document with `<issue-file-path>` and `<scratch-folder-path>` replaced. These are the minimum required instructions — include any additional context, findings, recommendations, or guidance relevant to the task.
+Copy into the handoff document with `<issue-file-path>` replaced (derive `scratch-folder-path` as `dirname(issue-file-path)`). These are the minimum required instructions — include any additional context, findings, recommendations, or guidance relevant to the task.
 
 ---
 
