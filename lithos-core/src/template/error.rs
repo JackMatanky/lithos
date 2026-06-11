@@ -5,7 +5,7 @@
 //! - [`TemplateBodyError`] — empty content rejection
 //! - [`TemplateError`] — top-level error embedding both via `#[from]`
 
-use std::fmt;
+use thiserror::Error;
 
 // ============================================================================
 // TemplateNameError
@@ -15,54 +15,29 @@ use std::fmt;
 ///
 /// The only validation `TemplateName::try_new` performs is stem derivation.
 /// Non-`.md` filtering and root-scope checks belong to the Template Processor.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TemplateNameError {
     /// The file path produced an empty stem when stripped and normalized.
     ///
     /// This occurs when the path has no file stem, or when the stripped
     /// relative path is empty.
+    #[error("could not derive a template name from the given path")]
     Derivation,
 }
-
-impl fmt::Display for TemplateNameError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Derivation => {
-                write!(
-                    f,
-                    "could not derive a template name from the given path"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for TemplateNameError {}
 
 // ============================================================================
 // TemplateBodyError
 // ============================================================================
 
 /// Errors returned when constructing a [`super::TemplateBody`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TemplateBodyError {
     /// The provided string was empty.
     ///
     /// Template body must contain at least one character.
+    #[error("template body must not be empty")]
     Empty,
 }
-
-impl fmt::Display for TemplateBodyError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => write!(f, "template body must not be empty"),
-        }
-    }
-}
-
-impl std::error::Error for TemplateBodyError {}
 
 // ============================================================================
 // TemplateError
@@ -72,46 +47,14 @@ impl std::error::Error for TemplateBodyError {}
 ///
 /// Embeds both [`TemplateNameError`] and [`TemplateBodyError`] via `#[from]`
 /// conversions, following the `FsError` composition pattern.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TemplateError {
     /// A template name derivation error.
-    Name(TemplateNameError),
+    #[error("template name error: {0}")]
+    Name(#[from] TemplateNameError),
     /// A template body validation error.
-    Body(TemplateBodyError),
-}
-
-impl fmt::Display for TemplateError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Name(e) => write!(f, "template name error: {e}"),
-            Self::Body(e) => write!(f, "template body error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for TemplateError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Name(e) => Some(e),
-            Self::Body(e) => Some(e),
-        }
-    }
-}
-
-impl From<TemplateNameError> for TemplateError {
-    #[inline]
-    fn from(e: TemplateNameError) -> Self {
-        Self::Name(e)
-    }
-}
-
-impl From<TemplateBodyError> for TemplateError {
-    #[inline]
-    fn from(e: TemplateBodyError) -> Self {
-        Self::Body(e)
-    }
+    #[error("template body error: {0}")]
+    Body(#[from] TemplateBodyError),
 }
 
 // ============================================================================
