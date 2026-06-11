@@ -3,7 +3,10 @@ title: 03-indexer-ports-and-adapters
 category: enhancement
 label: ready-for-agent
 status: open
+branch:
+merge_commit:
 date_created: 2026-06-09
+date_completed:
 ---
 
 # Issue 03: ScannerPort, walkdir adapter, repository ports, and redb storage adapter

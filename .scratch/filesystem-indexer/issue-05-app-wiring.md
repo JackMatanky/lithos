@@ -3,7 +3,10 @@ title: 05-indexer-app-wiring
 category: enhancement
 label: ready-for-agent
 status: open
+branch:
+merge_commit:
 date_created: 2026-06-09
+date_completed:
 ---
 
 # Issue 05: `lithos-core::app` wiring — `IndexCommand` and `run_index` flow

@@ -3,7 +3,10 @@ title: 06-indexer-cli-command
 category: enhancement
 label: ready-for-agent
 status: open
+branch:
+merge_commit:
 date_created: 2026-06-09
+date_completed:
 ---
 
 # Issue 06: `lithos index` CLI command

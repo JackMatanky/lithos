@@ -3,7 +3,10 @@ title: 07-indexer-vault-deletion
 category: enhancement
 label: ready-for-human
 status: open
+branch:
+merge_commit:
 date_created: 2026-06-09
+date_completed:
 ---
 
 # Issue 07: Delete `lithos-core::vault`
