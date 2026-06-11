@@ -13,8 +13,18 @@ date_completed:
 
 ## What to build
 
-Implement all Indexer domain types inside `lithos-core::indexer::model`. This
-is the type-only layer — no application logic, no adapters. Every subsequent
+Implement all Indexer domain types distributed across `lithos-core::indexer` by
+concern:
+
+| File | Types |
+|------|-------|
+| `model.rs` | `FsNodeId`, `FsNodeType`, `FileNode`, `DirNode` |
+| `entry.rs` | `FileIndexEntry`, `DirIndexEntry`, `IndexStatus` |
+| `summary.rs` | `IndexResult`, `DeletedNodes`, `IndexNodeFailure` |
+| `scan.rs` | `IndexScope`, `ScanFilters`, `IndexOptions` |
+| `error.rs` | `IndexerError` |
+
+This is the type-only layer — no application logic, no adapters. Every subsequent
 issue depends on these types being stable and tested.
 
 Types to implement:
@@ -50,8 +60,8 @@ exist. No `unwrap()` or `panic!` in production code.
 
 ## Acceptance criteria
 
-- [ ] All types above compile inside `lithos-core::indexer::model` (and
-      `::error`).
+- [ ] All types above compile across `lithos-core::indexer` modules (`model`,
+      `entry`, `summary`, `scan`, `error`).
 - [ ] `FsNodeId` is a newtype over `UuidV7`; identity is stable, unique, and
       compatible with redb key wrappers.
 - [ ] `FileNode` and `DirNode` derive `rkyv::Archive`, `rkyv::Serialize`,
