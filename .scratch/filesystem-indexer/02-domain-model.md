@@ -60,33 +60,33 @@ exist. No `unwrap()` or `panic!` in production code.
 
 ## Acceptance criteria
 
-- [ ] All types above compile across `lithos-core::indexer` modules (`model`,
+- [x] All types above compile across `lithos-core::indexer` modules (`model`,
       `entry`, `summary`, `scan`, `error`).
-- [ ] `FsNodeId` is a newtype over `UuidV7`; identity is stable, unique, and
+- [x] `FsNodeId` is a newtype over `UuidV7`; identity is stable, unique, and
       compatible with redb key wrappers.
-- [ ] `FileNode` and `DirNode` derive `rkyv::Archive`, `rkyv::Serialize`,
+- [x] `FileNode` and `DirNode` derive `rkyv::Archive`, `rkyv::Serialize`,
       `rkyv::Deserialize` (consistent with existing node types in the
       codebase).
-- [ ] Path conversion tests (using existing `lithos-core::fs::path` conversion
+- [x] Path conversion tests (using existing `lithos-core::fs::path` conversion
       functions) prove filesystem paths convert to `PathKey` only with an
       explicit Vault Root (no rootless conversion).
-- [ ] `FsNodeType` is defined with `File` and `Dir` variants and used in
+- [x] `FsNodeType` is defined with `File` and `Dir` variants and used in
       `DeletedNodes` and `IndexNodeFailure` for kind-aware classification.
-- [ ] `DeletedNodes` struct provides kind-segregated `files: Box<[FsNodeId]>` and
+- [x] `DeletedNodes` struct provides kind-segregated `files: Box<[FsNodeId]>` and
       `dirs: Box<[FsNodeId]>` collections (not a flat `Vec<FsNodeId>`).
-- [ ] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeType, error: Box<str> }`
+- [x] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeType, error: Box<str> }`
       for per-node non-fatal failure reporting.
-- [ ] `IndexResult` exposes summary counts (`scanned`, `new`, `fresh`, `stale`,
+- [x] `IndexResult` exposes summary counts (`scanned`, `new`, `fresh`, `stale`,
       `deleted`, `failed`) as computed methods, not a separate struct.
-- [ ] All collection fields use `Box<[T]>` not `Vec<T>`.
-- [ ] Domain model construction tests reject invalid states and preserve valid
+- [x] All collection fields use `Box<[T]>` not `Vec<T>`.
+- [x] Domain model construction tests reject invalid states and preserve valid
       `FsNodeId`, `FileNode`, and `DirNode` fields.
-- [ ] `FsNodeId` identity tests: stable, unique, ordered where needed,
+- [x] `FsNodeId` identity tests: stable, unique, ordered where needed,
       compatible with DB key wrappers.
-- [ ] `IndexerError` uses `#[derive(Debug, thiserror::Error)]` with
+- [x] `IndexerError` uses `#[derive(Debug, thiserror::Error)]` with
       `#[non_exhaustive]` and includes Display/format tests for all variants.
-- [ ] All existing tests still pass (`mise run test`).
-- [ ] No clippy warnings (`mise run lint`).
+- [x] All existing tests still pass (`mise run test`).
+- [x] No clippy warnings (`mise run lint`).
 
 ## Blocked by
 
