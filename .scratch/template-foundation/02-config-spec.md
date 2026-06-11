@@ -38,7 +38,17 @@ Template discovery is scoped to `.md` files at any depth within the configured t
 
 - [ ] `TemplateConfigSpec` is defined with `root: DirPath` and `directory: RelativeDirPath` private fields
 - [ ] A constructor exists that can be built from the application `Config` (matching the `SchemaConfigSpec` pattern)
-- [ ] `TemplateConfigSpec` exposes accessors sufficient for the processor and service to resolve the full template directory path
+- [ ] `Config` implements `to_template_spec() -> Result<TemplateConfigSpec, ConfigError>`
+- [ ] `TemplateConfigSpec` exposes:
+  - `root() -> &DirPath`
+  - `as_relative_dir() -> &RelativeDirPath`
+  - `to_dir_path() -> Result<DirPath, fs::PathError>`
+  - `to_path_key() -> Result<PathKey, fs::PathError>`
+- [ ] `SchemaConfigSpec` updated to use:
+  - `as_relative_dir()`
+  - `to_dir_path()`
+  - `to_path_key()`
+  - `to_file_path()` (for property bank)
 - [ ] Unit tests cover construction from a representative config value and accessor correctness
 
 ## Blocked by
@@ -68,12 +78,29 @@ pub struct TemplateConfigSpec {
 ```
 
 It provides:
+- A `to_template_spec()` method is added to `Config`
+- A `TemplateConfigSpec` type lives in `lithos-core/src/config/paths.rs` (alongside `SchemaConfigSpec`) with private fields:
+
+```rust
+pub struct TemplateConfigSpec {
+    root: DirPath,
+    directory: RelativeDirPath,
+}
+```
+
+It provides:
 - A `const fn new(root: DirPath, directory: RelativeDirPath) -> Self` constructor
 - A `From<&Config>` impl (or equivalent `from_config` factory) that extracts `root` and `directory` from the application `Config` — reading the same `templates_dir` field already present in the vault config
 - An accessor `root(&self) -> &DirPath`
-- An accessor `directory_relative(&self) -> &RelativeDirPath`
-- A method `template_directory_path(&self) -> Result<DirPath, fs::PathError>` that resolves the full absolute template directory path
-- A method `template_directory_key(&self) -> Result<PathKey, fs::PathError>` for use as a vault-relative persistence key
+- An accessor `as_relative_dir(&self) -> &RelativeDirPath`
+- A method `to_dir_path(&self) -> Result<DirPath, fs::PathError>` that resolves the full absolute template directory path
+- A method `to_path_key(&self) -> Result<PathKey, fs::PathError>` for use as a vault-relative persistence key
+- `SchemaConfigSpec` methods renamed for consistency:
+  - `directory_relative()` -> `as_relative_dir()`
+  - `schema_directory_path()` -> `to_dir_path()`
+  - `property_bank_file_path()` -> `to_file_path()`
+  - `schema_directory_key()` -> `to_dir_key()`
+  - `property_bank_key()` -> `to_file_key()`
 
 **Key interfaces:**
 - `TemplateConfigSpec` — new type in `lithos-core/src/config/paths.rs`; follows `SchemaConfigSpec` exactly except it has no `property_bank` field
