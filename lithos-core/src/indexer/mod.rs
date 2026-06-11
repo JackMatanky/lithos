@@ -8,5 +8,8 @@
 //!
 //! Config → Indexer → Schema, Note, Template
 
-#[cfg(test)]
-mod tests {}
+pub mod entry;
+pub mod error;
+pub mod model;
+pub mod scan;
+pub mod summary;
