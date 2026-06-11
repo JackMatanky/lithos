@@ -1,12 +1,12 @@
 ---
 title: 02-indexer-domain-model
 category: enhancement
-label: ready-for-agent
-status: open
-branch:
+label: ready-for-human
+status: closed
+branch: feat/indexer-domain-model
 merge_commit:
 date_created: 2026-06-09
-date_completed:
+date_completed: 2026-06-11
 ---
 
 # Issue 02: Indexer domain model and result contracts
