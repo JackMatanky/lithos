@@ -1,7 +1,12 @@
-# Issue 04: Indexer application service
+---
+title: 04-indexer-application-service
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-06-09
+---
 
-**Status**: ready-for-agent
-**Created**: 2026-06-09
+# Issue 04: Indexer application service
 
 ## What to build
 

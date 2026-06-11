@@ -1,7 +1,12 @@
-# Issue 06: `lithos index` CLI command
+---
+title: 06-indexer-cli-command
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-06-09
+---
 
-**Status**: ready-for-agent
-**Created**: 2026-06-09
+# Issue 06: `lithos index` CLI command
 
 ## What to build
 

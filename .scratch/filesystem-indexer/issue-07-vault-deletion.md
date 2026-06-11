@@ -1,7 +1,12 @@
-# Issue 07: Delete `lithos-core::vault`
+---
+title: 07-indexer-vault-deletion
+category: enhancement
+label: ready-for-human
+status: open
+date_created: 2026-06-09
+---
 
-**Status**: ready-for-human
-**Created**: 2026-06-09
+# Issue 07: Delete `lithos-core::vault`
 
 ## What to build
 

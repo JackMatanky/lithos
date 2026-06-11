@@ -1,7 +1,12 @@
-# Issue 02: Indexer domain model and result contracts
+---
+title: 02-indexer-domain-model
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-06-09
+---
 
-**Status**: ready-for-agent
-**Created**: 2026-06-09
+# Issue 02: Indexer domain model and result contracts
 
 ## What to build
 

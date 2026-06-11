@@ -1,7 +1,12 @@
-# Issue 05: `lithos-core::app` wiring — `IndexCommand` and `run_index` flow
+---
+title: 05-indexer-app-wiring
+category: enhancement
+label: ready-for-agent
+status: open
+date_created: 2026-06-09
+---
 
-**Status**: ready-for-agent
-**Created**: 2026-06-09
+# Issue 05: `lithos-core::app` wiring — `IndexCommand` and `run_index` flow
 
 ## What to build
 

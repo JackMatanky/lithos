@@ -1,10 +1,15 @@
-# Issue 01: Indexer scaffolding
+---
+title: 01-indexer-scaffolding
+category: enhancement
+label: ready-for-agent
+status: completed
+date_created: 2026-06-09
+date_completed: 2026-06-11
+branch: issue-01-indexer-scaffolding
+merge_commit: 6a9b0737
+---
 
-**Status**: implemented
-**Created**: 2026-06-09
-**Resolved**: 2026-06-11
-**Branch**: issue-01-indexer-scaffolding
-**Merge commit**: 6a9b0737
+# Issue 01: Indexer scaffolding
 
 ## What to build
 
