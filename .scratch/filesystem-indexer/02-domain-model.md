@@ -64,7 +64,7 @@ exist. No `unwrap()` or `panic!` in production code.
 
 ## Blocked by
 
-- issue-01-scaffolding.md
+- 01-scaffolding.md
 
 ---
 
@@ -89,3 +89,78 @@ exist. No `unwrap()` or `panic!` in production code.
 
 1. `FsNodeKind` appears in What to Build but is not explicitly called out in any AC. An agent could reasonably omit testing it. Consider adding a bullet: "FsNodeKind is defined with File and Dir variants and used in IndexResult summary counts."
 2. The `::error` module is mentioned in What to Build but ACs only say "compile inside `::model` (and `::error`)". No explicit test criterion for error construction/display. Agents should add at minimum a display/format test for Indexer error variants — the PRD Testing section expects actionable diagnostic output (item 14).
+
+---
+
+## Enhanced Triage (codebase-validated)
+
+> *Codebase exploration cross-referenced existing patterns. All findings below are grounded in source code, not assumptions.*
+
+### ✅ Confirmed — ID newtype pattern
+
+`FsNodeId` matches the canonical newtype pattern used by every context ID in `lithos-core`:
+
+| ID | File | Inner | Derives | `#[rkyv(derive(...))]` |
+|---|---|---|---|---|
+| `NoteId` | `note/aggregate.rs:58` | `pub(crate) UuidV7` | `Debug,Clone,Copy,PartialEq,Eq,Hash,PartialOrd,Ord,Archive,Serialize,Deserialize` | `Debug` |
+| `SchemaId` | `schema/identifier.rs:55` | `pub(crate) UuidV7` | Same set | `Debug, Hash, PartialEq, Eq` |
+| `PropertyId` | `schema/property.rs` | `pub(crate) UuidV7` | Same set | `Debug, Hash, PartialEq, Eq` |
+
+**Recommendation**: Follow the newtype shape (inner field visibility, constructor signatures, conversion impls) from `NoteId`/`SchemaId`. Add derives only as the compiler demands them — no up-front derive lists. The ACs already require `rkyv::Archive/Serialize/Deserialize`; everything else (e.g., `PartialOrd` for redb keys, `Hash` for set membership) should be added when a concrete use case proves it's needed.
+
+### ✅ Confirmed — `SystemTime` rkyv attribute
+
+The `FsTimes` struct (`fs/metadata.rs:264–271`) uses:
+```rust
+#[rkyv(with = Map<AsUnixTime>)]
+created_at: Option<SystemTime>,
+```
+The issue correctly specifies the same attribute for `recorded_at: SystemTime` in `FileNode`/`DirNode`. **No change needed.**
+
+### ✅ Confirmed — PathKey for storage paths
+
+The three-tier path taxonomy (`fs/path.rs:9–14`) explicitly reserves `PathKey` for storage keys. Using `PathKey` in `FileNode`/`DirNode` is correct. The issue also uses `FilePath`/`DirPath` in `FileIndexEntry`/`DirIndexEntry`, which are the FS I/O tier types — this duality is intentional (nodes stored with `PathKey`, entries used for scan output with `FilePath`/`DirPath`).
+
+### ✅ Confirmed — FileName, DirName, FileFormat, FileMetadata, DirMetadata exist
+
+All referenced types are defined in `lithos-core::fs::`:
+- `FileName`, `DirName` (`fs/name.rs:24`, `fs/name.rs:248`)
+- `FileFormat` (`fs/format.rs:16`)
+- `FileMetadata`, `DirMetadata` (`fs/metadata.rs:124`, `fs/metadata.rs:216`)
+
+The domain model will reference these, not re-define them. **Correct.**
+
+### ✅ Correct — No `content_hash` on FileNode
+
+PRD item 20 explicitly assigns content hashing to each context-owned processor. Omitting `content_hash` from `FileNode` is correct and avoids coupling.
+
+### ⚠️ Enhancement: Use `Box<[T]>` not `Vec<T>` in `IndexResult`
+
+The `Note` aggregate (`note/aggregate.rs:148–157`) uses `Box<[T]>` for all collection fields to minimize heap allocations and optimize rkyv archive density. `IndexResult` should follow the same pattern:
+- `file_entries: Box<[FileIndexEntry]>`
+- `dir_entries: Box<[DirIndexEntry]>`
+- `deleted_ids: Box<[FsNodeId]>`
+
+Alternatively, use `Vec` at the service boundary and convert to `Box<[T]>` at the model — consistent with `Note::from_parts` (line 177). **Not blocking but strongly recommended.**
+
+### ⚠️ Enhancement: Error type should follow `thiserror` + `#[non_exhaustive]` pattern
+
+The codebase consistently uses `thiserror` with `#[non_exhaustive]` enums (`note/error.rs`, `fs/error.rs`, `db/error.rs`, `utils/error.rs`). The Indexer error types should:
+
+1. Use `#[derive(Debug, thiserror::Error)]`
+2. Annotate with `#[non_exhaustive]`
+3. Use `#[error(transparent)]` for wrapped child errors (not nested enum variants)
+4. Use `#[source]` or `#[from]` for source error chains
+5. Use `Box<str>` instead of `String` for dynamic error data (consistent with `NoteError` comment at `note/error.rs:37`)
+
+**Existing triage observation #2 already flags missing Display/format tests.** This adds the structural pattern guidance.
+
+### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsNodeKind`
+
+The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). Add an AC: "IndexResult includes summary counts that use FsNodeKind for classification."
+
+### 📋 Summary of recommended AC additions
+
+- [ ] `Box<[T]>` used for all collection fields in `IndexResult` (or documented decision to use `Vec`)
+- [ ] `IndexerError` (or equivalent) uses `thiserror` with `#[non_exhaustive]`, includes Display/format tests
+- [ ] `IndexResult` summary counts use `FsNodeKind`
