@@ -52,7 +52,7 @@ composition, diagnostics. It must not become a domain logic home.
 
 ## Blocked by
 
-- issue-04-application-service.md
+- 04-application-service.md
 
 ---
 

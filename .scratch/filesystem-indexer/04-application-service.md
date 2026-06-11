@@ -62,7 +62,7 @@ no walkdir, no redb, no concrete adapter types in the service module.
 
 ## Blocked by
 
-- issue-03-ports-and-adapters.md
+- 03-ports-and-adapters.md
 
 ---
 

@@ -76,7 +76,7 @@ Indexer domain errors, not redb errors.
 
 ## Blocked by
 
-- issue-02-domain-model.md
+- 02-domain-model.md
 
 ---
 

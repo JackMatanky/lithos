@@ -56,7 +56,7 @@ path, permission denied, scan failure) — not internal traces.
 
 ## Blocked by
 
-- issue-05-app-wiring.md
+- 05-app-wiring.md
 
 ---
 

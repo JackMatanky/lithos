@@ -41,8 +41,8 @@ The agent should:
 
 ## Blocked by
 
-- issue-03-ports-and-adapters.md
-- issue-04-application-service.md
+- 03-ports-and-adapters.md
+- 04-application-service.md
 
 ---
 
