@@ -136,7 +136,6 @@ A `template` context module exists in `lithos-core/src/template/` exporting the 
 - `RawTemplateView` — flat freshness/cache struct carrying `PathKey`, `Blake3Hash`, file metadata, and recorded time. This is a flat struct, NOT a versioned ring buffer. Implements `HasContentHash` and `HasContentHashMut` from `support::content_hash`. Derives `rkyv::Archive, rkyv::Serialize, rkyv::Deserialize`.
 - `TemplateNameError`, `TemplateBodyError`, `TemplateError` — domain error types in `error.rs`. `TemplateNameError::Derivation` covers stem derivation failures. `TemplateError` embeds both child errors via `#[from]`.
 - `Template` — primary renderable aggregate with `TemplateId`, `PathKey`, `TemplateName`, `TemplateBody`, and recorded ingestion time. `recorded_at` is set internally at construction, not passed as a parameter. Marked `#[non_exhaustive]`. Derives `rkyv::Archive, rkyv::Serialize, rkyv::Deserialize` with `#[rkyv(with = AsUnixTime)]` on `recorded_at`.
-- `Template` — primary renderable aggregate with `TemplateId`, `PathKey`, `TemplateName`, `TemplateBody`, and recorded ingestion time. Marked `#[non_exhaustive]`. Derives `rkyv::Archive, rkyv::Serialize, rkyv::Deserialize`.
 
 **Key interfaces:**
 - `TemplateId` — mirror the `NoteId`/`SchemaId` pattern; use `UuidV7` as the inner type with `pub(crate)` visibility; `new()` generates a fresh V7 UUID, `parse()` parses a string, `as_uuid_v7()` returns `&UuidV7`; implement `Default` (delegates to `new()`), `Display` (delegates to inner), `From<UuidV7>`, `TryFrom<Uuid>`
