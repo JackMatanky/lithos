@@ -1,3 +1,14 @@
+---
+title: 07-template-service
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # Template Service
 
 Status: ready-for-agent

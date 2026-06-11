@@ -1,3 +1,14 @@
+---
+title: 09-architecture-tests
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # Architecture Tests: Template Context Isolation
 
 Status: ready-for-agent

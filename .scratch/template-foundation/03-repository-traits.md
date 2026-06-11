@@ -1,3 +1,14 @@
+---
+title: 03-repository-traits
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # Template Repository Traits
 
 Status: ready-for-agent

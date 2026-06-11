@@ -1,3 +1,14 @@
+---
+title: 05-engine-port-adapter
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # Template Engine Port + MiniJinja Adapter
 
 Status: ready-for-agent

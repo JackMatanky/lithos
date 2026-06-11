@@ -1,3 +1,14 @@
+---
+title: 08-cli-template-command
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # CLI `template` Command
 
 Status: ready-for-agent

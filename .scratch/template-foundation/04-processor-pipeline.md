@@ -1,3 +1,14 @@
+---
+title: 04-processor-pipeline
+category: enhancement
+label: ready-for-agent
+status: open
+branch:
+merge_commit:
+date_created: 2026-06-11
+date_completed:
+---
+
 # Template Processor Pipeline
 
 Status: ready-for-agent
