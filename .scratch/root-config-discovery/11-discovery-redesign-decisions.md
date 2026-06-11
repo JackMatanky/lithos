@@ -50,17 +50,17 @@ The full 6-phase discovery process that the `DiscoveryService` must implement:
 
 ### 2.2 Proposed Module Structure
 
-| Module              | Responsibility                                                                                   | Status          |
-| ------------------- | ------------------------------------------------------------------------------------------------ | --------------- |
-| `service.rs` (new)  | `DiscoveryService::run()` — orchestrates phases 2–6                                              | New             |
-| `override.rs` (new) | `OverrideResolver` — validates explicit CLI/env paths, verifies file existence vs. directory     | New             |
-| `probe.rs`          | `FolderProbe` — generic: probes one directory for target filenames (replaces `VaultRootProbe` + `GlobalRootProbe`) | Refactor        |
-| `walk.rs`           | `BoundedAscent` + ceiling parsing — traversal iterator, unchanged in responsibility              | Keep            |
-| `selector.rs`       | `select_candidate` + deduplication/ordering (absorbs `select_markers` from engine)               | Keep + extend   |
-| `policy.rs`         | `DiscoveryPolicy` + target filenames + boundary markers + precedence rules                       | Keep + extend   |
-| `error.rs`          | `DiscoveryError` with nested transparent sub-errors (see §2.4); absorbs `diagnostics.rs`          | Refactor        |
-| `diagnostics.rs`    | **Delete** — warnings move to structured fields on results or `tracing::warn!`                    | Delete          |
-| `engine.rs`         | **Delete** — responsibilities redistributed to `service.rs`, `override.rs`, `selector.rs`        | Delete          |
+| Module              | Responsibility                                                                                              | Status        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------- |
+| `service.rs` (new)  | `DiscoveryService::run()` — orchestrates phases 2–6                                                         | New           |
+| `override.rs` (new) | `OverrideResolver` — validates explicit CLI/env paths, verifies file existence vs. directory                | New           |
+| `probe.rs`          | `FolderProbe` — generic: probes one directory for target filenames (replaces `VaultRootProbe` + `GlobalRootProbe`) | Refactor      |
+| `walk.rs`           | `BoundedAscent` + ceiling parsing — traversal iterator, unchanged in responsibility                         | Keep          |
+| `selector.rs`       | `select_candidate` + deduplication/ordering (absorbs `select_markers` from engine)                          | Keep + extend |
+| `policy.rs`         | `DiscoveryPolicy` + target filenames + boundary markers + precedence rules                                  | Keep + extend |
+| `error.rs`          | `DiscoveryError` with nested transparent sub-errors (see §2.4); absorbs `diagnostics.rs`                    | Refactor      |
+| `diagnostics.rs`    | **Delete** — warnings move to `DiscoveryReport` (structured) or `tracing::warn!` (inline)                   | Delete        |
+| `engine.rs`         | **Delete** — responsibilities redistributed to `service.rs`, `override.rs`, `selector.rs`                  | Delete        |
 
 ### 2.3 `FolderProbe` — Generalised Probe
 
@@ -94,48 +94,101 @@ DiscoveryError
 Each sub-error is self-describing and scoped to its phase. `DiscoveryError`
 wraps them with `#[error(transparent)]` + `#[from]`.
 
-### 2.5 Non-Fatal Structured Information on `VaultDiscoveryResult`
+### 2.5 Output Types — `DiscoveryResult` and `DiscoveryReport`
 
-The caller (Bootstrapper / CLI) needs structured access to non-fatal conditions.
-These are **not** errors — they are informational fields on `VaultDiscoveryResult`.
+`DiscoveryService::run()` returns two distinct types:
 
-| Field                                                                    | Phase | Reason caller needs it                                               |
-| ------------------------------------------------------------------------ | ----- | -------------------------------------------------------------------- |
-| `skipped_override: Option<SkippedOverride>` (path + reason)               | 2     | User gave explicit path that was invalid; CLI must report it         |
-| `skipped_ceilings: Vec<SkippedCeiling>` (path + reason: empty / invalid) | 4     | Invalid ceiling segments alter traversal scope; CLI must report them |
-| `traversal_stop_reason: TraversalStopReason`                             | 4     | Ceiling / ProjectBoundary / FilesystemRoot / NotStarted              |
+**`DiscoveryResult`** — pure domain data consumed by `config/Builder` and
+downstream components. No process metadata here.
 
-`SkippedOverride.reason`:
-- `InvalidPath` — path does not exist
-- `NotADirectory` — path is a file
+```rust
+pub struct DiscoveryResult {
+    /// The directory in which vault markers were found (the Vault Root).
+    /// `None` if no vault was located.
+    pub vault_root: Option<PathBuf>,
+    /// All vault marker candidates found, ordered by precedence (winner first).
+    /// Empty if no vault was located.
+    pub vault: Box<[DiscoveredMarker]>,
+    /// All global marker candidates found, ordered by precedence (winner first).
+    /// Empty if no global config was located.
+    pub global: Box<[DiscoveredMarker]>,
+}
+```
 
-`SkippedCeiling.reason`:
-- `EmptySegment`
-- `InvalidPath` — does not exist or is not a directory
+`Box<[DiscoveredMarker]>` is used because the list is built during traversal
+and then frozen — it signals immutability and avoids excess heap capacity.
 
-`TraversalStopReason`:
-- `FilesystemRoot`
-- `ProjectBoundaryMarker { marker: PathBuf }` — e.g. `.git` found
-- `CeilingEnforced { ceiling: PathBuf }`
-- `NotStarted` — traversal was never entered (explicit preemption fired)
+**`DiscoveryReport`** — process metadata for the Bootstrapper / CLI only.
+Downstream components (`config/Builder`) never see this.
 
-**Open Question (Q1):** `GlobalDiscoveryResult` does not currently carry
-non-fatal diagnostics. Are there non-fatal conditions during global resolution
-that the caller should know about (e.g., a global directory candidate that was
-inaccessible due to permissions)? Tentatively no — global probing silently
-skips inaccessible directories — but this should be confirmed.
+```rust
+pub struct DiscoveryReport {
+    /// An explicit CLI/env path that was provided but failed validation.
+    /// `None` if no override was given or the override succeeded.
+    pub skipped_override: Option<SkippedOverride>,
+    /// Ceiling path segments that were skipped during traversal setup.
+    pub skipped_ceilings: Box<[SkippedCeiling]>,
+    /// Why local traversal stopped (or did not start).
+    pub traversal_stop_reason: TraversalStopReason,
+}
+```
+
+Supporting types:
+
+```rust
+pub struct SkippedOverride {
+    pub path: PathBuf,
+    pub reason: SkippedOverrideReason,
+}
+pub enum SkippedOverrideReason {
+    /// Path does not exist on the filesystem.
+    InvalidPath,
+    /// Path exists but is a file, not a directory.
+    NotADirectory,
+}
+
+pub struct SkippedCeiling {
+    pub segment: PathBuf,
+    pub reason: SkippedCeilingReason,
+}
+pub enum SkippedCeilingReason {
+    /// Segment was empty or whitespace.
+    EmptySegment,
+    /// Segment does not exist or is not a directory.
+    InvalidPath,
+}
+
+pub enum TraversalStopReason {
+    /// Traversal was never started — explicit preemption fired first.
+    NotStarted,
+    /// Walk reached the filesystem root (/ or C:\).
+    FilesystemRoot,
+    /// Walk stopped at a project boundary marker (e.g. `.git`).
+    ProjectBoundaryMarker { marker: PathBuf },
+    /// Walk stopped at an enforced ceiling directory.
+    CeilingEnforced { ceiling: PathBuf },
+}
+```
+
+**Rationale for separation:** Non-fatal process metadata does not belong on
+`DiscoveryResult` because it is not needed by any downstream component
+(`config/Builder`, Indexer). Placing it on a separate `DiscoveryReport`
+keeps `DiscoveryResult` clean, avoids polluting the domain type with
+orchestration concerns, and makes it clear that the Bootstrapper — not
+downstream components — is responsible for acting on diagnostics.
+
+This also eliminates the old `VaultDiscoveryResult` / `GlobalDiscoveryResult`
+split which perpetuated an incorrect dual-discovery design. Discovery is one
+multi-phase process; its output is one `DiscoveryResult`.
 
 ### 2.6 `DiscoveryService::run()` — Single Entry Point (MVP)
 
 For the MVP, `DiscoveryService` exposes exactly one method:
 
 ```rust
-pub fn run(&self, input: DiscoveryInput<'_>) -> Result<DiscoveryResult, DiscoveryError>
+pub fn run(&self, input: DiscoveryInput<'_>)
+    -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>
 ```
-
-`DiscoveryResult` aggregates:
-- `vault: VaultDiscoveryResult`
-- `global: GlobalDiscoveryResult`
 
 A second method (two-phase discovery after finding only a global config) is
 **explicitly deferred** until the foundational pipeline is proven. It must not
@@ -170,15 +223,20 @@ where `discovery/` and `config/` are both imported.
 
 Its responsibilities:
 1. Acquire runtime context (CWD, env vars, platform paths).
-2. Call `DiscoveryService::run(input)` to get `DiscoveryResult`.
-3. Log non-fatal diagnostic fields from `DiscoveryResult` (skipped ceilings,
-   skipped override, traversal stop reason).
-4. Pass `VaultDiscoveryResult` and `GlobalDiscoveryResult` directly to
-   `config::Builder`.
-5. Return the resolved `Config` to the caller (CLI command handler).
+2. Call `DiscoveryService::run(input)` to get `(DiscoveryResult, DiscoveryReport)`.
+3. Act on `DiscoveryReport`: emit `tracing::warn!` for skipped ceilings/overrides,
+   surface diagnostics for CLI verbose output.
+4. Pass `DiscoveryResult` to `config::Builder`.
+5. Return the resolved `Config` to the CLI command handler.
 
 The Bootstrapper does **not** construct a `Config` itself — it delegates that
 entirely to `config::Builder`.
+
+**Open Question (Q-B1):** Does the Bootstrapper return just `Config` to the CLI
+handler, or a `BootstrapResult { config: Config, report: DiscoveryReport }`?
+The CLI commands `config where` and `config list-sources` need access to the
+`DiscoveryReport` to display verbose output. This must be decided before the
+`Bootstrapper` interface is finalised.
 
 ### 3.2 Naming
 
@@ -203,25 +261,25 @@ This is deferred. The Bootstrapper's interface must not anticipate it yet.
 
 ### 4.1 `ConfigBuilder` Input
 
-**Decision:** `ConfigBuilder` is refactored to accept
-`(VaultDiscoveryResult, GlobalDiscoveryResult)` directly, replacing the
-current arrangement where `Builder` internally constructs a `DiscoveryEngine`
-and runs discovery itself.
+**Decision:** `ConfigBuilder` is refactored to accept `DiscoveryResult` directly,
+replacing the current arrangement where `Builder` internally constructs a
+`DiscoveryEngine` and runs discovery itself.
 
 `ConfigBuilder` is a pure config-domain component. It does not know about
-discovery orchestration. It receives resolved discovery outputs and uses them
-only to locate file paths for config ingestion.
+discovery orchestration. It receives `DiscoveryResult` and uses the
+`vault`/`global` marker lists and `vault_root` only to locate file paths for
+config ingestion.
 
 ### 4.2 `config/root.rs` and `config/discovery.rs`
 
 **Decision:** `config/root.rs` is deleted. `DiscoveredConfigFile` and
 `ConfigDiscoveryResult` are redundant wrappers around `DiscoveredMarker` from
-`discovery/engine.rs`. The `ConfigDiscoveryResult::from_discovery()` conversion
-is removed along with the file.
+`discovery/`. The `ConfigDiscoveryResult::from_discovery()` conversion is
+removed along with the file.
 
 `config/discovery.rs` (`ConfigDiscoveryPipeline`) is refactored: instead of
-accepting `ConfigDiscoveryResult`, it accepts `VaultDiscoveryResult` and
-`GlobalDiscoveryResult` directly.
+accepting `ConfigDiscoveryResult`, it accepts `DiscoveryResult` directly and
+uses `vault[0]` / `global[0]` (the winner, first element) for file ingestion.
 
 **Open Question (Q2):** Should `ConfigDiscoveryPipeline` be renamed to reflect
 its revised role? It is now clearly a "file metadata reader" that translates
@@ -230,25 +288,34 @@ name like `ConfigFileLoader` or `ConfigIngestionPipeline` may be more precise.
 
 ### 4.3 Coupling Removal
 
-The import `use crate::discovery::engine::{DiscoveryEngine, DiscoveryInput, GlobalDiscoveryInput}` is removed from `config/builder.rs`. After the refactor, `config/` imports only from `discovery::engine` the result types (`VaultDiscoveryResult`, `GlobalDiscoveryResult`, `DiscoveredMarker`). These are pure data types with no behaviour; the dependency is one-way and acceptable.
+The import of `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput` from
+`config/builder.rs` is removed entirely. After the refactor, `config/` imports
+only `DiscoveryResult` and `DiscoveredMarker` from `discovery/`. These are pure
+data types; the dependency is one-way and acceptable.
 
 ---
 
 ## 5. Open Questions
 
-| ID  | Question                                                                                           | Status      |
-| --- | -------------------------------------------------------------------------------------------------- | ----------- |
-| Q1  | Are there non-fatal conditions during global resolution the caller should know about?               | Unanswered  |
-| Q2  | Should `ConfigDiscoveryPipeline` be renamed to reflect its revised role as a file metadata reader? | Unanswered  |
-| Q3  | What is the exact public interface of `DiscoveryService`? (input/output type signatures)            | Unanswered  |
-| Q4  | Should `DiscoveryResult` be a flat struct with `vault` and `global` fields, or two separate return values? | Unanswered |
-| Q5  | Does `DiscoveryPolicy` own the target filename lists and boundary marker definitions, or should those be separate from precedence rules? | Unanswered |
+| ID   | Question                                                                                                    | Status     |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ---------- |
+| Q1   | Are there non-fatal conditions during global resolution the caller should know about?                        | Unanswered |
+| Q2   | Should `ConfigDiscoveryPipeline` be renamed (e.g. `ConfigFileLoader`)?                                      | Unanswered |
+| Q5   | Does `DiscoveryPolicy` own the target filename lists and boundary marker definitions, or separate?           | Unanswered |
+| Q6   | Where is the project boundary marker list (`.git`, `.workspace`) defined? Can it be overridden?             | Unanswered |
+| Q-B1 | Does the Bootstrapper return `Config` or `BootstrapResult { config, report }` to the CLI handler?          | Unanswered |
+
+Previously open questions now resolved:
+- **Q3** (DiscoveryService interface) — resolved: `run() -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>`.
+- **Q4** (DiscoveryResult shape) — resolved: flat struct with `vault_root`, `vault: Box<[DiscoveredMarker]>`, `global: Box<[DiscoveredMarker]>`.
 
 ---
 
 ## 6. Deferred / Out of Scope for This Session
 
 - Two-phase discovery (global config `trusted_paths` → second vault search).
-- CLI subcommands (`config where`, `config list-sources`, `config check`) — tracked in issue `10-cli-discovery-subcommands.md`.
+- CLI subcommands (`config where`, `config list-sources`, `config check`) —
+  tracked in issue `10-cli-discovery-subcommands.md`.
 - `GlobalDiscoveryResult` non-fatal diagnostics (pending Q1).
 - Renaming `ConfigDiscoveryPipeline` (pending Q2).
+- `BootstrapResult` vs bare `Config` return (pending Q-B1).
