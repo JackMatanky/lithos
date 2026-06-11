@@ -3,7 +3,7 @@
 /// Errors that can occur during indexer operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum IndexerError {
+pub(crate) enum IndexerError {
     /// An internal error with a descriptive message.
     #[error("internal error: {0}")]
     Internal(Box<str>),

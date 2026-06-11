@@ -8,8 +8,22 @@
 //!
 //! Config → Indexer → Schema, Note, Template
 
-pub mod entry;
-pub mod error;
-pub mod model;
-pub mod scan;
-pub mod summary;
+#![allow(
+    dead_code,
+    unused_imports,
+    reason = "Domain types are implemented ahead of usage in subsequent issues"
+)]
+
+mod entry;
+mod error;
+mod model;
+mod scan;
+mod summary;
+
+pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
+pub(crate) use error::IndexerError;
+pub(crate) use model::{DirNode, FileNode, FsNodeId, FsNodeType};
+pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
+pub(crate) use summary::{
+    DeletedNodes, IndexNodeFailure, IndexReport, IndexResult, IndexedNodes,
+};

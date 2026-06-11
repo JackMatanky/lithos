@@ -34,13 +34,13 @@ use crate::{
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct FsNodeId(pub(crate) UuidV7);
+pub(crate) struct FsNodeId(pub(crate) UuidV7);
 
 impl FsNodeId {
     /// Creates a new random filesystem node identifier (UUID v7).
     #[inline]
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(UuidV7::new())
     }
 }
@@ -61,7 +61,7 @@ impl fmt::Display for FsNodeId {
 
 /// Classification of a filesystem node as either a file or a directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FsNodeType {
+pub(crate) enum FsNodeType {
     /// A regular file.
     File,
     /// A directory.
@@ -74,7 +74,7 @@ pub enum FsNodeType {
 /// information needed for downstream indexing and staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct FileNode {
+pub(crate) struct FileNode {
     id: FsNodeId,
     parent_id: FsNodeId,
     path: PathKey,
@@ -94,7 +94,7 @@ impl FileNode {
     )]
     #[inline]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: FsNodeId,
         parent_id: FsNodeId,
         path: PathKey,
@@ -117,49 +117,49 @@ impl FileNode {
     /// Returns the node's stable identifier.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsNodeId {
         self.id
     }
 
     /// Returns the parent directory's node identifier.
     #[inline]
     #[must_use]
-    pub fn parent_id(&self) -> FsNodeId {
+    pub(crate) fn parent_id(&self) -> FsNodeId {
         self.parent_id
     }
 
     /// Returns the vault-relative storage key for this file.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &PathKey {
+    pub(crate) fn path(&self) -> &PathKey {
         &self.path
     }
 
     /// Returns the file's name component.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &FileName {
+    pub(crate) fn name(&self) -> &FileName {
         &self.name
     }
 
     /// Returns the detected file format.
     #[inline]
     #[must_use]
-    pub fn format(&self) -> FileFormat {
+    pub(crate) fn format(&self) -> FileFormat {
         self.format
     }
 
     /// Returns the file's filesystem metadata.
     #[inline]
     #[must_use]
-    pub fn metadata(&self) -> &FileMetadata {
+    pub(crate) fn metadata(&self) -> &FileMetadata {
         &self.metadata
     }
 
     /// Returns the time at which this node was recorded in the index.
     #[inline]
     #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
+    pub(crate) fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 }
@@ -169,7 +169,7 @@ impl FileNode {
 /// Represents a discovered directory within the index scope.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct DirNode {
+pub(crate) struct DirNode {
     id: FsNodeId,
     parent_id: Option<FsNodeId>,
     path: PathKey,
@@ -190,7 +190,7 @@ impl DirNode {
                   initialized"
     )]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: FsNodeId,
         parent_id: Option<FsNodeId>,
         path: PathKey,
@@ -211,42 +211,42 @@ impl DirNode {
     /// Returns the node's stable identifier.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsNodeId {
         self.id
     }
 
     /// Returns the parent directory's node identifier, or `None` for root.
     #[inline]
     #[must_use]
-    pub fn parent_id(&self) -> Option<FsNodeId> {
+    pub(crate) fn parent_id(&self) -> Option<FsNodeId> {
         self.parent_id
     }
 
     /// Returns the vault-relative storage key for this directory.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &PathKey {
+    pub(crate) fn path(&self) -> &PathKey {
         &self.path
     }
 
     /// Returns the directory's name component.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &DirName {
+    pub(crate) fn name(&self) -> &DirName {
         &self.name
     }
 
     /// Returns the directory's filesystem metadata.
     #[inline]
     #[must_use]
-    pub fn metadata(&self) -> &DirMetadata {
+    pub(crate) fn metadata(&self) -> &DirMetadata {
         &self.metadata
     }
 
     /// Returns the time at which this node was recorded in the index.
     #[inline]
     #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
+    pub(crate) fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 }

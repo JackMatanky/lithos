@@ -10,7 +10,7 @@ use crate::fs::{DirPath, FilePath};
 ///
 /// Drives staleness detection and incremental re-indexing logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IndexStatus {
+pub(crate) enum IndexStatus {
     /// The node has not been seen before; needs full indexing.
     New,
     /// The node is known and its metadata matches; no action required.
@@ -22,7 +22,7 @@ pub enum IndexStatus {
 /// An indexed file entry pairing a [`FileNode`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub struct FileIndexEntry {
+pub(crate) struct FileIndexEntry {
     id: FsNodeId,
     node: FileNode,
     path: FilePath,
@@ -33,7 +33,7 @@ impl FileIndexEntry {
     /// Creates a new file index entry.
     #[inline]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: FsNodeId,
         node: FileNode,
         path: FilePath,
@@ -50,28 +50,28 @@ impl FileIndexEntry {
     /// Returns the node's stable identifier.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsNodeId {
         self.id
     }
 
     /// Returns the file node domain record.
     #[inline]
     #[must_use]
-    pub fn node(&self) -> &FileNode {
+    pub(crate) fn node(&self) -> &FileNode {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &FilePath {
+    pub(crate) fn path(&self) -> &FilePath {
         &self.path
     }
 
     /// Returns the current index classification of this entry.
     #[inline]
     #[must_use]
-    pub fn status(&self) -> IndexStatus {
+    pub(crate) fn status(&self) -> IndexStatus {
         self.status
     }
 }
@@ -79,7 +79,7 @@ impl FileIndexEntry {
 /// An indexed directory entry pairing a [`DirNode`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub struct DirIndexEntry {
+pub(crate) struct DirIndexEntry {
     id: FsNodeId,
     node: DirNode,
     path: DirPath,
@@ -90,7 +90,7 @@ impl DirIndexEntry {
     /// Creates a new directory index entry.
     #[inline]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: FsNodeId,
         node: DirNode,
         path: DirPath,
@@ -107,28 +107,28 @@ impl DirIndexEntry {
     /// Returns the node's stable identifier.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsNodeId {
         self.id
     }
 
     /// Returns the directory node domain record.
     #[inline]
     #[must_use]
-    pub fn node(&self) -> &DirNode {
+    pub(crate) fn node(&self) -> &DirNode {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub fn path(&self) -> &DirPath {
+    pub(crate) fn path(&self) -> &DirPath {
         &self.path
     }
 
     /// Returns the current index classification of this entry.
     #[inline]
     #[must_use]
-    pub fn status(&self) -> IndexStatus {
+    pub(crate) fn status(&self) -> IndexStatus {
         self.status
     }
 }

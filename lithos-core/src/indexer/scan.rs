@@ -10,14 +10,14 @@ use crate::fs::path::PathKey;
 /// Currently holds no fields; reserved for extension with glob patterns,
 /// extension filters, and depth limits.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ScanFilters {}
+pub(crate) struct ScanFilters {}
 
 /// The scope of an indexing operation.
 ///
 /// `Full` covers the entire vault from its root. `Partial` restricts scanning
 /// to a specific subtree identified by a vault-relative path key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IndexScope {
+pub(crate) enum IndexScope {
     /// Scan the full vault, applying the given filters.
     Full {
         /// Filters controlling node inclusion.
@@ -34,11 +34,37 @@ pub enum IndexScope {
 
 /// Options that control the behaviour of a single indexing run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct IndexOptions {
+pub(crate) struct IndexOptions {
     /// Re-index all nodes even if they appear current.
-    pub reindex: bool,
+    reindex: bool,
     /// Perform a dry run: discover nodes but do not persist index changes.
-    pub dry_run: bool,
+    dry_run: bool,
+}
+
+impl IndexOptions {
+    /// Creates a new `IndexOptions`.
+    #[inline]
+    #[must_use]
+    pub(crate) fn new(reindex: bool, dry_run: bool) -> Self {
+        Self {
+            reindex,
+            dry_run,
+        }
+    }
+
+    /// Whether to re-index all nodes even if they appear current.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn reindex(self) -> bool {
+        self.reindex
+    }
+
+    /// Whether to perform a dry run.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn dry_run(self) -> bool {
+        self.dry_run
+    }
 }
 
 #[cfg(test)]
@@ -78,18 +104,15 @@ mod tests {
             #[test]
             fn options_defaults_are_false() {
                 let opts = IndexOptions::default();
-                assert!(!opts.reindex);
-                assert!(!opts.dry_run);
+                assert!(!opts.reindex());
+                assert!(!opts.dry_run());
             }
 
             #[test]
             fn options_can_be_set() {
-                let opts = IndexOptions {
-                    reindex: true,
-                    dry_run: true,
-                };
-                assert!(opts.reindex);
-                assert!(opts.dry_run);
+                let opts = IndexOptions::new(true, true);
+                assert!(opts.reindex());
+                assert!(opts.dry_run());
             }
         }
     }
