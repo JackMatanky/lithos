@@ -47,6 +47,8 @@ composition, diagnostics. It must not become a domain logic home.
       produces an `IndexResult` with correct counts and no panics.
 - [ ] `app` module-level documentation describes its four sub-modules and
       their growth guardrails (per ADR 021).
+- [ ] `IndexerError` variants are reviewed and confirmed to cover all error
+      conditions that can arise in the wiring layer.
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 

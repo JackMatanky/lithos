@@ -51,6 +51,8 @@ path, permission denied, scan failure) — not internal traces.
       and/or `IndexOptions` without duplicating domain rules.
 - [ ] CLI diagnostic tests prove human and JSON output report summary counts
       and actionable errors.
+- [ ] `IndexerError` variants are reviewed and confirmed to produce actionable
+      diagnostic output when rendered in the CLI.
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 

@@ -33,6 +33,8 @@ The agent should:
 
 - [ ] `lithos-core::vault` module and all its files are deleted.
 - [ ] No remaining imports of `lithos_core::vault` anywhere in the workspace.
+- [ ] `IndexerError` variants are reviewed and confirmed to cover all error
+      conditions previously handled by the deleted Vault error types.
 - [ ] All 1588+ tests pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 - [ ] PR description explains what each replaced call site was doing and what

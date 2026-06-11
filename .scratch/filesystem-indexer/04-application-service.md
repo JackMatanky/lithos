@@ -57,6 +57,8 @@ no walkdir, no redb, no concrete adapter types in the service module.
       run.
 - [ ] All application-service tests use the in-memory `ScannerPort` test
       double from issue 03 — no real disk or redb dependency.
+- [ ] `IndexerError` is extended with variants needed for service orchestration
+      (configuration errors, repository initialization, scanning failures).
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 

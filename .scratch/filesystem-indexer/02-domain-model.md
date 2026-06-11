@@ -31,15 +31,19 @@ Types to implement:
 - `FsNodeKind` — `File` / `Dir` enum for generic node classification.
 - `IndexScope` — two-variant enum:
   `Full { filters: ScanFilters }` and `Partial { root: PathKey, filters: ScanFilters }`.
-- `ScanFilters` — Indexer-owned type carrying extension/name narrowing criteria
-  translatable to walkdir predicates.
+- `ScanFilters` — Indexer-owned minimal placeholder type; extension/name narrowing
+  criteria will be added in issue 03 when the walkdir adapter is implemented.
 - `IndexOptions` — `{ reindex: bool, dry_run: bool }`.
 - `IndexStatus` — `New` / `Fresh` / `Stale`.
-- `FileIndexEntry` — `{ node: FileNode, path: FilePath, status: IndexStatus }`.
-- `DirIndexEntry` — `{ node: DirNode, path: DirPath, status: IndexStatus }`.
-- `IndexResult` — file entries, directory entries, `Vec<FsNodeId>` deleted
-  IDs, summary counts, per-node failure records.
-- Indexer-specific error type(s) in `lithos-core::indexer::error`.
+- `FileIndexEntry` — `{ id: FsNodeId, node: FileNode, path: FilePath, status: IndexStatus }`.
+- `DirIndexEntry` — `{ id: FsNodeId, node: DirNode, path: DirPath, status: IndexStatus }`.
+- `IndexResult` — file entries, directory entries, `DeletedNodes` (kind-segregated
+  deleted ID collections), summary counts (exposed via methods, not a separate
+  struct), per-node failure records (`IndexNodeFailure { id, kind, error }`).
+  All collection fields use `Box<[T]>` (consistent with `Note` aggregate).
+- Indexer-specific error type `IndexerError` in `lithos-core::indexer::error`
+  with two initial variants (`Internal`, `Io`). Extended in issues 03 and 04 as
+  real error sources appear.
 
 All fields are private by default; validated constructors where invariants
 exist. No `unwrap()` or `panic!` in production code.
@@ -53,12 +57,24 @@ exist. No `unwrap()` or `panic!` in production code.
 - [ ] `FileNode` and `DirNode` derive `rkyv::Archive`, `rkyv::Serialize`,
       `rkyv::Deserialize` (consistent with existing node types in the
       codebase).
-- [ ] Path conversion tests prove filesystem paths convert to `PathKey` only
-      with an explicit Vault Root (no rootless conversion).
+- [ ] Path conversion tests (using existing `lithos-core::fs::path` conversion
+      functions) prove filesystem paths convert to `PathKey` only with an
+      explicit Vault Root (no rootless conversion).
+- [ ] `FsNodeKind` is defined with `File` and `Dir` variants and used in
+      `DeletedNodes` and `IndexNodeFailure` for kind-aware classification.
+- [ ] `DeletedNodes` struct provides kind-segregated `files: Box<[FsNodeId]>` and
+      `dirs: Box<[FsNodeId]>` collections (not a flat `Vec<FsNodeId>`).
+- [ ] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeKind, error: Box<str> }`
+      for per-node non-fatal failure reporting.
+- [ ] `IndexResult` exposes summary counts (`scanned`, `new`, `fresh`, `stale`,
+      `deleted`, `failed`) as computed methods, not a separate struct.
+- [ ] All collection fields use `Box<[T]>` not `Vec<T>`.
 - [ ] Domain model construction tests reject invalid states and preserve valid
       `FsNodeId`, `FileNode`, and `DirNode` fields.
 - [ ] `FsNodeId` identity tests: stable, unique, ordered where needed,
       compatible with DB key wrappers.
+- [ ] `IndexerError` uses `#[derive(Debug, thiserror::Error)]` with
+      `#[non_exhaustive]` and includes Display/format tests for all variants.
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 
@@ -158,9 +174,3 @@ The codebase consistently uses `thiserror` with `#[non_exhaustive]` enums (`note
 ### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsNodeKind`
 
 The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). Add an AC: "IndexResult includes summary counts that use FsNodeKind for classification."
-
-### 📋 Summary of recommended AC additions
-
-- [ ] `Box<[T]>` used for all collection fields in `IndexResult` (or documented decision to use `Vec`)
-- [ ] `IndexerError` (or equivalent) uses `thiserror` with `#[non_exhaustive]`, includes Display/format tests
-- [ ] `IndexResult` summary counts use `FsNodeKind`

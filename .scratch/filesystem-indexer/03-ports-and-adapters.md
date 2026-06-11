@@ -71,6 +71,8 @@ Indexer domain errors, not redb errors.
       `WriteTransaction` (indexes never diverge from primary data).
 - [ ] An in-memory `ScannerPort` test double is provided (used by subsequent
       issues for application-service tests without real disk access).
+- [ ] `IndexerError` is extended with variants needed for scanner port and
+      repository port error translation.
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 
