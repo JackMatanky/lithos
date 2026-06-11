@@ -1,17 +1,17 @@
 ---
 title: 01-domain-models
 category: enhancement
-label: ready-for-agent
-status: open
-branch:
+label: ready-for-review
+status: completed
+branch: feat/template-domain-models
 merge_commit:
 date_created: 2026-06-11
-date_completed:
+date_completed: 2026-06-11
 ---
 
 # Template Domain Models
 
-Status: ready-for-agent
+Status: ready-for-review
 
 ## Parent
 
@@ -53,26 +53,26 @@ All domain types live in `lithos-core` under the `template` context. No MiniJinj
 
 ## Acceptance criteria
 
-- [ ] `TemplateId` is a newtype over `UuidV7` with `new()`, `parse()`, and `as_uuid_v7()` methods, matching the `NoteId`/`SchemaId` pattern
-- [ ] `TemplateId` inner field is `pub(crate)` (matching `NoteId`/`SchemaId`)
-- [ ] `TemplateId` derives `rkyv::Archive + Serialize + Deserialize` with `#[rkyv(derive(Debug, Hash, PartialEq, Eq))]`
-- [ ] `TemplateId` implements `Default` (delegates to `UuidV7::new()`) and `Display` (delegates to inner `UuidV7`)
-- [ ] `TemplateId` implements `From<UuidV7>` and `TryFrom<Uuid>` (matching `SchemaId`)
-- [ ] `TemplateName` uses a fallible constructor named `try_new()` per naming taxonomy (`try_` prefix for `Result`-returning constructors), taking `(&Path, &Path)` for template file path and template directory root
-- [ ] `TemplateName` rejects paths that would produce an empty stem → returns `TemplateNameError::Derivation`
-- [ ] `TemplateBody` rejects empty strings at construction → returns `TemplateBodyError::Empty`; valid UTF-8 is guaranteed by Rust's `String` type
-- [ ] `TemplateBody` makes no claim about Jinja syntax validity
-- [ ] `RawTemplate` is a thin newtype around `String` — no validation; provides `AsRef<str>` and `into_inner()`
-- [ ] `RawTemplateView` is a flat struct (NOT versioned ring buffer) holding `PathKey`, `Blake3Hash`, file metadata, and recorded time
-- [ ] `RawTemplateView` implements `HasContentHash` and `HasContentHashMut`
-- [ ] `RawTemplateView` derives `rkyv::Archive + Serialize + Deserialize`
-- [ ] `Template` constructor `new(id, path, name, body)` sets `recorded_at` internally to `SystemTime::now()`; all fields private with accessor methods (`id()`, `path()`, `name()`, `body()`, `recorded_at()`)
-- [ ] `Template` derives `rkyv::Archive + Serialize + Deserialize` with `#[rkyv(with = AsUnixTime)]` on `recorded_at`
-- [ ] `TemplateNameError` is a single-variant enum (`Derivation`); `TemplateBodyError` is a single-variant enum (`Empty`); `TemplateError` embeds both via `#[from]`
-- [ ] Newtypes implement `AsRef<InnerType>`: `TemplateId: AsRef<UuidV7>`, `TemplateName: AsRef<str>`, `TemplateBody: AsRef<str>`, `RawTemplate: AsRef<str>` — no `Deref`/`Borrow` in first pass
-- [ ] No `minijinja` import appears anywhere in the `template` context module
-- [ ] All types have doc comments on public items (enforced by `missing_docs = "deny"`)
-- [ ] Unit tests cover per the TDD plan: `TemplateId` construction, parse round-trip, `Default` and `Display` impls, `From<UuidV7>`/`TryFrom<Uuid>` conversions, rkyv round-trip; `TemplateName` derivation (flat and subdirectory cases) + empty stem rejection; `TemplateBody` empty rejection; `RawTemplateView` hash trait impls, rkyv round-trip; `Template` constructor, accessor methods, rkyv round-trip; error Display formatting; no-minijinja enforcement
+- [x] `TemplateId` is a newtype over `UuidV7` with `new()`, `parse()`, and `as_uuid_v7()` methods, matching the `NoteId`/`SchemaId` pattern
+- [x] `TemplateId` inner field is `pub(crate)` (matching `NoteId`/`SchemaId`)
+- [x] `TemplateId` derives `rkyv::Archive + Serialize + Deserialize` with `#[rkyv(derive(Debug, Hash, PartialEq, Eq))]`
+- [x] `TemplateId` implements `Default` (delegates to `UuidV7::new()`) and `Display` (delegates to inner `UuidV7`)
+- [x] `TemplateId` implements `From<UuidV7>` and `TryFrom<Uuid>` (matching `SchemaId`)
+- [x] `TemplateName` uses a fallible constructor named `try_new()` per naming taxonomy (`try_` prefix for `Result`-returning constructors), taking `(&Path, &Path)` for template file path and template directory root
+- [x] `TemplateName` rejects paths that would produce an empty stem → returns `TemplateNameError::Derivation`
+- [x] `TemplateBody` rejects empty strings at construction → returns `TemplateBodyError::Empty`; valid UTF-8 is guaranteed by Rust's `String` type
+- [x] `TemplateBody` makes no claim about Jinja syntax validity
+- [x] `RawTemplate` is a thin newtype around `String` — no validation; provides `AsRef<str>` and `into_inner()`
+- [x] `RawTemplateView` is a flat struct (NOT versioned ring buffer) holding `PathKey`, `Blake3Hash`, file metadata, and recorded time
+- [x] `RawTemplateView` implements `HasContentHash` and `HasContentHashMut`
+- [x] `RawTemplateView` derives `rkyv::Archive + Serialize + Deserialize`
+- [x] `Template` constructor `new(id, path, name, body)` sets `recorded_at` internally to `SystemTime::now()`; all fields private with accessor methods (`id()`, `path()`, `name()`, `body()`, `recorded_at()`)
+- [x] `Template` derives `rkyv::Archive + Serialize + Deserialize` with `#[rkyv(with = AsUnixTime)]` on `recorded_at`
+- [x] `TemplateNameError` is a single-variant enum (`Derivation`); `TemplateBodyError` is a single-variant enum (`Empty`); `TemplateError` embeds both via `#[from]`
+- [x] Newtypes implement `AsRef<InnerType>`: `TemplateId: AsRef<UuidV7>`, `TemplateName: AsRef<str>`, `TemplateBody: AsRef<str>`, `RawTemplate: AsRef<str>` — no `Deref`/`Borrow` in first pass
+- [x] No `minijinja` import appears anywhere in the `template` context module
+- [x] All types have doc comments on public items (enforced by `missing_docs = "deny"`)
+- [x] Unit tests cover per the TDD plan: `TemplateId` construction, parse round-trip, `Default` and `Display` impls, `From<UuidV7>`/`TryFrom<Uuid>` conversions, rkyv round-trip; `TemplateName` derivation (flat and subdirectory cases) + empty stem rejection; `TemplateBody` empty rejection; `RawTemplateView` hash trait impls, rkyv round-trip; `Template` constructor, accessor methods, rkyv round-trip; error Display formatting; no-minijinja enforcement
 
 ## Blocked by
 
