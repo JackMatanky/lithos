@@ -258,3 +258,13 @@ lithos-core/src/indexer/
 | `lithos-core/src/indexer/summary.rs` | New: types + tests (~150 lines) |
 | `lithos-core/src/indexer/scan.rs`    | New: types + tests (~80 lines)  |
 | `lithos-core/src/indexer/error.rs`   | New: types + tests (~60 lines)  |
+
+## Implementation Notes
+
+- **Visibility Constraints**: Globally reduced module visibility from `pub` to `pub(crate)` across the context to enforce encapsulation. Exposed only the necessary API via `pub(crate) use` re-exports in `mod.rs`.
+- **Architectural Refactor**:
+  - Introduced `IndexedNodes` for structured grouping of indexed files/dirs.
+  - Created `IndexReport` to pre-calculate summary metrics (`scanned`, `new`, `fresh`, `stale`, `deleted`, `failures`), moving from `O(N)` computation to `O(1)` access.
+  - Refactored `IndexResult` into a simple aggregate of `IndexedNodes` and `DeletedNodes`.
+  - Encapsulated `IndexOptions` fields and added constructor/accessors to enforce type-state invariants.
+- **Testing**: Verified all domain types with TDD using `tempfile` for strict filesystem IO paths (`FilePath`/`DirPath`). All 32 indexer-specific tests and the full `lithos-core` suite (1630 tests) passed.
