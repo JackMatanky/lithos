@@ -38,7 +38,7 @@ Types to implement:
     `recorded_at: SystemTime` (with `rkyv::with::AsUnixTime`).
   - `DirNode`: `id`, `parent_id`, `path: PathKey`, `name: DirName`,
     `metadata: DirMetadata`, `recorded_at: SystemTime`.
-- `FsNodeKind` — `File` / `Dir` enum for generic node classification.
+- `FsNodeType` — `File` / `Dir` enum for generic node classification.
 - `IndexScope` — two-variant enum:
   `Full { filters: ScanFilters }` and `Partial { root: PathKey, filters: ScanFilters }`.
 - `ScanFilters` — Indexer-owned minimal placeholder type; extension/name narrowing
@@ -70,11 +70,11 @@ exist. No `unwrap()` or `panic!` in production code.
 - [ ] Path conversion tests (using existing `lithos-core::fs::path` conversion
       functions) prove filesystem paths convert to `PathKey` only with an
       explicit Vault Root (no rootless conversion).
-- [ ] `FsNodeKind` is defined with `File` and `Dir` variants and used in
+- [ ] `FsNodeType` is defined with `File` and `Dir` variants and used in
       `DeletedNodes` and `IndexNodeFailure` for kind-aware classification.
 - [ ] `DeletedNodes` struct provides kind-segregated `files: Box<[FsNodeId]>` and
       `dirs: Box<[FsNodeId]>` collections (not a flat `Vec<FsNodeId>`).
-- [ ] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeKind, error: Box<str> }`
+- [ ] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeType, error: Box<str> }`
       for per-node non-fatal failure reporting.
 - [ ] `IndexResult` exposes summary counts (`scanned`, `new`, `fresh`, `stale`,
       `deleted`, `failed`) as computed methods, not a separate struct.
@@ -113,7 +113,7 @@ exist. No `unwrap()` or `panic!` in production code.
 
 **Minor observations (not blockers):**
 
-1. `FsNodeKind` appears in What to Build but is not explicitly called out in any AC. An agent could reasonably omit testing it. Consider adding a bullet: "FsNodeKind is defined with File and Dir variants and used in IndexResult summary counts."
+1. `FsNodeType` (originally `FsNodeKind`) appears in What to Build but is not explicitly called out in any AC. An agent could reasonably omit testing it. This was resolved by adding an explicit AC.
 2. The `::error` module is mentioned in What to Build but ACs only say "compile inside `::model` (and `::error`)". No explicit test criterion for error construction/display. Agents should add at minimum a display/format test for Indexer error variants — the PRD Testing section expects actionable diagnostic output (item 14).
 
 ---
@@ -181,6 +181,80 @@ The codebase consistently uses `thiserror` with `#[non_exhaustive]` enums (`note
 
 **Existing triage observation #2 already flags missing Display/format tests.** This adds the structural pattern guidance.
 
-### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsNodeKind`
+### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsNodeType`
 
-The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). Add an AC: "IndexResult includes summary counts that use FsNodeKind for classification."
+The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). This was resolved by adding ACs for `FsNodeType`, `DeletedNodes`, and `IndexNodeFailure`.
+
+---
+
+## TDD Implementation Plan
+
+### Module structure
+
+```
+lithos-core/src/indexer/
+├── mod.rs       → pub mod model; pub mod entry; pub mod summary; pub mod scan; pub mod error;
+├── model.rs     → FsNodeId, FsNodeType, FileNode, DirNode
+├── entry.rs     → FileIndexEntry, DirIndexEntry, IndexStatus
+├── summary.rs   → IndexResult, DeletedNodes, IndexNodeFailure
+├── scan.rs      → IndexScope, ScanFilters, IndexOptions
+└── error.rs     → IndexerError
+```
+
+### Phase 1 — Independent roots (any order)
+
+| Cycle | File       | Types                    | Test naming (`Structure A`)                |
+| ----- | ---------- | ------------------------ | ------------------------------------------ |
+| 1     | `model.rs` | `FsNodeId` newtype         | `mod fs_node_id { mod constructor, mod defaults, mod conversions, mod ordering }` |
+| 2     | `model.rs` | `FsNodeType` enum          | `mod fs_node_type { mod constructor }`       |
+| 3     | `scan.rs`  | `ScanFilters`, `IndexScope`, `IndexOptions` | `mod scan_scope { mod constructor, mod defaults }` |
+| 4     | `entry.rs` | `IndexStatus` enum         | `mod index_status { mod constructor }`       |
+| 5     | `error.rs` | `IndexerError`             | `mod formatting { mod formatting, mod conversions }` |
+
+### Phase 2 — Depends on FsNodeId + FsNodeType
+
+| Cycle | File       | Types                               | Test naming                             |
+| ----- | ---------- | ----------------------------------- | --------------------------------------- |
+| 6     | `model.rs` | `FileNode` struct                    | `mod file_node { mod constructor }`       |
+| 7     | `model.rs` | `DirNode` struct                     | `mod dir_node { mod constructor }`        |
+
+### Phase 3 — Depends on nodes + IndexStatus
+
+| Cycle | File       | Types                                         | Test naming                          |
+| ----- | ---------- | --------------------------------------------- | ------------------------------------ |
+| 8     | `entry.rs` | `FileIndexEntry`, `DirIndexEntry`               | `mod file_entry { mod constructor }`   |
+|       |            |                                               | `mod dir_entry { mod constructor }`   |
+
+### Phase 4 — Depends on entries + FsNodeType
+
+| Cycle | File         | Types                                                  | Test naming                              |
+| ----- | ------------ | ------------------------------------------------------ | ---------------------------------------- |
+| 9     | `summary.rs` | `DeletedNodes`, `IndexNodeFailure`                      | `mod deleted_nodes`, `mod index_node_failure` |
+| 10    | `summary.rs` | `IndexResult` + computed summary methods                | `mod index_result { mod constructor, mod summary }` |
+
+### Phase 5 — Integration
+
+| Cycle | File       | Behavior                                                      |
+| ----- | ---------- | ------------------------------------------------------------- |
+| 11    | `model.rs` | Path conversion tests prove vault root enforcement (uses existing `lithos-core::fs::path`) |
+| 12    | `mod.rs`   | `cargo check`, `cargo clippy`, `cargo test` — full compilation and lint gate |
+
+### Key design decisions
+
+- `FsNodeType` (not `FsNodeKind`) — clearer semantics: "type of node" vs ambiguous "kind."
+- `FsNodeId` follows `NoteId` newtype pattern exactly: `pub(crate) UuidV7`, derives `Debug,Clone,Copy,PartialEq,EQ,Hash,PartialOrd,Ord,Archive,Serialize,Deserialize`, `#[rkyv(derive(Debug))]`.
+- `FileNode`/`DirNode` use `#[rkyv(with = rkyv::with::AsUnixTime)]` on `recorded_at: SystemTime` — matches existing `FsTimes` pattern.
+- All collections use `Box<[T]>` not `Vec<T>` — consistent with `Note` aggregate.
+- Summary counts are computed methods, not a separate struct — avoids data duplication.
+- Failed per-node scans accumulate as `IndexNodeFailure` records in `IndexResult`, separate from `IndexerError` (which is for `?` propagation).
+
+### Codebase changes
+
+| File                               | Action                      |
+| ---------------------------------- | --------------------------- |
+| `lithos-core/src/indexer/mod.rs`     | Add 5 `pub mod` declarations  |
+| `lithos-core/src/indexer/model.rs`   | New: types + tests (~200 lines) |
+| `lithos-core/src/indexer/entry.rs`   | New: types + tests (~100 lines) |
+| `lithos-core/src/indexer/summary.rs` | New: types + tests (~150 lines) |
+| `lithos-core/src/indexer/scan.rs`    | New: types + tests (~80 lines)  |
+| `lithos-core/src/indexer/error.rs`   | New: types + tests (~60 lines)  |
