@@ -48,22 +48,41 @@ The full 6-phase discovery process that the `DiscoveryService` must implement:
 6. **Finalization** — Aggregate, deduplicate, and order all candidates by
    specificity priority.
 
-### 2.2 Public API: Two-Phase Builder Pattern
+### 2.2 Public API: Self-Builder Pattern
 
-`DiscoveryService` uses a two-phase builder as its public API:
+`DiscoveryService` uses a self-builder pattern (following `bincode::Config`, `std::process::Command`):
 
-1. **`DiscoveryServiceBuilder`** — one-time configuration: target filenames, boundary markers, precedence rules, global directory resolution, `suppress_global`. Owns its data, validates at `build()`.
-2. **`DiscoveryService::discover()`** — per-invocation input: `flag_path`, `env_path`, `cwd`, `ceiling_dirs_raw`. Caller provides only what changes per call.
+```rust
+// Construction: DiscoveryService IS its own builder
+let service = DiscoveryService::default()
+    .global_directories(dirs)
+    .suppress_global(true)
+    .build()?;
 
-### 2.3 Internal Typestate Pipeline
+// Invocation: per-call input only
+let (result, report) = service.discover(InvocationInput {
+    flag_path: ...,
+    env_path: ...,
+    cwd: &cwd,
+    ceiling_dirs_raw: ...,
+})?;
+```
 
-Inside `discover()`, the 6-phase process uses a **typestate pattern** (following the Hoverbear state machine pattern). Each phase is a typed node; invalid transitions are compile errors:
+The builder and the built type are the same struct. A separate `DiscoveryBuilder` provides no benefit — every field has a sensible default. `build()` validates invariants and returns `Result<Self>`.
+
+No separate `DiscoveryPolicy` struct. The builder fields absorb policy parameters. `policy.rs` remains as a constants + types module (precedence enums, marker pattern lists, boundary markers).
+
+### 2.3 Internal Typestate Pipeline (`DiscoveryMachine`)
+
+Inside `discover()`, a private **`DiscoveryMachine`** type owns the 6-phase **typestate pipeline** (following the Hoverbear state machine pattern). Each phase is a typed node; invalid transitions are compile errors:
 
 ```
 Initialized → Preempted → Anchored → Traversed → GlobalResolved → Finalized
 ```
 
-Each step is `impl From<Previous> for Next`, zero-cost at runtime. The caller sees only `discover()` — the state machine is an internal implementation detail.
+Each step is `impl From<Previous> for Next`, zero-cost at runtime. `DiscoveryMachine` is created inside `discover()` and dropped when the result is returned. The caller sees only `discover()` — the state machine is an internal implementation detail.
+
+`DiscoveryMachine` receives the service's config (via `&self`) and the per-invocation `InvocationInput` at construction.
 
 ### 2.6 Module Structure
 
@@ -200,33 +219,39 @@ multi-phase process; its output is one `DiscoveryResult`.
 
 ### 2.6 `DiscoveryService::discover()` — Single Entry Point (MVP)
 
-For the MVP, `DiscoveryService` exposes exactly one method:
+For the MVP, `DiscoveryService` exposes exactly one invocation method:
 
 ```rust
-pub fn run(&self, input: DiscoveryInput<'_>)
+pub fn discover(&self, input: InvocationInput<'_>)
     -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>
 ```
+
+Inside `discover()`, a private `DiscoveryMachine` struct owns the typestate
+pipeline. It receives the service's builder config (via `&self`) and the
+per-invocation input at construction.
 
 A second method (two-phase discovery after finding only a global config) is
 **explicitly deferred** until the foundational pipeline is proven. It must not
 be designed into the MVP interface.
 
-### 2.7 `DiscoveryInput` — What the Bootstrapper Provides
+### 2.7 `InvocationInput` — Per-Call Parameters (Phase 1 + 2 data only)
 
-`DiscoveryInput` carries everything the Bootstrapper resolved from the runtime
-environment before calling `DiscoveryService::discover()`:
+`InvocationInput` carries only the per-invocation parameters that change between
+`discover()` calls. Everything stable (global directories, suppress flag,
+filenames, boundary markers) is set on the builder and stored in the service.
 
-- `flag_path: Option<&Path>` — from CLI `--vault` flag
-- `env_path: Option<&Path>` — from `LITHOS_VAULT` env var
-- `cwd: &Path` — current working directory (Context Anchor)
-- `ceiling_dirs_raw: Option<&OsStr>` — raw ceiling list (env var)
-- `global_directories: &[GlobalDirectoryCandidate]` — OS-resolved paths
-  (XDG, UserConfig, SystemConfig); the Bootstrapper resolves platform-specific
-  paths and passes them in
-- `suppress_global: bool` — corresponds to `--no-global-config`
+```rust
+pub struct InvocationInput<'a> {
+    pub flag_path: Option<&'a Path>,      // from CLI --vault flag
+    pub env_path: Option<&'a Path>,       // from LITHOS_VAULT env var
+    pub cwd: &'a Path,                    // current working directory
+    pub ceiling_dirs_raw: Option<&'a OsStr>,  // raw ceiling list (env var)
+}
+```
 
 The Bootstrapper owns Context Acquisition (CWD, env vars, platform path
-resolution). `DiscoveryService` receives already-gathered context.
+resolution for global directories). `DiscoveryService` receives already-gathered
+context and combines it with the builder-stable config internally.
 
 ---
 
@@ -239,21 +264,18 @@ orchestrates the bootstrap sequence. It is the *only* place in the codebase
 where `discovery/` and `config/` are both imported.
 
 Its responsibilities:
-1. Acquire runtime context (CWD, env vars, platform paths).
-2. Call `DiscoveryService::run(input)` to get `(DiscoveryResult, DiscoveryReport)`.
-3. Act on `DiscoveryReport`: emit `tracing::warn!` for skipped ceilings/overrides,
+1. Construct `DiscoveryService` via the self-builder pattern with global config.
+2. Acquire runtime context (CWD, env vars, platform paths).
+3. Call `DiscoveryService::discover(input)` to get `(DiscoveryResult, DiscoveryReport)`.
+4. Act on `DiscoveryReport`: emit `tracing::warn!` for skipped ceilings/overrides,
    surface diagnostics for CLI verbose output.
-4. Pass `DiscoveryResult` to `config::Builder`.
-5. Return the resolved `Config` to the CLI command handler.
+5. Pass `DiscoveryResult` to `config::Builder`.
+6. Return `BootstrapResult { config: Config, report: DiscoveryReport }`.
 
 The Bootstrapper does **not** construct a `Config` itself — it delegates that
 entirely to `config::Builder`.
 
-**Open Question (Q-B1):** Does the Bootstrapper return just `Config` to the CLI
-handler, or a `BootstrapResult { config: Config, report: DiscoveryReport }`?
-The CLI commands `config where` and `config list-sources` need access to the
-`DiscoveryReport` to display verbose output. This must be decided before the
-`Bootstrapper` interface is finalised.
+**Decision (Q-B1):** Bootstrapper returns `BootstrapResult { config: Config, report: DiscoveryReport }`. The CLI handler destructures it: uses `config` normally, passes `report` to verbose subcommands (`config where`, `config list-sources`). This avoids the need for a separate second Bootstrapper method.
 
 ### 3.2 Naming
 
@@ -323,15 +345,15 @@ data types; the dependency is one-way and acceptable.
 | Q5   | Does `DiscoveryPolicy` own the target filename lists and boundary marker definitions, or separate?           | **Move to `policy.rs`.** `ROOT_MARKER_FILES`, `GLOBAL_MARKER_FILES`, and boundary markers are configuration about *what to look for* and *when to stop* — they belong in `DiscoveryPolicy`. |
 | Q6   | Where is the project boundary marker list (`.git`, `.workspace`) defined? Can it be overridden?             | **Fixed const in `policy.rs`.** Not user-overridable. Ceiling env vars already provide escape-hatch walk control. Boundary markers follow **probe-then-stop** semantics (probe dir for target markers first, then stop ascending), governed by `allow_marker_at_ceiling`. |
 
-### 5.2 Still Open
+### 5.2 Previously Open — Now Resolved
 
-| ID   | Question                                                                                                    | Status     |
+| ID   | Question                                                                                                    | Resolution |
 | ---- | ----------------------------------------------------------------------------------------------------------- | ---------- |
-| Q-B1 | Does the Bootstrapper return `Config` or `BootstrapResult { config, report }` to the CLI handler?          | **`BootstrapResult { config: Config, report: DiscoveryReport }`.** Most ergonomic; CLI ignores report in hot path; subcommands destructure it. |
+| Q3   | DiscoveryService interface                                                                                  | `discover() -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>` |
+| Q4   | DiscoveryResult shape                                                                                       | Flat struct with `vault_root`, `vault: Box<[DiscoveredMarker]>`, `global: Box<[DiscoveredMarker]>` |
+| Q-B1 | Bootstrapper return type                                                                                    | `BootstrapResult { config: Config, report: DiscoveryReport }` |
 
-Previously open questions now resolved:
-- **Q3** (DiscoveryService interface) — resolved: `run() -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>`.
-- **Q4** (DiscoveryResult shape) — resolved: flat struct with `vault_root`, `vault: Box<[DiscoveredMarker]>`, `global: Box<[DiscoveredMarker]>`.
+No open questions remain.
 
 ---
 
@@ -340,6 +362,3 @@ Previously open questions now resolved:
 - Two-phase discovery (global config `trusted_paths` → second vault search).
 - CLI subcommands (`config where`, `config list-sources`, `config check`) —
   tracked in issue `10-cli-discovery-subcommands.md`.
-- `GlobalDiscoveryResult` non-fatal diagnostics (pending Q1).
-- Renaming `ConfigDiscoveryPipeline` (pending Q2).
-- `BootstrapResult` vs bare `Config` return (pending Q-B1).
