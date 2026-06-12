@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    config::paths::SchemaConfigSpec,
+    config::schema::SchemaConfigSpec,
     fs::{
         DirScanInput, DirScanner, FsEntry, FsFile, PathKey,
         StructuredFileFormat,

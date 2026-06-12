@@ -9,15 +9,14 @@ use std::{collections::HashMap, sync::Arc};
 use rkyv::with::Skip;
 
 use super::{
-    cache::CacheConfig,
+    cache::{CacheConfig, CacheConfigSpec},
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::{Frontmatter, FrontmatterConfigSpec},
     logging::Logging,
-    paths::TemplateConfigSpec,
-    schema::SchemaConfig,
+    schema::{SchemaConfig, SchemaConfigSpec},
     task::{Task, TaskConfigSpec, TemporalSlot},
-    template::TemplateConfig,
+    template::{TemplateConfig, TemplateConfigSpec},
     vault::Metadata,
 };
 
@@ -248,10 +247,7 @@ impl Config {
     /// # }
     /// ```
     #[inline]
-    pub fn to_schema_spec(
-        &self,
-    ) -> Result<super::paths::SchemaConfigSpec, ConfigError> {
-        use super::paths::SchemaConfigSpec;
+    pub fn to_schema_spec(&self) -> Result<SchemaConfigSpec, ConfigError> {
         use crate::fs::path::RelativeFilePath;
 
         let root = self.vault_metadata.root().as_dir_path().clone();
@@ -283,6 +279,19 @@ impl Config {
         let directory = self.template.template_dir().as_relative_dir().clone();
 
         Ok(TemplateConfigSpec::new(root, directory))
+    }
+
+    /// Builds a cache configuration specification for cache consumers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ValidationFailed`] if the cache directory
+    /// declaration cannot be projected into config-spec types.
+    #[inline]
+    pub fn to_cache_spec(&self) -> Result<CacheConfigSpec, ConfigError> {
+        let root = self.vault_metadata.root().as_dir_path().clone();
+        let directory = self.cache.cache_dir().as_relative_dir().clone();
+        Ok(CacheConfigSpec::new(root, directory))
     }
 
     /// Create a new Config with the specified version, keeping all other fields
@@ -941,6 +950,140 @@ mod tests {
         }
     }
 
+    mod config_specs {
+        use super::*;
+
+        #[test]
+        fn to_schema_spec_respects_custom_schema_config() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let custom_schemas = root.path().join("custom-schemas");
+            std::fs::create_dir_all(&custom_schemas)
+                .expect("custom schemas dir should be created");
+            let custom_bank = custom_schemas.join("custom-bank.json");
+            std::fs::write(&custom_bank, "{}")
+                .expect("custom property bank should be writable");
+            let vault = crate::config::raw::RawVaultConfig {
+                paths: crate::config::raw::RawVaultPaths {
+                    schemas_dir: Some("custom-schemas".to_owned()),
+                    property_bank_file: Some("custom-bank.json".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
+
+            let spec = config.to_schema_spec();
+
+            assert!(spec.is_ok(), "schema spec should build: {:?}", spec.err());
+            let spec = spec.expect("result checked as ok");
+            assert_eq!(
+                spec.schema_directory_path()
+                    .expect("schema directory should resolve")
+                    .as_path(),
+                custom_schemas.as_path(),
+                "schema spec should use SchemaConfig schema directory"
+            );
+            assert_eq!(
+                spec.property_bank_file_path()
+                    .expect("property bank file should resolve")
+                    .as_path(),
+                custom_bank.as_path(),
+                "schema spec should derive property bank path from \
+                 SchemaConfig"
+            );
+        }
+
+        #[test]
+        fn to_template_spec_respects_custom_template_config() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let templates = root.path().join("custom-templates");
+            std::fs::create_dir_all(&templates)
+                .expect("templates dir should be created");
+            let vault = crate::config::raw::RawVaultConfig {
+                paths: crate::config::raw::RawVaultPaths {
+                    templates_dir: Some("custom-templates".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
+
+            let spec = config.to_template_spec();
+
+            assert!(
+                spec.is_ok(),
+                "template spec should build: {:?}",
+                spec.err()
+            );
+            assert_eq!(
+                spec.expect("result checked as ok")
+                    .to_dir_path()
+                    .expect("template dir should resolve")
+                    .as_path(),
+                templates.as_path(),
+                "template spec should use TemplateConfig directory"
+            );
+        }
+
+        #[test]
+        fn to_cache_spec_respects_custom_cache_config() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let cache = root.path().join(".lithos-cache");
+            std::fs::create_dir_all(&cache)
+                .expect("cache dir should be created");
+            let vault = crate::config::raw::RawVaultConfig {
+                paths: crate::config::raw::RawVaultPaths {
+                    cache_dir: Some(".lithos-cache".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
+
+            let spec = config.to_cache_spec();
+
+            assert!(spec.is_ok(), "cache spec should build: {:?}", spec.err());
+            assert_eq!(
+                spec.expect("result checked as ok")
+                    .to_dir_path()
+                    .expect("cache dir should resolve")
+                    .as_path(),
+                cache.as_path(),
+                "cache spec should use CacheConfig directory"
+            );
+        }
+    }
+
     mod template_spec {
         use super::*;
 
@@ -952,7 +1095,7 @@ mod tests {
                 let config = fixtures::merged_config_with_empty_inputs();
 
                 let spec =
-                    crate::config::paths::TemplateConfigSpec::from(&config);
+                    crate::config::template::TemplateConfigSpec::from(&config);
 
                 assert_eq!(
                     spec.root().as_path(),
@@ -965,7 +1108,7 @@ mod tests {
                 let config = fixtures::merged_config_with_empty_inputs();
 
                 let spec =
-                    crate::config::paths::TemplateConfigSpec::from(&config);
+                    crate::config::template::TemplateConfigSpec::from(&config);
 
                 assert_eq!(spec.as_relative_dir().as_str(), "templates");
             }

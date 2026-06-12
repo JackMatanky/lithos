@@ -175,7 +175,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::{aggregate::Config, paths::SchemaConfigSpec},
+        config::{aggregate::Config, schema::SchemaConfigSpec},
         fs::{
             DirPath, FileReader, FsFile,
             path::{RelativeDirPath, RelativeFilePath},
