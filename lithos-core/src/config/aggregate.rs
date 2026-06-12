@@ -861,7 +861,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_template_spec_from_representative_config() {
+            fn returns_vault_root_from_representative_config() {
                 let config = fixtures::merged_config_with_empty_inputs();
 
                 let spec =
@@ -871,6 +871,15 @@ mod tests {
                     spec.root().as_path(),
                     config.vault_metadata().root().as_path()
                 );
+            }
+
+            #[test]
+            fn returns_default_template_directory_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec =
+                    crate::config::paths::TemplateConfigSpec::from(&config);
+
                 assert_eq!(spec.as_relative_dir().as_str(), "templates");
             }
         }
@@ -879,7 +888,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_template_spec_from_representative_config() {
+            fn returns_vault_root_from_representative_config() {
                 let config = fixtures::merged_config_with_empty_inputs();
 
                 let spec = config
@@ -890,6 +899,16 @@ mod tests {
                     spec.root().as_path(),
                     config.vault_metadata().root().as_path()
                 );
+            }
+
+            #[test]
+            fn returns_default_template_directory_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec = config
+                    .to_template_spec()
+                    .expect("template spec should build");
+
                 assert_eq!(spec.as_relative_dir().as_str(), "templates");
             }
 
@@ -901,10 +920,6 @@ mod tests {
                     .to_template_spec()
                     .expect("template spec should build");
 
-                assert_eq!(
-                    spec.as_relative_dir().as_str(),
-                    config.paths().template.templates_dir().as_str()
-                );
                 assert_eq!(spec.as_relative_dir().as_str(), "custom_templates");
             }
         }

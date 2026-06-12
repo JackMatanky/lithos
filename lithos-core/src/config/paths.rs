@@ -901,7 +901,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_spec_with_supplied_root_and_directory() {
+            fn returns_spec_with_supplied_root() {
                 use crate::fs::{DirPath, path::RelativeDirPath};
 
                 let root_dir =
@@ -914,6 +914,21 @@ mod tests {
                 let spec = TemplateConfigSpec::new(root, directory);
 
                 assert_eq!(spec.root().as_path(), root_dir.path());
+            }
+
+            #[test]
+            fn returns_spec_with_supplied_directory() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root, directory);
+
                 assert_eq!(spec.as_relative_dir().as_str(), "templates");
             }
         }
