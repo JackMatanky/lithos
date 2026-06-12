@@ -30,14 +30,21 @@ This slice should deliver one complete discovery execution path through the new 
 ## Acceptance criteria
 
 - [ ] `DiscoveryService` is the public discovery entry point and uses the self-builder pattern (`default()...build()?`).
+- [ ] `DiscoveryService` owns stable builder config: global directories, `suppress_global`, marker pattern lists, boundary marker constants, and precedence settings.
 - [ ] `InvocationInput` carries only per-call values: `flag_path`, `env_path`, `cwd`, and `ceiling_dirs_raw`.
 - [ ] A private `DiscoveryMachine` owns the internal typestate pipeline for the 6-phase discovery process.
-- [ ] `DiscoveryResult` replaces the old vault/global split and contains `vault_root`, ordered `vault` markers, and ordered `global` markers.
+- [ ] `DiscoveryMachine` states use validated `fs` path types after validation/canonicalization: `DirPath` for directories and `FilePath`/`FileNode` for discovered marker files.
+- [ ] Raw `&Path` values remain only at input/override boundaries where invalid paths must still be reportable.
+- [ ] `DiscoveryResult` replaces the old vault/global split and contains `vault_root`, ordered `vault` markers, and ordered `global` markers using validated FS path types.
+- [ ] Discovered marker output carries enough FS metadata (`FileNode` or equivalent `FileMetadata`) so Config does not need to re-prove that marker paths are files.
 - [ ] `DiscoveryReport` carries non-fatal process metadata: skipped override, skipped ceilings, and traversal stop reason.
+- [ ] `override.rs` contains `OverrideResolver` for explicit CLI/env path validation and maps missing/not-directory cases into the designed override errors or skipped-override report data.
 - [ ] `FolderProbe` replaces `VaultRootProbe` and `GlobalRootProbe` by accepting marker patterns at construction.
 - [ ] Marker pattern lists and project boundary marker constants live in `policy.rs`; no separate `DiscoveryPolicy` struct remains.
 - [ ] Project boundary markers use probe-then-stop semantics.
 - [ ] Inaccessible global directories are skipped with `tracing::warn!`; they do not add a `DiscoveryReport` field.
+- [ ] `selector.rs` owns candidate deduplication and ordering, absorbing old `select_markers` behavior from `engine.rs`.
+- [ ] `DiscoveryError` transparently wraps `OverrideError`, `TraversalError`, and `GlobalError` with `#[from]` conversions.
 - [ ] `engine.rs` and `diagnostics.rs` responsibilities are removed or migrated.
 - [ ] Unit tests cover explicit override, env override, ascending traversal, global fallback, ceiling diagnostics, and boundary marker stopping.
 

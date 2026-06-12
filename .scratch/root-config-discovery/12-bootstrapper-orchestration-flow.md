@@ -34,7 +34,9 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 - [ ] `Bootstrapper` acquires per-invocation context and calls `DiscoveryService::discover(InvocationInput)`.
 - [ ] `Bootstrapper` passes `DiscoveryResult` into `config::Builder::from_discovery()` and then calls `build()`.
 - [ ] `BootstrapResult { config, report }` is returned to callers.
-- [ ] `DiscoveryReport` diagnostics are surfaced through tracing or returned for CLI rendering without being passed into Config.
+- [ ] Bootstrapper does not construct `Config` itself; config construction stays inside `config::Builder::build()`.
+- [ ] Skipped ceilings and skipped overrides from `DiscoveryReport` are emitted with `tracing::warn!`.
+- [ ] `DiscoveryReport` remains available in `BootstrapResult` for CLI rendering without being passed into Config.
 - [ ] `discovery/` does not import `config/`; `config/` does not orchestrate `discovery/`.
 - [ ] Tests cover the complete Bootstrapper happy path and report propagation.
 
