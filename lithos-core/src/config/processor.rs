@@ -135,14 +135,27 @@ impl ConfigType for GlobalConfig {
             hashes.insert(ConfigField::Logging, Blake3Hash::compute(&json));
         }
 
-        // Hash paths field (always present, has default)
-        #[expect(
-            clippy::expect_used,
-            reason = "Config types are always serializable"
-        )]
-        let paths_json = serde_json::to_vec(&raw.paths)
-            .expect("paths serialization should not fail");
-        hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
+        // Hash template field if present
+        if let Some(template) = raw.template.as_ref() {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(template)
+                .expect("template serialization should not fail");
+            hashes.insert(ConfigField::Template, Blake3Hash::compute(&json));
+        }
+
+        // Hash schema field if present
+        if let Some(schema) = raw.schema.as_ref() {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(schema)
+                .expect("schema serialization should not fail");
+            hashes.insert(ConfigField::Schema, Blake3Hash::compute(&json));
+        }
 
         // Hash frontmatter field if present
         if let Some(frontmatter) = raw.frontmatter.as_ref() {
@@ -201,14 +214,38 @@ impl ConfigType for VaultConfig {
             hashes.insert(ConfigField::Logging, Blake3Hash::compute(&json));
         }
 
-        // Hash paths field (always present, has default)
-        #[expect(
-            clippy::expect_used,
-            reason = "Config types are always serializable"
-        )]
-        let paths_json = serde_json::to_vec(&raw.paths)
-            .expect("paths serialization should not fail");
-        hashes.insert(ConfigField::Paths, Blake3Hash::compute(&paths_json));
+        // Hash cache field if present
+        if let Some(cache) = raw.cache.as_ref() {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(cache)
+                .expect("cache serialization should not fail");
+            hashes.insert(ConfigField::Cache, Blake3Hash::compute(&json));
+        }
+
+        // Hash template field if present
+        if let Some(template) = raw.template.as_ref() {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(template)
+                .expect("template serialization should not fail");
+            hashes.insert(ConfigField::Template, Blake3Hash::compute(&json));
+        }
+
+        // Hash schema field if present
+        if let Some(schema) = raw.schema.as_ref() {
+            #[expect(
+                clippy::expect_used,
+                reason = "Config types are always serializable"
+            )]
+            let json = serde_json::to_vec(schema)
+                .expect("schema serialization should not fail");
+            hashes.insert(ConfigField::Schema, Blake3Hash::compute(&json));
+        }
 
         // Hash frontmatter field if present
         if let Some(frontmatter) = raw.frontmatter.as_ref() {
@@ -363,8 +400,12 @@ impl HasHashIndexMut for ConfigFieldHashes {
 pub enum ConfigField {
     /// Logging configuration (`RawLoggingConfig`).
     Logging,
-    /// Path configuration (`RawPathsConfig`).
-    Paths,
+    /// Cache configuration.
+    Cache,
+    /// Template configuration.
+    Template,
+    /// Schema configuration.
+    Schema,
     /// Task configuration (`RawTaskConfig`).
     Task,
     /// Frontmatter configuration (`RawFrontmatterConfig`).
@@ -742,10 +783,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::{
-            raw::{RawGlobalPaths, RawLogging, RawVaultPaths},
-            views::RawFileVersion,
-        },
+        config::{raw::RawLogging, views::RawFileVersion},
         fs::metadata::{FileMetadata, FsTimes},
     };
 
@@ -757,7 +795,8 @@ mod tests {
         let now = SystemTime::now();
         RawGlobalConfig {
             logging: Some(RawLogging::default()),
-            paths: RawGlobalPaths::default(),
+            template: None,
+            schema: None,
             trusted_vaults: None,
             frontmatter: None,
             task: None,
@@ -775,7 +814,9 @@ mod tests {
             name: Some("Test Vault".to_owned()),
             version: None,
             logging: None,
-            paths: RawVaultPaths::default(),
+            cache: None,
+            template: None,
+            schema: None,
             frontmatter: None,
             task: None,
             metadata: Some(FileMetadata::new(
@@ -917,12 +958,13 @@ mod tests {
     }
 
     #[test]
-    fn global_config_compute_field_hashes_always_includes_paths() {
-        let raw = create_raw_global_config();
+    fn global_config_compute_field_hashes_skips_none_fields_but_includes_present()
+     {
+        let mut raw = create_raw_global_config();
+        raw.template = Some(crate::config::raw::RawTemplateConfig::default());
         let hashes = GlobalConfig::compute_field_hashes(&raw);
 
-        // Paths always present (has default)
-        assert!(hashes.contains(&ConfigField::Paths));
+        assert!(hashes.contains(&ConfigField::Template));
     }
 
     #[test]
@@ -930,18 +972,17 @@ mod tests {
         let raw = create_raw_global_config();
         let hashes = GlobalConfig::compute_field_hashes(&raw);
 
-        // Frontmatter and Task are None, should not be in hash map
-        assert!(!hashes.contains(&ConfigField::Frontmatter));
-        assert!(!hashes.contains(&ConfigField::Task));
+        assert!(!hashes.contains(&ConfigField::Template));
+        assert!(!hashes.contains(&ConfigField::Schema));
     }
 
     #[test]
     fn vault_config_compute_field_hashes_works() {
-        let raw = create_raw_vault_config();
+        let mut raw = create_raw_vault_config();
+        raw.template = Some(crate::config::raw::RawTemplateConfig::default());
         let hashes = VaultConfig::compute_field_hashes(&raw);
 
-        // Paths always present
-        assert!(hashes.contains(&ConfigField::Paths));
+        assert!(hashes.contains(&ConfigField::Template));
         // Logging is None in fixture
         assert!(!hashes.contains(&ConfigField::Logging));
     }
@@ -953,14 +994,15 @@ mod tests {
     #[test]
     fn config_field_hashes_diff_detects_new_fields() {
         let old = ConfigFieldHashes::default(); // Empty
-        let raw = create_raw_global_config();
+        let mut raw = create_raw_global_config();
+        raw.template = Some(crate::config::raw::RawTemplateConfig::default());
         let new = GlobalConfig::compute_field_hashes(&raw);
 
         let diff = old.diff(&new);
 
         // All fields in new config are "changed" (added)
         assert!(diff.contains(&ConfigField::Logging));
-        assert!(diff.contains(&ConfigField::Paths));
+        assert!(diff.contains(&ConfigField::Template));
     }
 
     #[test]
@@ -995,9 +1037,12 @@ mod tests {
         #[test]
         fn delegates_read_access_to_inner_index() {
             let mut hashes = ConfigFieldHashes::new();
-            hashes.insert(ConfigField::Paths, Blake3Hash::compute(b"paths"));
+            hashes.insert(
+                ConfigField::Template,
+                Blake3Hash::compute(b"template"),
+            );
 
-            assert!(hashes.hash_index().contains_key(&ConfigField::Paths));
+            assert!(hashes.hash_index().contains_key(&ConfigField::Template));
         }
     }
 

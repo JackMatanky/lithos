@@ -33,7 +33,7 @@ use crate::{
             AnalysisBranch, ComparisonBranch, ConfigFileProcessor,
             GlobalConfig, VaultConfig,
         },
-        raw::{RawGlobalConfig, RawPathsConfig, RawVaultConfig},
+        raw::{RawGlobalConfig, RawVaultConfig},
         repository::Repository,
         root::ConfigDiscoveryResult,
         task::Task,
@@ -51,6 +51,11 @@ use crate::{
 /// Returns [`ConfigError`] if validation fails while constructing domain
 /// types.
 #[inline]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Linear orchestration of component merging and domain \
+              construction"
+)]
 pub fn build_from_layers(
     global: Option<&RawGlobalConfig>,
     vault: Option<&RawVaultConfig>,
@@ -74,10 +79,32 @@ pub fn build_from_layers(
         g.task.clone()
     });
 
-    let paths = RawPathsConfig::merge(
-        global.map_or_else(RawPathsConfig::default, |g| g.paths.clone().into()),
-        vault.map_or_else(RawPathsConfig::default, |v| v.paths.clone().into()),
-    );
+    let raw_cache_dir =
+        vault.and_then(|v| v.cache.as_ref()).and_then(|c| c.directory.clone());
+    let raw_template_dir = vault
+        .and_then(|v| v.template.as_ref())
+        .and_then(|t| t.directory.clone())
+        .or_else(|| {
+            global
+                .and_then(|g| g.template.as_ref())
+                .and_then(|t| t.directory.clone())
+        });
+    let raw_schema_dir = vault
+        .and_then(|v| v.schema.as_ref())
+        .and_then(|s| s.directory.clone())
+        .or_else(|| {
+            global
+                .and_then(|g| g.schema.as_ref())
+                .and_then(|s| s.directory.clone())
+        });
+    let raw_property_bank_file = vault
+        .and_then(|v| v.schema.as_ref())
+        .and_then(|s| s.property_bank_file.clone())
+        .or_else(|| {
+            global
+                .and_then(|g| g.schema.as_ref())
+                .and_then(|s| s.property_bank_file.clone())
+        });
 
     let logging =
         logging.map(Logging::try_from).transpose()?.unwrap_or_default();
@@ -87,11 +114,11 @@ pub fn build_from_layers(
 
     // Parse cache
     let cache_dir =
-        if let Some(s) = paths.cache_dir.as_ref().filter(|s| !s.is_empty()) {
+        if let Some(s) = raw_cache_dir.as_ref().filter(|s| !s.is_empty()) {
             super::cache::CacheDir::try_new(std::path::Path::new(s)).map_err(
                 |e| ConfigError::ValidationFailed {
-                    field: "cache_dir".into(),
-                    message: format!("invalid cache_dir: {e}").into(),
+                    field: "cache.directory".into(),
+                    message: format!("invalid cache directory: {e}").into(),
                 },
             )?
         } else {
@@ -101,12 +128,11 @@ pub fn build_from_layers(
 
     // Parse template
     let template_dir =
-        if let Some(s) = paths.templates_dir.as_ref().filter(|s| !s.is_empty())
-        {
+        if let Some(s) = raw_template_dir.as_ref().filter(|s| !s.is_empty()) {
             super::template::TemplateDir::try_new(std::path::Path::new(s))
                 .map_err(|e| ConfigError::ValidationFailed {
-                    field: "templates_dir".into(),
-                    message: format!("invalid templates_dir: {e}").into(),
+                    field: "template.directory".into(),
+                    message: format!("invalid template directory: {e}").into(),
                 })?
         } else {
             super::template::TemplateDir::default()
@@ -115,22 +141,22 @@ pub fn build_from_layers(
 
     // Parse schema
     let schema_dir =
-        if let Some(s) = paths.schemas_dir.as_ref().filter(|s| !s.is_empty()) {
+        if let Some(s) = raw_schema_dir.as_ref().filter(|s| !s.is_empty()) {
             super::schema::SchemaDir::try_new(std::path::Path::new(s)).map_err(
                 |e| ConfigError::ValidationFailed {
-                    field: "schemas_dir".into(),
-                    message: format!("invalid schemas_dir: {e}").into(),
+                    field: "schema.directory".into(),
+                    message: format!("invalid schema directory: {e}").into(),
                 },
             )?
         } else {
             super::schema::SchemaDir::default()
         };
     let property_bank_file = if let Some(s) =
-        paths.property_bank_file.as_ref().filter(|s| !s.is_empty())
+        raw_property_bank_file.as_ref().filter(|s| !s.is_empty())
     {
         super::schema::PropertyBankFile::try_new(s.as_str()).map_err(|e| {
             ConfigError::ValidationFailed {
-                field: "property_bank_file".into(),
+                field: "schema.property_bank_file".into(),
                 message: format!("invalid property_bank_file: {e}").into(),
             }
         })?
@@ -642,8 +668,8 @@ mod tests {
         std::fs::write(
             vault.path().join("lithos.toml"),
             r#"
-[paths]
-templates_dir = "custom-templates"
+[template]
+directory = "custom-templates"
 "#,
         )
         .expect("write vault config");

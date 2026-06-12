@@ -155,17 +155,19 @@ mod tests {
     use super::*;
     use crate::config::{
         processor::ProcessorOutcome,
-        raw::{RawGlobalConfig, RawGlobalPaths, RawVaultConfig, RawVaultPaths},
+        raw::{RawGlobalConfig, RawVaultConfig},
     };
 
     fn create_test_global_config() -> RawGlobalConfig {
         RawGlobalConfig {
             logging: None,
-            paths: RawGlobalPaths {
-                templates_dir: Some("global-templates".into()),
-                schemas_dir: Some("global-schemas".into()),
+            template: Some(crate::config::raw::RawTemplateConfig {
+                directory: Some("global-templates".into()),
+            }),
+            schema: Some(crate::config::raw::RawSchemaConfig {
+                directory: Some("global-schemas".into()),
                 property_bank_file: None,
-            },
+            }),
             trusted_vaults: None,
             frontmatter: None,
             task: None,
@@ -178,12 +180,13 @@ mod tests {
             name: None,
             version: None,
             logging: None,
-            paths: RawVaultPaths {
-                templates_dir: Some("vault-templates".into()),
-                schemas_dir: None,
-                cache_dir: Some(".cache".into()),
-                property_bank_file: None,
-            },
+            cache: Some(crate::config::raw::RawCacheConfig {
+                directory: Some(".cache".into()),
+            }),
+            template: Some(crate::config::raw::RawTemplateConfig {
+                directory: Some("vault-templates".into()),
+            }),
+            schema: None,
             frontmatter: None,
             task: None,
             metadata: None,

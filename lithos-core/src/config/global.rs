@@ -214,12 +214,13 @@ impl Global {
     /// Returns [`ConfigError::ValidationFailed`] if any configured path is
     /// invalid.
     #[inline]
-    pub fn try_from_paths(
-        raw: &super::raw::RawPathsConfig,
+    pub fn try_from_components(
+        template: Option<&super::raw::RawTemplateConfig>,
+        schema: Option<&super::raw::RawSchemaConfig>,
     ) -> Result<Self, ConfigError> {
         Ok(Self {
-            template: parse_template(raw)?,
-            schema: parse_schema(raw)?,
+            template: template.map(parse_template).transpose()?.flatten(),
+            schema: schema.map(parse_schema).transpose()?.flatten(),
             ..Self::default()
         })
     }
@@ -275,9 +276,9 @@ impl Global {
 }
 
 fn parse_template(
-    raw: &super::raw::RawPathsConfig,
+    raw: &super::raw::RawTemplateConfig,
 ) -> Result<Option<TemplateConfig>, ConfigError> {
-    raw.templates_dir
+    raw.directory
         .as_ref()
         .filter(|value| !value.is_empty())
         .map(|value| {
@@ -287,10 +288,10 @@ fn parse_template(
 }
 
 fn parse_schema(
-    raw: &super::raw::RawPathsConfig,
+    raw: &super::raw::RawSchemaConfig,
 ) -> Result<Option<SchemaConfig>, ConfigError> {
     let schema_dir = raw
-        .schemas_dir
+        .directory
         .as_ref()
         .filter(|value| !value.is_empty())
         .map(|value| SchemaDir::try_new(Path::new(value)))
@@ -676,15 +677,19 @@ mod tests {
 
         #[test]
         fn returns_template_and_schema_overrides_from_raw_paths() {
-            let raw = crate::config::raw::RawPathsConfig {
-                cache_dir: Some(".ignored".to_owned()),
-                templates_dir: Some("global-templates".to_owned()),
-                schemas_dir: Some("global-schemas".to_owned()),
+            let raw_template = crate::config::raw::RawTemplateConfig {
+                directory: Some("global-templates".to_owned()),
+            };
+            let raw_schema = crate::config::raw::RawSchemaConfig {
+                directory: Some("global-schemas".to_owned()),
                 property_bank_file: Some("global-bank.json".to_owned()),
             };
 
-            let global = Global::try_from_paths(&raw)
-                .expect("global path overrides should validate");
+            let global = Global::try_from_components(
+                Some(&raw_template),
+                Some(&raw_schema),
+            )
+            .expect("global path overrides should validate");
 
             assert_eq!(
                 global
