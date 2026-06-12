@@ -15,7 +15,7 @@ use crate::{
         views::{RawGlobalConfigView, RawVaultConfigView},
     },
     fs::{
-        FsEntry, FsFile,
+        FileNode, FsNode,
         metadata::{FileMetadata, FsMetadata},
         path::FilePath,
     },
@@ -31,7 +31,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct GlobalDiscovery {
     /// File entry from filesystem (path + `FileMetadata`).
-    entry: Option<FsEntry>,
+    entry: Option<FsNode>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawGlobalConfigView>,
 }
@@ -39,7 +39,7 @@ pub(crate) struct GlobalDiscovery {
 impl GlobalDiscovery {
     /// Returns the file entry, if the global config file exists.
     #[inline]
-    pub(crate) fn entry(&self) -> Option<&FsEntry> {
+    pub(crate) fn entry(&self) -> Option<&FsNode> {
         self.entry.as_ref()
     }
 
@@ -53,8 +53,8 @@ impl GlobalDiscovery {
     #[inline]
     pub(crate) fn info(&self) -> Option<&FileMetadata> {
         self.entry.as_ref().and_then(|entry| match entry {
-            FsEntry::File(file) => Some(file.metadata()),
-            FsEntry::Dir(_) => None,
+            FsNode::File(file) => Some(file.metadata()),
+            FsNode::Dir(_) => None,
         })
     }
 }
@@ -65,7 +65,7 @@ impl GlobalDiscovery {
 #[derive(Debug)]
 pub(crate) struct VaultDiscovery {
     /// File entry from filesystem (path + `FileMetadata`).
-    entry: Option<FsEntry>,
+    entry: Option<FsNode>,
     /// Cached view from database (None if never ingested or no file).
     view: Option<RawVaultConfigView>,
 }
@@ -73,7 +73,7 @@ pub(crate) struct VaultDiscovery {
 impl VaultDiscovery {
     /// Returns the file entry, if the vault config file exists.
     #[inline]
-    pub(crate) fn entry(&self) -> Option<&FsEntry> {
+    pub(crate) fn entry(&self) -> Option<&FsNode> {
         self.entry.as_ref()
     }
 
@@ -87,8 +87,8 @@ impl VaultDiscovery {
     #[inline]
     pub(crate) fn info(&self) -> Option<&FileMetadata> {
         self.entry.as_ref().and_then(|entry| match entry {
-            FsEntry::File(file) => Some(file.metadata()),
-            FsEntry::Dir(_) => None,
+            FsNode::File(file) => Some(file.metadata()),
+            FsNode::Dir(_) => None,
         })
     }
 }
@@ -133,7 +133,7 @@ impl ConfigDiscoveryPipeline {
     ///
     /// This method:
     /// 1. Reads files from the paths in `discovery_result`
-    /// 2. Maps them to `FsEntry` with filesystem metadata
+    /// 2. Maps them to `FsNode` with filesystem metadata
     /// 3. Queries DB for cached views
     /// 4. Combines into [`DiscoveryResult`]
     ///
@@ -153,7 +153,7 @@ impl ConfigDiscoveryPipeline {
     where
         R: crate::config::repository::Repository,
     {
-        // Step 1: Map discovered config files to FsEntry
+        // Step 1: Map discovered config files to FsNode
         let global_entry = match &discovery_result.global {
             Some(file) => Some(Self::entry_from_discovered_file(file)?),
             None => None,
@@ -191,7 +191,7 @@ impl ConfigDiscoveryPipeline {
     // File Mapping
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Maps a [`DiscoveredConfigFile`] to an [`FsEntry`] by reading its
+    /// Maps a [`DiscoveredConfigFile`] to an [`FsNode`] by reading its
     /// filesystem metadata.
     ///
     /// # Errors
@@ -200,7 +200,7 @@ impl ConfigDiscoveryPipeline {
     /// or metadata cannot be read.
     fn entry_from_discovered_file(
         file: &DiscoveredConfigFile,
-    ) -> Result<FsEntry, ConfigIngestError> {
+    ) -> Result<FsNode, ConfigIngestError> {
         let metadata = FsMetadata::from_path(&file.path).map_err(|error| {
             ConfigIngestError::Io {
                 path: file.path.clone(),
@@ -221,7 +221,7 @@ impl ConfigDiscoveryPipeline {
         let file_path = FilePath::try_new(file.path.clone())
             .map_err(ConfigIngestError::from)?;
 
-        Ok(FsEntry::File(FsFile::new(file_path, info)))
+        Ok(FsNode::File(FileNode::new(file_path, info)))
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -272,8 +272,8 @@ impl ConfigDiscoveryPipeline {
 
     /// Builds final `DiscoveryResult` from filesystem + DB data.
     fn build_result(
-        global_entry: Option<FsEntry>,
-        vault_entry: Option<FsEntry>,
+        global_entry: Option<FsNode>,
+        vault_entry: Option<FsNode>,
         global_view: Option<RawGlobalConfigView>,
         vault_view: Option<RawVaultConfigView>,
     ) -> DiscoveryResult {

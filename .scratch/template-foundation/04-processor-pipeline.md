@@ -60,25 +60,41 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 No template ingestion pipeline exists. There is no mechanism to scan the configured template directory, compare files against cached views, or produce persisted `Template` aggregates.
 
 **Desired behavior:**
-A `TemplateProcessor<State>` type lives in `lithos-core/src/template/` and implements a six-stage typestate pipeline:
+A `TemplateProcessor<State>` type implements a six-stage typestate pipeline for template ingestion:
 
-1. **`Discovery`** — constructed from `TemplateConfigSpec`; uses `DirScanner` to enumerate `.md` files in the configured template directory (recursively); transitions to `Comparison` with the discovered file paths
-2. **`Comparison`** — uses the batch `find_raw_template_views_by_paths` repository method to load cached `RawTemplateView`s; classifies each file as fresh, stale-content, stale-timestamp-only, new, or deleted; transitions to `Parsed`
-3. **`Parsed`** — reads only stale or new files using `FileReader` (not raw `std::fs`); produces `RawTemplate` DTOs; fresh files pass through unchanged; transitions to `Refresh`
-4. **`Refresh`** — updates `RawTemplateView` records for stale/new files (content hash, metadata, recorded time); transitions to `Construction`
-5. **`Construction`** — for each template to persist: look up existing `TemplateId` by `PathKey` in the repository (if exists, reuse it; if new, call `TemplateId::new()`); construct `Template` aggregates; `TemplateId` is resolved exactly once here, not re-looked-up in `Completed`; transitions to `Completed`
-6. **`Completed`** — persists all `Template` aggregates and updated `RawTemplateView`s to the repository via the `WriteRepository` trait; removes deleted entries from the repository; pipeline ends here
+1. **`Discovery`** — constructed from `TemplateConfigSpec`; resolves the configured declarative template directory against the vault root; uses `DirScanner` to enumerate `.md` files recursively; transitions to `Comparison` with discovered filesystem paths and storage keys
+2. **`Comparison`** — uses the batch `find_raw_template_views_by_paths` repository method to load cached `RawTemplateView`s; classifies each discovered file as fresh, stale-content, stale-timestamp-only, or new; also detects cached views whose paths are no longer discovered as deleted; transitions to `Parsed`
+3. **`Parsed`** — reads only stale-content or new files using vault-scoped `FileReader` (not raw `std::fs`); produces `RawTemplate` DTOs; fresh files and timestamp-only stale files pass through without body reads; transitions to `Refresh`
+4. **`Refresh`** — prepares `RawTemplateView` updates for stale-content, stale-timestamp-only, and new files (content hash, metadata, recorded time); carries deletion information forward; transitions to `Construction`
+5. **`Construction`** — resolves each affected template's `TemplateId` exactly once by path before constructing `Template` aggregates; existing templates reuse their stored ID, new templates use `TemplateId::new()`; timestamp-only refreshes do not reconstruct `Template` aggregates; transitions to `Completed`
+6. **`Completed`** — persists newly constructed or reconstructed `Template` aggregates and updated `RawTemplateView`s through the template repository write capability; removes deleted template/cache entries; pipeline ends here
 
 No `Compiled` or `Validated` stage is added — engine compilation is a live on-demand check, not an ingestion state.
 
-**Key interfaces:**
-- `TemplateProcessor<State>` — generic struct; each stage is a distinct type-parameter state; use `From`/method chaining for transitions
-- `DirScanner` — existing FS context type; scoped to `.md` extension; inspect `schema/discovery.rs` or `fs/scanner.rs` for usage patterns
-- `FileReader` — existing FS context type; used in `Parsed` stage; no raw `std::fs` reads
-- `ReadRepository` + `WriteRepository` traits from issue-03 — used for cache lookups and persistence
-- `TemplateConfigSpec` from issue-02 — provides `template_directory_path()` for discovery root
-- `TemplateId`, `Template`, `RawTemplate`, `RawTemplateView`, `TemplateName`, `TemplateBody` from issue-01 — the domain types being produced
-- Stale detection: compare `Blake3Hash` for content staleness; compare file metadata (mtime) for timestamp-only staleness; these are separate cases with different refresh behaviors
+**Triage context:**
+- Category/state recommendation remains `enhancement` + `ready-for-agent`.
+- No matching `.out-of-scope/` record exists for this request.
+- GitNexus found analogous schema processor flows for fresh/no-op, timestamp-only metadata normalization, stale-content refresh, and deleted-entry handling; the indexed graph is currently 6 commits behind HEAD, so the implementing agent must verify current symbols before editing.
+- Relevant architectural decisions: file ingestion separates file I/O from parsing/domain/persistence; template engine compilation is runtime/on-demand; repository boundaries use segregated read/write traits; storage keys use `PathKey`; filesystem access uses the FS context path taxonomy.
+
+**Key interfaces and contracts:**
+- `TemplateProcessor<State>` — generic typestate processor; each stage is represented by a distinct zero-sized state type, and only legal transitions are callable for the current state.
+- `TemplateConfigSpec` — the narrowed config contract consumed by discovery; it exposes the vault root, declarative relative template directory, derived directory path, and directory `PathKey`.
+- `DirScanner` — FS discovery utility; use extension filtering for `.md` files and keep discovery scoped to the configured template directory.
+- `FileReader` — vault-scoped read adapter; all template body reads flow through it, preserving testability and path-boundary policy.
+- `PathKey` — the only repository/storage boundary representation for template paths; derive it at filesystem-to-storage seams, not by ad hoc string manipulation.
+- `ReadRepository` + `WriteRepository` — template repository capabilities used for batch cache lookup, template lookup/persistence, raw view persistence, and deletions. The processor should depend on the narrowest capability per stage where practical.
+- Template ID lookup by path — construction requires an efficient read contract to resolve an existing template identity from a `PathKey` before rebuilding. If the completed repository slice does not expose this directly, add the minimal repository read method or index needed for this processor rather than scanning all templates.
+- `TemplateId`, `Template`, `RawTemplate`, `RawTemplateView`, `TemplateName`, `TemplateBody` — domain/value types produced or refreshed by the pipeline. `RawTemplate` carries unvalidated source content; `TemplateBody` rejects empty content; `TemplateName` is path-derived relative to the configured template directory.
+- Stale detection — content staleness is based on `Blake3Hash`; timestamp-only staleness is based on file metadata with matching content hash. These are separate outcomes with different write behavior.
+- Error handling — return typed `Result` errors; avoid `unwrap()`/`expect()` in production paths; wrap repository failures in the template context's repository/domain error model rather than erasing them with `anyhow`.
+
+**Rust implementation constraints:**
+- Use `PhantomData` or equivalent zero-cost state markers so invalid stage transitions fail to compile rather than relying on runtime flags.
+- Prefer borrowing over cloning when carrying discovered paths, views, and raw content through stages; clone only when ownership transfer or persistence boundaries require it.
+- Keep filesystem path types, display/config path types, and storage-key types distinct according to the path taxonomy.
+- Keep MiniJinja/compiler checks out of this pipeline. Template Engine behavior may consume persisted templates later, but engine compilation is not an ingestion state.
+- Public APIs added for the processor need doc comments and tests that demonstrate intended stage usage.
 
 **Acceptance criteria:**
 - [ ] Processor stages `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
@@ -86,13 +102,20 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 - [ ] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
 - [ ] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
 - [ ] `TemplateId` is resolved exactly once in the `Construction` stage; the `Completed` stage does not re-query the repository for IDs
+- [ ] Existing-template ID resolution uses a repository path lookup/index, not `list_templates()` scanning
 - [ ] Fresh files produce no repository write (no-op path)
 - [ ] New files go through full construction and are persisted
 - [ ] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
 - [ ] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
 - [ ] Deleted-cache entries (present in repository but not on disk) are removed from the repository
 - [ ] Tests use the in-memory test double from issue-03, not a real redb instance
+- [ ] Tests are written before implementation and use descriptive behavior-focused names
 - [ ] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, deleted-cache entry, batch path comparison correctness
+- [ ] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
+- [ ] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
+- [ ] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
+- [ ] `mise run fmt` passes
+- [ ] `mise run lint` passes
 - [ ] `mise run test` passes
 
 **Out of scope:**

@@ -13,7 +13,7 @@ Lithos needs a single post-config component that indexes filesystem nodes and pe
 
 The current `discovery/` context now explicitly owns only pre-config path discovery. It locates the Vault Root and Discovered Config Path metadata needed before Config can load. It must not become a grab bag for filesystem indexing. Continuing to describe node indexing as "discovery" would blur the newly established `Discovery -> Config -> Indexer -> Context processors` dependency direction.
 
-Today, filesystem scanning and freshness behavior are still spread across Vault, Schema, and other context-specific code. That duplication makes it harder to maintain consistent identity, deletion detection, scan filtering, and path-key behavior. Schema, Note, and Template processors should not each own vault-wide scanning or node identity. They should consume a stable indexer result or query an indexer-owned repository after Config has produced narrowed runtime specs.
+Today, filesystem scanning and freshness behavior are still spread across Vault, Schema, and other context-specific code. That duplication makes it harder to maintain consistent identity, deletion detection, scan filtering, and path-key behavior. Schema, Note, and Template processors should not each own vault-wide scanning or index-record identity. They should consume a stable indexer result or query an indexer-owned repository after Config has produced narrowed runtime specs.
 
 ## Solution
 
@@ -36,12 +36,12 @@ The implementation follows hexagonal architecture:
 4. As a Schema processor maintainer, I want Schema ingestion to consume indexed file metadata, so that Schema no longer owns vault-wide scanning.
 5. As a Note processor maintainer, I want Note ingestion to consume indexed markdown file candidates, so that Note only handles note semantics and note persistence.
 6. As a Template processor maintainer, I want Template processing to consume indexed template candidates, so that Template can focus on template semantics.
-7. As a persistence maintainer, I want one canonical filesystem node identity model, so that file-backed contexts do not invent separate file identity systems.
+7. As a persistence maintainer, I want one canonical filesystem record identity model, so that file-backed contexts do not invent separate file identity systems.
 8. As a query maintainer, I want filesystem node state indexed by path, parent, kind, and file format, so that downstream queries can resolve nodes efficiently.
 9. As a cross-platform user, I want persisted paths to use `PathKey`, so that index storage remains portable across operating systems.
 10. As a filesystem safety maintainer, I want the Indexer to enforce Vault Root boundaries on all scan paths, so that path rules and root scoping remain consistent.
 11. As a performance-focused engineer, I want freshness classification based on filesystem metadata before expensive context work runs, so that unchanged files can be skipped.
-12. As a reliability-focused engineer, I want deletion detection and pruning owned by the Indexer, so that stale node records are removed deterministically.
+12. As a reliability-focused engineer, I want deletion detection and pruning owned by the Indexer, so that stale index records are removed deterministically.
 13. As a test author, I want Indexer ports to be mockable, so that scan, compare, persist, and prune behavior can be tested without real disk or redb dependencies.
 14. As a CLI user, I want an explicit indexing command, so that I can refresh filesystem node state without running every downstream context processor.
 15. As a CLI user, I want command output that reports scanned, new, fresh, stale, deleted, and failed node counts, so that I can understand what changed.
@@ -74,7 +74,7 @@ The Discovery context must not import Indexer. Discovery remains pre-config and 
 
 The Indexer context should be introduced as a new top-level core context. The expected internal modules are:
 
-- `model`: filesystem node identity, node structs, classification status, scan scope, and result contracts.
+- `model`: filesystem record identity, record structs, classification status, scan scope, and result contracts.
 - `repository`: Indexer-owned read/write/unified repository ports.
 - `service` or `processor`: application service that coordinates scan, compare, persist, prune, and result construction.
 - `scanner`: adapter-facing seam that translates between FS scanning and Indexer domain scan records.
@@ -123,52 +123,61 @@ Third-party or infrastructure details must not leak into Indexer domain contract
 
 This PRD intentionally keeps the existing project repository pattern: each context defines segregated `ReadRepository`, `WriteRepository`, and `Repository` traits. That aligns with ADR 016 while preserving hexagonal architecture's port ownership rule.
 
-### 4. Domain Naming: Nodes, Not Views
+### 4. Domain Naming: FS Nodes, Index Records
 
-The Indexer should not use `FileView` and `DirView` as the central domain names. In this codebase, `*View` tends to imply a database read projection or persisted read-only representation. The Indexer output will be used throughout the rest of the system after indexing, so the core type names should not imply read-only DB projection.
+The Indexer should not use `FileView` and `DirView` as the central domain names. In this codebase, `*View` tends to imply a database read projection or persisted read-only representation.
 
-Preferred names:
+The FS context owns live filesystem tree terminology:
 
+- `FsNode`
 - `FileNode`
 - `DirNode`
-- `FsNode`
+
+The Indexer context owns persisted index-state terminology:
+
+- `FileRecord`
+- `DirRecord`
+- `FsRecordId`
+- `FsRecordType`
+
+This keeps `*Node` available for structural filesystem scan output and reserves `*Record` for durable indexed state.
 
 Rationale:
 
-- "Node" precisely describes durable filesystem graph/tree state.
-- It is short and easy to use in downstream context contracts.
+- "Node" precisely describes structural filesystem graph/tree state in the FS context.
+- "Record" describes the indexed, persisted state held by the Indexer.
 - It avoids conflict with `*View` read-model language.
 - It avoids `BaseFile` / `BaseDir`, where "base" is less specific and already overloaded by base schema concepts.
 
-`FileNode` and `DirNode` are domain state, not adapter DTOs. Storage adapters may archive and persist them, but the names should remain meaningful outside DB reads.
+`FileRecord` and `DirRecord` are domain state, not adapter DTOs. Storage adapters may archive and persist them, but the names should remain meaningful outside DB reads.
 
-### 5. Identity Model: `FsNodeId` Generation And Storage
+### 5. Identity Model: `FsRecordId` Generation And Storage
 
-**Accepted decision**: `FsNodeId` is a newtype over `UuidV7`, following the same pattern as every other context ID in the codebase (`UuidV7` is the project-wide canonical identity primitive in `lithos-core::utils`). The Indexer typestate pipeline generates `FsNodeId` for each new node at the point of first classification (i.e., when a scanned node has no matching persisted record). Generation uses `UuidV7::new()` directly — no `IdPort` abstraction is needed because `UuidV7` is already a stable shared utility, not a hard third-party dependency. Tests construct known IDs via `UuidV7::parse()` or fixed-byte construction. The domain stores `FsNodeId` as the canonical identity for the lifetime of the node.
+**Accepted decision**: `FsRecordId` is a newtype over `UuidV7`, following the same pattern as every other context ID in the codebase (`UuidV7` is the project-wide canonical identity primitive in `lithos-core::utils`). The Indexer typestate pipeline generates `FsRecordId` for each new record at the point of first classification (i.e., when a scanned node has no matching persisted record). Generation uses `UuidV7::new()` directly — no `IdPort` abstraction is needed because `UuidV7` is already a stable shared utility, not a hard third-party dependency. Tests construct known IDs via `UuidV7::parse()` or fixed-byte construction. The domain stores `FsRecordId` as the canonical identity for the lifetime of the indexed record.
 
 The `IdPort` / clock-port pattern remains a valid fallback if generation behavior ever needs to be injected (e.g., for deterministic bulk-import scenarios), but is not required for the initial design.
 
-### 5b. `FsNodeId` vs. `FileId` / `DirId` Trade-off Analysis
+### 5b. `FsRecordId` vs. `FileId` / `DirId` Trade-off Analysis
 
-The PRD uses a single canonical `FsNodeId` with file/dir-specific node structs:
+The PRD uses a single canonical `FsRecordId` with file/dir-specific record structs:
 
-- `FileNode { id: FsNodeId, ... }`
-- `DirNode { id: FsNodeId, ... }`
-- `FsNodeKind::{File, Dir}` where a generic node classification is required.
+- `FileRecord { id: FsRecordId, ... }`
+- `DirRecord { id: FsRecordId, ... }`
+- `FsRecordType::{File, Dir}` where a generic record classification is required.
 
 Tradeoffs:
 
-`FsNodeId` benefits:
+`FsRecordId` benefits:
 
-- One identity space for the filesystem node graph.
+- One identity space for the filesystem record graph.
 - Simpler parent-child relationships, deletion records, and index result contracts.
-- Easier future event-driven indexing because file and directory changes share one node identity model.
+- Easier future event-driven indexing because file and directory changes share one record identity model.
 - Less duplicated repository surface for generic node operations.
 
-`FsNodeId` costs:
+`FsRecordId` costs:
 
 - File-only and directory-only APIs need typed wrappers or runtime kind checks.
-- A caller can theoretically pass a directory node ID into a file lookup unless the repository method shape prevents it.
+- A caller can theoretically pass a directory record ID into a file lookup unless the repository method shape prevents it.
 
 Separate `FileId` / `DirId` benefits:
 
@@ -179,11 +188,11 @@ Separate `FileId` / `DirId` costs:
 
 - More duplicated repository methods and table/index handling.
 - Harder generic deletion/pruning output contracts.
-- Harder to model the filesystem as one node graph.
+- Harder to model the filesystem as one record graph.
 
-Decision for initial design: use `FsNodeId` as canonical identity, plus typed `FileNode` and `DirNode` structs to preserve domain shape. Where compile-time distinction is important, methods should return file/dir-specific structs rather than exposing untyped node payloads.
+Decision for initial design: use `FsRecordId` as canonical identity, plus typed `FileRecord` and `DirRecord` structs to preserve domain shape. Where compile-time distinction is important, methods should return file/dir-specific structs rather than exposing untyped record payloads.
 
-### 6. Node Model And Path Taxonomy
+### 6. Record Model And Path Taxonomy
 
 Indexer path behavior must follow the accepted three-tier path taxonomy:
 
@@ -193,32 +202,32 @@ Indexer path behavior must follow the accepted three-tier path taxonomy:
 
 The Indexer converts filesystem paths to `PathKey` only with an explicit Vault Root. Rootless path-key conversion is not allowed.
 
-**Accepted decision**: `FileNode` and `DirNode` fields are canonicalised against the previously locked `FileView` / `DirView` shape from the centralized-discovery PRD, with names updated to match current domain language:
+**Accepted decision**: `FileRecord` and `DirRecord` fields are canonicalised against the previously locked `FileView` / `DirView` shape from the centralized-discovery PRD, with names updated to match current domain language:
 
 ```rust
-pub struct FileNode {
-    id: FsNodeId,
-    parent_id: Option<FsNodeId>,
+pub struct FileRecord {
+    id: FsRecordId,
+    parent_id: FsRecordId,
     path: PathKey,              // vault-relative, forward-slash normalised
     name: FileName,
     format: FileFormat,
     metadata: FileMetadata,
     #[rkyv(with = rkyv::with::AsUnixTime)]
-    recorded_at: SystemTime,    // when node was persisted
+    recorded_at: SystemTime,    // when record was persisted
 }
 
-pub struct DirNode {
-    id: FsNodeId,
-    parent_id: Option<FsNodeId>,
+pub struct DirRecord {
+    id: FsRecordId,
+    parent_id: Option<FsRecordId>,
     path: PathKey,              // vault-relative, forward-slash normalised
     name: DirName,
     metadata: DirMetadata,
     #[rkyv(with = rkyv::with::AsUnixTime)]
-    recorded_at: SystemTime,    // when node was persisted
+    recorded_at: SystemTime,    // when record was persisted
 }
 ```
 
-The Indexer must not store context-owned content hashes in `FileNode`. Schema, Note, and Template own content hashing and semantic freshness checks after filesystem freshness has been classified.
+The Indexer must not store context-owned content hashes in `FileRecord`. Schema, Note, and Template own content hashing and semantic freshness checks after filesystem freshness has been classified.
 
 ### 7. Indexing Result Contract
 
@@ -231,15 +240,15 @@ The canonical output terms for the indexing result contract are:
 - `DirIndexEntry`
 - `IndexStatus`
 
-`FileIndexEntry` represents a file node as classified in the current indexing run. It should include:
+`FileIndexEntry` represents a file record as classified in the current indexing run. It should include:
 
-- current `FileNode`
+- current `FileRecord`
 - current `FilePath` for immediate context reads
 - `IndexStatus`
 
-`DirIndexEntry` represents a directory node as classified in the current indexing run. It should include:
+`DirIndexEntry` represents a directory record as classified in the current indexing run. It should include:
 
-- current `DirNode`
+- current `DirRecord`
 - current `DirPath` if downstream orchestration needs disk access
 - `IndexStatus`
 
@@ -249,19 +258,19 @@ The canonical output terms for the indexing result contract are:
 - `Fresh`: node existed and filesystem metadata matched persisted metadata.
 - `Stale`: node existed and filesystem metadata changed.
 
-Deleted nodes should be separate from live entries because no current filesystem path/metadata exists for them. Use deleted-node records rather than fake file/dir entries. A deletion record should carry the `FsNodeId`, previous `PathKey`, and previous kind when available.
+Deleted records should be separate from live entries because no current filesystem path/metadata exists for them. Use deleted-record collections rather than fake file/dir entries. A deletion record should carry the `FsRecordId`, previous `PathKey`, and previous kind when available.
 
 **Accepted decision**: `FileIndexEntry` and `IndexResult` follow the locked Discovery Result Contract pattern — embedded node struct, not flattened fields; deleted nodes in a separate collection, not mixed into live entries:
 
 ```rust
 pub struct FileIndexEntry {
-    node: FileNode,       // embedded, not flattened
+    node: FileRecord,     // embedded, not flattened
     path: FilePath,       // live filesystem path for immediate context reads
     status: IndexStatus,
 }
 
 pub struct DirIndexEntry {
-    node: DirNode,        // embedded, not flattened
+    node: DirRecord,      // embedded, not flattened
     path: DirPath,
     status: IndexStatus,
 }
@@ -271,7 +280,7 @@ pub struct DirIndexEntry {
 
 - file entries for new, fresh, and stale files
 - directory entries for new, fresh, and stale directories
-- deleted node IDs in a separate `Vec<FsNodeId>` (not mixed with live entries)
+- deleted record IDs in a separate `Vec<FsRecordId>` (not mixed with live entries)
 - summary counts
 - non-fatal per-node failures when the indexing run can continue safely
 
@@ -312,7 +321,7 @@ The Indexer should always prefer the narrowest correct scope. If Config detects 
 
 **Accepted decision**: The Indexer defines two redb tables: `FILES` and `DIRS` (not `file_nodes` / `dir_nodes`, not the Vault's `file_views` / `dir_views`). These are the canonical filesystem node tables for the entire codebase.
 
-**Accepted decision**: The Indexer owns `FILES` and `DIRS` exclusively — it is the only context with write access. Other contexts (Schema, Note, Template) resolve path → `FsNodeId` → `FileNode` / `DirNode` by calling the Indexer's `ReadRepository` port at the **application-service level**, not by accessing the raw redb tables directly from their own storage adapters. This is the correct dependency direction (`Indexer → Context processors`) enforced at the storage level, not just the application level.
+**Accepted decision**: The Indexer owns `FILES` and `DIRS` exclusively — it is the only context with write access. Other contexts (Schema, Note, Template) resolve path → `FsRecordId` → `FileRecord` / `DirRecord` by calling the Indexer's `ReadRepository` port at the **application-service level**, not by accessing the raw redb tables directly from their own storage adapters. This is the correct dependency direction (`Indexer → Context processors`) enforced at the storage level, not just the application level.
 
 Rationale: redb is a KV store with no joins. Every cross-context lookup that needs to go from a path or ID to a filesystem node must traverse `FILES` / `DIRS` regardless of architecture. Routing that traversal through an Indexer port costs nothing in query performance and prevents downstream adapters from coupling to the raw table key schema. If the `FILES` / `DIRS` key layout changes, only the Indexer adapter needs updating.
 
@@ -328,32 +337,32 @@ The Indexer owns repository ports. They should follow the project pattern:
 
 Read operations should support:
 
-- lookup by `FsNodeId`
+- lookup by `FsRecordId`
 - lookup by `PathKey`
 - listing paths by kind
-- listing file nodes by format
-- listing child nodes by parent
+- listing file records by format
+- listing child records by parent
 - loading persisted paths for deletion detection and pruning
 
 Write operations should support:
 
-- saving file nodes
-- saving directory nodes
+- saving file records
+- saving directory records
 - saving batches atomically
-- deleting nodes by ID
+- deleting records by ID
 - pruning batches atomically
 
-**Accepted decision**: The Indexer storage adapter defines the following redb tables, migrated and renamed from the Vault's table inventory. `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` are dropped (the primary nodes carry enough data for deletion without a reverse index at this stage):
+**Accepted decision**: The Indexer storage adapter defines the following redb tables, migrated and renamed from the Vault's table inventory. `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` are dropped (the primary records carry enough data for deletion without a reverse index at this stage):
 
 | Table | Key | Value | Purpose |
 |---|---|---|---|
-| `FILES` | `FsNodeId` | `&[u8]` (rkyv `FileNode`) | Primary file node store |
-| `DIRS` | `FsNodeId` | `&[u8]` (rkyv `DirNode`) | Primary directory node store |
-| `FILE_ID_BY_PATH` | `PathKey` string | `FsNodeId` | Path → ID resolution |
-| `DIR_ID_BY_PATH` | `PathKey` string | `FsNodeId` | Path → ID resolution |
-| `FILE_IDS_BY_BASENAME` | `&str` | `FsNodeId` | Wikilink-style lookup |
-| `FILE_IDS_BY_PARENT` | `FsNodeId` (parent) | `FsNodeId` (child) | Child listing queries |
-| `FILE_IDS_BY_FORMAT` | `&str` | `FsNodeId` | Format-filtered queries |
+| `FILES` | `FsRecordId` | `&[u8]` (rkyv `FileRecord`) | Primary file record store |
+| `DIRS` | `FsRecordId` | `&[u8]` (rkyv `DirRecord`) | Primary directory record store |
+| `FILE_ID_BY_PATH` | `PathKey` string | `FsRecordId` | Path → ID resolution |
+| `DIR_ID_BY_PATH` | `PathKey` string | `FsRecordId` | Path → ID resolution |
+| `FILE_IDS_BY_BASENAME` | `&str` | `FsRecordId` | Wikilink-style lookup |
+| `FILE_IDS_BY_PARENT` | `FsRecordId` (parent) | `FsRecordId` (child) | Child listing queries |
+| `FILE_IDS_BY_FORMAT` | `&str` | `FsRecordId` | Format-filtered queries |
 
 All tables are updated atomically within the same `redb::WriteTransaction`. Indexes must never diverge from primary data.
 
@@ -443,16 +452,16 @@ Good tests assert externally observable behavior and domain invariants, not priv
 
 Test areas:
 
-1. Domain model construction rejects invalid node/path states and preserves valid `FsNodeId`, `FileNode`, and `DirNode` fields.
-2. `FsNodeId` identity behavior is stable, unique, ordered where needed, and compatible with DB key wrappers.
+1. Domain model construction rejects invalid record/path states and preserves valid `FsRecordId`, `FileRecord`, and `DirRecord` fields.
+2. `FsRecordId` identity behavior is stable, unique, ordered where needed, and compatible with DB key wrappers.
 3. Path conversion tests prove filesystem paths convert to `PathKey` only with an explicit Vault Root.
 4. Scanner adapter tests prove the walkdir `ScannerPort` implementation translates `ScanFilters` into correct walkdir traversal without leaking walkdir details into domain contracts.
 5. Application-service tests classify missing persisted nodes as `New`.
 6. Application-service tests classify metadata-matching nodes as `Fresh`.
 7. Application-service tests classify changed metadata nodes as `Stale`.
 8. Application-service tests classify all nodes as `New` when `IndexOptions { reindex: true }` is set, regardless of stored metadata.
-9. Pruning tests remove persisted nodes missing from the current scan and report deleted node records.
-10. Repository contract tests prove primary node records and path/parent/format indexes stay consistent after save, batch save, delete, and prune operations.
+9. Pruning tests remove persisted records missing from the current scan and report deleted records.
+10. Repository contract tests prove primary records and path/parent/format indexes stay consistent after save, batch save, delete, and prune operations.
 11. Dry-run tests prove classification can run without persisting changes.
 12. Scope tests prove full, context, and targeted scans use the expected scan boundaries.
 13. CLI mapping tests prove command flags map to the expected `IndexScope` and `IndexOptions` without duplicating domain rules.
@@ -489,5 +498,5 @@ The first implementation issue should also update the `CONTEXT-MAP.md` Global In
 
 - This PRD should be implemented after root/config discovery and Config pipeline contracts can produce the narrowed specs the Indexer consumes.
 - This PRD should respect ADR 016, ADR 018, ADR 019, ADR 020, ADR 021, and ADR 022.
-- The Indexer context may require a new `CONTEXT.md` glossary when implementation begins. Candidate terms include Filesystem Node, File Node, Directory Node, Index Scope, Index Status, Indexed Node, and Deleted Node.
-- If the choice of `FsNodeId` proves too weak for file-only or directory-only compile-time safety, implementation can add thin `FileNodeId` and `DirNodeId` wrappers over `FsNodeId` without changing the underlying canonical identity space.
+- The Indexer context may require a new `CONTEXT.md` glossary when implementation begins. Candidate terms include Filesystem Node, File Record, Directory Record, Index Scope, Index Status, Index Record, and Deleted Record.
+- If the choice of `FsRecordId` proves too weak for file-only or directory-only compile-time safety, implementation can add thin `FileRecordId` and `DirRecordId` wrappers over `FsRecordId` without changing the underlying canonical identity space.

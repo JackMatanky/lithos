@@ -18,7 +18,7 @@ use crate::{
     db::Store,
     fs::{
         DirName, DirScanInput, DirScanner, FileFormat, FileName, FileReader,
-        FsEntry, PathKey,
+        FsNode, PathKey,
     },
     note::{
         error::NoteProcessError,
@@ -358,7 +358,7 @@ impl VaultProcessor<Discovery, Unknown> {
 
         for entry in entries {
             match entry {
-                FsEntry::Dir(fs_dir) => {
+                FsNode::Dir(fs_dir) => {
                     let relative = fs_dir
                         .path()
                         .as_relative(scanner.path())
@@ -368,7 +368,7 @@ impl VaultProcessor<Discovery, Unknown> {
                         })?;
                     raw_dir_entries.push((relative, fs_dir));
                 }
-                FsEntry::File(fs_file) => {
+                FsNode::File(fs_file) => {
                     raw_file_entries.push(fs_file);
                 }
             }

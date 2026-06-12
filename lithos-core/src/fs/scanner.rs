@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use super::{
-    entry::FsEntry,
+    entry::FsNode,
     error::{PathError, ScanError},
     path::FsPath,
 };
@@ -103,7 +103,7 @@ impl DirScanner {
     pub fn entries(
         &self,
         input: DirScanInput,
-    ) -> Result<Vec<FsEntry>, ScanError> {
+    ) -> Result<Vec<FsNode>, ScanError> {
         let walker = self.build_walker(&input);
         let mut results = Vec::new();
 
@@ -114,7 +114,7 @@ impl DirScanner {
             })?;
 
             if self.filter_entry(&entry, &input)?.is_some() {
-                results.push(FsEntry::try_from(entry)?);
+                results.push(FsNode::try_from(entry)?);
             }
         }
 

@@ -108,7 +108,7 @@
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
 use crate::{
-    fs::{DirPath, FileReader, FsFile, PathKey},
+    fs::{DirPath, FileNode, FileReader, PathKey},
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
@@ -141,7 +141,7 @@ use crate::{
 #[derive(Debug)]
 #[must_use]
 pub struct PropertyBankProcessor<P, S> {
-    file: FsFile,
+    file: FileNode,
     path_key: PathKey,
     status: S,
     _stage: PhantomData<P>,
@@ -149,13 +149,13 @@ pub struct PropertyBankProcessor<P, S> {
 
 impl<P, S> PropertyBankProcessor<P, S> {
     #[inline]
-    fn into_parts(self) -> (FsFile, PathKey, S) {
+    fn into_parts(self) -> (FileNode, PathKey, S) {
         (self.file, self.path_key, self.status)
     }
 
     #[inline]
     fn transition_from_parts<NP, NS>(
-        file: FsFile,
+        file: FileNode,
         path_key: PathKey,
         status: NS,
     ) -> PropertyBankProcessor<NP, NS> {
@@ -237,7 +237,7 @@ pub struct Init;
 impl PropertyBankProcessor<Init, Unknown> {
     #[inline]
     pub fn from_discovery(
-        file: FsFile,
+        file: FileNode,
         root: &DirPath,
     ) -> Result<Self, crate::fs::PathError> {
         let path_key = file.path().as_key(root)?;
@@ -969,7 +969,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        fs::{DirPath, FsFile},
+        fs::{DirPath, FileNode},
         schema::{
             property::PropertyName,
             storage::testing::InMemoryRepository,
@@ -985,7 +985,7 @@ mod tests {
             pub(super) source: FileReader,
             pub(super) vault_root: DirPath,
             pub(super) _vault_dir: TempDir,
-            pub(super) file: FsFile,
+            pub(super) file: FileNode,
             pub(super) key: PathKey,
             pub(super) raw: RawPropertyBank,
             pub(super) content_hash: Blake3Hash,
@@ -1012,7 +1012,7 @@ mod tests {
                     .as_file()
                     .cloned()
                     .expect("file metadata");
-            let file = FsFile::new(file_path.clone(), metadata.clone());
+            let file = FileNode::new(file_path.clone(), metadata.clone());
             let key = file.path().as_key(&vault_root).expect("path key");
             let raw: RawPropertyBank = FileReader::parse_structured_from_str::<
                 RawPropertyBank,
@@ -1225,7 +1225,7 @@ mod tests {
             .cloned()
             .expect("file metadata");
             fixture.file =
-                FsFile::new(fixture.file.path().clone(), modified_metadata);
+                FileNode::new(fixture.file.path().clone(), modified_metadata);
 
             let processor =
                 PropertyBankProcessor::<Init, Unknown>::from_discovery(

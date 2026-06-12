@@ -32,9 +32,9 @@ tables independently.
 
 Define in `lithos-core::indexer::repository`:
 
-- `ReadRepository` — lookup by `FsNodeId`, lookup by `PathKey`, listing by
+- `ReadRepository` — lookup by `FsRecordId`, lookup by `PathKey`, listing by
   kind / format / parent, loading persisted paths for deletion detection.
-- `WriteRepository` — save file/dir nodes, atomic batch save, delete by ID,
+- `WriteRepository` — save file/dir records, atomic batch save, delete by ID,
   atomic batch prune.
 - `Repository: ReadRepository + WriteRepository`.
 
@@ -45,13 +45,13 @@ in one `redb::WriteTransaction`):
 
 | Table                | Key               | Value                  |
 |----------------------|-------------------|------------------------|
-| `FILES`              | `FsNodeId`        | rkyv `FileNode`        |
-| `DIRS`               | `FsNodeId`        | rkyv `DirNode`         |
-| `FILE_ID_BY_PATH`    | `PathKey` string  | `FsNodeId`             |
-| `DIR_ID_BY_PATH`     | `PathKey` string  | `FsNodeId`             |
-| `FILE_IDS_BY_BASENAME` | `&str`          | `FsNodeId`             |
-| `FILE_IDS_BY_PARENT` | `FsNodeId` (parent) | `FsNodeId` (child)  |
-| `FILE_IDS_BY_FORMAT` | `&str`            | `FsNodeId`             |
+| `FILES`              | `FsRecordId`      | rkyv `FileRecord`      |
+| `DIRS`               | `FsRecordId`      | rkyv `DirRecord`       |
+| `FILE_ID_BY_PATH`    | `PathKey` string  | `FsRecordId`           |
+| `DIR_ID_BY_PATH`     | `PathKey` string  | `FsRecordId`           |
+| `FILE_IDS_BY_BASENAME` | `&str`          | `FsRecordId`           |
+| `FILE_IDS_BY_PARENT` | `FsRecordId` (parent) | `FsRecordId` (child) |
+| `FILE_IDS_BY_FORMAT` | `&str`            | `FsRecordId`           |
 
 redb primitives stay inside the adapter. The public repository port exposes
 Indexer domain errors, not redb errors.
@@ -64,7 +64,7 @@ Indexer domain errors, not redb errors.
 - [ ] `ReadRepository`, `WriteRepository`, and `Repository` traits are defined
       with the operations listed above.
 - [ ] redb storage adapter implements all three traits.
-- [ ] Repository contract tests prove primary node records and all secondary
+- [ ] Repository contract tests prove primary records and all secondary
       indexes (`path`, `parent`, `basename`, `format`) stay consistent after
       save, batch save, delete, and prune operations.
 - [ ] All seven tables are defined; all writes occur in a single atomic
@@ -92,7 +92,7 @@ Indexer domain errors, not redb errors.
 
 - The three sub-deliverables (ScannerPort + walkdir adapter, repo port traits, redb adapter) are tightly coupled by type: the adapter tests need the repo ports, the test double (for issue 04) needs the scanner trait. Splitting this issue would just shift dependency complexity elsewhere.
 - `ScannerPort` ownership is in the Indexer context, not re-using `DirScanner`. The issue correctly states "The existing FS context `DirScanner` is **not** used here." GitNexus confirms `DirScanner` has zero external callers — no blast radius from this design choice.
-- All 7 tables match PRD Section 10b exactly. The issue correctly drops `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` (confirmed in PRD: "dropped — the primary nodes carry enough data for deletion without a reverse index at this stage").
+- All 7 tables match PRD Section 10b exactly. The issue correctly drops `PATH_BY_FILE_ID` and `PATH_BY_DIR_ID` (confirmed in PRD: "dropped — the primary records carry enough data for deletion without a reverse index at this stage").
 - Atomic writes across all 7 tables in a single `WriteTransaction` — AC is explicit and correct.
 - In-memory `ScannerPort` test double as an AC (line 64-65) is essential for issue 04. Correctly called out here.
 - redb primitives stay inside the adapter; public ports expose Indexer domain errors — consistent with PRD Section 10b.

@@ -18,7 +18,7 @@ concern:
 
 | File | Types |
 |------|-------|
-| `model.rs` | `FsNodeId`, `FsNodeType`, `FileNode`, `DirNode` |
+| `model.rs` | `FsRecordId`, `FsRecordType`, `FileRecord`, `DirRecord` |
 | `entry.rs` | `FileIndexEntry`, `DirIndexEntry`, `IndexStatus` |
 | `summary.rs` | `IndexResult`, `DeletedNodes`, `IndexNodeFailure` |
 | `scan.rs` | `IndexScope`, `ScanFilters`, `IndexOptions` |
@@ -29,24 +29,24 @@ issue depends on these types being stable and tested.
 
 Types to implement:
 
-- `FsNodeId` — newtype over `UuidV7`, following the pattern of every other
+- `FsRecordId` — newtype over `UuidV7`, following the pattern of every other
   context ID in the codebase.
-- `FileNode` and `DirNode` — domain structs with `rkyv` derive for zero-copy
+- `FileRecord` and `DirRecord` — domain structs with `rkyv` derive for zero-copy
   persistence. Fields as decided in PRD Section 6:
-  - `FileNode`: `id`, `parent_id`, `path: PathKey`, `name: FileName`,
+  - `FileRecord`: `id`, `parent_id`, `path: PathKey`, `name: FileName`,
     `format: FileFormat`, `metadata: FileMetadata`,
     `recorded_at: SystemTime` (with `rkyv::with::AsUnixTime`).
-  - `DirNode`: `id`, `parent_id`, `path: PathKey`, `name: DirName`,
+  - `DirRecord`: `id`, `parent_id`, `path: PathKey`, `name: DirName`,
     `metadata: DirMetadata`, `recorded_at: SystemTime`.
-- `FsNodeType` — `File` / `Dir` enum for generic node classification.
+- `FsRecordType` — `File` / `Dir` enum for generic record classification.
 - `IndexScope` — two-variant enum:
   `Full { filters: ScanFilters }` and `Partial { root: PathKey, filters: ScanFilters }`.
 - `ScanFilters` — Indexer-owned minimal placeholder type; extension/name narrowing
   criteria will be added in issue 03 when the walkdir adapter is implemented.
 - `IndexOptions` — `{ reindex: bool, dry_run: bool }`.
 - `IndexStatus` — `New` / `Fresh` / `Stale`.
-- `FileIndexEntry` — `{ id: FsNodeId, node: FileNode, path: FilePath, status: IndexStatus }`.
-- `DirIndexEntry` — `{ id: FsNodeId, node: DirNode, path: DirPath, status: IndexStatus }`.
+- `FileIndexEntry` — `{ id: FsRecordId, node: FileRecord, path: FilePath, status: IndexStatus }`.
+- `DirIndexEntry` — `{ id: FsRecordId, node: DirRecord, path: DirPath, status: IndexStatus }`.
 - `IndexResult` — file entries, directory entries, `DeletedNodes` (kind-segregated
   deleted ID collections), summary counts (exposed via methods, not a separate
   struct), per-node failure records (`IndexNodeFailure { id, kind, error }`).
@@ -62,26 +62,26 @@ exist. No `unwrap()` or `panic!` in production code.
 
 - [x] All types above compile across `lithos-core::indexer` modules (`model`,
       `entry`, `summary`, `scan`, `error`).
-- [x] `FsNodeId` is a newtype over `UuidV7`; identity is stable, unique, and
+- [x] `FsRecordId` is a newtype over `UuidV7`; identity is stable, unique, and
       compatible with redb key wrappers.
-- [x] `FileNode` and `DirNode` derive `rkyv::Archive`, `rkyv::Serialize`,
-      `rkyv::Deserialize` (consistent with existing node types in the
+- [x] `FileRecord` and `DirRecord` derive `rkyv::Archive`, `rkyv::Serialize`,
+      `rkyv::Deserialize` (consistent with existing record types in the
       codebase).
 - [x] Path conversion tests (using existing `lithos-core::fs::path` conversion
       functions) prove filesystem paths convert to `PathKey` only with an
       explicit Vault Root (no rootless conversion).
-- [x] `FsNodeType` is defined with `File` and `Dir` variants and used in
+- [x] `FsRecordType` is defined with `File` and `Dir` variants and used in
       `DeletedNodes` and `IndexNodeFailure` for kind-aware classification.
-- [x] `DeletedNodes` struct provides kind-segregated `files: Box<[FsNodeId]>` and
-      `dirs: Box<[FsNodeId]>` collections (not a flat `Vec<FsNodeId>`).
-- [x] `IndexNodeFailure` struct carries `{ id: FsNodeId, kind: FsNodeType, error: Box<str> }`
+- [x] `DeletedNodes` struct provides kind-segregated `files: Box<[FsRecordId]>` and
+      `dirs: Box<[FsRecordId]>` collections (not a flat `Vec<FsRecordId>`).
+- [x] `IndexNodeFailure` struct carries `{ id: FsRecordId, kind: FsRecordType, error: Box<str> }`
       for per-node non-fatal failure reporting.
 - [x] `IndexResult` exposes summary counts (`scanned`, `new`, `fresh`, `stale`,
       `deleted`, `failed`) as computed methods, not a separate struct.
 - [x] All collection fields use `Box<[T]>` not `Vec<T>`.
 - [x] Domain model construction tests reject invalid states and preserve valid
-      `FsNodeId`, `FileNode`, and `DirNode` fields.
-- [x] `FsNodeId` identity tests: stable, unique, ordered where needed,
+      `FsRecordId`, `FileRecord`, and `DirRecord` fields.
+- [x] `FsRecordId` identity tests: stable, unique, ordered where needed,
       compatible with DB key wrappers.
 - [x] `IndexerError` uses `#[derive(Debug, thiserror::Error)]` with
       `#[non_exhaustive]` and includes Display/format tests for all variants.
@@ -103,17 +103,17 @@ exist. No `unwrap()` or `panic!` in production code.
 **What was checked:**
 
 - All types in What to Build map directly to PRD Sections 5, 5b, 6, 7, 9, and 12. Coverage is complete.
-- `FsNodeId` as UuidV7 newtype is correctly specified (PRD Section 5). No `IdPort` needed — confirmed.
-- `FileNode` / `DirNode` rkyv derives and field shapes exactly match the locked structs in PRD Section 6. `recorded_at: SystemTime` with `rkyv::with::AsUnixTime` is correctly included.
+- `FsRecordId` as UuidV7 newtype is correctly specified (PRD Section 5). No `IdPort` needed — confirmed.
+- `FileRecord` / `DirRecord` rkyv derives and field shapes exactly match the locked structs in PRD Section 6. `recorded_at: SystemTime` with `rkyv::with::AsUnixTime` is correctly included.
 - `IndexScope` two-variant enum with embedded `ScanFilters` is correctly specified (PRD Section 9).
 - `IndexOptions { reindex, dry_run }` orthogonal to scope — correct (PRD Section 12).
-- `IndexResult` with separate `Vec<FsNodeId>` deleted IDs (not mixed with live entries) — correct (PRD Section 7).
+- `IndexResult` with separate `Vec<FsRecordId>` deleted IDs (not mixed with live entries) — correct (PRD Section 7).
 - Path conversion test AC ("only with an explicit Vault Root") is grounded in PRD Section 6.
 - Blocker chain (issue-01) is correct.
 
 **Minor observations (not blockers):**
 
-1. `FsNodeType` (originally `FsNodeKind`) appears in What to Build but is not explicitly called out in any AC. An agent could reasonably omit testing it. This was resolved by adding an explicit AC.
+1. `FsRecordType` (originally `FsNodeKind`) appears in What to Build but is not explicitly called out in any AC. An agent could reasonably omit testing it. This was resolved by adding an explicit AC.
 2. The `::error` module is mentioned in What to Build but ACs only say "compile inside `::model` (and `::error`)". No explicit test criterion for error construction/display. Agents should add at minimum a display/format test for Indexer error variants — the PRD Testing section expects actionable diagnostic output (item 14).
 
 ---
@@ -124,7 +124,7 @@ exist. No `unwrap()` or `panic!` in production code.
 
 ### ✅ Confirmed — ID newtype pattern
 
-`FsNodeId` matches the canonical newtype pattern used by every context ID in `lithos-core`:
+`FsRecordId` matches the canonical newtype pattern used by every context ID in `lithos-core`:
 
 | ID | File | Inner | Derives | `#[rkyv(derive(...))]` |
 |---|---|---|---|---|
@@ -141,11 +141,11 @@ The `FsTimes` struct (`fs/metadata.rs:264–271`) uses:
 #[rkyv(with = Map<AsUnixTime>)]
 created_at: Option<SystemTime>,
 ```
-The issue correctly specifies the same attribute for `recorded_at: SystemTime` in `FileNode`/`DirNode`. **No change needed.**
+The issue correctly specifies the same attribute for `recorded_at: SystemTime` in `FileRecord`/`DirRecord`. **No change needed.**
 
 ### ✅ Confirmed — PathKey for storage paths
 
-The three-tier path taxonomy (`fs/path.rs:9–14`) explicitly reserves `PathKey` for storage keys. Using `PathKey` in `FileNode`/`DirNode` is correct. The issue also uses `FilePath`/`DirPath` in `FileIndexEntry`/`DirIndexEntry`, which are the FS I/O tier types — this duality is intentional (nodes stored with `PathKey`, entries used for scan output with `FilePath`/`DirPath`).
+The three-tier path taxonomy (`fs/path.rs:9–14`) explicitly reserves `PathKey` for storage keys. Using `PathKey` in `FileRecord`/`DirRecord` is correct. The issue also uses `FilePath`/`DirPath` in `FileIndexEntry`/`DirIndexEntry`, which are the FS I/O tier types — this duality is intentional (records stored with `PathKey`, entries used for scan output with `FilePath`/`DirPath`).
 
 ### ✅ Confirmed — FileName, DirName, FileFormat, FileMetadata, DirMetadata exist
 
@@ -156,16 +156,16 @@ All referenced types are defined in `lithos-core::fs::`:
 
 The domain model will reference these, not re-define them. **Correct.**
 
-### ✅ Correct — No `content_hash` on FileNode
+### ✅ Correct — No `content_hash` on FileRecord
 
-PRD item 20 explicitly assigns content hashing to each context-owned processor. Omitting `content_hash` from `FileNode` is correct and avoids coupling.
+PRD item 20 explicitly assigns content hashing to each context-owned processor. Omitting `content_hash` from `FileRecord` is correct and avoids coupling.
 
 ### ⚠️ Enhancement: Use `Box<[T]>` not `Vec<T>` in `IndexResult`
 
 The `Note` aggregate (`note/aggregate.rs:148–157`) uses `Box<[T]>` for all collection fields to minimize heap allocations and optimize rkyv archive density. `IndexResult` should follow the same pattern:
 - `file_entries: Box<[FileIndexEntry]>`
 - `dir_entries: Box<[DirIndexEntry]>`
-- `deleted_ids: Box<[FsNodeId]>`
+- `deleted_ids: Box<[FsRecordId]>`
 
 Alternatively, use `Vec` at the service boundary and convert to `Box<[T]>` at the model — consistent with `Note::from_parts` (line 177). **Not blocking but strongly recommended.**
 
@@ -181,9 +181,9 @@ The codebase consistently uses `thiserror` with `#[non_exhaustive]` enums (`note
 
 **Existing triage observation #2 already flags missing Display/format tests.** This adds the structural pattern guidance.
 
-### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsNodeType`
+### ⚠️ Enhancement: ACs should verify `IndexResult` summary counts use `FsRecordType`
 
-The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). This was resolved by adding ACs for `FsNodeType`, `DeletedNodes`, and `IndexNodeFailure`.
+The existing minor observation #1 is reinforced by PRD Section 7 (result contract with summary counts). This was resolved by adding ACs for `FsRecordType`, `DeletedNodes`, and `IndexNodeFailure`.
 
 ---
 
@@ -194,7 +194,7 @@ The existing minor observation #1 is reinforced by PRD Section 7 (result contrac
 ```
 lithos-core/src/indexer/
 ├── mod.rs       → pub mod model; pub mod entry; pub mod summary; pub mod scan; pub mod error;
-├── model.rs     → FsNodeId, FsNodeType, FileNode, DirNode
+├── model.rs     → FsRecordId, FsRecordType, FileRecord, DirRecord
 ├── entry.rs     → FileIndexEntry, DirIndexEntry, IndexStatus
 ├── summary.rs   → IndexResult, DeletedNodes, IndexNodeFailure
 ├── scan.rs      → IndexScope, ScanFilters, IndexOptions
@@ -205,18 +205,18 @@ lithos-core/src/indexer/
 
 | Cycle | File       | Types                    | Test naming (`Structure A`)                |
 | ----- | ---------- | ------------------------ | ------------------------------------------ |
-| 1     | `model.rs` | `FsNodeId` newtype         | `mod fs_node_id { mod constructor, mod defaults, mod conversions, mod ordering }` |
-| 2     | `model.rs` | `FsNodeType` enum          | `mod fs_node_type { mod constructor }`       |
+| 1     | `model.rs` | `FsRecordId` newtype       | `mod id { mod constructor, mod defaults, mod conversions, mod ordering }` |
+| 2     | `model.rs` | `FsRecordType` enum        | `mod kind { mod constructor }`       |
 | 3     | `scan.rs`  | `ScanFilters`, `IndexScope`, `IndexOptions` | `mod scan_scope { mod constructor, mod defaults }` |
 | 4     | `entry.rs` | `IndexStatus` enum         | `mod index_status { mod constructor }`       |
 | 5     | `error.rs` | `IndexerError`             | `mod formatting { mod formatting, mod conversions }` |
 
-### Phase 2 — Depends on FsNodeId + FsNodeType
+### Phase 2 — Depends on FsRecordId + FsRecordType
 
 | Cycle | File       | Types                               | Test naming                             |
 | ----- | ---------- | ----------------------------------- | --------------------------------------- |
-| 6     | `model.rs` | `FileNode` struct                    | `mod file_node { mod constructor }`       |
-| 7     | `model.rs` | `DirNode` struct                     | `mod dir_node { mod constructor }`        |
+| 6     | `model.rs` | `FileRecord` struct                  | `mod file_record { mod constructor }`       |
+| 7     | `model.rs` | `DirRecord` struct                   | `mod dir_record { mod constructor }`        |
 
 ### Phase 3 — Depends on nodes + IndexStatus
 
@@ -225,7 +225,7 @@ lithos-core/src/indexer/
 | 8     | `entry.rs` | `FileIndexEntry`, `DirIndexEntry`               | `mod file_entry { mod constructor }`   |
 |       |            |                                               | `mod dir_entry { mod constructor }`   |
 
-### Phase 4 — Depends on entries + FsNodeType
+### Phase 4 — Depends on entries + FsRecordType
 
 | Cycle | File         | Types                                                  | Test naming                              |
 | ----- | ------------ | ------------------------------------------------------ | ---------------------------------------- |
@@ -241,9 +241,9 @@ lithos-core/src/indexer/
 
 ### Key design decisions
 
-- `FsNodeType` (not `FsNodeKind`) — clearer semantics: "type of node" vs ambiguous "kind."
-- `FsNodeId` follows `NoteId` newtype pattern exactly: `pub(crate) UuidV7`, derives `Debug,Clone,Copy,PartialEq,EQ,Hash,PartialOrd,Ord,Archive,Serialize,Deserialize`, `#[rkyv(derive(Debug))]`.
-- `FileNode`/`DirNode` use `#[rkyv(with = rkyv::with::AsUnixTime)]` on `recorded_at: SystemTime` — matches existing `FsTimes` pattern.
+- `FsRecordType` (not `FsNodeKind`) — clearer semantics: "type of record" vs ambiguous "kind."
+- `FsRecordId` follows `NoteId` newtype pattern exactly: `pub(crate) UuidV7`, derives `Debug,Clone,Copy,PartialEq,EQ,Hash,PartialOrd,Ord,Archive,Serialize,Deserialize`, `#[rkyv(derive(Debug))]`.
+- `FileRecord`/`DirRecord` use `#[rkyv(with = rkyv::with::AsUnixTime)]` on `recorded_at: SystemTime` — matches existing `FsTimes` pattern.
 - All collections use `Box<[T]>` not `Vec<T>` — consistent with `Note` aggregate.
 - Summary counts are computed methods, not a separate struct — avoids data duplication.
 - Failed per-node scans accumulate as `IndexNodeFailure` records in `IndexResult`, separate from `IndexerError` (which is for `?` propagation).

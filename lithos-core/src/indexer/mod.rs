@@ -22,7 +22,7 @@ mod summary;
 
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub(crate) use error::IndexerError;
-pub(crate) use model::{DirNode, FileNode, FsNodeId, FsNodeType};
+pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
 pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
 pub(crate) use summary::{
     DeletedNodes, IndexNodeFailure, IndexReport, IndexResult, IndexedNodes,

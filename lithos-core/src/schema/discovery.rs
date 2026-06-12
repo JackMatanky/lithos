@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     config::schema::SchemaConfigSpec,
     fs::{
-        DirScanInput, DirScanner, FsEntry, FsFile, PathKey,
+        DirScanInput, DirScanner, FileNode, FsNode, PathKey,
         StructuredFileFormat,
     },
     schema::{
@@ -42,7 +42,7 @@ pub(crate) struct SchemaCachedState {
 #[derive(Debug, Clone)]
 pub(crate) struct SchemaDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    pub(crate) entry: FsEntry,
+    pub(crate) entry: FsNode,
     /// Cached state from database (None for new files).
     pub(crate) cached: Option<SchemaCachedState>,
 }
@@ -53,7 +53,7 @@ pub(crate) struct SchemaDiscovery {
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyBankDiscovery {
     /// File entry from filesystem scan (path, filename, info).
-    entry: FsFile,
+    entry: FileNode,
     /// Cached view from database (None if never ingested).
     view: Option<RawPropertyBankView>,
 }
@@ -61,7 +61,7 @@ pub(crate) struct PropertyBankDiscovery {
 impl PropertyBankDiscovery {
     /// Returns the file entry.
     #[inline]
-    pub(crate) fn entry(&self) -> &FsFile {
+    pub(crate) fn entry(&self) -> &FileNode {
         &self.entry
     }
 
@@ -177,7 +177,7 @@ impl DiscoveryEngine {
 
     /// Scans filesystem for schema files.
     ///
-    /// Returns `Vec<FsEntry>` for efficient processing (no `HashMap`
+    /// Returns `Vec<FsNode>` for efficient processing (no `HashMap`
     /// overhead).
     ///
     /// # Errors
@@ -185,7 +185,7 @@ impl DiscoveryEngine {
     /// Returns error if filesystem scanning fails.
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
-    ) -> Result<Vec<FsEntry>, SchemaLoaderError> {
+    ) -> Result<Vec<FsNode>, SchemaLoaderError> {
         let structured_extensions: Vec<&str> = StructuredFileFormat::PRECEDENCE
             .iter()
             .map(|format| format.extension())
@@ -214,15 +214,15 @@ impl DiscoveryEngine {
 
     /// Separates property bank from schema files (O(n) single pass).
     ///
-    /// Returns owned `FsEntry` values for efficient processing.
+    /// Returns owned `FsNode` values for efficient processing.
     #[expect(
         clippy::type_complexity,
         reason = "Functional return type for discovery separation"
     )]
     fn separate_property_bank(
-        entries: Vec<FsEntry>,
+        entries: Vec<FsNode>,
         spec: &SchemaConfigSpec,
-    ) -> (Option<FsFile>, Vec<(PathKey, FsEntry)>) {
+    ) -> (Option<FileNode>, Vec<(PathKey, FsNode)>) {
         let mut property_bank_entry = None;
         let mut schemas = Vec::with_capacity(entries.len());
         let property_bank_path =
@@ -275,8 +275,8 @@ impl DiscoveryEngine {
     /// Returns error if database queries fail.
     fn query_cached_state<R>(
         repo: &R,
-        property_bank_entry: Option<&FsFile>,
-        schema_entries: &[(PathKey, FsEntry)],
+        property_bank_entry: Option<&FileNode>,
+        schema_entries: &[(PathKey, FsNode)],
         spec: &SchemaConfigSpec,
     ) -> Result<CachedState, SchemaLoaderError>
     where
@@ -286,8 +286,8 @@ impl DiscoveryEngine {
             spec.property_bank_key().map_err(SchemaIngestionError::from)?;
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "iter over &[(PathKey, FsEntry)] yields &&(PathKey, \
-                      FsEntry)"
+            reason = "iter over &[(PathKey, FsNode)] yields &&(PathKey, \
+                      FsNode)"
         )]
         let schema_keys: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
@@ -346,8 +346,8 @@ impl DiscoveryEngine {
     /// Performance: Single pass over `schema_entries`; no intermediate
     /// allocations.
     fn build_result(
-        property_bank_entry: Option<FsFile>,
-        schema_entries: Vec<(PathKey, FsEntry)>,
+        property_bank_entry: Option<FileNode>,
+        schema_entries: Vec<(PathKey, FsNode)>,
         mut cached: CachedState,
     ) -> DiscoveryResult {
         // Build property bank discovery
@@ -420,7 +420,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        fs::FsFile,
+        fs::FileNode,
         schema::{
             aggregate::Schema,
             bank::PropertyBank,
@@ -435,7 +435,7 @@ mod tests {
         },
     };
 
-    fn assert_property_bank_entry_is_file(file: &FsFile) {
+    fn assert_property_bank_entry_is_file(file: &FileNode) {
         assert!(
             file.path().as_path().ends_with("property_bank.json"),
             "expected property bank file path"

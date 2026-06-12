@@ -733,7 +733,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
             let metadata = schema_discovery
                 .entry
                 .into_file()
-                .map(crate::fs::entry::FsFile::into_metadata)
+                .map(crate::fs::entry::FileNode::into_metadata)
                 .ok_or_else(|| {
                     SchemaLoaderError::Ingestion(
                         super::error::SchemaIngestionError::File(
@@ -2889,7 +2889,7 @@ fn stage_variant_error(
 mod tests {
     use super::*;
     use crate::{
-        fs::FsEntry,
+        fs::FsNode,
         schema::{
             discovery::{SchemaCachedState, SchemaDiscovery},
             views::{
@@ -3261,8 +3261,8 @@ mod tests {
 
         let file_path = crate::fs::path::FilePath::try_new(full_path).unwrap();
         let fs_file =
-            crate::fs::entry::FsFile::new(file_path, metadata.clone());
-        let entry = FsEntry::File(fs_file);
+            crate::fs::entry::FileNode::new(file_path, metadata.clone());
+        let entry = FsNode::File(fs_file);
 
         let view = make_view("schema", Blake3Hash::new([7u8; 32]));
 

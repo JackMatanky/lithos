@@ -19,7 +19,7 @@ use std::path::Path;
 
 use common::*;
 use lithos_core::{
-    fs::{DirPath, FileMetadata, FilePath, FileReader, FsFile},
+    fs::{DirPath, FileMetadata, FileNode, FilePath, FileReader},
     schema::{
         base_processor::{BaseSchemaProcessor, BaseSchemaResolution},
         property::PropertyName,
@@ -40,11 +40,11 @@ fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
     Ok(())
 }
 
-fn make_fs_file(real_path: std::path::PathBuf) -> TestResult<FsFile> {
+fn make_fs_file(real_path: std::path::PathBuf) -> TestResult<FileNode> {
     let path = FilePath::try_new(real_path)?;
     let std_meta = std::fs::metadata(path.as_path())?;
     let meta = FileMetadata::from(&std_meta);
-    Ok(FsFile::new(path, meta))
+    Ok(FileNode::new(path, meta))
 }
 
 mod resolution {

@@ -1,30 +1,30 @@
-//! Index entry types representing filesystem nodes and their index status.
+//! Index entry types representing indexed records and their status.
 //!
-//! Each entry pairs a domain node (identity + metadata) with its runtime
+//! Each entry pairs a domain record (identity + metadata) with its runtime
 //! filesystem path and current index classification.
 
-use super::model::{DirNode, FileNode, FsNodeId};
+use super::model::{DirRecord, FileRecord, FsRecordId};
 use crate::fs::{DirPath, FilePath};
 
-/// Classification of a filesystem node's index state.
+/// Classification of an indexed record's state.
 ///
 /// Drives staleness detection and incremental re-indexing logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum IndexStatus {
-    /// The node has not been seen before; needs full indexing.
+    /// The record has not been seen before; needs full indexing.
     New,
-    /// The node is known and its metadata matches; no action required.
+    /// The record is known and its metadata matches; no action required.
     Fresh,
-    /// The node is known but its metadata has changed; needs re-indexing.
+    /// The record is known but its metadata has changed; needs re-indexing.
     Stale,
 }
 
-/// An indexed file entry pairing a [`FileNode`] with its runtime path and
+/// An indexed file entry pairing a [`FileRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
 pub(crate) struct FileIndexEntry {
-    id: FsNodeId,
-    node: FileNode,
+    id: FsRecordId,
+    node: FileRecord,
     path: FilePath,
     status: IndexStatus,
 }
@@ -34,8 +34,8 @@ impl FileIndexEntry {
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        id: FsNodeId,
-        node: FileNode,
+        id: FsRecordId,
+        node: FileRecord,
         path: FilePath,
         status: IndexStatus,
     ) -> Self {
@@ -47,17 +47,17 @@ impl FileIndexEntry {
         }
     }
 
-    /// Returns the node's stable identifier.
+    /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsRecordId {
         self.id
     }
 
-    /// Returns the file node domain record.
+    /// Returns the file domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &FileNode {
+    pub(crate) fn node(&self) -> &FileRecord {
         &self.node
     }
 
@@ -76,12 +76,12 @@ impl FileIndexEntry {
     }
 }
 
-/// An indexed directory entry pairing a [`DirNode`] with its runtime path and
+/// An indexed directory entry pairing a [`DirRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
 pub(crate) struct DirIndexEntry {
-    id: FsNodeId,
-    node: DirNode,
+    id: FsRecordId,
+    node: DirRecord,
     path: DirPath,
     status: IndexStatus,
 }
@@ -91,8 +91,8 @@ impl DirIndexEntry {
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        id: FsNodeId,
-        node: DirNode,
+        id: FsRecordId,
+        node: DirRecord,
         path: DirPath,
         status: IndexStatus,
     ) -> Self {
@@ -104,17 +104,17 @@ impl DirIndexEntry {
         }
     }
 
-    /// Returns the node's stable identifier.
+    /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsRecordId {
         self.id
     }
 
-    /// Returns the directory node domain record.
+    /// Returns the directory domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &DirNode {
+    pub(crate) fn node(&self) -> &DirRecord {
         &self.node
     }
 
@@ -167,7 +167,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{FileIndexEntry, IndexStatus},
-                    model::{FileNode, FsNodeId},
+                    model::{FileRecord, FsRecordId},
                 },
             };
 
@@ -176,15 +176,15 @@ mod tests {
                 let file_path_buf = temp_dir.path().join("file.md");
                 std::fs::File::create(&file_path_buf).unwrap();
 
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
                 let metadata =
                     FileMetadata::new(FsTimes::new(None, None), 0, false);
                 let recorded_at = SystemTime::now();
-                let node = FileNode::new(
+                let node = FileRecord::new(
                     id,
                     parent_id,
                     key,
@@ -209,15 +209,15 @@ mod tests {
                 let file_path_buf = temp_dir.path().join("file.md");
                 std::fs::File::create(&file_path_buf).unwrap();
 
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
                 let metadata =
                     FileMetadata::new(FsTimes::new(None, None), 0, false);
                 let recorded_at = SystemTime::now();
-                let node = FileNode::new(
+                let node = FileRecord::new(
                     id,
                     parent_id,
                     key,
@@ -247,7 +247,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{DirIndexEntry, IndexStatus},
-                    model::{DirNode, FsNodeId},
+                    model::{DirRecord, FsRecordId},
                 },
             };
 
@@ -257,14 +257,14 @@ mod tests {
                 let dir_path_buf = temp_dir.path().join("notes");
                 std::fs::create_dir_all(&dir_path_buf).unwrap();
 
-                let id = FsNodeId::new();
+                let id = FsRecordId::new();
                 let key = PathKey::try_new("notes").unwrap();
                 let name = DirName::new("notes".into());
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let recorded_at = SystemTime::now();
                 let node =
-                    DirNode::new(id, None, key, name, metadata, recorded_at);
+                    DirRecord::new(id, None, key, name, metadata, recorded_at);
                 let path = DirPath::try_new(dir_path_buf).unwrap();
                 let entry =
                     DirIndexEntry::new(id, node, path, IndexStatus::Stale);

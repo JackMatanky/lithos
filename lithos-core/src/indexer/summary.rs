@@ -5,7 +5,7 @@
 
 use super::{
     entry::{DirIndexEntry, FileIndexEntry},
-    model::{FsNodeId, FsNodeType},
+    model::{FsRecordId, FsRecordType},
 };
 
 /// The aggregate result of a single indexing run.
@@ -163,15 +163,18 @@ impl IndexedNodes {
 /// no longer exist on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct DeletedNodes {
-    files: Box<[FsNodeId]>,
-    dirs: Box<[FsNodeId]>,
+    files: Box<[FsRecordId]>,
+    dirs: Box<[FsRecordId]>,
 }
 
 impl DeletedNodes {
     /// Creates a new `DeletedNodes` record.
     #[inline]
     #[must_use]
-    pub(crate) fn new(files: Box<[FsNodeId]>, dirs: Box<[FsNodeId]>) -> Self {
+    pub(crate) fn new(
+        files: Box<[FsRecordId]>,
+        dirs: Box<[FsRecordId]>,
+    ) -> Self {
         Self {
             files,
             dirs,
@@ -181,14 +184,14 @@ impl DeletedNodes {
     /// Returns the IDs of deleted file nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn files(&self) -> &[FsNodeId] {
+    pub(crate) fn files(&self) -> &[FsRecordId] {
         &self.files
     }
 
     /// Returns the IDs of deleted directory nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn dirs(&self) -> &[FsNodeId] {
+    pub(crate) fn dirs(&self) -> &[FsRecordId] {
         &self.dirs
     }
 
@@ -203,8 +206,8 @@ impl DeletedNodes {
 /// A failure record for a single filesystem node that could not be indexed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IndexNodeFailure {
-    id: FsNodeId,
-    kind: FsNodeType,
+    id: FsRecordId,
+    kind: FsRecordType,
     error: Box<str>,
 }
 
@@ -212,7 +215,11 @@ impl IndexNodeFailure {
     /// Creates a new failure record.
     #[inline]
     #[must_use]
-    pub(crate) fn new(id: FsNodeId, kind: FsNodeType, error: Box<str>) -> Self {
+    pub(crate) fn new(
+        id: FsRecordId,
+        kind: FsRecordType,
+        error: Box<str>,
+    ) -> Self {
         Self {
             id,
             kind,
@@ -223,14 +230,14 @@ impl IndexNodeFailure {
     /// Returns the node identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the node type (file or directory).
     #[inline]
     #[must_use]
-    pub(crate) fn kind(&self) -> FsNodeType {
+    pub(crate) fn kind(&self) -> FsRecordType {
         self.kind
     }
 
@@ -257,7 +264,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
-                    model::{DirNode, FileNode, FsNodeId},
+                    model::{DirRecord, FileRecord, FsRecordId},
                     summary::IndexedNodes,
                 },
             };
@@ -267,14 +274,14 @@ mod tests {
                 let file_path_buf = temp_dir.path().join("file.md");
                 std::fs::File::create(&file_path_buf).unwrap();
 
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
                 let metadata =
                     FileMetadata::new(FsTimes::new(None, None), 0, false);
-                let node = FileNode::new(
+                let node = FileRecord::new(
                     id,
                     parent_id,
                     key,
@@ -292,12 +299,12 @@ mod tests {
                 let dir_path_buf = temp_dir.path().join("notes");
                 std::fs::create_dir_all(&dir_path_buf).unwrap();
 
-                let id = FsNodeId::new();
+                let id = FsRecordId::new();
                 let key = PathKey::try_new("notes").unwrap();
                 let name = DirName::new("notes".into());
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
-                let node = DirNode::new(
+                let node = DirRecord::new(
                     id,
                     None,
                     key,
@@ -325,14 +332,14 @@ mod tests {
         }
     }
 
-    mod deleted_nodes {
+    mod deleted {
         mod constructor {
-            use crate::indexer::{model::FsNodeId, summary::DeletedNodes};
+            use crate::indexer::{model::FsRecordId, summary::DeletedNodes};
 
             #[test]
             fn stores_file_and_dir_ids() {
-                let f1 = FsNodeId::new();
-                let d1 = FsNodeId::new();
+                let f1 = FsRecordId::new();
+                let d1 = FsRecordId::new();
                 let deleted = DeletedNodes::new(Box::new([f1]), Box::new([d1]));
                 assert_eq!(deleted.files(), &[f1]);
                 assert_eq!(deleted.dirs(), &[d1]);
@@ -340,9 +347,9 @@ mod tests {
 
             #[test]
             fn count_is_sum_of_files_and_dirs() {
-                let f1 = FsNodeId::new();
-                let f2 = FsNodeId::new();
-                let d1 = FsNodeId::new();
+                let f1 = FsRecordId::new();
+                let f2 = FsRecordId::new();
+                let d1 = FsRecordId::new();
                 let deleted =
                     DeletedNodes::new(Box::new([f1, f2]), Box::new([d1]));
                 assert_eq!(deleted.count(), 3);
@@ -356,29 +363,29 @@ mod tests {
         }
     }
 
-    mod index_node_failure {
+    mod failure {
         mod constructor {
             use crate::indexer::{
-                model::{FsNodeId, FsNodeType},
+                model::{FsRecordId, FsRecordType},
                 summary::IndexNodeFailure,
             };
 
             #[test]
             fn stores_id_kind_and_error() {
-                let id = FsNodeId::new();
+                let id = FsRecordId::new();
                 let failure = IndexNodeFailure::new(
                     id,
-                    FsNodeType::File,
+                    FsRecordType::File,
                     "permission denied".into(),
                 );
                 assert_eq!(failure.id(), id);
-                assert_eq!(failure.kind(), FsNodeType::File);
+                assert_eq!(failure.kind(), FsRecordType::File);
                 assert_eq!(failure.error(), "permission denied");
             }
         }
     }
 
-    mod index_report {
+    mod report {
         mod constructor {
             use crate::indexer::summary::IndexReport;
 
@@ -395,7 +402,7 @@ mod tests {
         }
     }
 
-    mod index_result {
+    mod result {
         mod constructor {
             use crate::indexer::summary::{
                 DeletedNodes, IndexResult, IndexedNodes,

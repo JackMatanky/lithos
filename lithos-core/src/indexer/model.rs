@@ -1,6 +1,6 @@
-//! Indexer domain model: filesystem node identity and classification types.
+//! Indexer domain model: filesystem record identity and classification types.
 //!
-//! Provides the foundational types for representing filesystem nodes
+//! Provides the foundational types for representing indexed filesystem records
 //! discovered during an index scan.
 
 use std::{fmt, time::SystemTime};
@@ -16,7 +16,7 @@ use crate::{
     utils::UuidV7,
 };
 
-/// Stable identifier for a filesystem node (file or directory).
+/// Stable identifier for an indexed filesystem record (file or directory).
 ///
 /// Uses UUID v7 for time-ordered, collision-resistant identifiers that are
 /// efficient for database indexing.
@@ -34,10 +34,10 @@ use crate::{
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub(crate) struct FsNodeId(pub(crate) UuidV7);
+pub(crate) struct FsRecordId(pub(crate) UuidV7);
 
-impl FsNodeId {
-    /// Creates a new random filesystem node identifier (UUID v7).
+impl FsRecordId {
+    /// Creates a new random filesystem record identifier (UUID v7).
     #[inline]
     #[must_use]
     pub(crate) fn new() -> Self {
@@ -45,38 +45,38 @@ impl FsNodeId {
     }
 }
 
-impl Default for FsNodeId {
+impl Default for FsRecordId {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Display for FsNodeId {
+impl fmt::Display for FsRecordId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-/// Classification of a filesystem node as either a file or a directory.
+/// Classification of an indexed filesystem record as either file or directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FsNodeType {
+pub(crate) enum FsRecordType {
     /// A regular file.
     File,
     /// A directory.
     Dir,
 }
 
-/// A filesystem file node with identity, path, and metadata.
+/// An indexed file record with identity, path, and metadata.
 ///
 /// Represents a discovered file within the index scope, capturing all
 /// information needed for downstream indexing and staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub(crate) struct FileNode {
-    id: FsNodeId,
-    parent_id: FsNodeId,
+pub(crate) struct FileRecord {
+    id: FsRecordId,
+    parent_id: FsRecordId,
     path: PathKey,
     name: FileName,
     format: FileFormat,
@@ -85,8 +85,8 @@ pub(crate) struct FileNode {
     recorded_at: SystemTime,
 }
 
-impl FileNode {
-    /// Creates a new file node.
+impl FileRecord {
+    /// Creates a new file record.
     #[expect(
         clippy::too_many_arguments,
         reason = "Domain model requires all these fields to be fully \
@@ -95,8 +95,8 @@ impl FileNode {
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        id: FsNodeId,
-        parent_id: FsNodeId,
+        id: FsRecordId,
+        parent_id: FsRecordId,
         path: PathKey,
         name: FileName,
         format: FileFormat,
@@ -114,17 +114,17 @@ impl FileNode {
         }
     }
 
-    /// Returns the node's stable identifier.
+    /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsRecordId {
         self.id
     }
 
-    /// Returns the parent directory's node identifier.
+    /// Returns the parent directory's record identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn parent_id(&self) -> FsNodeId {
+    pub(crate) fn parent_id(&self) -> FsRecordId {
         self.parent_id
     }
 
@@ -156,7 +156,7 @@ impl FileNode {
         &self.metadata
     }
 
-    /// Returns the time at which this node was recorded in the index.
+    /// Returns the time at which this record was written to the index.
     #[inline]
     #[must_use]
     pub(crate) fn recorded_at(&self) -> SystemTime {
@@ -164,14 +164,14 @@ impl FileNode {
     }
 }
 
-/// A filesystem directory node with identity, path, and metadata.
+/// An indexed directory record with identity, path, and metadata.
 ///
 /// Represents a discovered directory within the index scope.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub(crate) struct DirNode {
-    id: FsNodeId,
-    parent_id: Option<FsNodeId>,
+pub(crate) struct DirRecord {
+    id: FsRecordId,
+    parent_id: Option<FsRecordId>,
     path: PathKey,
     name: DirName,
     metadata: DirMetadata,
@@ -179,8 +179,8 @@ pub(crate) struct DirNode {
     recorded_at: SystemTime,
 }
 
-impl DirNode {
-    /// Creates a new directory node.
+impl DirRecord {
+    /// Creates a new directory record.
     ///
     /// `parent_id` is `None` for the vault root directory.
     #[inline]
@@ -191,8 +191,8 @@ impl DirNode {
     )]
     #[must_use]
     pub(crate) fn new(
-        id: FsNodeId,
-        parent_id: Option<FsNodeId>,
+        id: FsRecordId,
+        parent_id: Option<FsRecordId>,
         path: PathKey,
         name: DirName,
         metadata: DirMetadata,
@@ -208,17 +208,17 @@ impl DirNode {
         }
     }
 
-    /// Returns the node's stable identifier.
+    /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsNodeId {
+    pub(crate) fn id(&self) -> FsRecordId {
         self.id
     }
 
-    /// Returns the parent directory's node identifier, or `None` for root.
+    /// Returns the parent directory's record identifier, or `None` for root.
     #[inline]
     #[must_use]
-    pub(crate) fn parent_id(&self) -> Option<FsNodeId> {
+    pub(crate) fn parent_id(&self) -> Option<FsRecordId> {
         self.parent_id
     }
 
@@ -243,7 +243,7 @@ impl DirNode {
         &self.metadata
     }
 
-    /// Returns the time at which this node was recorded in the index.
+    /// Returns the time at which this record was written to the index.
     #[inline]
     #[must_use]
     pub(crate) fn recorded_at(&self) -> SystemTime {
@@ -253,70 +253,70 @@ impl DirNode {
 
 #[cfg(test)]
 mod tests {
-    mod fs_node_id {
+    mod id {
         mod constructor {
-            use crate::indexer::model::FsNodeId;
+            use crate::indexer::model::FsRecordId;
 
             #[test]
             fn returns_unique_ids_on_each_call() {
-                let id1 = FsNodeId::new();
-                let id2 = FsNodeId::new();
+                let id1 = FsRecordId::new();
+                let id2 = FsRecordId::new();
                 assert_ne!(id1, id2);
             }
         }
 
         mod ordering {
-            use crate::indexer::model::FsNodeId;
+            use crate::indexer::model::FsRecordId;
 
             #[test]
             fn returns_ordered_ids_over_time() {
-                let id1 = FsNodeId::new();
-                let id2 = FsNodeId::new();
+                let id1 = FsRecordId::new();
+                let id2 = FsRecordId::new();
                 assert!(id1 <= id2, "UuidV7 must be time-ordered");
             }
         }
 
         mod default {
-            use crate::indexer::model::FsNodeId;
+            use crate::indexer::model::FsRecordId;
 
             #[test]
             fn default_creates_valid_id() {
-                let id = FsNodeId::default();
-                let id2 = FsNodeId::default();
+                let id = FsRecordId::default();
+                let id2 = FsRecordId::default();
                 assert_ne!(id, id2, "default should create unique IDs");
             }
         }
 
         mod display {
-            use crate::indexer::model::FsNodeId;
+            use crate::indexer::model::FsRecordId;
 
             #[test]
             fn formats_non_empty_string() {
-                let id = FsNodeId::new();
+                let id = FsRecordId::new();
                 let s = id.to_string();
                 assert!(!s.is_empty());
             }
         }
     }
 
-    mod fs_node_type {
+    mod fs_record_type {
         mod constructor {
-            use crate::indexer::model::FsNodeType;
+            use crate::indexer::model::FsRecordType;
 
             #[test]
             fn file_variant_is_distinguishable_from_dir() {
-                assert_ne!(FsNodeType::File, FsNodeType::Dir);
+                assert_ne!(FsRecordType::File, FsRecordType::Dir);
             }
 
             #[test]
             fn clones_correctly() {
-                let t = FsNodeType::File;
+                let t = FsRecordType::File;
                 assert_eq!(t, t.clone());
             }
         }
     }
 
-    mod file_node {
+    mod file {
         mod constructor {
             use std::time::SystemTime;
 
@@ -327,19 +327,19 @@ mod tests {
                     name::FileName,
                     path::PathKey,
                 },
-                indexer::model::{FileNode, FsNodeId},
+                indexer::model::{FileRecord, FsRecordId},
             };
 
-            fn make_file_node() -> FileNode {
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+            fn make_file_record() -> FileRecord {
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let path = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
                 let metadata =
                     FileMetadata::new(FsTimes::new(None, None), 0, false);
                 let recorded_at = SystemTime::now();
-                FileNode::new(
+                FileRecord::new(
                     id,
                     parent_id,
                     path,
@@ -352,15 +352,15 @@ mod tests {
 
             #[test]
             fn returns_stored_id() {
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let path = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
                 let metadata =
                     FileMetadata::new(FsTimes::new(None, None), 0, false);
                 let recorded_at = SystemTime::now();
-                let node = FileNode::new(
+                let node = FileRecord::new(
                     id,
                     parent_id,
                     path,
@@ -375,19 +375,19 @@ mod tests {
 
             #[test]
             fn returns_stored_path() {
-                let node = make_file_node();
+                let node = make_file_record();
                 assert_eq!(node.path().as_str(), "notes/file.md");
             }
 
             #[test]
             fn returns_stored_format() {
-                let node = make_file_node();
+                let node = make_file_record();
                 assert_eq!(node.format(), FileFormat::Markdown);
             }
         }
     }
 
-    mod dir_node {
+    mod dir {
         mod constructor {
             use std::time::SystemTime;
 
@@ -397,33 +397,33 @@ mod tests {
                     name::DirName,
                     path::PathKey,
                 },
-                indexer::model::{DirNode, FsNodeId},
+                indexer::model::{DirRecord, FsRecordId},
             };
 
             #[test]
             fn returns_stored_id() {
-                let id = FsNodeId::new();
+                let id = FsRecordId::new();
                 let path = PathKey::try_new("notes").unwrap();
                 let name = DirName::new("notes".into());
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let recorded_at = SystemTime::now();
                 let node =
-                    DirNode::new(id, None, path, name, metadata, recorded_at);
+                    DirRecord::new(id, None, path, name, metadata, recorded_at);
                 assert_eq!(node.id(), id);
                 assert_eq!(node.parent_id(), None);
             }
 
             #[test]
             fn stores_parent_id_when_provided() {
-                let id = FsNodeId::new();
-                let parent_id = FsNodeId::new();
+                let id = FsRecordId::new();
+                let parent_id = FsRecordId::new();
                 let path = PathKey::try_new("notes/sub").unwrap();
                 let name = DirName::new("sub".into());
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let recorded_at = SystemTime::now();
-                let node = DirNode::new(
+                let node = DirRecord::new(
                     id,
                     Some(parent_id),
                     path,

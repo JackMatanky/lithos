@@ -177,7 +177,7 @@ mod tests {
     use crate::{
         config::{aggregate::Config, schema::SchemaConfigSpec},
         fs::{
-            DirPath, FileReader, FsFile,
+            DirPath, FileNode, FileReader,
             path::{RelativeDirPath, RelativeFilePath},
         },
         schema::{
@@ -186,7 +186,7 @@ mod tests {
         },
     };
 
-    fn assert_file_guarantee(file: &FsFile) {
+    fn assert_file_guarantee(file: &FileNode) {
         assert!(file.path().as_path().ends_with("property_bank.json"));
     }
 

@@ -1,6 +1,6 @@
-//! Filesystem entry types for files and directories.
+//! Filesystem node types for files and directories.
 //!
-//! Provides unified entry types that combine paths with metadata,
+//! Provides unified node types that combine paths with metadata,
 //! distinguishing files from directories at the type level.
 
 use rkyv::{Archive, Deserialize, Serialize};
@@ -11,66 +11,66 @@ use super::{
     path::{DirPath, FilePath, FsPath, FsPathRef},
 };
 
-/// Unified filesystem entry for files or directories.
+/// Unified filesystem node for files or directories.
 ///
-/// Provides type-safe access to entries with variants for files and
+/// Provides type-safe access to nodes with variants for files and
 /// directories.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub enum FsEntry {
-    /// A file entry.
-    File(FsFile),
-    /// A directory entry.
-    Dir(FsDir),
+pub enum FsNode {
+    /// A file node.
+    File(FileNode),
+    /// A directory node.
+    Dir(DirNode),
 }
 
-impl FsEntry {
-    /// Check if this entry is a file.
+impl FsNode {
+    /// Check if this node is a file.
     #[inline]
     #[must_use]
     pub const fn is_file(&self) -> bool {
         matches!(self, Self::File(_))
     }
 
-    /// Check if this entry is a directory.
+    /// Check if this node is a directory.
     #[inline]
     #[must_use]
     pub const fn is_dir(&self) -> bool {
         matches!(self, Self::Dir(_))
     }
 
-    /// Get file entry if this is a file.
+    /// Get file node if this is a file.
     #[inline]
     #[must_use]
-    pub const fn as_file(&self) -> Option<&FsFile> {
+    pub const fn as_file(&self) -> Option<&FileNode> {
         match self {
             Self::File(file) => Some(file),
             Self::Dir(_) => None,
         }
     }
 
-    /// Consume the entry and return the file entry if this is a file.
+    /// Consume the node and return the file node if this is a file.
     #[inline]
     #[must_use]
-    pub fn into_file(self) -> Option<FsFile> {
+    pub fn into_file(self) -> Option<FileNode> {
         match self {
             Self::File(file) => Some(file),
             Self::Dir(_) => None,
         }
     }
 
-    /// Get directory entry if this is a directory.
+    /// Get directory node if this is a directory.
     #[inline]
     #[must_use]
-    pub const fn as_dir(&self) -> Option<&FsDir> {
+    pub const fn as_dir(&self) -> Option<&DirNode> {
         match self {
             Self::File(_) => None,
             Self::Dir(dir) => Some(dir),
         }
     }
 
-    /// Get the path for this entry as an `FsPath`.
+    /// Get the path for this node as an `FsPath`.
     ///
     /// This returns a unified path reference that can represent either a file
     /// or directory path.
@@ -86,7 +86,7 @@ impl FsEntry {
         }
     }
 
-    /// Get a zero-copy reference to the path for this entry.
+    /// Get a zero-copy reference to the path for this node.
     ///
     /// This returns a borrowed view into the path without cloning. Prefer this
     /// over [`path`](Self::path) when you only need to inspect the path.
@@ -99,7 +99,7 @@ impl FsEntry {
         }
     }
 
-    /// Get a filename-like terminal component for this entry.
+    /// Get a filename-like terminal component for this node.
     #[inline]
     #[must_use]
     pub fn filename(&self) -> Option<FileName> {
@@ -107,7 +107,7 @@ impl FsEntry {
         FileName::try_from(path.as_path()).ok()
     }
 
-    /// Get unified metadata for this entry.
+    /// Get unified metadata for this node.
     #[inline]
     #[must_use]
     pub fn metadata(&self) -> FsMetadata {
@@ -118,7 +118,7 @@ impl FsEntry {
     }
 }
 
-impl TryFrom<walkdir::DirEntry> for FsEntry {
+impl TryFrom<walkdir::DirEntry> for FsNode {
     type Error = super::error::ScanError;
 
     #[inline]
@@ -141,30 +141,30 @@ impl TryFrom<walkdir::DirEntry> for FsEntry {
             let dir_path =
                 DirPath::try_new(path.clone()).map_err(ScanError::from)?;
             let dir_metadata = DirMetadata::from(&std_metadata);
-            Ok(Self::Dir(FsDir::new(dir_path, dir_metadata)))
+            Ok(Self::Dir(DirNode::new(dir_path, dir_metadata)))
         } else {
             let file_path =
                 FilePath::try_new(path.clone()).map_err(ScanError::from)?;
             let file_metadata = FileMetadata::from(&std_metadata);
-            Ok(Self::File(FsFile::new(file_path, file_metadata)))
+            Ok(Self::File(FileNode::new(file_path, file_metadata)))
         }
     }
 }
 
-/// A file entry with path and metadata.
+/// A file node with path and metadata.
 ///
 /// Represents a concrete file on the filesystem with its associated metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
-pub struct FsFile {
+pub struct FileNode {
     /// Path to the file.
     path: FilePath,
     /// File metadata.
     metadata: FileMetadata,
 }
 
-impl FsFile {
-    /// Create a new file entry.
+impl FileNode {
+    /// Create a new file node.
     #[inline]
     #[must_use]
     pub const fn new(path: FilePath, metadata: FileMetadata) -> Self {
@@ -188,7 +188,7 @@ impl FsFile {
         &self.metadata
     }
 
-    /// Consume the entry and return its metadata.
+    /// Consume the node and return its metadata.
     #[inline]
     #[must_use]
     pub fn into_metadata(self) -> FileMetadata {
@@ -196,21 +196,21 @@ impl FsFile {
     }
 }
 
-/// A directory entry with path and metadata.
+/// A directory node with path and metadata.
 ///
 /// Represents a concrete directory on the filesystem with its associated
 /// metadata.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
-pub struct FsDir {
+pub struct DirNode {
     /// Path to the directory.
     path: DirPath,
     /// Directory metadata.
     metadata: DirMetadata,
 }
 
-impl FsDir {
-    /// Create a new directory entry.
+impl DirNode {
+    /// Create a new directory node.
     #[inline]
     #[must_use]
     pub const fn new(path: DirPath, metadata: DirMetadata) -> Self {
@@ -234,7 +234,7 @@ impl FsDir {
         &self.metadata
     }
 
-    /// Consume the entry and return its metadata.
+    /// Consume the node and return its metadata.
     #[inline]
     #[must_use]
     pub fn into_metadata(self) -> DirMetadata {
@@ -249,7 +249,7 @@ mod tests {
     use super::*;
     use crate::fs::{error::ScanError, metadata::FsTimes};
 
-    mod fs_entry {
+    mod fs_node {
         use super::*;
 
         mod try_from {
@@ -268,7 +268,7 @@ mod tests {
                     .find(|e| e.file_name().to_str() == Some("test.md"))
                     .unwrap();
 
-                let fs_entry = FsEntry::try_from(entry).unwrap();
+                let fs_entry = FsNode::try_from(entry).unwrap();
 
                 assert!(fs_entry.is_file(), "Expected file entry");
             }
@@ -287,7 +287,7 @@ mod tests {
                     .find(|e| e.file_name().to_str() == Some("subdir"))
                     .unwrap();
 
-                let fs_entry = FsEntry::try_from(entry).unwrap();
+                let fs_entry = FsNode::try_from(entry).unwrap();
 
                 assert!(fs_entry.is_dir(), "Expected directory entry");
             }
@@ -308,7 +308,7 @@ mod tests {
 
                 std::fs::remove_file(&file_path).unwrap();
 
-                let result = FsEntry::try_from(entry);
+                let result = FsNode::try_from(entry);
 
                 assert!(result.is_err(), "Expected error for missing file");
                 let error = result.unwrap_err();
@@ -329,8 +329,8 @@ mod tests {
                     FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
-                    FsFile::new(path, FileMetadata::new(times, 0, false));
-                let entry = FsEntry::File(file);
+                    FileNode::new(path, FileMetadata::new(times, 0, false));
+                let entry = FsNode::File(file);
 
                 let result = entry.is_file();
 
@@ -342,8 +342,8 @@ mod tests {
                 let temp = tempfile::TempDir::new().unwrap();
                 let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir = FsDir::new(path, DirMetadata::new(times, false));
-                let entry = FsEntry::Dir(dir);
+                let dir = DirNode::new(path, DirMetadata::new(times, false));
+                let entry = FsNode::Dir(dir);
 
                 let result = entry.is_file();
 
@@ -359,8 +359,8 @@ mod tests {
                 let temp = tempfile::TempDir::new().unwrap();
                 let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir = FsDir::new(path, DirMetadata::new(times, false));
-                let entry = FsEntry::Dir(dir);
+                let dir = DirNode::new(path, DirMetadata::new(times, false));
+                let entry = FsNode::Dir(dir);
 
                 let result = entry.is_dir();
 
@@ -374,8 +374,8 @@ mod tests {
                     FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
-                    FsFile::new(path, FileMetadata::new(times, 0, false));
-                let entry = FsEntry::File(file);
+                    FileNode::new(path, FileMetadata::new(times, 0, false));
+                let entry = FsNode::File(file);
 
                 let result = entry.is_dir();
 
@@ -393,8 +393,8 @@ mod tests {
                     FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
-                    FsFile::new(path, FileMetadata::new(times, 512, false));
-                let entry = FsEntry::File(file.clone());
+                    FileNode::new(path, FileMetadata::new(times, 512, false));
+                let entry = FsNode::File(file.clone());
 
                 let result = entry.as_file();
 
@@ -411,8 +411,8 @@ mod tests {
                 let temp = tempfile::TempDir::new().unwrap();
                 let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir = FsDir::new(path, DirMetadata::new(times, false));
-                let entry = FsEntry::Dir(dir);
+                let dir = DirNode::new(path, DirMetadata::new(times, false));
+                let entry = FsNode::Dir(dir);
 
                 let result = entry.as_file();
 
@@ -431,8 +431,8 @@ mod tests {
                 let temp = tempfile::TempDir::new().unwrap();
                 let path = DirPath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir = FsDir::new(path, DirMetadata::new(times, false));
-                let entry = FsEntry::Dir(dir.clone());
+                let dir = DirNode::new(path, DirMetadata::new(times, false));
+                let entry = FsNode::Dir(dir.clone());
 
                 let result = entry.as_dir();
 
@@ -454,8 +454,8 @@ mod tests {
                     FilePath::try_new(temp.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
                 let file =
-                    FsFile::new(path, FileMetadata::new(times, 512, false));
-                let entry = FsEntry::File(file);
+                    FileNode::new(path, FileMetadata::new(times, 512, false));
+                let entry = FsNode::File(file);
 
                 let result = entry.as_dir();
 
@@ -472,7 +472,7 @@ mod tests {
                 let file_path =
                     FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let file_entry = FsEntry::File(FsFile::new(
+                let file_entry = FsNode::File(FileNode::new(
                     file_path,
                     FileMetadata::new(times, 100, false),
                 ));
@@ -488,7 +488,7 @@ mod tests {
                 let dir_path =
                     DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir_entry = FsEntry::Dir(FsDir::new(
+                let dir_entry = FsNode::Dir(DirNode::new(
                     dir_path,
                     DirMetadata::new(times, false),
                 ));
@@ -508,7 +508,7 @@ mod tests {
                 let file_path =
                     FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let file_entry = FsEntry::File(FsFile::new(
+                let file_entry = FsNode::File(FileNode::new(
                     file_path.clone(),
                     FileMetadata::new(times, 100, false),
                 ));
@@ -525,7 +525,7 @@ mod tests {
                 let dir_path =
                     DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let dir_entry = FsEntry::Dir(FsDir::new(
+                let dir_entry = FsNode::Dir(DirNode::new(
                     dir_path.clone(),
                     DirMetadata::new(times, false),
                 ));
@@ -542,7 +542,7 @@ mod tests {
                 let file_path =
                     FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
                 let times = FsTimes::new(None, None);
-                let file_entry = FsEntry::File(FsFile::new(
+                let file_entry = FsNode::File(FileNode::new(
                     file_path.clone(),
                     FileMetadata::new(times, 100, false),
                 ));
@@ -564,7 +564,7 @@ mod tests {
                 let temp_file = tempfile::NamedTempFile::new().unwrap();
                 let file_path =
                     FilePath::try_new(temp_file.path().to_path_buf()).unwrap();
-                let file_entry = FsEntry::File(FsFile::new(
+                let file_entry = FsNode::File(FileNode::new(
                     file_path,
                     FileMetadata::new(FsTimes::new(None, None), 7, false),
                 ));
@@ -578,7 +578,7 @@ mod tests {
                 let temp_dir = tempfile::TempDir::new().unwrap();
                 let dir_path =
                     DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
-                let entry = FsEntry::Dir(FsDir::new(
+                let entry = FsNode::Dir(DirNode::new(
                     dir_path,
                     DirMetadata::new(FsTimes::new(None, None), false),
                 ));
@@ -589,7 +589,7 @@ mod tests {
         }
     }
 
-    mod fs_file {
+    mod file {
         use super::*;
 
         #[test]
@@ -599,7 +599,7 @@ mod tests {
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = FileMetadata::new(times, 1024, false);
 
-            let file = FsFile::new(path.clone(), metadata);
+            let file = FileNode::new(path.clone(), metadata);
 
             assert_eq!(file.path(), &path, "Expected same path reference");
         }
@@ -611,7 +611,7 @@ mod tests {
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = FileMetadata::new(times.clone(), 1024, false);
 
-            let file = FsFile::new(path, metadata.clone());
+            let file = FileNode::new(path, metadata.clone());
 
             assert_eq!(
                 file.metadata(),
@@ -621,7 +621,7 @@ mod tests {
         }
     }
 
-    mod fs_dir {
+    mod dir {
         use super::*;
 
         #[test]
@@ -631,7 +631,7 @@ mod tests {
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = DirMetadata::new(times, false);
 
-            let dir = FsDir::new(path.clone(), metadata);
+            let dir = DirNode::new(path.clone(), metadata);
 
             assert_eq!(dir.path(), &path, "Expected same path reference");
         }
@@ -643,7 +643,7 @@ mod tests {
             let times = FsTimes::new(Some(SystemTime::now()), None);
             let metadata = DirMetadata::new(times.clone(), false);
 
-            let dir = FsDir::new(path, metadata.clone());
+            let dir = DirNode::new(path, metadata.clone());
 
             assert_eq!(
                 dir.metadata(),

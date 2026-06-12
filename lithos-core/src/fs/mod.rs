@@ -21,7 +21,7 @@
 //! | Validate a vault path string     | [`PathValidator::validate_vault_path`]           |
 //! | Validate an arbitrary path       | [`PathValidator::new_flexible`] + `.validate()`  |
 //! | Scan directory for files         | [`DirScanner::new`] + `.paths()` or `.entries()` |
-//! | Read files from a vault root     | [`FileReader::new`]                                |
+//! | Read files from a vault root     | [`FileReader::new`]                              |
 //! | Write files to a vault root      | [`FsWriter::new`]                                |
 //!
 //! # Security note
@@ -61,7 +61,7 @@ pub mod writer;
 // Re-export commonly used types at the `fs::` path so adapter call sites stay
 // readable without long module chains.
 
-pub use entry::{FsDir, FsEntry, FsFile};
+pub use entry::{DirNode, FileNode, FsNode};
 pub use error::{
     FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
 };

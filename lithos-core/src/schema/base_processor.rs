@@ -70,7 +70,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    fs::{DirPath, FileReader, FsFile, PathKey},
+    fs::{DirPath, FileNode, FileReader, PathKey},
     schema::{
         bank::PropertyBank,
         base::BaseSchema,
@@ -113,7 +113,7 @@ use crate::{
     allow(dead_code, reason = "Builder integration deferred to Phase 3")
 )]
 pub struct BaseSchemaProcessor<P, S> {
-    file: FsFile,
+    file: FileNode,
     path_key: PathKey,
     status: S,
     _stage: PhantomData<P>,
@@ -121,13 +121,13 @@ pub struct BaseSchemaProcessor<P, S> {
 
 impl<P, S> BaseSchemaProcessor<P, S> {
     #[inline]
-    fn into_parts(self) -> (FsFile, PathKey, S) {
+    fn into_parts(self) -> (FileNode, PathKey, S) {
         (self.file, self.path_key, self.status)
     }
 
     #[inline]
     fn transition_from_parts<NP, NS>(
-        file: FsFile,
+        file: FileNode,
         path_key: PathKey,
         status: NS,
     ) -> BaseSchemaProcessor<NP, NS> {
@@ -255,7 +255,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         allow(dead_code, reason = "Builder integration deferred to Phase 3")
     )]
     pub fn from_discovery(
-        file: FsFile,
+        file: FileNode,
         root: &DirPath,
     ) -> Result<Self, crate::fs::PathError> {
         let path_key = file.path().as_key(root)?;
@@ -1584,7 +1584,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        fs::{DirPath, FsFile},
+        fs::{DirPath, FileNode},
         schema::{
             bank::PropertyBank,
             property::{
@@ -1662,7 +1662,7 @@ mod tests {
         source: FileReader,
         vault_root: DirPath,
         _vault_dir: TempDir,
-        file: FsFile,
+        file: FileNode,
         key: PathKey,
         content_str: String,
     }
@@ -1687,7 +1687,7 @@ mod tests {
                 .as_file()
                 .cloned()
                 .expect("file metadata");
-        let file = FsFile::new(file_path.clone(), metadata.clone());
+        let file = FileNode::new(file_path.clone(), metadata.clone());
         let key = file.path().as_key(&vault_root).expect("path key");
 
         Fixture {
@@ -1711,7 +1711,7 @@ mod tests {
         .as_file()
         .cloned()
         .expect("file metadata");
-        fixture.file = FsFile::new(fixture.file.path().clone(), metadata);
+        fixture.file = FileNode::new(fixture.file.path().clone(), metadata);
         fixture.content_str = content.to_owned();
     }
 

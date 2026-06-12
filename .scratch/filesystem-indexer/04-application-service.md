@@ -28,7 +28,7 @@ The pipeline the service must execute:
 4. Persist deltas (`New` and `Stale` nodes are written; `Fresh` nodes are
    unchanged in storage).
 5. Detect deletions: persisted nodes absent from the current scan are pruned
-   and recorded as deleted `FsNodeId`s.
+   and recorded as deleted `FsRecordId`s.
 6. If `IndexOptions { dry_run: true }`, classify without persisting changes.
 7. Accumulate per-node I/O failures as non-fatal records in `IndexResult`.
 8. Return a complete `IndexResult` (entries, deleted IDs, summary counts,
@@ -49,7 +49,7 @@ no walkdir, no redb, no concrete adapter types in the service module.
 - [ ] Application-service tests classify all nodes as `New` when
       `IndexOptions { reindex: true }` is set, regardless of stored metadata.
 - [ ] Pruning tests: persisted nodes absent from the current scan are removed
-      and reported as deleted `FsNodeId`s in `IndexResult`.
+      and reported as deleted `FsRecordId`s in `IndexResult`.
 - [ ] Dry-run tests: classification runs without persisting any changes.
 - [ ] Scope tests: `Full` and `Partial` scans use the expected scan
       boundaries.
