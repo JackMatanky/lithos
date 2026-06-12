@@ -1,25 +1,103 @@
-//! Template repository persistence implementation.
+//! Template repository persistence implementation using redb.
 //!
-//! This module will provide the [`RedbRepository`] struct, which implements the
+//! This module provides the [`RedbRepository`] struct, which implements the
 //! segregated repository traits ([`ReadRepository`], [`WriteRepository`], and
-//! [`Repository`]) for template persistence using `redb` as the storage
-//! engine. The redb adapter is deferred to a future slice.
+//! [`Repository`]) for template persistence using `redb` as the storage engine.
+//!
+//! # Architecture
+//!
+//! - **Transaction Boundaries**: Each repository method manages its own
+//!   transaction via the provided [`Store`].
+//! - **Segregated Traits**: Read and write operations are separated for
+//!   capability-based access control. The unified [`Repository`] trait is
+//!   automatically implemented via blanket impl for any type implementing both.
 //!
 //! # Modules
 //!
-//! - [`tables`]: Public table definitions and constants for future redb adapter
-//! - `read`: Internal [`ReadRepository`] implementation (deferred)
-//! - `write`: Internal [`WriteRepository`] implementation (deferred)
+//! - [`tables`]: Public table definitions and constants
+//! - `read`: Internal [`ReadRepository`] implementation
+//! - `write`: Internal [`WriteRepository`] implementation
 //! - [`testing`]: Test utilities (available in `#[cfg(test)]`)
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use std::sync::Arc;
+//! use lithos_core::db::Store;
+//! use lithos_core::template::storage::RedbRepository;
+//! use lithos_core::template::repository::Repository;
+//!
+//! let store = Arc::new(Store::open("templates.db")?);
+//! let repo = RedbRepository::new(store);
+//! // Use repo for read/write operations
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 //!
 //! [`ReadRepository`]: crate::template::repository::ReadRepository
 //! [`WriteRepository`]: crate::template::repository::WriteRepository
 //! [`Repository`]: crate::template::repository::Repository
 
-mod read;
-mod write;
+pub(crate) mod read;
+pub(crate) mod write;
 
 pub mod tables;
 
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
+
+use std::sync::Arc;
+
+use crate::db::Store;
+
+/// Repository implementation for `redb`-backed template storage.
+///
+/// This struct implements the segregated repository traits using `redb`
+/// as the underlying storage engine. It wraps a [`Store`] instance and
+/// manages its own transaction boundaries for all persistence operations.
+///
+/// # Transaction Management
+///
+/// Each repository method opens and commits its own transaction. For batch
+/// operations (e.g., `save_many_raw_template_views`,
+/// `find_raw_template_views_by_paths`), multiple operations are grouped
+/// into a single transaction for atomicity and efficiency.
+///
+/// # Thread Safety
+///
+/// `RedbRepository` is `Send + Sync` when the wrapped `Store` is thread-safe
+/// (requires `Arc<Store>`). Multiple repository instances can safely share
+/// the same `Store`.
+#[derive(Debug)]
+#[allow(dead_code, reason = "used by Template Processor (Issue 04)")]
+pub struct RedbRepository {
+    pub(crate) store: Arc<Store>,
+}
+
+impl RedbRepository {
+    /// Creates a new repository adapter from a database store.
+    ///
+    /// The provided [`Store`] instance must be shared across all repository
+    /// instances to ensure transaction isolation and consistency. Multiple
+    /// `RedbRepository` instances wrapping the same `Store` will share the
+    /// same underlying database connection.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use std::sync::Arc;
+    /// use lithos_core::db::Store;
+    /// use lithos_core::template::storage::RedbRepository;
+    ///
+    /// let store = Arc::new(Store::open("templates.db")?);
+    /// let repo = RedbRepository::new(Arc::clone(&store));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    #[must_use]
+    #[allow(dead_code, reason = "used by Template Processor (Issue 04)")]
+    pub fn new(store: Arc<Store>) -> Self {
+        Self {
+            store,
+        }
+    }
+}

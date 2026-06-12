@@ -1,8 +1,9 @@
 //! Table definitions for template storage.
 //!
-//! These constants define the table contracts for the future `redb` storage
-//! adapter. The redb implementation will use these table definitions to
-//! persist template aggregates and raw template views.
+//! These constants define the tables used by the `redb`-backed
+//! [`RedbRepository`] to persist template aggregates and raw template views.
+//!
+//! [`RedbRepository`]: super::RedbRepository
 
 use crate::{
     db::{PathTable, Table, UuidTable},
@@ -19,8 +20,9 @@ impl_redb_uuid!(TemplateId);
 ///
 /// Key: `TemplateId`
 /// Value: rkyv-serialized `Template`
-#[expect(dead_code, reason = "forward-looking: redb adapter uses these")]
-pub const TEMPLATES: UuidTable<TemplateId, &[u8]> = UuidTable::new("templates");
+#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
+pub(crate) const TEMPLATES: UuidTable<TemplateId, &[u8]> =
+    UuidTable::new("templates");
 
 /// Template name-to-ID index for fast name-based lookup.
 ///
@@ -29,8 +31,8 @@ pub const TEMPLATES: UuidTable<TemplateId, &[u8]> = UuidTable::new("templates");
 ///
 /// Key: template name string
 /// Value: serialized `TemplateId`
-#[expect(dead_code, reason = "forward-looking: redb adapter uses these")]
-pub const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
+#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
+pub(crate) const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
     Table::new("template_id_by_name");
 
 /// Raw template views for staleness detection.
@@ -40,6 +42,6 @@ pub const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
 ///
 /// Key: path string
 /// Value: serialized `RawTemplateView`
-#[expect(dead_code, reason = "forward-looking: redb adapter uses these")]
-pub const RAW_TEMPLATE_VIEWS: PathTable<&[u8]> =
+#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
+pub(crate) const RAW_TEMPLATE_VIEWS: PathTable<&[u8]> =
     PathTable::new("raw_template_views");
