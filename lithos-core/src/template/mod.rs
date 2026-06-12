@@ -16,11 +16,16 @@
 pub(crate) mod aggregate;
 pub(crate) mod error;
 pub(crate) mod raw;
+pub(crate) mod repository;
+pub(crate) mod storage;
 pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
 pub use error::{TemplateBodyError, TemplateError, TemplateNameError};
 pub use raw::RawTemplate;
+pub use repository::{
+    ReadRepository, Repository, TemplateRepositoryError, WriteRepository,
+};
 pub use views::RawTemplateView;
 
 // ============================================================================
