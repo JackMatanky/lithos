@@ -93,15 +93,22 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 
 **Rust implementation constraints:**
 - Use `PhantomData` or equivalent zero-cost markers for both phase and status so invalid transitions fail to compile rather than relying on runtime flags.
+- Use `impl From<TemplateProcessor<A, SomeStatus>> for TemplateProcessor<B, NextStatus>` for infallible, pure transitions where the full payload is preserved and no I/O or branching occurs. Do not use `From` for transitions that: can fail, read files, write repositories, or branch into multiple next-states. Those remain explicit methods returning `Result` or branch enums.
 - Prefer borrowing over cloning when carrying discovered paths, views, and raw content through stages; clone only when ownership transfer or persistence boundaries require it.
 - Keep filesystem path types, display/config path types, and storage-key types distinct according to the path taxonomy.
 - Keep MiniJinja/compiler checks out of this pipeline. Template Engine behavior may consume persisted templates later, but engine compilation is not an ingestion state.
 - Public APIs added for the processor need doc comments and tests that demonstrate intended stage usage.
 
+**Discovery input design (indexer forward-compatibility):**
+Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`. Design the input boundary so it accepts a description of discovered files rather than performing the scan internally. The natural unit is one entry per template file carrying: the filesystem path (`FilePath`), the storage key (`PathKey`), and file metadata (`FileMetadata`). This matches the shape that the in-progress `indexer/` context already produces (`FileIndexEntry` carrying `FileRecord { path, name, metadata }` plus `FilePath`). When the indexer is wired in, Discovery will receive `FileIndexEntry` slices instead of running its own `DirScanner` walk — no processor internals need to change. For now, the processor should own a thin constructor that runs `DirScanner` and converts results to this input shape, keeping the scan logic behind a clear seam.
+
 **Acceptance criteria:**
 - [ ] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
 - [ ] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
 - [ ] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
+- [ ] Infallible pure-payload transitions use `impl From` rather than explicit methods; I/O, fallible, and branching transitions remain explicit methods returning `Result` or branch enums
+- [ ] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
+- [ ] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
 - [ ] No `Compiled` or `Validated` stage exists anywhere in the processor
 - [ ] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
 - [ ] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
