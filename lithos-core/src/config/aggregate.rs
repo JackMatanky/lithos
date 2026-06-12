@@ -13,7 +13,7 @@ use super::{
     events::{ConfigUpdated, Events},
     frontmatter::{Frontmatter, FrontmatterConfigSpec},
     logging::Logging,
-    paths::{ArchivedPaths, Paths},
+    paths::{ArchivedPaths, Paths, TemplateConfigSpec},
     task::{Task, TaskConfigSpec, TemporalSlot},
     vault::Metadata,
 };
@@ -256,6 +256,29 @@ impl Config {
         Ok(SchemaConfigSpec::new(root, schema_directory, property_bank_file))
     }
 
+    /// Builds a template configuration specification for template discovery.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ValidationFailed`] if the template directory
+    /// declaration cannot be projected into config-spec types.
+    #[inline]
+    pub fn to_template_spec(&self) -> Result<TemplateConfigSpec, ConfigError> {
+        use crate::fs::path::RelativeDirPath;
+
+        let root = self.vault_metadata.root().as_dir_path().clone();
+        let directory = RelativeDirPath::try_new(
+            self.paths.template.templates_dir().as_str(),
+        )
+        .map_err(|error| ConfigError::ValidationFailed {
+            field: "paths.template.templates_dir".into(),
+            message: format!("invalid template directory declaration: {error}")
+                .into(),
+        })?;
+
+        Ok(TemplateConfigSpec::new(root, directory))
+    }
+
     /// Create a new Config with the specified version, keeping all other fields
     /// unchanged.
     ///
@@ -295,6 +318,16 @@ impl ArchivedConfig {
     #[must_use]
     pub const fn paths(&self) -> &ArchivedPaths {
         &self.paths
+    }
+}
+
+impl From<&Config> for TemplateConfigSpec {
+    #[inline]
+    fn from(config: &Config) -> Self {
+        Self::new(
+            config.vault_metadata.root().as_dir_path().clone(),
+            config.paths.template.templates_dir().clone(),
+        )
     }
 }
 
@@ -818,6 +851,77 @@ mod tests {
                 result.is_ok(),
                 "to_schema_spec should return Ok for valid config"
             );
+        }
+    }
+
+    mod template_spec {
+        use super::*;
+
+        mod conversions {
+            use super::*;
+
+            #[test]
+            fn returns_vault_root_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec =
+                    crate::config::paths::TemplateConfigSpec::from(&config);
+
+                assert_eq!(
+                    spec.root().as_path(),
+                    config.vault_metadata().root().as_path()
+                );
+            }
+
+            #[test]
+            fn returns_default_template_directory_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec =
+                    crate::config::paths::TemplateConfigSpec::from(&config);
+
+                assert_eq!(spec.as_relative_dir().as_str(), "templates");
+            }
+        }
+
+        mod create {
+            use super::*;
+
+            #[test]
+            fn returns_vault_root_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec = config
+                    .to_template_spec()
+                    .expect("template spec should build");
+
+                assert_eq!(
+                    spec.root().as_path(),
+                    config.vault_metadata().root().as_path()
+                );
+            }
+
+            #[test]
+            fn returns_default_template_directory_from_representative_config() {
+                let config = fixtures::merged_config_with_empty_inputs();
+
+                let spec = config
+                    .to_template_spec()
+                    .expect("template spec should build");
+
+                assert_eq!(spec.as_relative_dir().as_str(), "templates");
+            }
+
+            #[test]
+            fn returns_template_spec_with_configured_template_directory() {
+                let config = fixtures::merged_config_with_sample_overrides();
+
+                let spec = config
+                    .to_template_spec()
+                    .expect("template spec should build");
+
+                assert_eq!(spec.as_relative_dir().as_str(), "custom_templates");
+            }
         }
     }
 }

@@ -1,17 +1,17 @@
 ---
 title: 02-config-spec
 category: enhancement
-label: ready-for-agent
-status: open
-branch:
+label: ready-for-human
+status: completed
+branch: agent/02-config-spec
 merge_commit:
 date_created: 2026-06-11
-date_completed:
+date_completed: 2026-06-12
 ---
 
 # Template Configuration Spec
 
-Status: ready-for-agent
+Status: completed
 
 ## Parent
 
@@ -36,15 +36,34 @@ Template discovery is scoped to `.md` files at any depth within the configured t
 
 ## Acceptance criteria
 
-- [ ] `TemplateConfigSpec` is defined with `root: DirPath` and `directory: RelativeDirPath` private fields
-- [ ] A constructor exists that can be built from the application `Config` (matching the `SchemaConfigSpec` pattern)
-- [ ] `Config` implements `to_template_spec() -> Result<TemplateConfigSpec, ConfigError>`
-- [ ] `TemplateConfigSpec` exposes:
+- [x] `TemplateConfigSpec` is defined with `root: DirPath` and `directory: RelativeDirPath` private fields
+- [x] A constructor exists that can be built from the application `Config` (matching the `SchemaConfigSpec` pattern)
+- [x] `Config` implements `to_template_spec() -> Result<TemplateConfigSpec, ConfigError>`
+- [x] `TemplateConfigSpec` exposes:
   - `root() -> &DirPath`
   - `as_relative_dir() -> &RelativeDirPath`
   - `to_dir_path() -> Result<DirPath, fs::PathError>`
   - `to_path_key() -> Result<PathKey, fs::PathError>`
-- [ ] Unit tests cover construction from a representative config value and accessor correctness
+- [x] Unit tests cover construction from a representative config value and accessor correctness
+
+## Implementation notes
+
+- Implemented `TemplateConfigSpec` in `lithos-core/src/config/paths.rs` alongside `SchemaConfigSpec`.
+- Added `Config::to_template_spec()` and `From<&Config> for TemplateConfigSpec` in `lithos-core/src/config/aggregate.rs`.
+- `TemplateConfigSpec` exposes only vault root and the configured template directory; schema-only fields such as `property_bank` remain out of scope.
+- `to_dir_path()` resolves `root + directory` through the existing typed FS path API.
+- `to_path_key()` derives a vault-relative `PathKey` from the resolved template directory.
+- Did not refactor `SchemaConfigSpec` or implement template processor, service, CLI, MiniJinja, or storage adapter work.
+
+## Verification
+
+- `mise run fmt` passed.
+- `mise run lint` passed.
+- `mise run test` passed: 1695 unit tests, 49 integration tests, 1 e2e test, and doc tests.
+- `git diff --check` passed.
+- GitNexus change detection reported low risk with 0 affected processes.
+- Spec compliance review approved.
+- Code quality review approved.
 
 ## Blocked by
 
