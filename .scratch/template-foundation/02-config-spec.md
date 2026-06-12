@@ -44,11 +44,6 @@ Template discovery is scoped to `.md` files at any depth within the configured t
   - `as_relative_dir() -> &RelativeDirPath`
   - `to_dir_path() -> Result<DirPath, fs::PathError>`
   - `to_path_key() -> Result<PathKey, fs::PathError>`
-- [ ] `SchemaConfigSpec` updated to use:
-  - `as_relative_dir()`
-  - `to_dir_path()`
-  - `to_path_key()`
-  - `to_file_path()` (for property bank)
 - [ ] Unit tests cover construction from a representative config value and accessor correctness
 
 ## Blocked by
@@ -95,12 +90,6 @@ It provides:
 - An accessor `as_relative_dir(&self) -> &RelativeDirPath`
 - A method `to_dir_path(&self) -> Result<DirPath, fs::PathError>` that resolves the full absolute template directory path
 - A method `to_path_key(&self) -> Result<PathKey, fs::PathError>` for use as a vault-relative persistence key
-- `SchemaConfigSpec` methods renamed for consistency:
-  - `directory_relative()` -> `as_relative_dir()`
-  - `schema_directory_path()` -> `to_dir_path()`
-  - `property_bank_file_path()` -> `to_file_path()`
-  - `schema_directory_key()` -> `to_dir_key()`
-  - `property_bank_key()` -> `to_file_key()`
 
 **Key interfaces:**
 - `TemplateConfigSpec` — new type in `lithos-core/src/config/paths.rs`; follows `SchemaConfigSpec` exactly except it has no `property_bank` field
@@ -112,10 +101,10 @@ It provides:
 - [ ] `TemplateConfigSpec` is defined with private `root: DirPath` and `directory: RelativeDirPath` fields
 - [ ] A `const fn new(root, directory) -> Self` constructor exists
 - [ ] A `From<&Config>` impl (or `from_config` method) extracts vault root and template directory from the application config
-- [ ] `root()` and `directory_relative()` accessors are present
-- [ ] `template_directory_path()` resolves the absolute template directory path and returns `Result<DirPath, fs::PathError>`
-- [ ] `template_directory_key()` returns the vault-relative `PathKey` for the template directory
-- [ ] Unit tests cover: construction from a representative config value, `template_directory_path()` with a valid root+relative pair, `template_directory_key()` correctness
+- [ ] `root()` and `as_relative_dir()` accessors are present
+- [ ] `to_dir_path()` resolves the absolute template directory path and returns `Result<DirPath, fs::PathError>`
+- [ ] `to_path_key()` returns the vault-relative `PathKey` for the template directory
+- [ ] Unit tests cover: construction from a representative config value, `to_dir_path()` with a valid root+relative pair, `to_path_key()` correctness
 - [ ] `mise run test` passes
 
 **Out of scope:**
@@ -123,3 +112,4 @@ It provides:
 - MiniJinja, template engine, or rendering logic
 - Template processor, service, or CLI (issues 04–09)
 - Any config field that the template context does not require (property bank, schema directory, etc.)
+- Refactoring `SchemaConfigSpec`
