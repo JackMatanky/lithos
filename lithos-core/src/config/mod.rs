@@ -86,6 +86,8 @@
 
 /// Configuration aggregate root.
 pub mod aggregate;
+/// Cache configuration types.
+pub mod cache;
 /// Global configuration types and validation.
 pub mod global;
 /// Path configuration types.
