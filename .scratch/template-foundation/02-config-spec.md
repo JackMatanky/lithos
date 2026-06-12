@@ -4,7 +4,7 @@ category: enhancement
 label: ready-for-human
 status: completed
 branch: agent/02-config-spec
-merge_commit:
+merge_commit: ace4a9da9
 date_created: 2026-06-11
 date_completed: 2026-06-12
 ---

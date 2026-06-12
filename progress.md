@@ -11,6 +11,13 @@
 - Read `config/builder.rs` and `config/merger.rs`; confirmed the raw merge boundary and that processor/merger are insulated from resolved path type shape unless raw DTOs change.
 - User preference recorded: move away from `Paths` structs where possible, with `Paths` only as a possible temporary bridge.
 - User selected split `Config` fields as the preferred resolved storage shape.
+- User confirmed no compatibility is required for old rkyv-serialized `Config` records.
+- User selected an intentional public API break now instead of staging `Paths` compatibility shims.
+- User clarified desired file split: separate `cache.rs`, `template.rs`, and `schema.rs` files.
+- User selected direct `config/` file locations for the split modules.
+- User selected moving `SchemaConfigSpec` into `config::schema`.
+- Confirmed existing `TemplateConfigSpec` in current workspace and recorded move to `config::template`.
+- User requested creating `CacheConfigSpec`.
 
 ## Verification
 

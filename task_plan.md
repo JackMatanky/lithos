@@ -22,14 +22,19 @@ Assess the implications of splitting `lithos-core/src/config/paths.rs` and refac
 
 ## Decisions Pending
 
-- Whether `Paths` remains as a temporary compatibility aggregate or is removed from the resolved config API.
-- Whether tuple-struct renames are intended as a public API break or should be staged.
-- Whether rkyv archive compatibility matters for persisted resolved config data.
+- Shape and semantics of new `CacheConfigSpec`.
 
 ## Decisions Made
 
 - Preferred direction: move away from `Paths` structs as long-term API boundaries because downstream contexts should consume `to_*_spec()` methods instead of full path aggregates.
 - `Config` should split its resolved path storage into private `cache: CacheConfig`, `template: TemplateConfig`, and `schema: SchemaConfig` fields.
+- No compatibility is required for previously persisted rkyv-serialized `Config` records.
+- This refactor should intentionally break the current public Rust API now rather than staging deprecated `Paths` compatibility shims.
+- Path config code should be split into separate `cache.rs`, `template.rs`, and `schema.rs` files.
+- The split files should live directly under `lithos-core/src/config/`.
+- `SchemaConfigSpec` should move from `config::paths::SchemaConfigSpec` to `config::schema::SchemaConfigSpec`.
+- Existing `TemplateConfigSpec` should move from `config::paths::TemplateConfigSpec` to `config::template::TemplateConfigSpec`.
+- A new `CacheConfigSpec` should be introduced.
 
 ## Errors Encountered
 

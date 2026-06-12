@@ -36,6 +36,7 @@
 - Renaming `Schema` and `Template` config path types reduces ambiguity with schema/template context aggregates.
 - Splitting `Paths` into `CacheConfig`, `TemplateConfig`, and `SchemaConfig` can be source-compatible only if `Paths` remains as the resolved aggregate with renamed fields/accessors. Removing `Paths` would affect `Config`, `Vault`, docs, storage archives, and callers.
 - If `PropertyBankFile` moves under `SchemaConfig`, `Config::to_schema_spec()` can become simpler: schema config can own both schema directory and property bank filename, preserving the downstream `SchemaConfigSpec` contract.
+- Changing `Config`'s private storage from `paths: Paths` to split fields changes the rkyv archived shape. User confirmed no archive compatibility is required.
 
 ## Recommended Direction
 
@@ -45,7 +46,14 @@
 - Convert `CacheDir`, `TemplateDir`, `SchemaDir`, and `PropertyBankFile` to tuple newtypes with accessor methods rather than public fields.
 - Preserve or intentionally replace `SchemaConfigSpec`; it is already a downstream context-facing Config Spec and should not be conflated with internal resolved `SchemaConfig`.
 - Replace `Config`'s private `paths: Paths` storage with private `cache`, `template`, and `schema` resolved config fields.
-- Add or preserve narrowed projection methods (`to_cache_spec()`, `to_template_spec()`, `to_schema_spec()`); keep a transitional `paths()` only if public API breakage needs staging.
+- Add narrowed projection methods (`to_cache_spec()`, `to_template_spec()`, `to_schema_spec()`) and remove `config.paths()` / `Paths` API surface.
+- Since the API break is intentional, do not add compatibility aliases for `Cache`, `Template`, `Schema`, `PropertyBank`, or `Paths` unless implementation uncovers external persisted data constraints.
+- Split path config code into separate `cache.rs`, `template.rs`, and `schema.rs` files rather than keeping everything in `paths.rs`.
+- Place split files directly under `lithos-core/src/config/`: `config/cache.rs`, `config/template.rs`, and `config/schema.rs`.
+- Move `SchemaConfigSpec` into `config/schema.rs` and update imports from `config::paths::SchemaConfigSpec` to `config::schema::SchemaConfigSpec`.
+- Move existing `TemplateConfigSpec` into `config/template.rs` and update imports from `config::paths::TemplateConfigSpec` to `config::template::TemplateConfigSpec`.
+- Introduce `CacheConfigSpec` in `config/cache.rs`.
+- Current `TemplateConfigSpec` has `root: DirPath`, `directory: RelativeDirPath`, `to_dir_path()`, and `to_path_key()`.
 
 ## Open Questions
 
