@@ -6,7 +6,7 @@
 - **Status:** complete
 - **Started:** 2026-05-17 (timestamp from session)
 - Actions taken:
-  - Read paths.rs to understand current SchemaConfigSpec (lines 462-517)
+  - Read schema.rs to understand current SchemaConfigSpec
   - Read builder.rs to see usage at line 61
   - Read discovery.rs to see usage at lines 197, 244
   - Read aggregate.rs to understand to_schema_spec() construction (lines 226-246)
@@ -30,14 +30,14 @@
   - Updated Config::to_schema_spec() to join vault_root with relative paths
   - Updated DiscoveryEngine::scan_filesystem() to convert absolute→relative pattern
   - Updated DiscoveryEngine helper functions (separate_property_bank, query_cached_state)
-  - Updated all test call sites (aggregate.rs, discovery.rs, paths.rs)
+  - Updated all test call sites (aggregate.rs, discovery.rs, schema.rs)
   - Fixed all compilation errors systematically
   - Ran `mise run lint` - ✅ No warnings (clippy auto-fixed minor issues)
   - Ran `mise run fmt` - ✅ Code formatted
   - Ran `mise run test` - ✅ ALL PASSING (1157 unit + 38 integration)
 - Files modified:
   - lithos-core/src/config/aggregate.rs (50 lines changed)
-  - lithos-core/src/config/paths.rs (112 lines changed)
+  - lithos-core/src/config/schema.rs (112 lines changed)
   - lithos-core/src/schema/discovery.rs (66 lines changed)
 - **Total:** 147 insertions(+), 81 deletions(-)
 

@@ -32,7 +32,7 @@ components:
 
 ## Component Inventory
 - **Crate Root**: `lithos-core/src/config/mod.rs`
-- **Core Aggregates**: `aggregate.rs`, `global.rs`, `vault.rs`, `paths.rs`
+- **Core Aggregates**: `aggregate.rs`, `global.rs`, `vault.rs`, `cache.rs`, `template.rs`, `schema.rs`
 - **CQRS Infrastructure**: `query.rs`, `command.rs`, `ports.rs`
 - **Adapters & Messaging**: `ingest.rs`, `error.rs`, `events.rs`
 - **Domain Building Blocks**: `logging.rs`, `task.rs`, `frontmatter.rs`
@@ -153,13 +153,12 @@ components:
 //! manages [`VaultId`] and [`VaultRoot`].
 ```
 
-### paths.rs
+### cache.rs / template.rs / schema.rs
 ```rust
-//! Validated path configuration management.
+//! Focused declarative path configuration modules.
 //!
-//! This module defines how Lithos manages its filesystem locations (cache,
-//! schemas, templates). It distinguishes between the fully-resolved [`Paths`]
-//! and the partial overrides used during construction.
+//! These modules define how Lithos manages cache, schema, and template
+//! locations using declarative path types and narrowed config specs.
 ```
 
 ### query.rs

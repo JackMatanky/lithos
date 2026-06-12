@@ -148,10 +148,12 @@ git commit -m "docs: overhaul path module documentation with three-tier taxonomy
 
 ---
 
-### Task 3: Update `lithos-core/src/config/paths.rs`
+### Task 3: Update config path modules
 
 **Files:**
-- Modify: `lithos-core/src/config/paths.rs`
+- Modify: `lithos-core/src/config/cache.rs`
+- Modify: `lithos-core/src/config/template.rs`
+- Modify: `lithos-core/src/config/schema.rs`
 
 - [ ] **Step 1: Enhance module documentation**
 
@@ -168,7 +170,7 @@ git commit -m "docs: overhaul path module documentation with three-tier taxonomy
 - [ ] **Step 2: Verify and Commit**
 
 ```bash
-git add lithos-core/src/config/paths.rs
+git add lithos-core/src/config/cache.rs lithos-core/src/config/template.rs lithos-core/src/config/schema.rs
 git commit -m "docs: update config paths documentation to mention declarative types"
 ```
 

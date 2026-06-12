@@ -483,7 +483,7 @@ Enable figment `json` and `yaml` features, update ConfigIngestor to probe multip
 
 Locations:
 
-- `paths.rs:641`: "file name must not contain path separators"
+- `schema.rs`: "file name must not contain path separators"
 - `task.rs:378,385,494,507`: Various validation messages
 - `value.rs:432`: "field name must be ASCII alphanumeric"
 
@@ -594,7 +594,9 @@ lithos-core/src/config/
 ├── vault.rs                  # Vault, VaultId, VaultRoot, VaultName, VaultVersion
 ├── global.rs                 # Global, TrustedVaults, GlobalVersion
 │
-├── paths.rs                  # Paths, Cache, Template, Schema, etc
+├── cache.rs                  # CacheConfig, CacheDir, CacheConfigSpec
+├── template.rs               # TemplateConfig, TemplateDir, TemplateConfigSpec
+├── schema.rs                 # SchemaConfig, SchemaDir, PropertyBankFile, SchemaConfigSpec
 ├── frontmatter.rs            # Frontmatter, FrontmatterKey
 ├── logging.rs                # Logging, LogLevel
 ├── task.rs                   # Task, TaskTag, CheckboxStatus

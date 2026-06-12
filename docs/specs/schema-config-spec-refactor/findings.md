@@ -2,7 +2,7 @@
 
 ## Requirements
 From user request:
-- Update `SchemaConfigSpec` in `lithos-core/src/config/paths.rs`
+- Update `SchemaConfigSpec` in `lithos-core/src/config/schema.rs`
 - Change from `RelativePath` to `Path` or `PathBuf`
 - Join schema directory to VaultRoot from vault metadata
 - Join property bank file on top of that
@@ -92,13 +92,13 @@ From user request:
 
 ## Resources
 Files to modify:
-- `lithos-core/src/config/paths.rs` - SchemaConfigSpec struct definition
+- `lithos-core/src/config/schema.rs` - SchemaConfigSpec struct definition
 - `lithos-core/src/config/aggregate.rs` - Config::to_schema_spec() implementation
 - `lithos-core/src/schema/discovery.rs` - DiscoveryEngine::run() signature
 - `lithos-core/src/schema/builder.rs` - Builder::load_all() usage
 
 Test files to update:
-- `lithos-core/src/config/paths.rs` (mod tests::schema_config_spec)
+- `lithos-core/src/config/schema.rs` (mod tests::schema_config_spec)
 - `lithos-core/src/config/aggregate.rs` (mod tests - to_schema_spec tests)
 - `lithos-core/src/schema/discovery.rs` (mod tests)
 - `lithos-core/src/schema/builder.rs` (mod tests)

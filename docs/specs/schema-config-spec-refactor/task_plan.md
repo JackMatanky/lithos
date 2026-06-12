@@ -27,7 +27,7 @@ Phase 6 (Verification) - Implementation Complete!
 - **Status:** complete
 
 ### Phase 3: TDD - Write Failing Tests
-- [x] Test 1.1: SchemaConfigSpec accepts DirPath and FilePath (paths.rs)
+- [x] Test 1.1: SchemaConfigSpec accepts DirPath and FilePath (schema.rs)
 - [x] Test 2.1: to_schema_spec creates absolute paths from vault root (aggregate.rs)
 - [x] Test 3.1: DiscoveryEngine::run works without vault_root parameter (discovery.rs)
 - [x] Test 4.1: Builder::load_all works with new signature (builder.rs)

@@ -44,8 +44,9 @@
 //! // 2. Load configuration (with automatic staleness detection)
 //! let config = builder.load()?;
 //!
-//! // 3. Use the validated configuration
-//! assert!(!config.cache().cache_dir().as_relative_dir().as_str().is_empty());
+//! // 3. Use narrowed config specs in downstream contexts
+//! let cache_spec = config.to_cache_spec()?;
+//! assert!(!cache_spec.as_relative_dir().as_str().is_empty());
 //! # Ok(())
 //! # }
 //! ```

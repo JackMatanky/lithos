@@ -36,7 +36,7 @@ Capture the completed path taxonomy as an ADR and in module-level doc comments s
     - Guidance on when to use each tier.
     - Specific documentation for `RelativePath` enum emphasizing its use for display and serialization.
 
-### `lithos-core/src/config/paths.rs`
+### `lithos-core/src/config/{cache.rs,template.rs,schema.rs}`
 - **Goal**: Clarify the role of declarative paths in config.
 - **Content**:
     - Note that config stores declarative types (`RelativeDirPath`/`RelativeFilePath`) rather than filesystem-validated or storage-key types.

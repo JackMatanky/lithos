@@ -125,7 +125,9 @@ lithos/
 │       │   ├── frontmatter.rs  # Frontmatter-specific config
 │       │   ├── global.rs       # System-wide settings
 │       │   ├── vault.rs        # Vault-specific settings
-│       │   ├── paths.rs        # Path configuration
+│       │   ├── cache.rs        # Cache path configuration
+│       │   ├── template.rs     # Template path configuration
+│       │   ├── schema.rs       # Schema path configuration
 │       │   ├── logging.rs      # Logging configuration
 │       │   ├── task.rs         # Task-specific configuration
 │       │   ├── value.rs        # Value types for config

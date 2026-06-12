@@ -497,7 +497,7 @@ _Consolidated architectural review and Figment analysis_
 
 3. **Type-Driven Newtypes**
    - **LogLevel** (`logging.rs`): Proper enum with `TryFrom<String>` validation
-   - **Path Types** (`paths.rs`): `SchemasDir`, `TemplatesDir`, `CacheDir` with validation
+   - **Path Types** (`cache.rs`, `template.rs`, `schema.rs`): `SchemaDir`, `TemplateDir`, `CacheDir` with validation
    - **FrontmatterKey** (`frontmatter.rs`): Validates non-empty at construction
 
 4. **CQRS Implementation** (`command.rs`, `query.rs`, `ports.rs`)
@@ -656,7 +656,7 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 | Requirement                              | Status       | Evidence                                   |
 | ---------------------------------------- | ------------ | ------------------------------------------ |
 | Use `Option` overlays, not empty strings | ✅ COMPLIANT | `aggregate.rs:366-388`                     |
-| Type-driven newtypes                     | ✅ COMPLIANT | `paths.rs`, `frontmatter.rs`, `logging.rs` |
+| Type-driven newtypes                     | ✅ COMPLIANT | `cache.rs`, `template.rs`, `schema.rs`, `frontmatter.rs`, `logging.rs` |
 | Figment for layering                     | ✅ COMPLIANT | `ingest.rs` (within layers)                |
 | Raw types separate                       | ✅ COMPLIANT | `raw.rs` + TryFrom implementations         |
 | VaultId stable identity                  | ✅ COMPLIANT | `vault.rs:14-60`                           |
@@ -690,7 +690,9 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 | `aggregate.rs`   | 1217    | ✅ REVIEWED | Merge logic, versioning       |
 | `global.rs`      | 609     | ✅ REVIEWED | TrustedVaults enum            |
 | `vault.rs`       | 627     | ✅ REVIEWED | VaultId, VaultRoot            |
-| `paths.rs`       | 717     | ✅ REVIEWED | Schema/Template newtypes      |
+| `cache.rs`       | n/a     | ✅ REVIEWED | Cache newtypes                |
+| `template.rs`    | n/a     | ✅ REVIEWED | Template newtypes             |
+| `schema.rs`      | n/a     | ✅ REVIEWED | Schema newtypes               |
 | `frontmatter.rs` | 298     | ✅ REVIEWED | FrontmatterKey                |
 | `logging.rs`     | 212     | ✅ REVIEWED | LogLevel enum                 |
 | `command.rs`     | 459     | ✅ REVIEWED | CQRS command side             |
@@ -1444,7 +1446,7 @@ Same as 0.5.6 but for `TaskTag`
 1. **Clean Raw Types Pattern** (`raw.rs`)
 2. **Option Overlay Merge** (`aggregate.rs`)
 3. **LogLevel IS an Enum** (`logging.rs`)
-4. **Path Types Use PathBuf** (`paths.rs`)
+4. **Path Types Use Declarative Path Newtypes** (`cache.rs`, `template.rs`, `schema.rs`)
 5. **CQRS Implementation** (`command.rs`, `query.rs`, `ports.rs`)
 6. **VaultId Stable Identity** (`vault.rs`)
 7. **ConfigVersion Monotonic** (`aggregate.rs`)

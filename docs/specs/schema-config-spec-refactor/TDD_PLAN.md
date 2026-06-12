@@ -11,7 +11,7 @@ Refactor `SchemaConfigSpec` to store `DirPath` and `FilePath` (absolute paths) i
 ## Phase 1: Update SchemaConfigSpec Type Definition (RED → GREEN)
 
 ### Test 1.1: SchemaConfigSpec stores DirPath and FilePath
-**Location:** `lithos-core/src/config/paths.rs` (mod tests::schema_config_spec)
+**Location:** `lithos-core/src/config/schema.rs` (mod tests::schema_config_spec)
 
 **RED - Write failing test:**
 ```rust
@@ -35,7 +35,7 @@ fn schema_config_spec_accepts_absolute_paths() {
 
 **GREEN - Implementation:**
 ```rust
-// lithos-core/src/config/paths.rs
+// lithos-core/src/config/schema.rs
 
 use crate::fs::{DirPath, FilePath};
 
@@ -114,8 +114,8 @@ fn to_schema_spec_creates_absolute_paths_from_vault_root() {
 ```rust
 // lithos-core/src/config/aggregate.rs
 
-pub fn to_schema_spec(&self) -> super::paths::SchemaConfigSpec {
-    use super::paths::SchemaConfigSpec;
+pub fn to_schema_spec(&self) -> super::schema::SchemaConfigSpec {
+    use super::schema::SchemaConfigSpec;
     use crate::fs::{DirPath, FilePath};
 
     let vault_root = self.vault.root().as_path();
@@ -388,7 +388,7 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 ## Phase 6: Update Doc Comments and Examples
 
 ### Test 6.1: Doc tests compile with new API
-**Location:** `lithos-core/src/config/paths.rs`, `lithos-core/src/config/aggregate.rs`
+**Location:** `lithos-core/src/config/schema.rs`, `lithos-core/src/config/aggregate.rs`
 
 **RED - Update doc examples:**
 ```rust
@@ -396,7 +396,7 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 ///
 /// ```rust
 /// use std::path::PathBuf;
-/// use lithos_core::{config::paths::SchemaConfigSpec, fs::{DirPath, FilePath}};
+/// use lithos_core::{config::schema::SchemaConfigSpec, fs::{DirPath, FilePath}};
 ///
 /// let directory: DirPath = PathBuf::from("/vault/schemas").into();
 /// let property_bank: FilePath = PathBuf::from("/vault/schemas/property_bank.json").into();
@@ -436,7 +436,7 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 
 | File | Changes |
 |------|---------|
-| `lithos-core/src/config/paths.rs` | SchemaConfigSpec fields: RelativePath → DirPath/FilePath |
+| `lithos-core/src/config/schema.rs` | SchemaConfigSpec fields: RelativePath → DirPath/FilePath |
 | `lithos-core/src/config/aggregate.rs` | Config::to_schema_spec() joins vault root |
 | `lithos-core/src/schema/discovery.rs` | DiscoveryEngine::run() signature (remove vault_root param) |
 | `lithos-core/src/schema/builder.rs` | Builder::load_all() call site update |
