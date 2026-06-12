@@ -16,7 +16,7 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Compile meaning**: `TemplateEngine::compile` is engine-level syntax/source checking and owned template loading for an already-supplied `Template`. Service-level validation remains a `TemplateService` responsibility.
 - **Compile boundary**: `compile` must not perform repository lookup, template discovery, indexing, target resolution, conflict checks, filesystem writes, or CLI context assembly.
 - **Service boundary**: `TemplateService` owns use-case orchestration and may call `compile` inside named-template validation or render preparation.
-- **Validation reporting**: Template correctness under the configured engine is modeled as a `TemplateService` validation/check result, not as a terminal `TemplateProcessor<State>` state.
+- **Validation reporting**: Template correctness under the configured engine is modeled as a `TemplateService` validation/check result, not as a terminal `TemplateProcessor<Phase, Status>` state.
 - **Primary error type**: Template use cases return `TemplateError` as the primary error type.
 - **Engine error type**: `TemplateError::Engine` embeds `TemplateEngineError` transparently.
 - **MiniJinja source errors**: Foundation `TemplateEngineError` variants preserve `minijinja::Error` as their source because MiniJinja is the selected foundation engine adapter.
@@ -36,8 +36,8 @@ This file captures decisions made so far. It is not exhaustive; unresolved items
 - **Minimal CLI**: Foundation includes a CLI vertical slice such as `lithos template --input <template-name> --output <vault-relative-path> --var key=value` (`-i`/`-o` accepted).
 
 ## TemplateProcessor Boundary
-- **Ingestion responsibility**: `TemplateProcessor<State>` is responsible for reading, comparing, parsing, constructing, and persisting valid Lithos template assets.
-- **Terminal state**: `TemplateProcessor<State>` stops at `Completed`; it does not add `Compiled` or `Validated` as final states in foundation.
+- **Ingestion responsibility**: `TemplateProcessor<Phase, Status>` is responsible for reading, comparing, parsing, constructing, and persisting valid Lithos template assets.
+- **Terminal state**: `TemplateProcessor<Phase, Status>` stops at `Completed`; it does not add `Compiled` or `Validated` as final states in foundation.
 - **Engine validation**: `TemplateService` reports whether persisted templates compile under the configured engine by orchestrating repository lookup and `TemplateEngine::compile`.
 
 ## TemplateArtifact Typestate

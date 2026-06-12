@@ -175,7 +175,7 @@ Discovery ─┬─ no view
 
 Individual paths skip stages (fresh path goes Comparison → Construction, skipping Parsed and Refresh).
 
-`TemplateProcessor<State>` stops at `Completed`. It is responsible for ingesting valid Lithos template assets, not proving those assets compile under a configured render engine. Engine compilation/check results belong to `TemplateService` validation reporting.
+`TemplateProcessor<Phase, Status>` stops at `Completed`. It is responsible for ingesting valid Lithos template assets, not proving those assets compile under a configured render engine. Engine compilation/check results belong to `TemplateService` validation reporting.
 
 ## TemplateService (Foundation Scope)
 
@@ -195,7 +195,7 @@ Boundary with `TemplateEngine`:
 - `TemplateService` owns named-template validation workflow; `TemplateEngine::compile` only reports engine-level source/syntax/load failures for the supplied `Template`.
 - Missing templates are `TemplateError::NotFound`, not engine errors.
 - Foundation does not introduce a custom `TemplateDiagnostic` type. Invalid existing templates carry a Lithos-owned `TemplateEngineError` with source chaining.
-- `TemplateService` reports whether a template compiles under the configured engine; this is not a `TemplateProcessor<State>` terminal state.
+- `TemplateService` reports whether a template compiles under the configured engine; this is not a `TemplateProcessor<Phase, Status>` terminal state.
 - `TemplateService` may expose `can_compile` or `is_compilable` so callers can run a boolean compile check after `TemplateProcessor` reaches `Completed` and emit tracing about template health.
 - `TemplateService` owns all target resolution, conflict checks, and filesystem commit orchestration after rendering.
 - `TemplateEngine` must not know about repositories, config lookup, filesystem paths, CLI flags, or commit policy.

@@ -19,7 +19,7 @@ Status: ready-for-agent
 
 ## What to build
 
-Implement the Template Processor: a typestate ingestion pipeline that scans the configured template directory, compares files against cached `RawTemplateView`s, and produces persisted `Template` aggregates.
+Implement the Template Processor: a dual-typestate ingestion pipeline that scans the configured template directory, compares files against cached `RawTemplateView`s, and produces persisted `Template` aggregates.
 
 Pipeline stages:
 1. **Discovery** — scan the template directory for `.md` files using `DirScanner`; produce file paths
@@ -35,7 +35,7 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 
 ## Acceptance criteria
 
-- [ ] Processor typestate stages are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
+- [ ] Processor dual typestate phases are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
 - [ ] No `Compiled` or `Validated` stage exists
 - [ ] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
 - [ ] File reads use `FileReader`, not raw `std::fs`
@@ -54,20 +54,22 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Implement the Template Processor typestate ingestion pipeline (Discovery → Comparison → Parsed → Refresh → Construction → Completed)
+**Summary:** Implement the Template Processor dual-typestate ingestion pipeline (Discovery → Comparison → Parsed → Refresh → Construction → Completed)
 
 **Current behavior:**
 No template ingestion pipeline exists. There is no mechanism to scan the configured template directory, compare files against cached views, or produce persisted `Template` aggregates.
 
 **Desired behavior:**
-A `TemplateProcessor<State>` type implements a six-stage typestate pipeline for template ingestion:
+A `TemplateProcessor<Phase, Status>` type implements a six-phase, dual-typestate pipeline for template ingestion, mirroring the shape of `PropertyBankProcessor`:
 
-1. **`Discovery`** — constructed from `TemplateConfigSpec`; resolves the configured declarative template directory against the vault root; uses `DirScanner` to enumerate `.md` files recursively; transitions to `Comparison` with discovered filesystem paths and storage keys
-2. **`Comparison`** — uses the batch `find_raw_template_views_by_paths` repository method to load cached `RawTemplateView`s; classifies each discovered file as fresh, stale-content, stale-timestamp-only, or new; also detects cached views whose paths are no longer discovered as deleted; transitions to `Parsed`
-3. **`Parsed`** — reads only stale-content or new files using vault-scoped `FileReader` (not raw `std::fs`); produces `RawTemplate` DTOs; fresh files and timestamp-only stale files pass through without body reads; transitions to `Refresh`
-4. **`Refresh`** — prepares `RawTemplateView` updates for stale-content, stale-timestamp-only, and new files (content hash, metadata, recorded time); carries deletion information forward; transitions to `Construction`
-5. **`Construction`** — resolves each affected template's `TemplateId` exactly once by path before constructing `Template` aggregates; existing templates reuse their stored ID, new templates use `TemplateId::new()`; timestamp-only refreshes do not reconstruct `Template` aggregates; transitions to `Completed`
-6. **`Completed`** — persists newly constructed or reconstructed `Template` aggregates and updated `RawTemplateView`s through the template repository write capability; removes deleted template/cache entries; pipeline ends here
+1. **`Discovery` phase** — constructed from `TemplateConfigSpec`; resolves the configured declarative template directory against the vault root; uses `DirScanner` to enumerate `.md` files recursively; transitions to `Comparison` with discovered filesystem paths and storage keys
+2. **`Comparison` phase** — uses the batch `find_raw_template_views_by_paths` repository method to load cached `RawTemplateView`s; status branches classify each discovered file as `Missing`, `Present`, `Suspect`, or equivalent branch-specific status; also detects cached views whose paths are no longer discovered as deleted
+3. **`Parsed` phase** — only reached for content that must be read/parsed; reads stale-content or new files using vault-scoped `FileReader` (not raw `std::fs`); produces `RawTemplate` DTOs and downstream construction status
+4. **`Refresh` phase** — only reached for metadata-only refresh paths; prepares `RawTemplateView` updates for stale-timestamp-only files and carries the processor back toward fresh construction/fetch behavior
+5. **`Construction` phase** — resolves each affected template's `TemplateId` exactly once by path before constructing or fetching `Template` aggregates; statuses distinguish fresh, new, stale, and deleted outcomes; timestamp-only refreshes do not reconstruct `Template` aggregates
+6. **`Completed` phase** — terminal phase with the completed ingestion outcome; persists newly constructed or reconstructed `Template` aggregates and updated `RawTemplateView`s through the template repository write capability; removes deleted template/cache entries; pipeline ends here
+
+Individual paths skip phases when the status makes the phase unnecessary. For example, the fresh path can flow from `Comparison<Present>` to `Construction<Fresh>` without `Parsed` or `Refresh`; the timestamp-only path can flow through `Refresh<StaleTimestamps>` before returning to `Construction<Fresh>`.
 
 No `Compiled` or `Validated` stage is added — engine compilation is a live on-demand check, not an ingestion state.
 
@@ -78,7 +80,7 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 - Relevant architectural decisions: file ingestion separates file I/O from parsing/domain/persistence; template engine compilation is runtime/on-demand; repository boundaries use segregated read/write traits; storage keys use `PathKey`; filesystem access uses the FS context path taxonomy.
 
 **Key interfaces and contracts:**
-- `TemplateProcessor<State>` — generic typestate processor; each stage is represented by a distinct zero-sized state type, and only legal transitions are callable for the current state.
+- `TemplateProcessor<Phase, Status>` — generic dual-typestate processor; the first parameter represents the logical phase, the second represents the branch/status proven inside that phase. Only legal transitions are callable for the current phase/status pair.
 - `TemplateConfigSpec` — the narrowed config contract consumed by discovery; it exposes the vault root, declarative relative template directory, derived directory path, and directory `PathKey`.
 - `DirScanner` — FS discovery utility; use extension filtering for `.md` files and keep discovery scoped to the configured template directory.
 - `FileReader` — vault-scoped read adapter; all template body reads flow through it, preserving testability and path-boundary policy.
@@ -90,14 +92,16 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 - Error handling — return typed `Result` errors; avoid `unwrap()`/`expect()` in production paths; wrap repository failures in the template context's repository/domain error model rather than erasing them with `anyhow`.
 
 **Rust implementation constraints:**
-- Use `PhantomData` or equivalent zero-cost state markers so invalid stage transitions fail to compile rather than relying on runtime flags.
+- Use `PhantomData` or equivalent zero-cost markers for both phase and status so invalid transitions fail to compile rather than relying on runtime flags.
 - Prefer borrowing over cloning when carrying discovered paths, views, and raw content through stages; clone only when ownership transfer or persistence boundaries require it.
 - Keep filesystem path types, display/config path types, and storage-key types distinct according to the path taxonomy.
 - Keep MiniJinja/compiler checks out of this pipeline. Template Engine behavior may consume persisted templates later, but engine compilation is not an ingestion state.
 - Public APIs added for the processor need doc comments and tests that demonstrate intended stage usage.
 
 **Acceptance criteria:**
-- [ ] Processor stages `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
+- [ ] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
+- [ ] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
+- [ ] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
 - [ ] No `Compiled` or `Validated` stage exists anywhere in the processor
 - [ ] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
 - [ ] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
