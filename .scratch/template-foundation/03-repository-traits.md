@@ -26,7 +26,7 @@ The traits cover:
 - CRUD operations for `RawTemplateView` (find by path, save, delete)
 - Batch raw-view operations for efficient multi-path discovery and atomic cache updates
 
-No filesystem materialization belongs here — the traits are pure persistence ports. No implementation (redb adapter) is required in this slice; the traits and a test-double/in-memory implementation for use in other slices' tests are sufficient.
+No filesystem materialization belongs here — the traits are pure persistence ports. Both an in-memory test double and a `redb`-backed `RedbRepository` are built in this slice.
 
 ## Acceptance criteria
 
@@ -36,6 +36,12 @@ No filesystem materialization belongs here — the traits are pure persistence p
 - [ ] No filesystem I/O or MiniJinja types appear in any trait method signature
 - [ ] An in-memory test implementation is provided (or a testing module following `schema/storage/testing.rs` pattern) so downstream slices can write unit tests without a real redb adapter
 - [ ] Repository contract tests cover: save and find round-trip for `Template`, missing-entity behavior (returns `None` or appropriate error), `RawTemplateView` save/find/delete, batch raw-view operations, find-by-name and find-by-id correctness
+- [ ] `RedbRepository` struct wraps `Arc<Store>`, constructed via `RedbRepository::new(store)`
+- [ ] `RedbRepository` implements both `ReadRepository` and `WriteRepository` using `redb` tables
+- [ ] `save_template` atomically writes template aggregate + name index
+- [ ] `delete_template` atomically removes template + name index + raw view
+- [ ] `save_raw_template_view` atomically writes view + path-to-ID index
+- [ ] All `redb` adapter tests use `tempfile::TempDir` for isolation
 
 ## Blocked by
 
@@ -170,7 +176,6 @@ A `lithos-core/src/template/repository.rs` module (mirroring `schema/repository.
 - [ ] `mise run test` passes
 
 **Out of scope:**
-- redb storage adapter (no `RedbRepository` in this slice — `read.rs`/`write.rs` are scaffolding only)
 - Template processor, service, engine, or CLI
 - MiniJinja dependency or Jinja syntax validation
 - Frontmatter, query, or extension types
@@ -186,10 +191,10 @@ lithos-core/src/template/
 ├── mod.rs              ← MODIFY: add repository + storage modules, re-exports
 ├── repository.rs       ← CREATE: TemplateRepositoryError + ReadRepository + WriteRepository + Repository
 ├── storage/
-│   ├── mod.rs          ← CREATE: module declarations (tables, testing, placeholder read/write)
-│   ├── tables.rs       ← CREATE: table constants for future redb adapter
-│   ├── read.rs         ← CREATE: placeholder (RedbRepository read impl — deferred)
-│   ├── write.rs        ← CREATE: placeholder (RedbRepository write impl — deferred)
+│   ├── mod.rs          ← CREATE: module declarations + RedbRepository struct + constructor
+│   ├── tables.rs       ← CREATE: table constants for redb adapter
+│   ├── read.rs         ← CREATE: ReadRepository impl for RedbRepository
+│   ├── write.rs        ← CREATE: WriteRepository impl for RedbRepository
 │   └── testing.rs      ← CREATE: InMemoryRepository (test double)
 ```
 
@@ -198,10 +203,10 @@ lithos-core/src/template/
 | File | Contents |
 |------|----------|
 | `template/repository.rs` | `TemplateRepositoryError` enum, `ReadRepository` trait (5 methods), `WriteRepository` trait (5 methods), `Repository` blanket marker |
-| `template/storage/mod.rs` | Module declarations: `pub mod tables;`, `mod read;`, `mod write;`, `pub(crate) mod testing;` (gated). No `RedbRepository` struct yet. |
+| `template/storage/mod.rs` | Module declarations + `RedbRepository` struct (wraps `Arc<Store>`), `pub fn new(store: Arc<Store>) -> Self` |
 | `template/storage/tables.rs` | Table constants: `TEMPLATES` (UuidTable), `TEMPLATE_ID_BY_NAME` (Table), `RAW_TEMPLATE_VIEWS` (PathTable). Uses `impl_redb_uuid!(TemplateId)`. |
-| `template/storage/read.rs` | Module doc only. `ReadRepository` impl for `RedbRepository` deferred to redb adapter slice. |
-| `template/storage/write.rs` | Module doc only. `WriteRepository` impl for `RedbRepository` deferred. |
+| `template/storage/read.rs` | `impl ReadRepository for RedbRepository` — all 5 read methods |
+| `template/storage/write.rs` | `impl WriteRepository for RedbRepository` — all 5 write methods |
 | `template/storage/testing.rs` | `InMemoryRepository` struct with `InMemoryHarness`, `#[cfg(any(test, feature = "testing"))]` gate, `From<InMemoryDbError>` conversion |
 
 ### Files to Modify (1)
@@ -320,7 +325,7 @@ lithos-core/src/template/
 
 **GREEN:** Implement `From<InMemoryDbError> for TemplateRepositoryError` in `testing.rs`. Failure injection works automatically from harness pattern already established in Cycles 5-6.
 
-#### Cycle 8: Verify
+#### Cycle 8: Verify (InMemoryRepository)
 
 - `mise run test` passes
 - `mise run lint` passes
@@ -328,9 +333,73 @@ lithos-core/src/template/
 - No `unwrap()`/`expect()` in production code
 - All `pub` items have doc comments
 
+---
+
+### Red-Green Cycles — RedbRepository
+
+#### Cycle 9: RedbRepository struct + constructor (`storage/mod.rs`)
+
+**RED tests:**
+
+These tests use `tempfile::TempDir` + `Store::open` for isolation (never the real vault).
+
+- `RedbRepository` is constructible from `Arc<Store>`
+- `RedbRepository: Send + Sync`
+- `RedbRepository: Debug`
+- `RedbRepository::new(store)` returns an instance
+
+**GREEN:** Create `storage/mod.rs` with `RedbRepository` struct (wraps `pub(crate) store: Arc<Store>`), constructor `pub fn new(store: Arc<Store>) -> Self`. Module layout: `mod read;`, `mod write;`, `pub mod tables;`. `mod read` and `mod write` are `mod` (not `pub mod`) — implementation details.
+
+#### Cycle 10: RedbRepository read impl (`storage/read.rs`)
+
+**RED tests:**
+
+Each test creates an isolated redb instance per test method.
+
+- **Find by ID — missing:** `find_template_by_id` returns `Ok(None)` when table is empty
+- **Find by ID — found:** After direct `store.write(|tx| ...)` insert, `find_template_by_id` returns `Some(template)`
+- **Find by name — missing:** `find_template_by_name` returns `Ok(None)` when name index is empty
+- **Find by name — found:** After direct table insert of name→ID index + template aggregate, `find_template_by_name` returns `Some(template)`
+- **List — empty:** `list_templates` returns empty `Vec` when no templates exist
+- **List — non-empty:** After inserting 2 templates, `list_templates` returns `Vec` of length 2
+- **Find raw view by path — missing:** `find_raw_template_view` returns `Ok(None)` when no view exists
+- **Find raw view by path — found:** After inserting path index + view, `find_raw_template_view` returns `Some(view)`
+- **Batch find views — correct order:** Request 3 paths (middle missing), result order matches input order with `None` for the missing path
+- **Batch find views — empty:** Empty path slice returns empty `Vec`
+
+**GREEN:** Implement all 5 `ReadRepository` methods in `storage/read.rs` (`impl ReadRepository for RedbRepository`). Each method opens a read transaction via `self.store.read(|tx| ...)`, uses `tx.try_open_table()` to access tables, and converts errors via `TemplateRepositoryError::from`. Pattern matches `schema/storage/read.rs`.
+
+#### Cycle 11: RedbRepository write impl (`storage/write.rs`)
+
+**RED tests:**
+
+- **Save template:** `save_template` — after save, `find_template_by_id` returns the template
+- **Save template updates name index:** After save, `find_template_by_name` also returns the template
+- **Save template rollback on error:** Simulate a serialization error inside a write transaction; original data is unaffected
+- **Delete template:** After save + delete, `find_template_by_id` returns `None`
+- **Delete template removes name index:** After save + delete, `find_template_by_name` returns `None`
+- **Delete template idempotent:** Deleting a missing ID returns `Ok(())`
+- **Save raw template view:** After `save_raw_template_view`, `find_raw_template_view` returns the view
+- **Save raw template view updates index:** After save, view is findable by path
+- **Delete raw template view:** After save + delete, `find_raw_template_view` returns `None`
+- **Delete raw template view idempotent:** Deleting a missing path returns `Ok(())`
+- **Batch save raw views:** `save_many_raw_template_views` persists all views, all retrievable by path
+- **Batch save empty:** Empty slice does not error
+
+**GREEN:** Implement all 5 `WriteRepository` methods in `storage/write.rs` (`impl WriteRepository for RedbRepository`). Each method opens a write transaction via `self.store.write(|tx| ...)`. `save_template` atomically writes to both `TEMPLATES` and `TEMPLATE_ID_BY_NAME`. `delete_template` removes from `TEMPLATES`, `TEMPLATE_ID_BY_NAME`, and `RAW_TEMPLATE_VIEWS`. Uses `to_bytes()` for serialization. Pattern matches `schema/storage/write.rs`.
+
+#### Cycle 12: Verify
+
+- `mise run test` passes (all InMemoryRepository + RedbRepository tests)
+- `mise run lint` passes
+- `mise run fmt` passes
+- No `unwrap()`/`expect()` in production code (only in tests)
+- All `pub` items have doc comments
+- `RedbRepository` constructor, `ReadRepository` impl, and `WriteRepository` impl all have doc comments
+
 ### Test Organization
 
-Following the schema pattern in `testing.rs`:
+InMemoryRepository tests live in `storage/testing.rs` (unit tests, no redb needed). RedbRepository tests live in `storage/read.rs` and `storage/write.rs` (integration tests with temp redb instances). Following the schema pattern in `testing.rs`:
 
 ```rust
 #[cfg(test)]
@@ -378,7 +447,7 @@ mod tests {
 1. Error type has correct variants and derives
 2. Trait definitions match interface contracts
 3. Module re-exports work correctly
-4. Table constants are defined for future redb adapter
+4. Table constants are defined for redb adapter
 5. InMemoryRepository constructs and reports zero state
 6. Template save→find round-trip (by id, by name, list)
 7. Missing template returns None
@@ -392,6 +461,13 @@ mod tests {
 15. Failure injection on all write methods (BeforeWrite → Storage)
 16. Operation counter accuracy
 17. InMemoryDbError → TemplateRepositoryError conversion
+18. RedbRepository constructible from `Arc<Store>`, implements `Send + Sync + Debug`
+19. RedbRepository template save→find round-trip (by id, by name)
+20. RedbRepository template delete removes aggregate + name index
+21. RedbRepository raw view save→find round-trip (by path)
+22. RedbRepository batch find raw views preserves order
+23. RedbRepository save rollback on error (transactional integrity)
+24. RedbRepository batch save raw views persists all
 
 ### Dependencies
 
@@ -404,15 +480,22 @@ mod tests {
 | `crate::template::views::RawTemplateView` | `lithos-core/src/template/views.rs` | Cache/freshness view |
 | `crate::db::{UuidTable, Table, PathTable}` | `lithos-core/src/db/` | Table constants in `tables.rs` |
 | `crate::impl_redb_uuid` | `lithos-core/src/db/` | UUID table key impl |
+| `crate::db::Store` | `lithos-core/src/db/core.rs` | RedbRepository database handle |
+| `redb` | `Cargo.toml` (workspace) | Storage engine |
+| `tempfile` | `Cargo.toml` (dev-dependency) | Isolated temp dirs for redb tests |
 
 ### Risk Assessment: LOW
 
 - No existing downstream consumers (greenfield port)
 - Pattern replicated from 3 existing, well-tested contexts
-- No `unsafe`, no filesystem I/O, no MiniJinja
-- `#[allow(dead_code)]` on `RawTemplateView::new()` (view.rs:54) and `content_hash()` (view.rs:82) resolves naturally once repo uses them
+- RedbRepository follows exact schema context pattern (read.rs:69, write.rs:64)
+- No `unsafe`, no MiniJinja
 
 ### Notes
 
-- `storage/read.rs` and `storage/write.rs` are created as scaffolding with module doc comments only — `RedbRepository` struct and its trait impls are deferred to the redb adapter slice. Table constants in `tables.rs` are forward-looking; they serve as the contract for what the redb adapter will implement.
+- `storage/read.rs` and `storage/write.rs` implement the `ReadRepository` and `WriteRepository` traits for `RedbRepository` using `redb` tables. Implementation pattern follows `schema/storage/read.rs` and `schema/storage/write.rs` exactly.
+- Table constants in `tables.rs` define the redb table contracts: `TEMPLATES` (UuidTable for Template aggregates), `TEMPLATE_ID_BY_NAME` (str→bytes index for name lookups), `RAW_TEMPLATE_VIEWS` (PathTable for raw template views).
+- Template read methods are simpler than schema (no inheritance graph, property bank, or versioned views).
+- Template write methods are simpler than schema (no property bank, no base schemas, no inheritance persistence).
+- `delete_template` atomically removes the template aggregate, name index, and raw view in one transaction (matching schema `delete_schema` pattern).
 - PRD says `RawTemplateView` should follow "version-history pattern of `RawSchemaView`" but implementation (views.rs:30) chose "flat struct — NOT a versioned ring buffer". This drift is correct for templates (no inheritance metadata) and has no effect on this task.
