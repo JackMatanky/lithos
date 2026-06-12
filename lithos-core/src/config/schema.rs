@@ -1,4 +1,44 @@
 //! Schema configuration types.
+//!
+//! This module owns the schema portion of resolved configuration:
+//! [`SchemaDir`] stores the declarative relative schema directory,
+//! [`PropertyBankFile`] stores the property bank filename, [`SchemaConfig`]
+//! combines both values, and [`SchemaConfigSpec`] exposes the narrowed
+//! contract used by schema discovery.
+//!
+//! Schema paths stay declarative at the config boundary. The directory uses
+//! [`RelativeDirPath`] and the property bank path is projected to
+//! [`RelativeFilePath`] only when a consumer asks for a config spec. Filesystem
+//! validation happens when [`SchemaConfigSpec`] resolves those declarations
+//! against a vault root.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use lithos_core::{
+//!     config::schema::{PropertyBankFile, SchemaConfig, SchemaConfigSpec, SchemaDir},
+//!     fs::{DirPath, path::RelativeFilePath},
+//! };
+//!
+//! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
+//! let config = SchemaConfig::new(
+//!     SchemaDir::default(),
+//!     PropertyBankFile::try_new("property_bank.json")?,
+//! );
+//! let property_bank = RelativeFilePath::try_new(
+//!     config.property_bank_relative_path().to_string_lossy().as_ref(),
+//! )?;
+//! let spec = SchemaConfigSpec::new(
+//!     root,
+//!     config.schema_dir().as_relative_dir().clone(),
+//!     property_bank,
+//! );
+//!
+//! assert_eq!(spec.directory_relative().as_str(), "schemas");
+//! assert_eq!(spec.property_bank_relative().as_str(), "schemas/property_bank.json");
+//! # Ok(())
+//! # }
+//! ```
 
 use std::path::PathBuf;
 

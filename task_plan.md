@@ -62,7 +62,7 @@
 - Create: `lithos-core/src/config/cache.rs`
 - Modify: `lithos-core/src/config/mod.rs`
 
-- [ ] **Step 1: Write failing tests for `CacheDir` defaults, validation, accessors, and conversions**
+- [x] **Step 1: Write failing tests for `CacheDir` defaults, validation, accessors, and conversions**
 
 Add this test suite to `lithos-core/src/config/cache.rs` before implementation:
 
@@ -158,13 +158,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the failing cache tests**
+- [x] **Step 2: Run the failing cache tests**
 
 Run: `cargo test -p lithos-core config::cache --lib`
 
 Expected: FAIL because `config::cache`, `CacheDir`, and related methods do not exist yet.
 
-- [ ] **Step 3: Implement minimal cache module API**
+- [x] **Step 3: Implement minimal cache module API**
 
 Implement only enough to satisfy Step 1:
 
@@ -224,13 +224,13 @@ impl Default for CacheDir {
 
 Also add `pub mod cache;` to `lithos-core/src/config/mod.rs`.
 
-- [ ] **Step 4: Run the cache tests again**
+- [x] **Step 4: Run the cache tests again**
 
 Run: `cargo test -p lithos-core config::cache --lib`
 
 Expected: PASS for the `CacheDir` tests.
 
-- [ ] **Step 5: Write failing tests for `CacheConfig` and `CacheConfigSpec`**
+- [x] **Step 5: Write failing tests for `CacheConfig` and `CacheConfigSpec`**
 
 Append these modules to `lithos-core/src/config/cache.rs` tests:
 
@@ -341,13 +341,13 @@ mod cache_config_spec {
 }
 ```
 
-- [ ] **Step 6: Run the failing cache config/spec tests**
+- [x] **Step 6: Run the failing cache config/spec tests**
 
 Run: `cargo test -p lithos-core config::cache --lib`
 
 Expected: FAIL because `CacheConfig` and `CacheConfigSpec` do not exist yet.
 
-- [ ] **Step 7: Implement minimal `CacheConfig` and `CacheConfigSpec`**
+- [x] **Step 7: Implement minimal `CacheConfig` and `CacheConfigSpec`**
 
 Add these public types to `lithos-core/src/config/cache.rs`:
 
@@ -422,7 +422,7 @@ impl CacheConfigSpec {
 }
 ```
 
-- [ ] **Step 8: Run cache module tests**
+- [x] **Step 8: Run cache module tests**
 
 Run: `cargo test -p lithos-core config::cache --lib`
 
@@ -435,7 +435,7 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/mod.rs`
 - Modify: `lithos-core/src/config/paths.rs`
 
-- [ ] **Step 1: Write failing tests for `TemplateDir` and `TemplateConfig`**
+- [x] **Step 1: Write failing tests for `TemplateDir` and `TemplateConfig`**
 
 Create `lithos-core/src/config/template.rs` with tests first:
 
@@ -560,13 +560,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the failing template tests**
+- [x] **Step 2: Run the failing template tests**
 
 Run: `cargo test -p lithos-core config::template --lib`
 
 Expected: FAIL because `config::template`, `TemplateDir`, and `TemplateConfig` do not exist yet.
 
-- [ ] **Step 3: Implement minimal template module API and move `TemplateConfigSpec`**
+- [x] **Step 3: Implement minimal template module API and move `TemplateConfigSpec`**
 
 Implement `TemplateDir` with the same validation behavior as the old `paths::Template`: convert `&Path` to UTF-8, validate with `RelativeDirPath::try_new`, and map failures to `ConfigError::ValidationFailed { field: "templates_dir", .. }`. Implement `TemplateConfig` as a private-field wrapper around `TemplateDir`. Move the existing `TemplateConfigSpec` from `paths.rs` into `template.rs` unchanged except for module imports.
 
@@ -595,7 +595,7 @@ impl TemplateConfigSpec {
 
 Also add `pub mod template;` to `lithos-core/src/config/mod.rs`.
 
-- [ ] **Step 4: Move existing `TemplateConfigSpec` tests into `template.rs`**
+- [x] **Step 4: Move existing `TemplateConfigSpec` tests into `template.rs`**
 
 Move the existing `template_config_spec` tests from `paths.rs` into the `tests` module in `template.rs`. Ensure names remain verb-first and modules remain canonical:
 
@@ -677,7 +677,7 @@ mod template_config_spec {
 }
 ```
 
-- [ ] **Step 5: Run template module tests**
+- [x] **Step 5: Run template module tests**
 
 Run: `cargo test -p lithos-core config::template --lib`
 
@@ -690,7 +690,7 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/mod.rs`
 - Modify: `lithos-core/src/config/paths.rs`
 
-- [ ] **Step 1: Write failing tests for schema value objects and config ownership**
+- [x] **Step 1: Write failing tests for schema value objects and config ownership**
 
 Create `lithos-core/src/config/schema.rs` with tests first:
 
@@ -835,13 +835,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the failing schema tests**
+- [x] **Step 2: Run the failing schema tests**
 
 Run: `cargo test -p lithos-core config::schema --lib`
 
 Expected: FAIL because `config::schema`, `SchemaDir`, `PropertyBankFile`, and `SchemaConfig` do not exist yet.
 
-- [ ] **Step 3: Implement minimal schema value objects and `SchemaConfig`**
+- [x] **Step 3: Implement minimal schema value objects and `SchemaConfig`**
 
 Move the old `paths::Schema` behavior into `SchemaDir`: convert `&Path` to UTF-8, validate with `RelativeDirPath::try_new`, and map failures to `ConfigError::ValidationFailed { field: "schemas_dir", .. }`. Move the old `paths::PropertyBank` behavior into `PropertyBankFile`: validate through `FileName`, expose `as_str()`, and preserve `From<FileName>`, `TryFrom<String>`, `From<PropertyBankFile> for String`, and `Display`. Introduce `SchemaConfig` with this public API:
 
@@ -869,13 +869,13 @@ Use the same `ConfigError::ValidationFailed` field names as the current code: `s
 
 Also add `pub mod schema;` to `lithos-core/src/config/mod.rs`.
 
-- [ ] **Step 4: Run schema value/config tests**
+- [x] **Step 4: Run schema value/config tests**
 
 Run: `cargo test -p lithos-core config::schema --lib`
 
 Expected: PASS for schema value/config tests, while moved spec tests may still be absent.
 
-- [ ] **Step 5: Move `SchemaConfigSpec` and its tests**
+- [x] **Step 5: Move `SchemaConfigSpec` and its tests**
 
 Move existing `SchemaConfigSpec` from `paths.rs` to `schema.rs` unchanged except module imports. Move the existing `schema_config_spec` unit tests with these behavior names:
 
@@ -1035,7 +1035,7 @@ mod schema_config_spec {
 }
 ```
 
-- [ ] **Step 6: Run schema module tests**
+- [x] **Step 6: Run schema module tests**
 
 Run: `cargo test -p lithos-core config::schema --lib`
 
@@ -1047,7 +1047,7 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/aggregate.rs`
 - Modify: `lithos-core/src/config/builder.rs`
 
-- [ ] **Step 1: Write failing tests for split config accessors and specs**
+- [x] **Step 1: Write failing tests for split config accessors and specs**
 
 In `lithos-core/src/config/aggregate.rs`, replace tests that assert `config.paths()` with split behavior tests:
 
@@ -1132,13 +1132,13 @@ mod resolved_path_config {
 }
 ```
 
-- [ ] **Step 2: Run failing aggregate tests**
+- [x] **Step 2: Run failing aggregate tests**
 
 Run: `cargo test -p lithos-core config::aggregate::tests::resolved_path_config --lib`
 
 Expected: FAIL because `Config::cache()`, `Config::template()`, and `Config::schema()` do not exist and `Config` still stores `paths`.
 
-- [ ] **Step 3: Update `Config` constructor and accessors**
+- [x] **Step 3: Update `Config` constructor and accessors**
 
 Change `Config` to store:
 
@@ -1158,7 +1158,7 @@ pub const fn schema(&self) -> &SchemaConfig;
 
 Remove `Config::paths()` and `ArchivedConfig::paths()`.
 
-- [ ] **Step 4: Update `build_from_layers` to construct split configs**
+- [x] **Step 4: Update `build_from_layers` to construct split configs**
 
 Keep `RawPathsConfig::merge` unchanged. Replace `Paths::try_from(&paths)?` with validation that creates:
 
@@ -1175,7 +1175,7 @@ The validation behavior must keep the current defaults and error fields:
 - `schemas_dir` default: `schemas`
 - `property_bank_file` default: `property_bank.json`
 
-- [ ] **Step 5: Run aggregate split config tests**
+- [x] **Step 5: Run aggregate split config tests**
 
 Run: `cargo test -p lithos-core config::aggregate::tests::resolved_path_config --lib`
 
@@ -1187,7 +1187,7 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/aggregate.rs`
 - Modify: `lithos-core/src/schema/discovery.rs`
 
-- [ ] **Step 1: Write failing tests for `to_schema_spec`, `to_template_spec`, and `to_cache_spec`**
+- [x] **Step 1: Write failing tests for `to_schema_spec`, `to_template_spec`, and `to_cache_spec`**
 
 In `lithos-core/src/config/aggregate.rs`, update/add spec tests:
 
@@ -1315,13 +1315,13 @@ mod config_specs {
 }
 ```
 
-- [ ] **Step 2: Run failing spec projection tests**
+- [x] **Step 2: Run failing spec projection tests**
 
 Run: `cargo test -p lithos-core config::aggregate::tests::config_specs --lib`
 
 Expected: FAIL because imports still point to `config::paths`, `to_cache_spec()` does not exist, and projection methods still read `self.paths`.
 
-- [ ] **Step 3: Update spec projection methods**
+- [x] **Step 3: Update spec projection methods**
 
 Update imports in `aggregate.rs`:
 
@@ -1343,7 +1343,7 @@ pub fn to_cache_spec(&self) -> Result<CacheConfigSpec, ConfigError>;
 
 Each projection uses `self.vault_metadata.root().as_dir_path().clone()` and the relevant `*Config` relative declarations. `to_schema_spec()` builds the property bank relative file from `self.schema.property_bank_relative_path()`.
 
-- [ ] **Step 4: Update schema discovery import**
+- [x] **Step 4: Update schema discovery import**
 
 In `lithos-core/src/schema/discovery.rs`, change:
 
@@ -1357,7 +1357,7 @@ to:
 use crate::config::schema::SchemaConfigSpec;
 ```
 
-- [ ] **Step 5: Run spec projection tests**
+- [x] **Step 5: Run spec projection tests**
 
 Run: `cargo test -p lithos-core config::aggregate::tests::config_specs --lib`
 
@@ -1370,7 +1370,7 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/vault.rs`
 - Modify: `lithos-core/src/config/builder.rs`
 
-- [ ] **Step 1: Write failing global/vault domain tests**
+- [x] **Step 1: Write failing global/vault domain tests**
 
 In `global.rs`, replace `Paths`-centric tests with explicit optional field behavior:
 
@@ -1475,13 +1475,13 @@ mod path_overrides {
 }
 ```
 
-- [ ] **Step 2: Run failing global/vault tests**
+- [x] **Step 2: Run failing global/vault tests**
 
 Run: `cargo test -p lithos-core config::global::tests::path_overrides config::vault::tests::path_overrides --lib`
 
 Expected: FAIL because `global::Paths`, `vault::Paths`, and `paths::*` still exist and `try_from_paths`/new accessors are not implemented.
 
-- [ ] **Step 3: Replace partial `Paths` structs with explicit optional fields**
+- [x] **Step 3: Replace partial `Paths` structs with explicit optional fields**
 
 In `Global`, replace `paths: Paths` with:
 
@@ -1533,7 +1533,7 @@ fn parse_template_config(raw: &super::raw::RawPathsConfig) -> Result<Option<Temp
 fn parse_schema_config(raw: &super::raw::RawPathsConfig) -> Result<Option<SchemaConfig>, ConfigError>;
 ```
 
-- [ ] **Step 4: Run global/vault tests**
+- [x] **Step 4: Run global/vault tests**
 
 Run: `cargo test -p lithos-core config::global::tests::path_overrides config::vault::tests::path_overrides --lib`
 
@@ -1546,13 +1546,13 @@ Expected: PASS.
 - Modify: `lithos-core/src/config/mod.rs`
 - Modify: all files importing `config::paths` symbols
 
-- [ ] **Step 1: Search for stale path module imports**
+- [x] **Step 1: Search for stale path module imports**
 
 Run: `rg "config::paths|paths::\{|crate::config::paths|super::paths" lithos-core/src lithos-core/tests`
 
 Expected before cleanup: matches in `aggregate.rs`, `global.rs`, `vault.rs`, `schema/discovery.rs`, docs or tests.
 
-- [ ] **Step 2: Update imports to new modules**
+- [x] **Step 2: Update imports to new modules**
 
 Replace old imports with:
 
@@ -1564,11 +1564,11 @@ use crate::config::schema::{PropertyBankFile, SchemaConfig, SchemaConfigSpec, Sc
 
 Inside `lithos-core/src/config/*.rs` modules, prefer `super::cache`, `super::template`, and `super::schema` imports instead of `crate::config::*` imports.
 
-- [ ] **Step 3: Remove `paths.rs` module export**
+- [x] **Step 3: Remove `paths.rs` module export**
 
 If no symbols remain in `paths.rs`, delete the file and remove `pub mod paths;` from `config/mod.rs`. If rustdoc links still need a transition, replace them with links to `cache`, `template`, and `schema` modules.
 
-- [ ] **Step 4: Verify no stale imports remain**
+- [x] **Step 4: Verify no stale imports remain**
 
 Run: `rg "config::paths|paths::\{|crate::config::paths|super::paths" lithos-core/src lithos-core/tests`
 
@@ -1581,7 +1581,7 @@ Expected: no matches.
 - Modify: doc examples in changed config modules
 - Do not modify: `schema/config.schema.json`
 
-- [ ] **Step 1: Write or update doc examples to use specs/accessors**
+- [x] **Step 1: Write or update doc examples to use specs/accessors**
 
 In `config/mod.rs`, replace `config.paths().cache.cache_dir()` examples with spec or split config examples:
 
@@ -1598,7 +1598,7 @@ In module docs, use:
 /// use lithos_core::config::schema::SchemaConfig;
 ```
 
-- [ ] **Step 2: Run doc tests for config modules**
+- [x] **Step 2: Run doc tests for config modules**
 
 Run: `cargo test -p lithos-core --doc config`
 
@@ -1609,31 +1609,31 @@ Expected: PASS.
 **Files:**
 - No planned source edits in this task unless verification reveals failures.
 
-- [ ] **Step 1: Run formatting**
+- [x] **Step 1: Run formatting**
 
 Run: `mise run fmt`
 
 Expected: PASS; Rust files are formatted.
 
-- [ ] **Step 2: Run unit tests**
+- [x] **Step 2: Run unit tests**
 
 Run: `mise run test:unit`
 
 Expected: PASS.
 
-- [ ] **Step 3: Run lint**
+- [x] **Step 3: Run lint**
 
 Run: `mise run lint`
 
 Expected: PASS with no clippy warnings.
 
-- [ ] **Step 4: Run full test suite if unit/lint are clean**
+- [x] **Step 4: Run full test suite if unit/lint are clean**
 
 Run: `mise run test`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run GitNexus change detection**
+- [x] **Step 5: Run GitNexus change detection**
 
 Run the GitNexus tool: `gitnexus_detect_changes({ scope: "all", repo: "lithos" })`
 
@@ -1641,12 +1641,12 @@ Expected: changed symbols are limited to config path refactor surfaces and expec
 
 ## Self-Review Checklist
 
-- [ ] Every task follows RED → GREEN → refactor sequencing.
-- [ ] Tests use Structure A where files contain multiple units.
-- [ ] Test function names are snake_case, verb-first, and behavior-specific.
-- [ ] Tests avoid `test_` prefixes and avoid combining unrelated behaviors with `and`.
-- [ ] `RawPathsConfig`, `RawVaultPaths`, `RawGlobalPaths`, and `schema/config.schema.json` are not modified in this refactor.
-- [ ] `ConfigField::Paths` and raw path hashing remain unchanged unless compilation requires import-only updates.
-- [ ] No compatibility aliases are added for `Paths`, `Cache`, `Template`, `Schema`, or `PropertyBank`.
-- [ ] No production `unwrap()` or `expect()` is introduced.
-- [ ] Public API docs point to `cache`, `template`, and `schema` modules rather than `paths`.
+- [x] Every task follows RED → GREEN → refactor sequencing.
+- [x] Tests use Structure A where files contain multiple units.
+- [x] Test function names are snake_case, verb-first, and behavior-specific.
+- [x] Tests avoid `test_` prefixes and avoid combining unrelated behaviors with `and`.
+- [x] `RawPathsConfig`, `RawVaultPaths`, `RawGlobalPaths`, and `schema/config.schema.json` are not modified in this refactor.
+- [x] `ConfigField::Paths` and raw path hashing remain unchanged unless compilation requires import-only updates.
+- [x] No compatibility aliases are added for `Paths`, `Cache`, `Template`, `Schema`, or `PropertyBank`.
+- [x] No production `unwrap()` or `expect()` is introduced.
+- [x] Public API docs point to `cache`, `template`, and `schema` modules rather than `paths`.

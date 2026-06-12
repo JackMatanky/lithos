@@ -1,4 +1,36 @@
 //! Template configuration types.
+//!
+//! This module owns the template portion of resolved configuration:
+//! [`TemplateDir`] stores the declarative relative template directory,
+//! [`TemplateConfig`] stores the validated resolved config value, and
+//! [`TemplateConfigSpec`] exposes the narrowed contract used by template
+//! discovery and loading code.
+//!
+//! Template paths are intentionally declarative. They use [`RelativeDirPath`]
+//! rather than a filesystem-validated directory so configuration can be loaded
+//! even before templates exist. Consumers resolve the declaration against a
+//! vault root through [`TemplateConfigSpec`].
+//!
+//! # Examples
+//!
+//! ```rust
+//! use lithos_core::{
+//!     config::template::{TemplateConfig, TemplateConfigSpec, TemplateDir},
+//!     fs::{DirPath, path::RelativeDirPath},
+//! };
+//!
+//! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
+//! let template_dir = TemplateDir::new(RelativeDirPath::try_new("templates")?);
+//! let config = TemplateConfig::new(template_dir);
+//! let spec = TemplateConfigSpec::new(
+//!     root,
+//!     config.template_dir().as_relative_dir().clone(),
+//! );
+//!
+//! assert_eq!(spec.as_relative_dir().as_str(), "templates");
+//! # Ok(())
+//! # }
+//! ```
 
 use rkyv::{Archive, Deserialize, Serialize};
 

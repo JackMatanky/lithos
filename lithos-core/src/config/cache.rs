@@ -1,4 +1,36 @@
 //! Cache configuration types.
+//!
+//! This module owns the cache portion of resolved configuration:
+//! [`CacheDir`] stores the declarative relative cache directory,
+//! [`CacheConfig`] stores the validated resolved config value, and
+//! [`CacheConfigSpec`] exposes the narrowed contract consumed by cache-facing
+//! code.
+//!
+//! Config paths remain declarative here. They use [`RelativeDirPath`] instead
+//! of filesystem-validated paths so configuration can be parsed before the
+//! cache directory exists on disk. Consumers that need filesystem paths should
+//! use [`CacheConfigSpec`] to resolve the declaration against a vault root.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use lithos_core::{
+//!     config::cache::{CacheConfig, CacheConfigSpec, CacheDir},
+//!     fs::{DirPath, path::RelativeDirPath},
+//! };
+//!
+//! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
+//! let cache_dir = CacheDir::new(RelativeDirPath::try_new(".cache")?);
+//! let config = CacheConfig::new(cache_dir);
+//! let spec = CacheConfigSpec::new(
+//!     root,
+//!     config.cache_dir().as_relative_dir().clone(),
+//! );
+//!
+//! assert_eq!(spec.as_relative_dir().as_str(), ".cache");
+//! # Ok(())
+//! # }
+//! ```
 
 use rkyv::{Archive, Deserialize, Serialize};
 
