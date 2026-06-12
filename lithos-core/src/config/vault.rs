@@ -240,13 +240,15 @@ impl Vault {
     /// Returns [`ConfigError::ValidationFailed`] if any configured path is
     /// invalid.
     #[inline]
-    pub fn try_from_paths(
-        raw: &super::raw::RawPathsConfig,
+    pub fn try_from_components(
+        cache: Option<&super::raw::RawCacheConfig>,
+        template: Option<&super::raw::RawTemplateConfig>,
+        schema: Option<&super::raw::RawSchemaConfig>,
     ) -> Result<Self, ConfigError> {
         Ok(Self {
-            cache: parse_cache(raw)?,
-            template: parse_template(raw)?,
-            schema: parse_schema(raw)?,
+            cache: cache.map(parse_cache).transpose()?.flatten(),
+            template: template.map(parse_template).transpose()?.flatten(),
+            schema: schema.map(parse_schema).transpose()?.flatten(),
             ..Self::default()
         })
     }
@@ -302,9 +304,9 @@ impl Vault {
 }
 
 fn parse_cache(
-    raw: &super::raw::RawPathsConfig,
+    raw: &super::raw::RawCacheConfig,
 ) -> Result<Option<CacheConfig>, ConfigError> {
-    raw.cache_dir
+    raw.directory
         .as_ref()
         .filter(|value| !value.is_empty())
         .map(|value| CacheDir::try_new(Path::new(value)).map(CacheConfig::new))
@@ -312,9 +314,9 @@ fn parse_cache(
 }
 
 fn parse_template(
-    raw: &super::raw::RawPathsConfig,
+    raw: &super::raw::RawTemplateConfig,
 ) -> Result<Option<TemplateConfig>, ConfigError> {
-    raw.templates_dir
+    raw.directory
         .as_ref()
         .filter(|value| !value.is_empty())
         .map(|value| {
@@ -324,10 +326,10 @@ fn parse_template(
 }
 
 fn parse_schema(
-    raw: &super::raw::RawPathsConfig,
+    raw: &super::raw::RawSchemaConfig,
 ) -> Result<Option<SchemaConfig>, ConfigError> {
     let schema_dir = raw
-        .schemas_dir
+        .directory
         .as_ref()
         .filter(|value| !value.is_empty())
         .map(|value| SchemaDir::try_new(Path::new(value)))
@@ -857,15 +859,23 @@ mod tests {
 
         #[test]
         fn returns_cache_template_and_schema_overrides_from_raw_paths() {
-            let raw = crate::config::raw::RawPathsConfig {
-                cache_dir: Some(".vault-cache".to_owned()),
-                templates_dir: Some("vault-templates".to_owned()),
-                schemas_dir: Some("vault-schemas".to_owned()),
+            let raw_cache = crate::config::raw::RawCacheConfig {
+                directory: Some(".vault-cache".to_owned()),
+            };
+            let raw_template = crate::config::raw::RawTemplateConfig {
+                directory: Some("vault-templates".to_owned()),
+            };
+            let raw_schema = crate::config::raw::RawSchemaConfig {
+                directory: Some("vault-schemas".to_owned()),
                 property_bank_file: Some("vault-bank.json".to_owned()),
             };
 
-            let vault = Vault::try_from_paths(&raw)
-                .expect("vault path overrides should validate");
+            let vault = Vault::try_from_components(
+                Some(&raw_cache),
+                Some(&raw_template),
+                Some(&raw_schema),
+            )
+            .expect("vault path overrides should validate");
 
             assert_eq!(
                 vault

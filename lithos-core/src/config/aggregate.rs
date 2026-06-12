@@ -473,12 +473,16 @@ pub(crate) mod fixtures {
             logging: Some(RawLogging {
                 log_level: Some("debug".to_owned()),
             }),
-            paths: crate::config::raw::RawVaultPaths {
-                schemas_dir: Some("schemas".to_owned()),
-                templates_dir: Some("custom_templates".to_owned()),
+            schema: Some(crate::config::raw::RawSchemaConfig {
+                directory: Some("schemas".to_owned()),
                 property_bank_file: Some("property_bank.json".to_owned()),
-                cache_dir: Some(".lithos".to_owned()),
-            },
+            }),
+            template: Some(crate::config::raw::RawTemplateConfig {
+                directory: Some("custom_templates".to_owned()),
+            }),
+            cache: Some(crate::config::raw::RawCacheConfig {
+                directory: Some(".lithos".to_owned()),
+            }),
             frontmatter: Some(RawFrontmatter {
                 alias_key: Some("aliases".to_owned()),
                 tags_key: None,
@@ -703,12 +707,16 @@ mod tests {
         #[test]
         fn applies_paths_fields_from_raw() {
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    cache_dir: Some(".lithos-cache".to_owned()),
-                    schemas_dir: Some("my-schemas".to_owned()),
+                schema: Some(crate::config::raw::RawSchemaConfig {
+                    directory: Some("my-schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
-                    templates_dir: Some("my-templates".to_owned()),
-                },
+                }),
+                template: Some(crate::config::raw::RawTemplateConfig {
+                    directory: Some("my-templates".to_owned()),
+                }),
+                cache: Some(crate::config::raw::RawCacheConfig {
+                    directory: Some(".lithos-cache".to_owned()),
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -801,11 +809,10 @@ mod tests {
                 .expect("custom property bank should be writable");
 
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    schemas_dir: Some("custom-schemas".to_owned()),
+                schema: Some(crate::config::raw::RawSchemaConfig {
+                    directory: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
-                    ..Default::default()
-                },
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -910,12 +917,16 @@ mod tests {
         #[test]
         fn applies_path_fields_from_raw_to_split_configs() {
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    cache_dir: Some(".lithos-cache".to_owned()),
-                    schemas_dir: Some("my-schemas".to_owned()),
+                schema: Some(crate::config::raw::RawSchemaConfig {
+                    directory: Some("my-schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
-                    templates_dir: Some("my-templates".to_owned()),
-                },
+                }),
+                template: Some(crate::config::raw::RawTemplateConfig {
+                    directory: Some("my-templates".to_owned()),
+                }),
+                cache: Some(crate::config::raw::RawCacheConfig {
+                    directory: Some(".lithos-cache".to_owned()),
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -963,11 +974,10 @@ mod tests {
             std::fs::write(&custom_bank, "{}")
                 .expect("custom property bank should be writable");
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    schemas_dir: Some("custom-schemas".to_owned()),
+                schema: Some(crate::config::raw::RawSchemaConfig {
+                    directory: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
-                    ..Default::default()
-                },
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -1010,10 +1020,9 @@ mod tests {
             std::fs::create_dir_all(&templates)
                 .expect("templates dir should be created");
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    templates_dir: Some("custom-templates".to_owned()),
-                    ..Default::default()
-                },
+                template: Some(crate::config::raw::RawTemplateConfig {
+                    directory: Some("custom-templates".to_owned()),
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -1052,10 +1061,9 @@ mod tests {
             std::fs::create_dir_all(&cache)
                 .expect("cache dir should be created");
             let vault = crate::config::raw::RawVaultConfig {
-                paths: crate::config::raw::RawVaultPaths {
-                    cache_dir: Some(".lithos-cache".to_owned()),
-                    ..Default::default()
-                },
+                cache: Some(crate::config::raw::RawCacheConfig {
+                    directory: Some(".lithos-cache".to_owned()),
+                }),
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
