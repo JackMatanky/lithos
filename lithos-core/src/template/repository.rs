@@ -1,30 +1,36 @@
-//! Template repository trait and error types.
+//! Segregated repository trait definitions for template persistence.
+//!
+//! Defines [`ReadRepository`] and [`WriteRepository`] following a
+//! capability-based segregation pattern. Consumers that only need read access
+//! can depend on [`ReadRepository`] without coupling to write logic, and vice
+//! versa.
+//!
+//! The unified [`Repository`] trait is automatically implemented via blanket
+//! impl for any type implementing both read and write traits.
+//!
+//! # Exports
+//!
+//! - [`ReadRepository`] — read-only template persistence
+//! - [`WriteRepository`] — write-only template persistence
+//! - [`Repository`] — combined read/write interface (blanket impl)
+//!
+//! # Implementations
+//!
+//! - [`crate::template::storage::RedbRepository`] — `redb`-backed production
+//!   adapter
+//! - [`crate::template::storage::testing::InMemoryRepository`] — in-memory test
+//!   double
+//!
+//! Repository errors are reported via [`TemplateRepositoryError`].
 
 use crate::{
-    db::DbError,
     fs::PathKey,
     template::{
         aggregate::{Template, TemplateId, TemplateName},
+        error::TemplateRepositoryError,
         views::RawTemplateView,
     },
 };
-
-/// Errors returned by template repository implementations.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum TemplateRepositoryError {
-    /// Returned when the underlying storage layer fails.
-    #[error(transparent)]
-    Storage(#[from] DbError),
-
-    /// Returned when a template is not found by its ID.
-    #[error("template not found: {0}")]
-    NotFoundById(TemplateId),
-
-    /// Returned when a template is not found by its path.
-    #[error("template path not found: {0}")]
-    NotFoundByPath(PathKey),
-}
 
 /// Segregated read interface for template persistence.
 pub trait ReadRepository {

@@ -1,11 +1,37 @@
 //! Error types for the Template context.
 //!
-//! Provides domain-level error types for template validation:
+//! Provides domain-level error types for template validation and persistence:
+//! - [`TemplateError`] — top-level error embedding all domain and repository
+//!   errors
 //! - [`TemplateNameError`] — stem derivation failures
 //! - [`TemplateBodyError`] — empty content rejection
-//! - [`TemplateError`] — top-level error embedding both via `#[from]`
+//! - [`TemplateRepositoryError`] — persistence/storage errors
 
 use thiserror::Error;
+
+use crate::{db::DbError, fs::PathKey};
+
+// ============================================================================
+// TemplateError
+// ============================================================================
+
+/// Top-level error type for the Template context.
+///
+/// Embeds domain validation errors and repository errors via `#[from]`
+/// conversions, following the `SchemaError` composition pattern.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TemplateError {
+    /// A template name derivation error.
+    #[error("template name error: {0}")]
+    Name(#[from] TemplateNameError),
+    /// A template body validation error.
+    #[error("template body error: {0}")]
+    Body(#[from] TemplateBodyError),
+    /// A template repository persistence error.
+    #[error(transparent)]
+    Repository(#[from] TemplateRepositoryError),
+}
 
 // ============================================================================
 // TemplateNameError
@@ -40,21 +66,24 @@ pub enum TemplateBodyError {
 }
 
 // ============================================================================
-// TemplateError
+// TemplateRepositoryError
 // ============================================================================
 
-/// Top-level error type for the Template context.
-///
-/// Embeds both [`TemplateNameError`] and [`TemplateBodyError`] via `#[from]`
-/// conversions, following the `FsError` composition pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum TemplateError {
-    /// A template name derivation error.
-    #[error("template name error: {0}")]
-    Name(#[from] TemplateNameError),
-    /// A template body validation error.
-    #[error("template body error: {0}")]
-    Body(#[from] TemplateBodyError),
+/// Errors returned by template repository implementations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TemplateRepositoryError {
+    /// Returned when the underlying storage layer fails.
+    #[error(transparent)]
+    Storage(#[from] DbError),
+
+    /// Returned when a template is not found by its ID.
+    #[error("template not found: {0}")]
+    NotFoundById(super::aggregate::TemplateId),
+
+    /// Returned when a template is not found by its path.
+    #[error("template path not found: {0}")]
+    NotFoundByPath(PathKey),
 }
 
 // ============================================================================
@@ -114,14 +143,24 @@ mod tests {
         fn from_name_error_wraps_correctly() {
             let name_err = TemplateNameError::Derivation;
             let template_err: TemplateError = name_err.clone().into();
-            assert_eq!(template_err, TemplateError::Name(name_err));
+            assert!(matches!(template_err, TemplateError::Name(_)));
         }
 
         #[test]
         fn from_body_error_wraps_correctly() {
             let body_err = TemplateBodyError::Empty;
             let template_err: TemplateError = body_err.clone().into();
-            assert_eq!(template_err, TemplateError::Body(body_err));
+            assert!(matches!(template_err, TemplateError::Body(_)));
+        }
+
+        #[test]
+        fn from_repository_error_wraps_correctly() {
+            let repo_err =
+                crate::template::error::TemplateRepositoryError::NotFoundById(
+                    crate::template::aggregate::TemplateId::new(),
+                );
+            let template_err: TemplateError = repo_err.into();
+            assert!(matches!(template_err, TemplateError::Repository(_)));
         }
 
         #[test]

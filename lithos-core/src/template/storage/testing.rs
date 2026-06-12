@@ -36,9 +36,8 @@ use crate::{
     fs::PathKey,
     template::{
         aggregate::{Template, TemplateId, TemplateName},
-        repository::{
-            ReadRepository, TemplateRepositoryError, WriteRepository,
-        },
+        error::TemplateRepositoryError,
+        repository::{ReadRepository, WriteRepository},
         views::RawTemplateView,
     },
 };
@@ -88,7 +87,7 @@ pub(crate) struct InMemoryRepository {
 
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "test double, called from test code only")
+    allow(dead_code, reason = "test double, called from test code only")
 )]
 impl InMemoryRepository {
     /// Creates a new empty in-memory repository.

@@ -17,8 +17,8 @@
 //!
 //! - `save_template`: Maintains [`TEMPLATES`] ↔ [`TEMPLATE_ID_BY_NAME`]
 //!   consistency
-//! - `delete_template`: Removes template aggregate + name index + raw view in a
-//!   single transaction
+//! - `delete_template`: Removes template aggregate + name index in a single
+//!   transaction
 //!
 //! # Rollback Behavior
 //!
@@ -54,13 +54,14 @@ impl WriteRepository for RedbRepository {
     fn save_template(
         &self,
         template: &Template,
-    ) -> Result<(), crate::template::repository::TemplateRepositoryError> {
-        let bytes = template.to_bytes().map_err(
-            crate::template::repository::TemplateRepositoryError::from,
-        )?;
-        let id_bytes = template.id().to_bytes().map_err(
-            crate::template::repository::TemplateRepositoryError::from,
-        )?;
+    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
+        let bytes = template
+            .to_bytes()
+            .map_err(crate::template::error::TemplateRepositoryError::from)?;
+        let id_bytes = template
+            .id()
+            .to_bytes()
+            .map_err(crate::template::error::TemplateRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -74,19 +75,20 @@ impl WriteRepository for RedbRepository {
 
                 Ok(())
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn delete_template(
         &self,
         id: TemplateId,
-    ) -> Result<(), crate::template::repository::TemplateRepositoryError> {
+    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
         self.store
             .write(|tx| {
-                let mut schemas = tx.try_open_table(TEMPLATES.definition())?;
+                let mut templates_table =
+                    tx.try_open_table(TEMPLATES.definition())?;
 
-                let schema_name: Option<String> = schemas
+                let template_name: Option<String> = templates_table
                     .get(id)?
                     .map(|g| {
                         Template::from_bytes(g.value())
@@ -94,27 +96,27 @@ impl WriteRepository for RedbRepository {
                     })
                     .transpose()?;
 
-                if let Some(ref name) = schema_name {
+                if let Some(ref name) = template_name {
                     let mut name_index =
                         tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
                     let _ = name_index.remove(name.as_str())?;
                 }
 
-                let _ = schemas.remove(id)?;
+                let _ = templates_table.remove(id)?;
 
                 Ok(())
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn save_raw_template_view(
         &self,
         view: &RawTemplateView,
-    ) -> Result<(), crate::template::repository::TemplateRepositoryError> {
-        let bytes = view.to_bytes().map_err(
-            crate::template::repository::TemplateRepositoryError::from,
-        )?;
+    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
+        let bytes = view
+            .to_bytes()
+            .map_err(crate::template::error::TemplateRepositoryError::from)?;
 
         self.store
             .write(|tx| {
@@ -123,14 +125,14 @@ impl WriteRepository for RedbRepository {
                 table.insert(view.path(), bytes.as_slice())?;
                 Ok(())
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn delete_raw_template_view(
         &self,
         path: &PathKey,
-    ) -> Result<(), crate::template::repository::TemplateRepositoryError> {
+    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
         self.store
             .write(|tx| {
                 let mut table =
@@ -138,23 +140,22 @@ impl WriteRepository for RedbRepository {
                 let _ = table.remove(path)?;
                 Ok(())
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn save_many_raw_template_views(
         &self,
         views: &[RawTemplateView],
-    ) -> Result<(), crate::template::repository::TemplateRepositoryError> {
-        let serialized: Vec<(
-            PathKey,
-            Vec<u8>,
-        )> = views
+    ) -> Result<(), crate::template::error::TemplateRepositoryError> {
+        let serialized: Vec<(PathKey, Vec<u8>)> = views
             .iter()
             .map(|view| {
                 view.to_bytes()
                     .map(|bytes| (view.path().clone(), bytes.to_vec()))
-                    .map_err(crate::template::repository::TemplateRepositoryError::from)
+                    .map_err(
+                        crate::template::error::TemplateRepositoryError::from,
+                    )
             })
             .collect::<Result<_, _>>()?;
 
@@ -169,7 +170,7 @@ impl WriteRepository for RedbRepository {
 
                 Ok(())
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 }
 

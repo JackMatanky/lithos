@@ -45,10 +45,8 @@ impl ReadRepository for RedbRepository {
     fn find_template_by_id(
         &self,
         id: TemplateId,
-    ) -> Result<
-        Option<Template>,
-        crate::template::repository::TemplateRepositoryError,
-    > {
+    ) -> Result<Option<Template>, crate::template::error::TemplateRepositoryError>
+    {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(TEMPLATES.definition())?
@@ -63,17 +61,15 @@ impl ReadRepository for RedbRepository {
                 let template = Template::from_bytes(guard.value())?;
                 Ok(Some(template))
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn find_template_by_name(
         &self,
         name: &TemplateName,
-    ) -> Result<
-        Option<Template>,
-        crate::template::repository::TemplateRepositoryError,
-    > {
+    ) -> Result<Option<Template>, crate::template::error::TemplateRepositoryError>
+    {
         self.store
             .read(|tx| {
                 let Some(name_table) =
@@ -101,16 +97,14 @@ impl ReadRepository for RedbRepository {
                 let template = Template::from_bytes(template_guard.value())?;
                 Ok(Some(template))
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
     fn list_templates(
         &self,
-    ) -> Result<
-        Vec<Template>,
-        crate::template::repository::TemplateRepositoryError,
-    > {
+    ) -> Result<Vec<Template>, crate::template::error::TemplateRepositoryError>
+    {
         self.store
             .read(|tx| {
                 let Some(table) = tx.try_open_table(TEMPLATES.definition())?
@@ -127,7 +121,7 @@ impl ReadRepository for RedbRepository {
 
                 Ok(templates)
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
@@ -136,7 +130,7 @@ impl ReadRepository for RedbRepository {
         path: &PathKey,
     ) -> Result<
         Option<RawTemplateView>,
-        crate::template::repository::TemplateRepositoryError,
+        crate::template::error::TemplateRepositoryError,
     > {
         self.store
             .read(|tx| {
@@ -153,7 +147,7 @@ impl ReadRepository for RedbRepository {
                 let view = RawTemplateView::from_bytes(guard.value())?;
                 Ok(Some(view))
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 
     #[inline]
@@ -162,7 +156,7 @@ impl ReadRepository for RedbRepository {
         paths: &[PathKey],
     ) -> Result<
         Vec<Option<RawTemplateView>>,
-        crate::template::repository::TemplateRepositoryError,
+        crate::template::error::TemplateRepositoryError,
     > {
         self.store
             .read(|tx| {
@@ -183,7 +177,7 @@ impl ReadRepository for RedbRepository {
 
                 Ok(results)
             })
-            .map_err(crate::template::repository::TemplateRepositoryError::from)
+            .map_err(crate::template::error::TemplateRepositoryError::from)
     }
 }
 

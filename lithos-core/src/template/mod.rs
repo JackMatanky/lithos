@@ -7,8 +7,8 @@
 //! - [`RawTemplate`] — thin raw-content newtype for ingestion pipeline
 //! - [`RawTemplateView`] — flat freshness/cache struct
 //! - [`Template`] — primary renderable aggregate
-//! - [`TemplateError`], [`TemplateNameError`], [`TemplateBodyError`] — domain
-//!   errors
+//! - [`TemplateError`], [`TemplateNameError`], [`TemplateBodyError`],
+//!   [`TemplateRepositoryError`] — domain and repository errors
 //!
 //! All types are free of `MiniJinja` imports — Jinja syntax validation is the
 //! engine's responsibility.
@@ -21,11 +21,12 @@ pub(crate) mod storage;
 pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
-pub use error::{TemplateBodyError, TemplateError, TemplateNameError};
-pub use raw::RawTemplate;
-pub use repository::{
-    ReadRepository, Repository, TemplateRepositoryError, WriteRepository,
+pub use error::{
+    TemplateBodyError, TemplateError, TemplateNameError,
+    TemplateRepositoryError,
 };
+pub use raw::RawTemplate;
+pub use repository::{ReadRepository, Repository, WriteRepository};
 pub use views::RawTemplateView;
 
 // ============================================================================
