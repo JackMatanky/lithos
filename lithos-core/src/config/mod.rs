@@ -92,6 +92,8 @@ pub mod cache;
 pub mod global;
 /// Path configuration types.
 pub mod paths;
+/// Schema configuration types.
+pub mod schema;
 /// Template configuration types.
 pub mod template;
 /// Vault-scoped configuration types.
