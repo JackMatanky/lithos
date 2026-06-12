@@ -383,3 +383,24 @@ No open questions remain.
 - Two-phase discovery (global config `trusted_paths` → second vault search).
 - CLI subcommands (`config where`, `config list-sources`, `config check`) —
   tracked in issue `10-cli-discovery-subcommands.md`.
+
+## 7. ADRs Created
+
+- `docs/adr/discovery/0001-discovery-service-redesign.md` — full discovery module
+  redesign (self-builder, typestate pipeline, FolderProbe, output split).
+- `docs/adr/config/0001-config-builder-decoupling.md` — ConfigBuilder three-phase
+  interface (from_discovery, build, build_global/build_vault), root.rs deletion.
+
+No root-level ADR needed — ADR 021 (`app` as composition root) already covers
+the architectural decision to place orchestration in `app/`.
+
+## 8. Implementation Checklist
+
+Before implementation begins:
+
+- [ ] Update `lithos-core/src/discovery/CONTEXT.md` — reflect new module
+  structure (service.rs, override.rs, DiscoveryMachine), removed files
+  (engine.rs, diagnostics.rs), unified output types.
+- [ ] Update `lithos-core/src/config/CONTEXT.md` — reflect new Builder
+  interface, root.rs deletion.
+- [ ] Run `gitnexus detect_changes()` before committing any implementation.
