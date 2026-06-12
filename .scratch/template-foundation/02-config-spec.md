@@ -113,3 +113,132 @@ It provides:
 - Template processor, service, or CLI (issues 04–09)
 - Any config field that the template context does not require (property bank, schema directory, etc.)
 - Refactoring `SchemaConfigSpec`
+
+## TDD Implementation Plan
+
+### Scope
+
+Implement `TemplateConfigSpec` and `Config::to_template_spec()` only.
+
+Do not implement:
+- `SchemaConfigSpec` refactor
+- Template processor
+- Template service
+- CLI
+- MiniJinja/template engine work
+- Storage/redb adapters
+
+### Target Files
+
+| File | Action |
+| --- | --- |
+| `lithos-core/src/config/paths.rs` | Add `TemplateConfigSpec` and its path/key behavior |
+| `lithos-core/src/config/mod.rs` or existing `Config` impl location | Add `Config::to_template_spec()` |
+
+### Public Interface
+
+```rust
+pub struct TemplateConfigSpec {
+    root: DirPath,
+    directory: RelativeDirPath,
+}
+
+impl TemplateConfigSpec {
+    pub const fn new(root: DirPath, directory: RelativeDirPath) -> Self;
+    pub const fn root(&self) -> &DirPath;
+    pub const fn as_relative_dir(&self) -> &RelativeDirPath;
+    pub fn to_dir_path(&self) -> Result<DirPath, fs::PathError>;
+    pub fn to_path_key(&self) -> Result<PathKey, fs::PathError>;
+}
+
+impl From<&Config> for TemplateConfigSpec;
+
+impl Config {
+    pub fn to_template_spec(&self) -> Result<TemplateConfigSpec, ConfigError>;
+}
+```
+
+### Tracer Bullet 1: Constructor
+
+Behavior to verify:
+- `TemplateConfigSpec::new(root, directory)` stores the supplied root and directory.
+- Fields remain private; verification happens through accessors.
+
+Implementation work:
+- Add `TemplateConfigSpec` to `paths.rs`.
+- Add `const fn new(root, directory) -> Self`.
+
+Test placement:
+- Module: `constructor`
+- Test: `returns_spec_with_supplied_root_and_directory`
+
+### Tracer Bullet 2: Accessors
+
+Behavior to verify:
+- `root()` returns the configured vault root.
+- `as_relative_dir()` returns the configured template directory.
+
+Implementation work:
+- Add `root(&self) -> &DirPath`.
+- Add `as_relative_dir(&self) -> &RelativeDirPath`.
+
+Test placement:
+- Module: `accessors`
+- Test: `returns_root`
+- Test: `returns_relative_template_directory`
+
+### Tracer Bullet 3: Directory Path Resolution
+
+Behavior to verify:
+- `to_dir_path()` resolves the absolute template directory path from `root + directory`.
+- Invalid path combinations return `fs::PathError` if existing path APIs expose a deterministic failure case.
+
+Implementation work:
+- Follow the existing `SchemaConfigSpec` path-resolution pattern.
+- Do not rename or modify existing `SchemaConfigSpec` methods.
+
+Test placement:
+- Module: `accessors`
+- Test: `returns_dir_path_when_root_and_relative_directory_are_valid`
+- Optional failure test only if the existing FS path API exposes a deterministic invalid case without awkward fixture setup.
+
+### Tracer Bullet 4: Path Key Resolution
+
+Behavior to verify:
+- `to_path_key()` returns the vault-relative `PathKey` for the template directory.
+- The key represents the configured relative template directory, not an absolute filesystem path.
+
+Implementation work:
+- Follow existing config/path key conversion patterns.
+- Keep behavior template-specific.
+
+Test placement:
+- Module: `accessors`
+- Test: `returns_path_key_for_template_directory`
+
+### Tracer Bullet 5: Config Conversion
+
+Behavior to verify:
+- `From<&Config> for TemplateConfigSpec` extracts vault root and template directory from a representative `Config`.
+- `Config::to_template_spec()` returns the same spec through the established config API pattern.
+
+Implementation work:
+- Inspect `SchemaConfigSpec` conversion for field names and error handling.
+- Add `From<&Config>` or `from_config` only if `From` does not fit current `ConfigError` usage.
+- Add `to_template_spec() -> Result<TemplateConfigSpec, ConfigError>`.
+
+Test placement:
+- Module: `conversions` for `From<&Config>` if implemented.
+- Module: `create` for `Config::to_template_spec()`.
+- Test: `returns_template_spec_from_representative_config`
+- Test: `returns_template_spec_with_configured_template_directory`
+
+### Verification
+
+- Run `mise run test:unit` after each tracer bullet.
+- Run `mise run fmt` and `mise run lint` if implementation changes affect formatting or lint expectations.
+- Run `gitnexus_detect_changes({ scope: "staged" })` before committing implementation.
+
+### Risk
+
+Low. The implementation is additive and scoped to a new config view plus a new `Config` adapter method.
