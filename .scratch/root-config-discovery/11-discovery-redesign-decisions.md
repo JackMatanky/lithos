@@ -48,21 +48,38 @@ The full 6-phase discovery process that the `DiscoveryService` must implement:
 6. **Finalization** — Aggregate, deduplicate, and order all candidates by
    specificity priority.
 
-### 2.2 Proposed Module Structure
+### 2.2 Public API: Two-Phase Builder Pattern
+
+`DiscoveryService` uses a two-phase builder as its public API:
+
+1. **`DiscoveryServiceBuilder`** — one-time configuration: target filenames, boundary markers, precedence rules, global directory resolution, `suppress_global`. Owns its data, validates at `build()`.
+2. **`DiscoveryService::discover()`** — per-invocation input: `flag_path`, `env_path`, `cwd`, `ceiling_dirs_raw`. Caller provides only what changes per call.
+
+### 2.3 Internal Typestate Pipeline
+
+Inside `discover()`, the 6-phase process uses a **typestate pattern** (following the Hoverbear state machine pattern). Each phase is a typed node; invalid transitions are compile errors:
+
+```
+Initialized → Preempted → Anchored → Traversed → GlobalResolved → Finalized
+```
+
+Each step is `impl From<Previous> for Next`, zero-cost at runtime. The caller sees only `discover()` — the state machine is an internal implementation detail.
+
+### 2.6 Module Structure
 
 | Module              | Responsibility                                                                                              | Status        |
 | ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------- |
-| `service.rs` (new)  | `DiscoveryService::run()` — orchestrates phases 2–6                                                         | New           |
+| `service.rs` (new)  | `DiscoveryService` + `DiscoveryServiceBuilder` — public API for discovery                                   | New           |
 | `override.rs` (new) | `OverrideResolver` — validates explicit CLI/env paths, verifies file existence vs. directory                | New           |
 | `probe.rs`          | `FolderProbe` — generic: probes one directory for target filenames (replaces `VaultRootProbe` + `GlobalRootProbe`) | Refactor      |
 | `walk.rs`           | `BoundedAscent` + ceiling parsing — traversal iterator, unchanged in responsibility                         | Keep          |
 | `selector.rs`       | `select_candidate` + deduplication/ordering (absorbs `select_markers` from engine)                          | Keep + extend |
 | `policy.rs`         | `DiscoveryPolicy` + target filenames + boundary markers + precedence rules                                  | Keep + extend |
-| `error.rs`          | `DiscoveryError` with nested transparent sub-errors (see §2.4); absorbs `diagnostics.rs`                    | Refactor      |
+| `error.rs`          | `DiscoveryError` with nested transparent sub-errors (see §2.8); absorbs `diagnostics.rs`                    | Refactor      |
 | `diagnostics.rs`    | **Delete** — warnings move to `DiscoveryReport` (structured) or `tracing::warn!` (inline)                   | Delete        |
 | `engine.rs`         | **Delete** — responsibilities redistributed to `service.rs`, `override.rs`, `selector.rs`                  | Delete        |
 
-### 2.3 `FolderProbe` — Generalised Probe
+### 2.7 `FolderProbe` — Generalised Probe
 
 `VaultRootProbe` and `GlobalRootProbe` in the current `probe.rs` are identical
 in structure; they differ only in which `MarkerPattern` list they use.
@@ -75,7 +92,7 @@ appropriate list when constructing the probe.
 The `DiscoveryProbe` trait remains but its name may be simplified to `Probe` or
 kept as-is if it aids clarity.
 
-### 2.4 Error Structure — Layered Transparent Errors
+### 2.8 Error Structure — Layered Transparent Errors
 
 `DiscoveryError` becomes a transparent envelope with `#[from]` conversions:
 
@@ -94,9 +111,9 @@ DiscoveryError
 Each sub-error is self-describing and scoped to its phase. `DiscoveryError`
 wraps them with `#[error(transparent)]` + `#[from]`.
 
-### 2.5 Output Types — `DiscoveryResult` and `DiscoveryReport`
+### 2.9 Output Types — `DiscoveryResult` and `DiscoveryReport`
 
-`DiscoveryService::run()` returns two distinct types:
+`DiscoveryService::discover()` returns two distinct types:
 
 **`DiscoveryResult`** — pure domain data consumed by `config/Builder` and
 downstream components. No process metadata here.
@@ -181,7 +198,7 @@ This also eliminates the old `VaultDiscoveryResult` / `GlobalDiscoveryResult`
 split which perpetuated an incorrect dual-discovery design. Discovery is one
 multi-phase process; its output is one `DiscoveryResult`.
 
-### 2.6 `DiscoveryService::run()` — Single Entry Point (MVP)
+### 2.6 `DiscoveryService::discover()` — Single Entry Point (MVP)
 
 For the MVP, `DiscoveryService` exposes exactly one method:
 
@@ -197,7 +214,7 @@ be designed into the MVP interface.
 ### 2.7 `DiscoveryInput` — What the Bootstrapper Provides
 
 `DiscoveryInput` carries everything the Bootstrapper resolved from the runtime
-environment before calling `DiscoveryService::run()`:
+environment before calling `DiscoveryService::discover()`:
 
 - `flag_path: Option<&Path>` — from CLI `--vault` flag
 - `env_path: Option<&Path>` — from `LITHOS_VAULT` env var
@@ -247,7 +264,7 @@ component that runs this sequence.
 ### 3.3 Future: Two-Phase Discovery
 
 After the MVP is established, the Bootstrapper will support a second pass:
-1. Run `DiscoveryService::run()` (single-pass).
+1. Run `DiscoveryService::discover()` (single-pass).
 2. If only global config is found (no vault), parse the global config to extract
    `trusted_paths`.
 3. Call a second discovery method (not yet designed) with those paths as
@@ -297,13 +314,20 @@ data types; the dependency is one-way and acceptable.
 
 ## 5. Open Questions
 
+### 5.1 Resolved
+
+| ID   | Question                                                                                                    | Resolution |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ---------- |
+| Q1   | Are there non-fatal conditions during global resolution the caller should know about?                        | **Silent skip.** Inaccessible global directories are silently skipped, continue to next candidate. `tracing::warn!` used for debugging. No `DiscoveryReport` field. |
+| Q2   | Should `ConfigDiscoveryPipeline` be renamed (e.g. `ConfigFileLoader`)?                                      | **No rename.** Keeps existing name; will be integrated into processors/builder as it lands. |
+| Q5   | Does `DiscoveryPolicy` own the target filename lists and boundary marker definitions, or separate?           | **Move to `policy.rs`.** `ROOT_MARKER_FILES`, `GLOBAL_MARKER_FILES`, and boundary markers are configuration about *what to look for* and *when to stop* — they belong in `DiscoveryPolicy`. |
+| Q6   | Where is the project boundary marker list (`.git`, `.workspace`) defined? Can it be overridden?             | **Fixed const in `policy.rs`.** Not user-overridable. Ceiling env vars already provide escape-hatch walk control. Boundary markers follow **probe-then-stop** semantics (probe dir for target markers first, then stop ascending), governed by `allow_marker_at_ceiling`. |
+
+### 5.2 Still Open
+
 | ID   | Question                                                                                                    | Status     |
 | ---- | ----------------------------------------------------------------------------------------------------------- | ---------- |
-| Q1   | Are there non-fatal conditions during global resolution the caller should know about?                        | Unanswered |
-| Q2   | Should `ConfigDiscoveryPipeline` be renamed (e.g. `ConfigFileLoader`)?                                      | Unanswered |
-| Q5   | Does `DiscoveryPolicy` own the target filename lists and boundary marker definitions, or separate?           | Unanswered |
-| Q6   | Where is the project boundary marker list (`.git`, `.workspace`) defined? Can it be overridden?             | Unanswered |
-| Q-B1 | Does the Bootstrapper return `Config` or `BootstrapResult { config, report }` to the CLI handler?          | Unanswered |
+| Q-B1 | Does the Bootstrapper return `Config` or `BootstrapResult { config, report }` to the CLI handler?          | **`BootstrapResult { config: Config, report: DiscoveryReport }`.** Most ergonomic; CLI ignores report in hot path; subcommands destructure it. |
 
 Previously open questions now resolved:
 - **Q3** (DiscoveryService interface) — resolved: `run() -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>`.
