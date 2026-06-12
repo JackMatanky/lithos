@@ -24,7 +24,7 @@
 - `config::aggregate::Config` stores resolved `paths::Paths`, exposes `paths()`, and projects to `SchemaConfigSpec` via `to_schema_spec()`.
 - `config::global::Paths` and `config::vault::Paths` are partial override structs that reuse `paths::{Template, Schema, PropertyBank}` and `paths::Cache`.
 - `schema::discovery::DiscoveryEngine::run()` depends on `config::paths::SchemaConfigSpec`, not on the full resolved `Paths` aggregate.
-- `raw.rs` external config DTO field names should remain unchanged unless the TOML schema is intentionally changed.
+- `raw.rs` and `schema/config.schema.json` remain unchanged only to keep this refactor small; their current `paths` shape is deferred follow-up work, not the settled long-term design.
 - `config::builder::build_from_layers()` merges raw global/vault path DTOs into one `RawPathsConfig`, then validates/defaults through `config::paths::Paths::try_from()`.
 - `config::merger` operates on raw config layer outcomes only and should not need changes unless raw path DTOs or `ConfigField::Paths` semantics change.
 
@@ -40,7 +40,7 @@
 
 ## Recommended Direction
 
-- Keep raw DTOs unchanged: they are the external config file schema.
+- Keep raw DTOs unchanged in this refactor only as a scope boundary.
 - Treat `Paths` as transitional if kept at all; the desired end-state is moving downstream usage to narrowed `to_*_spec()` methods rather than exposing full path aggregates.
 - Put `SchemaDir` and `PropertyBankFile` inside `SchemaConfig`; this matches the domain relationship used by `to_schema_spec()`.
 - Convert `CacheDir`, `TemplateDir`, `SchemaDir`, and `PropertyBankFile` to tuple newtypes with accessor methods rather than public fields.
@@ -54,8 +54,28 @@
 - Move existing `TemplateConfigSpec` into `config/template.rs` and update imports from `config::paths::TemplateConfigSpec` to `config::template::TemplateConfigSpec`.
 - Introduce `CacheConfigSpec` in `config/cache.rs`.
 - Current `TemplateConfigSpec` has `root: DirPath`, `directory: RelativeDirPath`, `to_dir_path()`, and `to_path_key()`.
+- `CacheConfigSpec` should follow the same shape and semantics as `TemplateConfigSpec`.
+- Remove non-raw `Paths` structs from `config::global` and `config::vault`; keep `RawGlobalPaths`, `RawVaultPaths`, and `RawPathsConfig` unchanged only until the planned raw config/schema refactor.
+- Replace partial override path domain structs with explicit optional fields on `Global` and `Vault` where applicable.
+- `SchemaConfig` should own both `SchemaDir` and `PropertyBankFile`.
+
+## Settled Target Design
+
+- `lithos-core/src/config/cache.rs`: `CacheConfig`, `CacheDir`, `CacheConfigSpec`.
+- `lithos-core/src/config/template.rs`: `TemplateConfig`, `TemplateDir`, `TemplateConfigSpec`.
+- `lithos-core/src/config/schema.rs`: `SchemaConfig`, `SchemaDir`, `PropertyBankFile`, `SchemaConfigSpec`.
+- `Config` stores private `cache`, `template`, and `schema` fields rather than `paths`.
+- `Global` and `Vault` use explicit optional config fields instead of partial `Paths` structs.
+- `raw.rs` keeps `RawGlobalPaths`, `RawVaultPaths`, and `RawPathsConfig` unchanged only for this small-scope refactor.
+- `schema/config.schema.json` remains unchanged only for this small-scope refactor.
+- `paths.rs` should be deleted or reduced to nothing if no remaining symbols belong there.
+
+## Follow-Up Refactor
+
+- Update `RawPathsConfig`, `RawVaultPaths`, and `RawGlobalPaths` in `lithos-core/src/config/raw.rs`.
+- Update `schema/config.schema.json` to match the new raw configuration shape.
+- Revisit `ConfigField::Paths` naming and path field hashing if raw path sections are split or renamed.
 
 ## Open Questions
 
-- Does persisted rkyv data need backward compatibility across this type rename and struct-shape change?
-- Should `Paths` continue to expose fields named `cache`, `template`, `schema`, and `property_bank`, or should the public resolved config shape change?
+- None for current assessment.

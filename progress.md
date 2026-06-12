@@ -18,6 +18,11 @@
 - User selected moving `SchemaConfigSpec` into `config::schema`.
 - Confirmed existing `TemplateConfigSpec` in current workspace and recorded move to `config::template`.
 - User requested creating `CacheConfigSpec`.
+- User selected `CacheConfigSpec` shape matching `TemplateConfigSpec`.
+- User selected removing `config::global::Paths` and `config::vault::Paths` in the same refactor.
+- User selected placing `PropertyBankFile` inside `SchemaConfig`.
+- Main assessment decisions are complete.
+- User clarified that leaving `RawPathsConfig`, `RawVaultPaths`, `RawGlobalPaths`, and `schema/config.schema.json` unchanged is only to keep this refactor small; the next refactor will update those raw/schema inputs.
 
 ## Verification
 

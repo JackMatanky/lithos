@@ -10,6 +10,7 @@ Assess the implications of splitting `lithos-core/src/config/paths.rs` and refac
 - Analyze splitting `Paths` into `CacheConfig`, `TemplateConfig`, and `SchemaConfig`.
 - Analyze converting `Cache`, `Template`, `Schema`, and `PropertyBank` into tuple structs renamed to `CacheDir`, `TemplateDir`, `SchemaDir`, and `PropertyBankFile`.
 - Identify blast radius, side effects, migration questions, and testing needs.
+- Defer `RawPathsConfig`, `RawVaultPaths`, `RawGlobalPaths`, and `schema/config.schema.json` updates to a follow-up refactor to keep this refactor small.
 
 ## Phases
 
@@ -18,11 +19,11 @@ Assess the implications of splitting `lithos-core/src/config/paths.rs` and refac
 | Initialize planning files | complete | Root planning files created for current assessment. |
 | GitNexus exploration | complete | Query, context, impact, and concrete source seams reviewed. |
 | Refactor implication analysis | complete | API, archive, raw config, docs, tests, and downstream schema discovery impacts recorded. |
-| Grill decision tree | in_progress | Ask one unresolved design question at a time. |
+| Grill decision tree | complete | Main design decisions resolved. |
 
 ## Decisions Pending
 
-- Shape and semantics of new `CacheConfigSpec`.
+- None for current assessment.
 
 ## Decisions Made
 
@@ -35,6 +36,10 @@ Assess the implications of splitting `lithos-core/src/config/paths.rs` and refac
 - `SchemaConfigSpec` should move from `config::paths::SchemaConfigSpec` to `config::schema::SchemaConfigSpec`.
 - Existing `TemplateConfigSpec` should move from `config::paths::TemplateConfigSpec` to `config::template::TemplateConfigSpec`.
 - A new `CacheConfigSpec` should be introduced.
+- `CacheConfigSpec` should mirror `TemplateConfigSpec`: root plus relative directory, with absolute path and path key projection methods.
+- `config::global::Paths` and `config::vault::Paths` should be removed in the same refactor; raw path DTOs remain unchanged only as a scope-control decision.
+- `PropertyBankFile` should be owned by `SchemaConfig`.
+- A follow-up refactor will update `RawPathsConfig`, `RawVaultPaths`, `RawGlobalPaths`, and `schema/config.schema.json`.
 
 ## Errors Encountered
 
