@@ -1,5 +1,5 @@
 ---
-title: 10-cli-discovery-subcommands
+title: 14-cli-discovery-subcommands
 category: enhancement
 label: ready-for-agent
 status: open
@@ -71,4 +71,4 @@ config parsing.
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/08-phase-2-local-config-discovery.md`
+- `.scratch/root-config-discovery/13-context-docs-alignment.md`

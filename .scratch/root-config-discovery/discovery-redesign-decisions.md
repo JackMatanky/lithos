@@ -1,5 +1,5 @@
 ---
-title: 11-discovery-redesign-decisions
+title: discovery-redesign-decisions
 category: architecture
 label: in-progress
 date_created: 2026-06-11
@@ -382,7 +382,7 @@ No open questions remain.
 
 - Two-phase discovery (global config `trusted_paths` → second vault search).
 - CLI subcommands (`config where`, `config list-sources`, `config check`) —
-  tracked in issue `10-cli-discovery-subcommands.md`.
+  tracked in issue `14-cli-discovery-subcommands.md`.
 
 ## 7. ADRs Created
 
@@ -390,9 +390,8 @@ No open questions remain.
   redesign (self-builder, typestate pipeline, FolderProbe, output split).
 - `docs/adr/config/0001-config-builder-decoupling.md` — ConfigBuilder three-phase
   interface (from_discovery, build, build_global/build_vault), root.rs deletion.
-
-No root-level ADR needed — ADR 021 (`app` as composition root) already covers
-the architectural decision to place orchestration in `app/`.
+- `docs/adr/024-bootstrapper-orchestration.md` — Bootstrapper as the single
+  orchestration point inside the `app/` composition root.
 
 ## 8. Implementation Checklist
 
