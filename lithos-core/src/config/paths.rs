@@ -618,6 +618,65 @@ impl SchemaConfigSpec {
     }
 }
 
+// ----------------------------------------------------------- //
+//                   Template Config Spec                     //
+// ----------------------------------------------------------- //
+
+/// Template configuration specification for template discovery.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct TemplateConfigSpec {
+    /// Vault root directory.
+    root: DirPath,
+    /// Relative path to template directory from vault root.
+    directory: RelativeDirPath,
+}
+
+impl TemplateConfigSpec {
+    /// Creates a new template configuration specification.
+    #[inline]
+    #[must_use]
+    pub const fn new(root: DirPath, directory: RelativeDirPath) -> Self {
+        Self {
+            root,
+            directory,
+        }
+    }
+
+    /// Returns the vault root directory.
+    #[inline]
+    #[must_use]
+    pub const fn root(&self) -> &DirPath {
+        &self.root
+    }
+
+    /// Returns the relative template directory declaration.
+    #[inline]
+    #[must_use]
+    pub const fn as_relative_dir(&self) -> &RelativeDirPath {
+        &self.directory
+    }
+
+    /// Returns the absolute template directory path.
+    ///
+    /// # Errors
+    /// Returns an error if the derived directory path does not currently exist.
+    #[inline]
+    pub fn to_dir_path(&self) -> Result<DirPath, crate::fs::PathError> {
+        self.root.append_dir(&self.directory)
+    }
+
+    /// Returns the template directory persistence key.
+    ///
+    /// # Errors
+    /// Returns an error when the absolute template directory path cannot be
+    /// derived or key conversion fails.
+    #[inline]
+    pub fn to_path_key(&self) -> Result<PathKey, crate::fs::PathError> {
+        self.to_dir_path()?.as_key(self.root())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod fixtures {
@@ -832,6 +891,117 @@ mod tests {
                     .as_str(),
                 "schemas/property_bank.json"
             );
+        }
+    }
+
+    mod template_config_spec {
+        use super::super::*;
+
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn returns_spec_with_supplied_root_and_directory() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root, directory);
+
+                assert_eq!(spec.root().as_path(), root_dir.path());
+                assert_eq!(spec.as_relative_dir().as_str(), "templates");
+            }
+        }
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_root() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root.clone(), directory);
+
+                assert_eq!(spec.root(), &root);
+            }
+
+            #[test]
+            fn returns_relative_template_directory() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root, directory.clone());
+
+                assert_eq!(spec.as_relative_dir(), &directory);
+            }
+
+            #[test]
+            fn returns_dir_path_when_root_and_relative_directory_are_valid() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let templates_dir = root_dir.path().join("templates");
+                std::fs::create_dir_all(&templates_dir)
+                    .expect("templates dir should be created");
+
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root, directory);
+
+                assert_eq!(
+                    spec.to_dir_path()
+                        .expect("template directory path should resolve")
+                        .as_path(),
+                    templates_dir.as_path()
+                );
+            }
+
+            #[test]
+            fn returns_path_key_for_template_directory() {
+                use crate::fs::{DirPath, path::RelativeDirPath};
+
+                let root_dir =
+                    tempfile::tempdir().expect("temp dir should be created");
+                let templates_dir = root_dir.path().join("templates");
+                std::fs::create_dir_all(&templates_dir)
+                    .expect("templates dir should be created");
+
+                let root = DirPath::try_from(root_dir.path().to_path_buf())
+                    .expect("temp root should convert");
+                let directory = RelativeDirPath::try_from("templates")
+                    .expect("relative dir declaration should be valid");
+
+                let spec = TemplateConfigSpec::new(root, directory);
+
+                assert_eq!(
+                    spec.to_path_key()
+                        .expect("template directory key should resolve")
+                        .as_str(),
+                    "templates"
+                );
+            }
         }
     }
 }
