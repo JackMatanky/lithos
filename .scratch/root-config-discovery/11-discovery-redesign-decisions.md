@@ -298,39 +298,60 @@ This is deferred. The Bootstrapper's interface must not anticipate it yet.
 
 ## 4. `config/` Module Changes
 
-### 4.1 `ConfigBuilder` Input
+### 4.1 `ConfigBuilder` Interface — Three-Phase Design
 
-**Decision:** `ConfigBuilder` is refactored to accept `DiscoveryResult` directly,
-replacing the current arrangement where `Builder` internally constructs a
-`DiscoveryEngine` and runs discovery itself.
+`Builder` uses a three-phase interface that isolates all `discovery/` imports
+to one adapter method:
 
-`ConfigBuilder` is a pure config-domain component. It does not know about
-discovery orchestration. It receives `DiscoveryResult` and uses the
-`vault`/`global` marker lists and `vault_root` only to locate file paths for
-config ingestion.
+**Phase 1 — `from_discovery()`:** The only place `config/` touches a
+`discovery/` data type. Extracts vault_root, vault markers, and global markers
+from `DiscoveryResult`, validates into domain types:
 
-### 4.2 `config/root.rs` and `config/discovery.rs`
+```rust
+impl<R: Repository> Builder<R> {
+    pub fn from_discovery(
+        discovery: &discovery::DiscoveryResult,
+        repository: R,
+    ) -> Result<Builder<R>, ConfigError> {
+        // 1. Validate vault_root → VaultRoot
+        // 2. Get/create VaultId against repo
+        // 3. Store winning vault/global markers
+        // 4. Return Builder with stored state
+    }
+}
+```
 
-**Decision:** `config/root.rs` is deleted. `DiscoveredConfigFile` and
-`ConfigDiscoveryResult` are redundant wrappers around `DiscoveredMarker` from
-`discovery/`. The `ConfigDiscoveryResult::from_discovery()` conversion is
-removed along with the file.
+**Phase 2 — `build_global()` / `build_vault()`:** Individual source processing.
+Each reads its marker file through `ConfigFileProcessor`, returns
+`Option<RawConfig>`. No awareness of the other source.
 
-`config/discovery.rs` (`ConfigDiscoveryPipeline`) is refactored: instead of
-accepting `ConfigDiscoveryResult`, it accepts `DiscoveryResult` directly and
-uses `vault[0]` / `global[0]` (the winner, first element) for file ingestion.
+**Phase 3 — `build()`:** Orchestrator that calls the phase-2 methods and merges:
+- Vault empty + global empty → error (nothing to build)
+- Vault empty, global present → calls `build_global()` only
+- Both present → calls both, merges via `build_from_layers()`
+- Returns `Config`
 
-**Open Question (Q2):** Should `ConfigDiscoveryPipeline` be renamed to reflect
-its revised role? It is now clearly a "file metadata reader" that translates
-discovered marker paths into `FsEntry` objects with database view lookup. A
-name like `ConfigFileLoader` or `ConfigIngestionPipeline` may be more precise.
+No `BuildMode` needed — `ConfigFileProcessor::compare()` already handles
+stale-vs-fresh detection internally.
 
-### 4.3 Coupling Removal
+### 4.2 Coupling Isolation
 
-The import of `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput` from
-`config/builder.rs` is removed entirely. After the refactor, `config/` imports
-only `DiscoveryResult` and `DiscoveredMarker` from `discovery/`. These are pure
-data types; the dependency is one-way and acceptable.
+`config/` imports `discovery::DiscoveryResult` in exactly one place:
+`Builder::from_discovery()`. All other `config/` code is pure config domain:
+
+- `Builder::build()` — no discovery types
+- `Builder::build_global()` / `build_vault()` — no discovery types
+- `ConfigDiscoveryPipeline` — no discovery types; receives already-extracted
+  winner marker paths from `from_discovery()`
+- `build_from_layers()` — unchanged, pure domain merge
+
+### 4.3 `config/root.rs` — Deleted
+
+`DiscoveredConfigFile` and `ConfigDiscoveryResult` are redundant wrappers around
+`DiscoveredMarker` from `discovery/`. The bridge layer is unnecessary now that
+`from_discovery()` on the Builder absorbs the conversion.
+
+`ConfigDiscoveryResult::from_discovery()` is removed along with the file.
 
 ---
 
@@ -362,3 +383,24 @@ No open questions remain.
 - Two-phase discovery (global config `trusted_paths` → second vault search).
 - CLI subcommands (`config where`, `config list-sources`, `config check`) —
   tracked in issue `10-cli-discovery-subcommands.md`.
+
+## 7. ADRs Created
+
+- `docs/adr/discovery/0001-discovery-service-redesign.md` — full discovery module
+  redesign (self-builder, typestate pipeline, FolderProbe, output split).
+- `docs/adr/config/0001-config-builder-decoupling.md` — ConfigBuilder three-phase
+  interface (from_discovery, build, build_global/build_vault), root.rs deletion.
+
+No root-level ADR needed — ADR 021 (`app` as composition root) already covers
+the architectural decision to place orchestration in `app/`.
+
+## 8. Implementation Checklist
+
+Before implementation begins:
+
+- [ ] Update `lithos-core/src/discovery/CONTEXT.md` — reflect new module
+  structure (service.rs, override.rs, DiscoveryMachine), removed files
+  (engine.rs, diagnostics.rs), unified output types.
+- [ ] Update `lithos-core/src/config/CONTEXT.md` — reflect new Builder
+  interface, root.rs deletion.
+- [ ] Run `gitnexus detect_changes()` before committing any implementation.
