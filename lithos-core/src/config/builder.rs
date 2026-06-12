@@ -29,7 +29,6 @@ use crate::{
         frontmatter::Frontmatter,
         logging::Logging,
         merger::{ConfigResolver, ResolutionPlan},
-        paths::Paths,
         processor::{
             AnalysisBranch, ComparisonBranch, ConfigFileProcessor,
             GlobalConfig, VaultConfig,
@@ -82,12 +81,75 @@ pub fn build_from_layers(
 
     let logging =
         logging.map(Logging::try_from).transpose()?.unwrap_or_default();
-    let paths = Paths::try_from(&paths)?;
     let frontmatter =
         frontmatter.map(Frontmatter::try_from).transpose()?.unwrap_or_default();
     let task = task.map(Task::try_from_raw).transpose()?.unwrap_or_default();
 
-    Ok(Config::new(version, vault_metadata, logging, paths, frontmatter, task))
+    // Parse cache
+    let cache_dir =
+        if let Some(s) = paths.cache_dir.as_ref().filter(|s| !s.is_empty()) {
+            super::cache::CacheDir::try_new(std::path::Path::new(s)).map_err(
+                |e| ConfigError::ValidationFailed {
+                    field: "cache_dir".into(),
+                    message: format!("invalid cache_dir: {e}").into(),
+                },
+            )?
+        } else {
+            super::cache::CacheDir::default()
+        };
+    let cache = super::cache::CacheConfig::new(cache_dir);
+
+    // Parse template
+    let template_dir =
+        if let Some(s) = paths.templates_dir.as_ref().filter(|s| !s.is_empty())
+        {
+            super::template::TemplateDir::try_new(std::path::Path::new(s))
+                .map_err(|e| ConfigError::ValidationFailed {
+                    field: "templates_dir".into(),
+                    message: format!("invalid templates_dir: {e}").into(),
+                })?
+        } else {
+            super::template::TemplateDir::default()
+        };
+    let template = super::template::TemplateConfig::new(template_dir);
+
+    // Parse schema
+    let schema_dir =
+        if let Some(s) = paths.schemas_dir.as_ref().filter(|s| !s.is_empty()) {
+            super::schema::SchemaDir::try_new(std::path::Path::new(s)).map_err(
+                |e| ConfigError::ValidationFailed {
+                    field: "schemas_dir".into(),
+                    message: format!("invalid schemas_dir: {e}").into(),
+                },
+            )?
+        } else {
+            super::schema::SchemaDir::default()
+        };
+    let property_bank_file = if let Some(s) =
+        paths.property_bank_file.as_ref().filter(|s| !s.is_empty())
+    {
+        super::schema::PropertyBankFile::try_new(s.as_str()).map_err(|e| {
+            ConfigError::ValidationFailed {
+                field: "property_bank_file".into(),
+                message: format!("invalid property_bank_file: {e}").into(),
+            }
+        })?
+    } else {
+        super::schema::PropertyBankFile::default()
+    };
+    let schema =
+        super::schema::SchemaConfig::new(schema_dir, property_bank_file);
+
+    Ok(Config::new(
+        version,
+        vault_metadata,
+        logging,
+        cache,
+        template,
+        schema,
+        frontmatter,
+        task,
+    ))
 }
 
 /// Configuration builder with hybrid staleness detection.
@@ -590,7 +652,7 @@ templates_dir = "custom-templates"
         let config = builder.load().expect("load config");
 
         assert_eq!(
-            config.paths().template.templates_dir().as_str(),
+            config.template().template_dir().as_relative_dir().as_str(),
             "custom-templates"
         );
     }

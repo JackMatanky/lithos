@@ -9,12 +9,15 @@ use std::{collections::HashMap, sync::Arc};
 use rkyv::with::Skip;
 
 use super::{
+    cache::CacheConfig,
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::{Frontmatter, FrontmatterConfigSpec},
     logging::Logging,
-    paths::{ArchivedPaths, Paths, TemplateConfigSpec},
+    paths::TemplateConfigSpec,
+    schema::SchemaConfig,
     task::{Task, TaskConfigSpec, TemporalSlot},
+    template::TemplateConfig,
     vault::Metadata,
 };
 
@@ -31,8 +34,12 @@ pub struct Config {
     vault_metadata: Metadata,
     /// Merged logging configuration.
     logging: Logging,
-    /// Merged paths configuration.
-    paths: Paths,
+    /// Merged cache configuration.
+    cache: CacheConfig,
+    /// Merged template configuration.
+    template: TemplateConfig,
+    /// Merged schema configuration.
+    schema: SchemaConfig,
     /// Merged frontmatter configuration.
     frontmatter: Frontmatter,
     /// Merged task configuration.
@@ -54,7 +61,9 @@ impl Config {
         version: Version,
         vault_metadata: Metadata,
         logging: Logging,
-        paths: Paths,
+        cache: CacheConfig,
+        template: TemplateConfig,
+        schema: SchemaConfig,
         frontmatter: Frontmatter,
         task: Task,
     ) -> Self {
@@ -62,7 +71,9 @@ impl Config {
             version,
             vault_metadata,
             logging,
-            paths,
+            cache,
+            template,
+            schema,
             frontmatter,
             task,
             pending_events: vec![],
@@ -97,11 +108,25 @@ impl Config {
         &self.logging
     }
 
-    /// Return the paths configuration.
+    /// Return the cache configuration.
     #[inline]
     #[must_use]
-    pub const fn paths(&self) -> &Paths {
-        &self.paths
+    pub const fn cache(&self) -> &CacheConfig {
+        &self.cache
+    }
+
+    /// Return the template configuration.
+    #[inline]
+    #[must_use]
+    pub const fn template(&self) -> &TemplateConfig {
+        &self.template
+    }
+
+    /// Return the schema configuration.
+    #[inline]
+    #[must_use]
+    pub const fn schema(&self) -> &SchemaConfig {
+        &self.schema
     }
 
     /// Return the frontmatter configuration.
@@ -227,25 +252,15 @@ impl Config {
         &self,
     ) -> Result<super::paths::SchemaConfigSpec, ConfigError> {
         use super::paths::SchemaConfigSpec;
-        use crate::fs::path::{RelativeDirPath, RelativeFilePath};
+        use crate::fs::path::RelativeFilePath;
 
         let root = self.vault_metadata.root().as_dir_path().clone();
 
-        // TODO(.scratch/pathkey-migration/04-schema-configspec-redesign.md):
-        // Promote these ValidationFailed mappings into a dedicated
-        // config-spec projection error type that can be translated across
-        // context boundaries without string-based adaptation.
         let schema_directory =
-            RelativeDirPath::try_new(self.paths.schema.schemas_dir().as_str())
-                .map_err(|error| ConfigError::ValidationFailed {
-                    field: "paths.schema.schemas_dir".into(),
-                    message: format!(
-                        "invalid schema directory declaration: {error}"
-                    )
-                    .into(),
-                })?;
+            self.schema.schema_dir().as_relative_dir().clone();
+        let property_bank_path = self.schema.property_bank_relative_path();
         let property_bank_file = RelativeFilePath::try_new(
-            self.paths.property_bank_path().to_string_lossy().as_ref(),
+            property_bank_path.to_string_lossy().as_ref(),
         )
         .map_err(|error| ConfigError::ValidationFailed {
             field: "paths.property_bank_file".into(),
@@ -264,17 +279,8 @@ impl Config {
     /// declaration cannot be projected into config-spec types.
     #[inline]
     pub fn to_template_spec(&self) -> Result<TemplateConfigSpec, ConfigError> {
-        use crate::fs::path::RelativeDirPath;
-
         let root = self.vault_metadata.root().as_dir_path().clone();
-        let directory = RelativeDirPath::try_new(
-            self.paths.template.templates_dir().as_str(),
-        )
-        .map_err(|error| ConfigError::ValidationFailed {
-            field: "paths.template.templates_dir".into(),
-            message: format!("invalid template directory declaration: {error}")
-                .into(),
-        })?;
+        let directory = self.template.template_dir().as_relative_dir().clone();
 
         Ok(TemplateConfigSpec::new(root, directory))
     }
@@ -312,21 +318,12 @@ impl Config {
     }
 }
 
-impl ArchivedConfig {
-    /// Return the paths configuration.
-    #[inline]
-    #[must_use]
-    pub const fn paths(&self) -> &ArchivedPaths {
-        &self.paths
-    }
-}
-
 impl From<&Config> for TemplateConfigSpec {
     #[inline]
     fn from(config: &Config) -> Self {
         Self::new(
             config.vault_metadata.root().as_dir_path().clone(),
-            config.paths.template.templates_dir().clone(),
+            config.template.template_dir().as_relative_dir().clone(),
         )
     }
 }
@@ -453,7 +450,9 @@ pub(crate) mod fixtures {
             )
             .expect("test metadata must be valid"),
             logging: Logging::default(),
-            paths: Paths::default(),
+            cache: crate::config::cache::CacheConfig::default(),
+            template: crate::config::template::TemplateConfig::default(),
+            schema: crate::config::schema::SchemaConfig::default(),
             frontmatter: Frontmatter::default(),
             task: Task::default(),
             pending_events: vec![],
@@ -591,7 +590,10 @@ mod tests {
                 Version::initial(),
             )
             .unwrap();
-            assert_eq!(config.paths().schema.schemas_dir().as_str(), "schemas");
+            assert_eq!(
+                config.schema().schema_dir().as_relative_dir().as_str(),
+                "schemas"
+            );
         }
 
         #[test]
@@ -620,14 +622,17 @@ mod tests {
         #[test]
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
-            assert_eq!(config.paths().cache.cache_dir().as_str(), ".cache");
+            assert_eq!(
+                config.cache().cache_dir().as_relative_dir().as_str(),
+                ".cache"
+            );
         }
 
         #[test]
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.paths().template.templates_dir().as_str(),
+                config.template().template_dir().as_relative_dir().as_str(),
                 "templates"
             );
         }
@@ -636,7 +641,7 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.paths().template.templates_dir().as_str(),
+                merged.template().template_dir().as_relative_dir().as_str(),
                 "custom_templates"
             );
         }
@@ -676,9 +681,12 @@ mod tests {
                 Version::initial(),
             )
             .unwrap();
-            assert_eq!(config.paths().schema.schemas_dir().as_str(), "schemas");
             assert_eq!(
-                config.paths().property_bank.as_str(),
+                config.schema().schema_dir().as_relative_dir().as_str(),
+                "schemas"
+            );
+            assert_eq!(
+                config.schema().property_bank_file().as_str(),
                 "property_bank.json"
             );
         }
@@ -703,11 +711,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.paths().schema.schemas_dir().as_str(),
+                config.schema().schema_dir().as_relative_dir().as_str(),
                 "my-schemas"
             );
             assert_eq!(
-                config.paths().cache.cache_dir().as_str(),
+                config.cache().cache_dir().as_relative_dir().as_str(),
                 ".lithos-cache"
             );
         }
@@ -850,6 +858,85 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "to_schema_spec should return Ok for valid config"
+            );
+        }
+    }
+
+    mod resolved_path_config {
+        use super::*;
+
+        #[test]
+        fn returns_default_split_path_configs_from_empty_raw() {
+            let config = crate::config::builder::build_from_layers(
+                None,
+                None,
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("empty raw layers should build default config");
+
+            assert_eq!(
+                config.cache().cache_dir().as_relative_dir().as_str(),
+                ".cache",
+                "resolved config should expose default cache config"
+            );
+            assert_eq!(
+                config.template().template_dir().as_relative_dir().as_str(),
+                "templates",
+                "resolved config should expose default template config"
+            );
+            assert_eq!(
+                config.schema().schema_dir().as_relative_dir().as_str(),
+                "schemas",
+                "resolved config should expose default schema config"
+            );
+            assert_eq!(
+                config.schema().property_bank_file().as_str(),
+                "property_bank.json",
+                "resolved config should expose default property bank file"
+            );
+        }
+
+        #[test]
+        fn applies_path_fields_from_raw_to_split_configs() {
+            let vault = crate::config::raw::RawVaultConfig {
+                paths: crate::config::raw::RawVaultPaths {
+                    cache_dir: Some(".lithos-cache".to_owned()),
+                    schemas_dir: Some("my-schemas".to_owned()),
+                    property_bank_file: Some("bank.json".to_owned()),
+                    templates_dir: Some("my-templates".to_owned()),
+                },
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("raw vault paths should build resolved config");
+
+            assert_eq!(
+                config.cache().cache_dir().as_relative_dir().as_str(),
+                ".lithos-cache",
+                "raw cache_dir should populate CacheConfig"
+            );
+            assert_eq!(
+                config.template().template_dir().as_relative_dir().as_str(),
+                "my-templates",
+                "raw templates_dir should populate TemplateConfig"
+            );
+            assert_eq!(
+                config.schema().schema_dir().as_relative_dir().as_str(),
+                "my-schemas",
+                "raw schemas_dir should populate SchemaConfig"
+            );
+            assert_eq!(
+                config.schema().property_bank_file().as_str(),
+                "bank.json",
+                "raw property_bank_file should populate SchemaConfig"
             );
         }
     }
