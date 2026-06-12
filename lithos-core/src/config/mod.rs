@@ -56,9 +56,11 @@
 //!
 //! ## Core Domain
 //! - [`aggregate`] - The [`Config`] aggregate root with versioning
+//! - [`cache`] - Cache configuration settings
 //! - [`global`] - Global-level configuration settings
+//! - [`schema`] - Schema configuration settings
+//! - [`template`] - Template configuration settings
 //! - [`vault`] - Vault-specific overrides and metadata
-//! - [`paths`] - Validated path configurations
 //!
 //! ## Processing Pipeline
 //! - [`processor`] - Typestate processor for single config files
@@ -90,8 +92,6 @@ pub mod aggregate;
 pub mod cache;
 /// Global configuration types and validation.
 pub mod global;
-/// Path configuration types.
-pub mod paths;
 /// Schema configuration types.
 pub mod schema;
 /// Template configuration types.
