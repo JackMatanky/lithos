@@ -4,21 +4,18 @@
 //! vault-specific settings and overrides for global defaults. It also
 //! manages [`VaultId`] and [`VaultRoot`].
 
-#![expect(
-    clippy::exhaustive_structs,
-    reason = "rkyv generates exhaustive archived structs"
-)]
-
 use std::path::{Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
+    cache::{CacheConfig, CacheDir},
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{Cache, PropertyBank, Schema, Template},
+    schema::{PropertyBankFile, SchemaConfig, SchemaDir},
     task::Task,
+    template::{TemplateConfig, TemplateDir},
 };
 use crate::{fs::DirPath, utils::UuidV7};
 
@@ -182,8 +179,12 @@ pub struct Vault {
     version: VaultVersion,
     /// Overridden logging settings.
     logging: Option<Logging>,
-    /// Overridden paths settings.
-    paths: Paths,
+    /// Overridden cache settings.
+    cache: Option<CacheConfig>,
+    /// Overridden template settings.
+    template: Option<TemplateConfig>,
+    /// Overridden schema settings.
+    schema: Option<SchemaConfig>,
     /// Overridden frontmatter settings.
     frontmatter: Option<Frontmatter>,
     /// Overridden task settings.
@@ -196,7 +197,9 @@ impl Default for Vault {
         Self {
             version: VaultVersion::initial(),
             logging: None,
-            paths: Paths::default(),
+            cache: None,
+            template: None,
+            schema: None,
             frontmatter: None,
             task: None,
         }
@@ -207,20 +210,45 @@ impl Vault {
     /// Create vault-specific configuration.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Domain constructor with all optional override groups"
+    )]
     pub const fn new(
         version: VaultVersion,
         logging: Option<Logging>,
-        paths: Paths,
+        cache: Option<CacheConfig>,
+        template: Option<TemplateConfig>,
+        schema: Option<SchemaConfig>,
         frontmatter: Option<Frontmatter>,
         task: Option<Task>,
     ) -> Self {
         Self {
             version,
             logging,
-            paths,
+            cache,
+            template,
+            schema,
             frontmatter,
             task,
         }
+    }
+
+    /// Creates vault-specific configuration from raw path overrides.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
+    /// invalid.
+    #[inline]
+    pub fn try_from_paths(
+        raw: &super::raw::RawPathsConfig,
+    ) -> Result<Self, ConfigError> {
+        Ok(Self {
+            cache: parse_cache(raw)?,
+            template: parse_template(raw)?,
+            schema: parse_schema(raw)?,
+            ..Self::default()
+        })
     }
 
     /// Return the version of this vault config.
@@ -230,11 +258,25 @@ impl Vault {
         self.version
     }
 
-    /// Return the overridden paths settings.
+    /// Return the overridden cache settings, if set.
     #[inline]
     #[must_use]
-    pub const fn paths(&self) -> &Paths {
-        &self.paths
+    pub fn cache(&self) -> Option<&CacheConfig> {
+        self.cache.as_ref()
+    }
+
+    /// Return the overridden template settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn template(&self) -> Option<&TemplateConfig> {
+        self.template.as_ref()
+    }
+
+    /// Return the overridden schema settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn schema(&self) -> Option<&SchemaConfig> {
+        self.schema.as_ref()
     }
 
     /// Return the overridden frontmatter settings, if set.
@@ -257,6 +299,55 @@ impl Vault {
     pub fn logging(&self) -> Option<&Logging> {
         self.logging.as_ref()
     }
+}
+
+fn parse_cache(
+    raw: &super::raw::RawPathsConfig,
+) -> Result<Option<CacheConfig>, ConfigError> {
+    raw.cache_dir
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| CacheDir::try_new(Path::new(value)).map(CacheConfig::new))
+        .transpose()
+}
+
+fn parse_template(
+    raw: &super::raw::RawPathsConfig,
+) -> Result<Option<TemplateConfig>, ConfigError> {
+    raw.templates_dir
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            TemplateDir::try_new(Path::new(value)).map(TemplateConfig::new)
+        })
+        .transpose()
+}
+
+fn parse_schema(
+    raw: &super::raw::RawPathsConfig,
+) -> Result<Option<SchemaConfig>, ConfigError> {
+    let schema_dir = raw
+        .schemas_dir
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| SchemaDir::try_new(Path::new(value)))
+        .transpose()?;
+
+    let property_bank_file = raw
+        .property_bank_file
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| PropertyBankFile::try_new(value.clone()))
+        .transpose()?;
+
+    if schema_dir.is_none() && property_bank_file.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(SchemaConfig::new(
+        schema_dir.unwrap_or_default(),
+        property_bank_file.unwrap_or_default(),
+    )))
 }
 
 /// Metadata for a specific vault.
@@ -470,126 +561,6 @@ impl TryFrom<u64> for VaultVersion {
         Ok(Self(value))
     }
 }
-/// Vault-specific paths configuration (overrides).
-///
-/// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
-/// [`Option`] for all fields to represent partial overrides of global path
-/// settings.
-#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Paths {
-    /// Overridden cache settings.
-    pub cache: Option<Cache>,
-    /// Overridden template settings.
-    pub template: Option<Template>,
-    /// Overridden schema settings.
-    pub schema: Option<Schema>,
-    /// Overridden property bank filename.
-    pub property_bank: Option<PropertyBank>,
-}
-
-impl Paths {
-    /// Create vault-specific paths settings.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        cache: Option<Cache>,
-        template: Option<Template>,
-        schema: Option<Schema>,
-        property_bank: Option<PropertyBank>,
-    ) -> Self {
-        Self {
-            cache,
-            template,
-            schema,
-            property_bank,
-        }
-    }
-}
-
-impl TryFrom<&super::raw::RawPathsConfig> for Paths {
-    type Error = super::error::ConfigError;
-
-    /// Convert raw paths configuration into vault Paths.
-    ///
-    /// Vault paths include all path overrides (cache, template, schema,
-    /// `property_bank`).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
-    #[inline]
-    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
-        use super::{
-            error::ConfigError,
-            paths::{Cache, PropertyBank, Schema, Template},
-        };
-
-        // Parse cache directory (if present)
-        let cache = raw
-            .cache_dir
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                Cache::try_new(std::path::Path::new(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "cache_dir".into(),
-                        message: format!("invalid cache_dir: {e}").into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        // Parse template directory (if present)
-        let template = raw
-            .templates_dir
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                Template::try_new(std::path::Path::new(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "templates_dir".into(),
-                        message: format!("invalid templates_dir: {e}").into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        // Parse schema directory (if present)
-        let schema = raw
-            .schemas_dir
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                Schema::try_new(std::path::Path::new(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "schemas_dir".into(),
-                        message: format!("invalid schemas_dir: {e}").into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        // Parse property bank filename (if present)
-        let property_bank = raw
-            .property_bank_file
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                PropertyBank::try_new(s.clone()).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "property_bank_file".into(),
-                        message: format!("invalid property_bank_file: {e}")
-                            .into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        Ok(Self::new(cache, template, schema, property_bank))
-    }
-}
 /// Version identifier for the Lithos application.
 ///
 /// This type ensures that version strings are not empty and represent
@@ -798,18 +769,24 @@ mod tests {
         #[test]
         fn vault_new_constructs_with_given_values() {
             let version = VaultVersion::initial();
-            let paths = Paths::default();
+            let cache = CacheConfig::default();
+            let template = TemplateConfig::default();
+            let schema = SchemaConfig::default();
             let logging = Logging::new(LogLevel::Debug);
             let vault = Vault::new(
                 version,
                 Some(logging.clone()),
-                paths.clone(),
+                Some(cache.clone()),
+                Some(template.clone()),
+                Some(schema.clone()),
                 None,
                 None,
             );
 
             assert_eq!(vault.version(), version);
-            assert_eq!(vault.paths(), &paths);
+            assert_eq!(vault.cache(), Some(&cache));
+            assert_eq!(vault.template(), Some(&template));
+            assert_eq!(vault.schema(), Some(&schema));
             assert_eq!(vault.logging(), Some(&logging));
         }
 
@@ -871,6 +848,54 @@ mod tests {
             assert!(
                 result.is_err(),
                 "Expected validation failure for empty vault_path"
+            );
+        }
+    }
+
+    mod path_overrides {
+        use super::*;
+
+        #[test]
+        fn returns_cache_template_and_schema_overrides_from_raw_paths() {
+            let raw = crate::config::raw::RawPathsConfig {
+                cache_dir: Some(".vault-cache".to_owned()),
+                templates_dir: Some("vault-templates".to_owned()),
+                schemas_dir: Some("vault-schemas".to_owned()),
+                property_bank_file: Some("vault-bank.json".to_owned()),
+            };
+
+            let vault = Vault::try_from_paths(&raw)
+                .expect("vault path overrides should validate");
+
+            assert_eq!(
+                vault
+                    .cache()
+                    .expect("cache override should exist")
+                    .cache_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                ".vault-cache",
+                "vault cache override should be retained"
+            );
+            assert_eq!(
+                vault
+                    .template()
+                    .expect("template override should exist")
+                    .template_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-templates",
+                "vault template override should be retained"
+            );
+            assert_eq!(
+                vault
+                    .schema()
+                    .expect("schema override should exist")
+                    .schema_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-schemas",
+                "vault schema override should be retained"
             );
         }
     }

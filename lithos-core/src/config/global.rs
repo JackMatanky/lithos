@@ -5,8 +5,7 @@
 
 #![expect(
     clippy::exhaustive_enums,
-    clippy::exhaustive_structs,
-    reason = "rkyv generates exhaustive archived types"
+    reason = "rkyv generates exhaustive archived enum types"
 )]
 
 use std::{
@@ -20,107 +19,12 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{PropertyBank, Schema, Template},
     raw::RawTrustedVaults,
+    schema::{PropertyBankFile, SchemaConfig, SchemaDir},
     task::Task,
+    template::{TemplateConfig, TemplateDir},
 };
 use crate::fs::DirPath;
-
-/// Global-level paths configuration (without cache).
-///
-/// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
-/// [`Option`] for all fields to represent partial overrides of vault-level
-/// defaults.
-#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Paths {
-    /// Overridden template settings.
-    pub template: Option<Template>,
-    /// Overridden schema settings.
-    pub schema: Option<Schema>,
-    /// Overridden property bank filename.
-    pub property_bank: Option<PropertyBank>,
-}
-
-impl Paths {
-    /// Create global paths settings.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        template: Option<Template>,
-        schema: Option<Schema>,
-        property_bank: Option<PropertyBank>,
-    ) -> Self {
-        Self {
-            template,
-            schema,
-            property_bank,
-        }
-    }
-}
-
-impl TryFrom<&super::raw::RawPathsConfig> for Paths {
-    type Error = ConfigError;
-
-    /// Convert raw paths configuration into global Paths.
-    ///
-    /// Global paths do not include cache (cache is vault-specific).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
-    #[inline]
-    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
-        // Parse template directory (if present)
-        let template = raw
-            .templates_dir
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                Template::try_new(std::path::Path::new(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "templates_dir".into(),
-                        message: format!("invalid templates_dir: {e}").into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        // Parse schema directory (if present)
-        let schema = raw
-            .schemas_dir
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                Schema::try_new(std::path::Path::new(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "schemas_dir".into(),
-                        message: format!("invalid schemas_dir: {e}").into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        // Parse property bank filename (if present)
-        let property_bank = raw
-            .property_bank_file
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                PropertyBank::try_new(s.clone()).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: "property_bank_file".into(),
-                        message: format!("invalid property_bank_file: {e}")
-                            .into(),
-                    }
-                })
-            })
-            .transpose()?;
-
-        Ok(Self::new(template, schema, property_bank))
-    }
-}
 
 /// Version number for global configuration staleness tracking.
 ///
@@ -246,8 +150,10 @@ pub struct Global {
     version: GlobalVersion,
     /// Logging configuration for global defaults.
     logging: Logging,
-    /// Paths configuration for global defaults (without cache).
-    paths: Paths,
+    /// Template configuration override.
+    template: Option<TemplateConfig>,
+    /// Schema configuration override.
+    schema: Option<SchemaConfig>,
     /// Trusted vaults configuration.
     trusted_vaults: Option<TrustedVaults>,
     /// Frontmatter configuration for global defaults.
@@ -262,7 +168,8 @@ impl Default for Global {
         Self {
             version: GlobalVersion::initial(),
             logging: Logging::default(),
-            paths: Paths::default(),
+            template: None,
+            schema: None,
             trusted_vaults: None,
             frontmatter: Frontmatter::default(),
             task: None,
@@ -282,7 +189,8 @@ impl Global {
     pub fn new(
         version: GlobalVersion,
         logging: Logging,
-        paths: Paths,
+        template: Option<TemplateConfig>,
+        schema: Option<SchemaConfig>,
         trusted_vaults: Option<TrustedVaults>,
         frontmatter: Frontmatter,
         task: Option<Task>,
@@ -290,11 +198,30 @@ impl Global {
         Self {
             version,
             logging,
-            paths,
+            template,
+            schema,
             trusted_vaults,
             frontmatter,
             task,
         }
+    }
+
+    /// Creates a global configuration from raw path overrides.
+    ///
+    /// Global path overrides ignore `cache_dir`; cache is vault-scoped.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
+    /// invalid.
+    #[inline]
+    pub fn try_from_paths(
+        raw: &super::raw::RawPathsConfig,
+    ) -> Result<Self, ConfigError> {
+        Ok(Self {
+            template: parse_template(raw)?,
+            schema: parse_schema(raw)?,
+            ..Self::default()
+        })
     }
 
     #[inline]
@@ -306,9 +233,16 @@ impl Global {
 
     #[inline]
     #[must_use]
-    /// Return global paths settings.
-    pub fn paths(&self) -> &Paths {
-        &self.paths
+    /// Return the global template override, if set.
+    pub fn template(&self) -> Option<&TemplateConfig> {
+        self.template.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the global schema override, if set.
+    pub fn schema(&self) -> Option<&SchemaConfig> {
+        self.schema.as_ref()
     }
 
     #[inline]
@@ -338,6 +272,45 @@ impl Global {
     pub fn logging(&self) -> &Logging {
         &self.logging
     }
+}
+
+fn parse_template(
+    raw: &super::raw::RawPathsConfig,
+) -> Result<Option<TemplateConfig>, ConfigError> {
+    raw.templates_dir
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            TemplateDir::try_new(Path::new(value)).map(TemplateConfig::new)
+        })
+        .transpose()
+}
+
+fn parse_schema(
+    raw: &super::raw::RawPathsConfig,
+) -> Result<Option<SchemaConfig>, ConfigError> {
+    let schema_dir = raw
+        .schemas_dir
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| SchemaDir::try_new(Path::new(value)))
+        .transpose()?;
+
+    let property_bank_file = raw
+        .property_bank_file
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| PropertyBankFile::try_new(value.clone()))
+        .transpose()?;
+
+    if schema_dir.is_none() && property_bank_file.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(SchemaConfig::new(
+        schema_dir.unwrap_or_default(),
+        property_bank_file.unwrap_or_default(),
+    )))
 }
 
 /// Trusted vaults configuration supporting list or map format.
@@ -694,6 +667,54 @@ mod tests {
                 global.logging().level_str(),
                 "info",
                 "Default log level should be 'info'"
+            );
+        }
+    }
+
+    mod path_overrides {
+        use super::*;
+
+        #[test]
+        fn returns_template_and_schema_overrides_from_raw_paths() {
+            let raw = crate::config::raw::RawPathsConfig {
+                cache_dir: Some(".ignored".to_owned()),
+                templates_dir: Some("global-templates".to_owned()),
+                schemas_dir: Some("global-schemas".to_owned()),
+                property_bank_file: Some("global-bank.json".to_owned()),
+            };
+
+            let global = Global::try_from_paths(&raw)
+                .expect("global path overrides should validate");
+
+            assert_eq!(
+                global
+                    .template()
+                    .expect("template override should exist")
+                    .template_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "global-templates",
+                "global template override should be retained"
+            );
+            assert_eq!(
+                global
+                    .schema()
+                    .expect("schema override should exist")
+                    .schema_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "global-schemas",
+                "global schema override should be retained"
+            );
+            assert_eq!(
+                global
+                    .schema()
+                    .expect("schema override should exist")
+                    .property_bank_file()
+                    .as_str(),
+                "global-bank.json",
+                "global property bank override should be retained under \
+                 schema config"
             );
         }
     }

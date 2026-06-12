@@ -281,7 +281,8 @@ mod tests {
         let global2 = Global::new(
             global1.version().next().unwrap(),
             global1.logging().clone(),
-            global1.paths().clone(),
+            global1.template().cloned(),
+            global1.schema().cloned(),
             global1.trusted_vaults().cloned(),
             global1.frontmatter().clone(),
             global1.task().cloned(),

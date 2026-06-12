@@ -27,3 +27,6 @@
 ## Verification
 
 - No code changes have been made beyond planning files.
+- 2026-06-12: Created dedicated worktree `/Users/jack/Documents/41_personal/lithos/.worktrees/feat/config-path-modules` on branch `feat/config-path-modules`; baseline `cargo test -p lithos-core --lib` passed with 1697 tests.
+- 2026-06-12: Completed Tasks 1-4 and committed changes through `facab80f`; commit hooks passed after fixing stale `config/mod.rs` doctest.
+- 2026-06-12: Task 5 completed and committed as `db7ac831`; `cargo test -p lithos-core config::aggregate::tests::config_specs --lib` passed 3/3, `cargo test -p lithos-core --lib` passed 1739/1739, GitNexus change detection reported low risk and no affected processes.
