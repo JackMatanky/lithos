@@ -1,50 +1,49 @@
-# Task Plan: Rename FS Nodes and Indexer Records
+# Task Plan: Discovery Context Contract Slice
 
 ## Goal
-Establish a clear semantic boundary between `fs` (Filesystem Nodes) and `indexer` (Persisted Records) by renaming types and updating ubiquitous language in `CONTEXT.md`.
+Implement the first vertical slice of the discovery module redesign from `.scratch/root-config-discovery/10-bootstrap-context-discovery-contracts.md`: Discovery-owned input/output/report/error/policy contracts plus a minimal app-owned Bootstrapper context acquisition seam.
 
 ## Current Phase
 Complete
 
 ## Phases
 
-### Phase 1: Update Indexer to Records
-- [x] Rename `FileNode` -> `FileRecord` in `indexer/model.rs`.
-- [x] Rename `DirNode` -> `DirRecord` in `indexer/model.rs`.
-- [x] Rename `FsNodeId` -> `FsRecordId` in `indexer/model.rs`.
-- [x] Rename `FsNodeType` -> `FsRecordType` in `indexer/model.rs`.
-- [x] Update `indexer/CONTEXT.md` to define `*Record` instead of `*Node`.
-- [x] Apply changes across the workspace.
+### Phase 1: Orient and Bound Scope
+- [x] Read issue, ADR/domain docs, graph/report context, and current discovery/bootstrapper code.
+- [x] Identify public interfaces and target symbols for impact analysis.
 - **Status:** complete
 
-### Phase 2: Update FS to Nodes
-- [x] Rename `FsFile` -> `FileNode` in `fs/entry.rs`.
-- [x] Rename `FsDir` -> `DirNode` in `fs/entry.rs`.
-- [x] Rename `FsEntry` -> `FsNode`.
-- [x] Keep `entry.rs` module path for minimal churn; type names now carry the node terminology.
-- [x] Apply changes across the workspace.
+### Phase 2: Discovery Contracts via TDD
+- [x] Add one failing behavior test for `DiscoveryContext`, `DiscoveryFlags`, and `DiscoveryEnv` construction.
+- [x] Implement minimal contract types.
+- [x] Add one failing behavior test for `CandidatePath` and `DiscoveryResult`.
+- [x] Implement minimal output contract types.
+- [x] Add one failing behavior test for `DiscoveryReport` metadata.
+- [x] Implement report-only metadata types.
+- [x] Add one failing behavior test for fatal discovery error taxonomy and policy names.
+- [x] Implement minimal error and policy contracts.
 - **Status:** complete
 
-### Phase 3: Verification
-- [x] Run `mise run verify` (or `fmt`, `lint`, `test`) to ensure everything compiles.
-- [x] Fix any remaining type mismatch or reference errors.
+### Phase 3: Bootstrapper Context Seam via TDD
+- [x] Add one failing behavior test proving app-owned sources build a `DiscoveryContext` without invoking DiscoveryService or Config.
+- [x] Implement the minimal Bootstrapper seam and test source injection.
 - **Status:** complete
 
-### Phase 4: Scratch Issue Documentation Sync
-- [x] Update `.scratch/filesystem-indexer/02-domain-model.md` to use indexer `*Record` terminology.
-- [x] Update `.scratch/filesystem-indexer/03-ports-and-adapters.md` storage/repository terminology.
-- [x] Update `.scratch/filesystem-indexer/04-application-service.md` deleted ID terminology.
-- [x] Update `.scratch/filesystem-indexer/PRD.md` to distinguish FS `*Node` names from indexer `*Record` names.
-- [x] Verify no stale `FsEntry`, `FsFile`, `FsDir`, `FsNodeId`, or `FsNodeType` references remain in `.scratch/filesystem-indexer/`.
+### Phase 4: Verification
+- [x] Run formatting.
+- [x] Run targeted/unit tests for the touched crate.
+- [x] Run lint if feasible.
+- [x] Run full project tests.
+- [x] Run GitNexus `detect_changes` before completion.
 - **Status:** complete
 
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| Use `*Node` in `fs` | Represents structural points in the filesystem tree, distinct from open `File` handles and avoiding `Entry` collisions. |
-| Use `*Record` in `indexer` | Represents the indexed, persisted state of a file in the "database" (index), matching fields like `id` and `recorded_at`. |
+| Use TDD vertical slices | Required by task and keeps the new boundary behavior-driven rather than shape-only. |
+| Keep discovery execution out of scope | Issue explicitly limits this slice to contracts and context acquisition. |
+| Add new contract modules alongside legacy engine/probe | Keeps this first slice minimal while preserving existing discovery behavior. |
 
 ## Errors Encountered
-| Error | Resolution |
-|-------|------------|
-| GitNexus `detect_changes` reported CRITICAL risk and stale old symbol IDs after rename | Verified with stale-name scans plus full `mise run verify`; recommend re-indexing GitNexus after this refactor. |
+| Error | Attempt | Resolution |
+|-------|---------|------------|

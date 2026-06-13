@@ -26,7 +26,7 @@ use std::{
 
 use super::{
     diagnostics::VaultDiscoveryWarning,
-    error::DiscoveryError,
+    error::{DiscoveryError, EnvironmentOverrideError, FlagOverrideError},
     policy::{
         DiscoveryPolicy, GlobalSourceDirectory, GlobalSourceType,
         VaultSourceType,
@@ -252,14 +252,19 @@ impl DiscoveryEngine {
         if !path.exists() {
             return Err(match source {
                 VaultSourceType::ExplicitFlag => {
-                    DiscoveryError::ExplicitPathMissing {
+                    FlagOverrideError::VaultPathNotDirectory {
                         path: path.to_path_buf(),
+                        source: crate::fs::PathError::NotADirectory(
+                            path.to_path_buf(),
+                        ),
                     }
+                    .into()
                 }
                 VaultSourceType::EnvVar => {
-                    DiscoveryError::EnvironmentPathMissing {
+                    EnvironmentOverrideError::VaultPathMissing {
                         path: path.to_path_buf(),
                     }
+                    .into()
                 }
                 VaultSourceType::AscendingWalk => {
                     DiscoveryError::CanonicalizePath {
@@ -276,14 +281,19 @@ impl DiscoveryEngine {
         if !path.is_dir() {
             return Err(match source {
                 VaultSourceType::ExplicitFlag => {
-                    DiscoveryError::ExplicitPathNotDirectory {
+                    FlagOverrideError::VaultPathNotDirectory {
                         path: path.to_path_buf(),
+                        source: crate::fs::PathError::NotADirectory(
+                            path.to_path_buf(),
+                        ),
                     }
+                    .into()
                 }
                 VaultSourceType::EnvVar => {
-                    DiscoveryError::EnvironmentPathNotDirectory {
+                    EnvironmentOverrideError::VaultPathNotDirectory {
                         path: path.to_path_buf(),
                     }
+                    .into()
                 }
                 VaultSourceType::AscendingWalk => {
                     DiscoveryError::CanonicalizePath {
@@ -705,7 +715,7 @@ mod tests {
             assert_eq!(
                 error.to_string(),
                 format!(
-                    "Explicit vault path does not exist: {}",
+                    "Explicit vault path is not a directory: {}",
                     missing.display()
                 ),
             );

@@ -18,3 +18,5 @@
 //!   (database handle, filesystem root, etc.).
 //! - `diagnostics`: app-level result summaries returned to executable adapters
 //!   for rendering; not CLI-formatted output.
+
+pub(crate) mod bootstrap;

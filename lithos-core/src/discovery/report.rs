@@ -1,0 +1,142 @@
+//! Report-only process metadata emitted by discovery.
+
+use std::path::PathBuf;
+
+/// Non-fatal process metadata for Bootstrapper and CLI diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+pub(crate) struct DiscoveryReport {
+    /// Ceiling path segments ignored during traversal setup.
+    pub(crate) skipped_ceilings: Vec<SkippedCeiling>,
+    /// Why local traversal stopped or did not run.
+    pub(crate) local_traversal_stop_reason: LocalTraversalStopReason,
+    /// Why global resolution was skipped, if it was skipped explicitly.
+    pub(crate) global_resolution_skip_reason:
+        Option<GlobalResolutionSkipReason>,
+}
+
+/// A ceiling segment that could not be used for traversal bounds.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+pub(crate) struct SkippedCeiling {
+    /// Raw segment after path-list splitting.
+    pub(crate) segment: PathBuf,
+    /// Why the segment was ignored.
+    pub(crate) reason: SkippedCeilingReason,
+}
+
+/// Reasons a ceiling path-list segment is ignored.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+pub(crate) enum SkippedCeilingReason {
+    /// Segment was empty after trimming.
+    EmptySegment,
+    /// Segment did not resolve to an existing directory.
+    InvalidPath,
+}
+
+/// Reasons local traversal stopped or was skipped.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+pub(crate) enum LocalTraversalStopReason {
+    /// Traversal did not run because an explicit config file was supplied.
+    ExplicitConfigFile,
+    /// Traversal reached the filesystem root.
+    FilesystemRoot,
+    /// Traversal stopped at a project boundary marker.
+    ProjectBoundaryMarker {
+        /// Boundary marker path that stopped traversal.
+        marker: PathBuf,
+    },
+    /// Traversal stopped at a configured ceiling directory.
+    CeilingEnforced {
+        /// Ceiling directory that stopped traversal.
+        ceiling: PathBuf,
+    },
+}
+
+/// Reasons global resolution was intentionally skipped.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+pub(crate) enum GlobalResolutionSkipReason {
+    /// Invocation used `--no-global-config`.
+    SuppressedByFlag,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn skipped_ceiling() -> SkippedCeiling {
+        SkippedCeiling {
+            segment: PathBuf::from("/missing"),
+            reason: SkippedCeilingReason::InvalidPath,
+        }
+    }
+
+    fn report_with_all_fields() -> DiscoveryReport {
+        DiscoveryReport {
+            skipped_ceilings: vec![skipped_ceiling()],
+            local_traversal_stop_reason:
+                LocalTraversalStopReason::ExplicitConfigFile,
+            global_resolution_skip_reason: Some(
+                GlobalResolutionSkipReason::SuppressedByFlag,
+            ),
+        }
+    }
+
+    mod discovery_report {
+        use super::*;
+
+        mod accessors {
+            use super::*;
+
+            #[test]
+            fn returns_skipped_ceilings() {
+                let report = report_with_all_fields();
+                assert_eq!(
+                    report.skipped_ceilings,
+                    [skipped_ceiling()],
+                    "expected skipped_ceilings to hold the configured ceiling"
+                );
+            }
+
+            #[test]
+            fn returns_local_traversal_stop_reason() {
+                let report = report_with_all_fields();
+                assert_eq!(
+                    report.local_traversal_stop_reason,
+                    LocalTraversalStopReason::ExplicitConfigFile,
+                    "expected ExplicitConfigFile stop reason"
+                );
+            }
+
+            #[test]
+            fn returns_global_resolution_skip_reason_when_present() {
+                let report = report_with_all_fields();
+                assert_eq!(
+                    report.global_resolution_skip_reason,
+                    Some(GlobalResolutionSkipReason::SuppressedByFlag),
+                    "expected SuppressedByFlag skip reason"
+                );
+            }
+
+            #[test]
+            fn returns_none_for_global_resolution_skip_reason_when_absent() {
+                let report = DiscoveryReport {
+                    skipped_ceilings: vec![],
+                    local_traversal_stop_reason:
+                        LocalTraversalStopReason::FilesystemRoot,
+                    global_resolution_skip_reason: None,
+                };
+                assert!(
+                    report.global_resolution_skip_reason.is_none(),
+                    "expected no skip reason when global resolution was not \
+                     skipped"
+                );
+            }
+        }
+    }
+}

@@ -19,6 +19,54 @@
 //! - **Global**: Environment Variable > XDG Config > User Config > System
 //!   Config.
 
+/// Naming pattern used to identify a marker file family.
+#[allow(
+    dead_code,
+    reason = "Contract slice; traversal still uses legacy probe"
+)]
+pub(crate) struct MarkerPattern {
+    /// Filename prefix before a structured file extension is applied.
+    pub(crate) prefix: &'static str,
+    /// Whether the pattern is nested below a config directory.
+    pub(crate) is_nested: bool,
+}
+
+/// Standard marker patterns used for vault root resolution.
+#[allow(
+    dead_code,
+    reason = "Contract slice; traversal still uses legacy probe"
+)]
+pub(crate) const ROOT_MARKER_PATTERNS: &[MarkerPattern] = &[
+    MarkerPattern {
+        prefix: "lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: ".lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: ".lithos/config",
+        is_nested: true,
+    },
+];
+
+/// Standard marker patterns used for global config resolution.
+#[allow(
+    dead_code,
+    reason = "Contract slice; traversal still uses legacy probe"
+)]
+pub(crate) const GLOBAL_MARKER_PATTERNS: &[MarkerPattern] = &[
+    MarkerPattern {
+        prefix: "lithos",
+        is_nested: false,
+    },
+    MarkerPattern {
+        prefix: "lithos/config",
+        is_nested: true,
+    },
+];
+
 /// Defines the behavior and precedence rules for configuration discovery.
 ///
 /// This policy controls which sources are checked, in what order, and how
@@ -236,6 +284,18 @@ mod tests {
 
     mod defaults {
         use super::*;
+
+        #[test]
+        fn declares_marker_pattern_contracts_with_pattern_names() {
+            assert_eq!(
+                ROOT_MARKER_PATTERNS.first().expect("root pattern").prefix,
+                "lithos"
+            );
+            assert_eq!(
+                GLOBAL_MARKER_PATTERNS.first().expect("global pattern").prefix,
+                "lithos"
+            );
+        }
 
         #[test]
         fn returns_standard_vault_precedence() {

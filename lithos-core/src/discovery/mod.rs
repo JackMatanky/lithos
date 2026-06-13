@@ -52,11 +52,14 @@
 //! [`VaultDiscoveryWarning`]: crate::discovery::diagnostics::VaultDiscoveryWarning
 //! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
 
+pub(crate) mod context;
 pub(crate) mod engine;
 pub(crate) mod error;
 pub(crate) mod policy;
 pub(super) mod probe;
+pub(crate) mod report;
 pub(super) mod selector;
+pub(crate) mod service;
 pub(super) mod walk;
 
 /// Diagnostics and warnings during discovery.

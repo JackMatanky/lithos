@@ -1,9 +1,10 @@
 ---
 title: 10-bootstrap-context-discovery-contracts
 category: enhancement
-label: ready-for-agent
-status: open
+label: closed
+status: done
 date_created: 2026-06-13
+date_closed: 2026-06-13
 ---
 
 ## Type
@@ -13,7 +14,7 @@ AFK
 ## Labels
 
 - root-config-discovery
-- ready-for-agent
+- closed
 
 ## Parent
 
@@ -28,30 +29,92 @@ Create the first vertical slice for the redesigned discovery flow: discovery inp
 
 This slice should not implement the discovery processor, traversal, global resolution, Config integration, or CLI commands. Its purpose is to establish the hexagonal boundary: `app/Bootstrapper` acquires runtime context, and `discovery/` declares the data contract it needs.
 
+## Implementation status
+
+**Implemented and verified.** All acceptance criteria met with the deviations and additions documented below.
+
+Files added or modified:
+- `lithos-core/src/discovery/context.rs` — new
+- `lithos-core/src/discovery/service.rs` — new
+- `lithos-core/src/discovery/report.rs` — new
+- `lithos-core/src/discovery/error.rs` — extended (new variants and sub-error types)
+- `lithos-core/src/discovery/policy.rs` — extended (`ROOT_MARKER_PATTERNS`, `GLOBAL_MARKER_PATTERNS`)
+- `lithos-core/src/discovery/mod.rs` — module declarations added
+- `lithos-core/src/app/bootstrap.rs` — new
+- `lithos-core/src/app/mod.rs` — module declaration added
+- `lithos-core/src/discovery/engine.rs` — updated to use new `FlagOverrideError` / `EnvironmentOverrideError`
+
+All 1813 unit tests pass. Lint and format clean.
+
 ## Acceptance criteria
 
-- [ ] `discovery/context.rs` defines `DiscoveryContext<'a>` as the Discovery-owned input contract that the Bootstrapper fills.
-- [ ] `DiscoveryContext` groups invocation data into `DiscoveryFlags<'a>` and `DiscoveryEnv<'a>` rather than a flat bag of options.
-- [ ] `DiscoveryFlags` contains CLI-derived invocation fields: explicit config file path, explicit vault directory path, and `suppress_global`.
-- [ ] `DiscoveryEnv` contains environment-derived invocation fields: explicit config file path, explicit vault directory path, and raw ceiling directory data.
-- [ ] `DiscoveryContext` contains the active context anchor path supplied by the Bootstrapper.
-- [ ] The contract names use `DiscoveryContext`, not `InvocationInput`.
-- [ ] The Bootstrapper, not Discovery, owns context acquisition: current working directory, CLI flags, environment variables, and platform global-directory discovery.
-- [ ] `app/Bootstrapper` can build a `DiscoveryContext` from injected or testable context sources without running discovery.
-- [ ] `suppress_global` is per-invocation state on `DiscoveryFlags`, not stable `DiscoveryService` builder config.
-- [ ] `discovery/service.rs` defines the boundary output types without executing discovery: `CandidatePath` and `DiscoveryResult`.
-- [ ] `CandidatePath` contains `base: DirPath` and `path: FilePath`; it does not store a file format.
-- [ ] `DiscoveryResult` keeps separate `vault: Box<[CandidatePath]>` and `global: Box<[CandidatePath]>` attributes.
-- [ ] `DiscoveryResult` does not store a separate `vault_root`; vault root is derivable from the selected vault candidate's `base`.
-- [ ] `discovery/report.rs` defines report-only process metadata: skipped ceilings, local traversal stop reason, and global resolution skip reason.
-- [ ] Invalid explicit config/vault overrides are modeled as fatal errors, not as skipped overrides on `DiscoveryReport`.
-- [ ] `DiscoveryReport` includes explicit global suppression (`--no-global-config`) while inaccessible global directories remain `tracing::warn!` only.
-- [ ] `LocalTraversalStopReason` can represent local traversal skipped because an explicit config file was supplied.
-- [ ] `discovery/error.rs` defines the fatal error taxonomy needed by the contracts, including invalid explicit config file and invalid explicit vault directory cases.
-- [ ] `discovery/policy.rs` uses names that describe path patterns, not files: `ROOT_MARKER_PATTERNS` and `GLOBAL_MARKER_PATTERNS` or equivalent.
-- [ ] Target patterns and boundary marker definitions are declared as Discovery policy contracts, but traversal/probing logic is out of scope.
-- [ ] Unit tests cover construction of `DiscoveryContext`, `DiscoveryFlags`, `DiscoveryEnv`, `CandidatePath`, `DiscoveryResult`, and `DiscoveryReport`.
-- [ ] Unit tests prove the Bootstrapper context-acquisition seam can build a `DiscoveryContext` without invoking DiscoveryService or Config.
+- [x] `discovery/context.rs` defines `DiscoveryContext<'a>` as the Discovery-owned input contract that the Bootstrapper fills.
+- [x] `DiscoveryContext` groups invocation data into `DiscoveryFlags` and `DiscoveryEnv<'a>` rather than a flat bag of options.
+- [x] `DiscoveryFlags` contains CLI-derived invocation fields: explicit config file path, explicit vault directory path, and `suppress_global`.
+- [x] `DiscoveryEnv` contains environment-derived invocation fields: explicit config file path, explicit vault directory path, and raw ceiling directory data.
+- [x] `DiscoveryContext` contains the active context anchor path supplied by the Bootstrapper.
+- [x] The contract names use `DiscoveryContext`, not `InvocationInput`.
+- [x] The Bootstrapper, not Discovery, owns context acquisition: current working directory, CLI flags, environment variables, and platform global-directory discovery.
+- [x] `app/Bootstrapper` can build a `DiscoveryContext` from injected or testable context sources without running discovery.
+- [x] `suppress_global` is per-invocation state on `DiscoveryFlags`, not stable `DiscoveryService` builder config.
+- [x] `discovery/service.rs` defines the boundary output types without executing discovery: `CandidatePath` and `DiscoveryResult`.
+- [x] `CandidatePath` contains `base: DirPath` and `path: FilePath`; it does not store a file format.
+- [x] `DiscoveryResult` keeps separate `vault` and `global` candidate collections. (**Deviation**: uses `Vec<CandidatePath>`, not `Box<[CandidatePath]>` — kept mutable during discovery phase; Bootstrapper can freeze to `Box<[T]>` later if needed. Adds `into_parts()` for ownership transfer.)
+- [x] `DiscoveryResult` does not store a separate `vault_root`; vault root is derivable from the selected vault candidate's `base`.
+- [x] `discovery/report.rs` defines report-only process metadata: skipped ceilings, local traversal stop reason, and global resolution skip reason.
+- [x] Invalid explicit config/vault overrides are modeled as fatal errors, not as skipped overrides on `DiscoveryReport`.
+- [x] `DiscoveryReport` includes explicit global suppression (`--no-global-config`) while inaccessible global directories remain `tracing::warn!` only.
+- [x] `LocalTraversalStopReason` can represent local traversal skipped because an explicit config file was supplied.
+- [x] `discovery/error.rs` defines the fatal error taxonomy needed by the contracts, including invalid explicit config file and invalid explicit vault directory cases.
+- [x] `discovery/policy.rs` uses names that describe path patterns, not files: `ROOT_MARKER_PATTERNS` and `GLOBAL_MARKER_PATTERNS` or equivalent.
+- [x] Target patterns and boundary marker definitions are declared as Discovery policy contracts, but traversal/probing logic is out of scope.
+- [x] Unit tests cover construction of `DiscoveryContext`, `DiscoveryFlags`, `DiscoveryEnv`, `CandidatePath`, `DiscoveryResult`, and `DiscoveryReport`.
+- [x] Unit tests prove the Bootstrapper context-acquisition seam can build a `DiscoveryContext` without invoking DiscoveryService or Config.
+
+## Implementation details
+
+### Lifetimes
+
+The original spec used `DiscoveryFlags<'a>` and `DiscoveryEnv<'a>` with borrowed `&'a Path` fields. In the implementation, `DiscoveryFlags` drops its lifetime parameter entirely because its path fields are now owned `FilePath` and `DirPath` values, validated at construction. `DiscoveryEnv<'a>` retains `'a` only for `ceiling_dirs_raw: Option<&'a OsStr>`, which remains borrowed. `DiscoveryContext<'a>` retains `'a` to thread the env borrow.
+
+### Fallible constructors
+
+All three context constructors (`DiscoveryFlags::new`, `DiscoveryEnv::new`, `DiscoveryContext::new`) are now `Result`-returning. Each validates its path arguments into `FilePath` / `DirPath` at construction time, converting filesystem path validation errors into domain-level discovery errors immediately. This eliminates deferred raw-path checks in the discovery engine for inputs known at context build time.
+
+`Bootstrapper::discovery_context` returns `Result<DiscoveryContext<'_>, DiscoveryError>`.
+
+### Error taxonomy (extensions to the original spec)
+
+The error module was restructured with two separate sub-error types embedded in `DiscoveryError`:
+
+- **`FlagOverrideError`** — fatal errors from explicit CLI flag validation:
+  - `GlobalConfigPathNotFile { path, source }` — explicit config path does not resolve to a file.
+  - `VaultPathNotDirectory { path, source }` — explicit vault path does not resolve to a directory.
+  - Embedded as `DiscoveryError::Flag(#[from] FlagOverrideError)`.
+
+- **`EnvironmentOverrideError`** — fatal errors from environment variable validation:
+  - `GlobalConfigPathNotFile { path, source }` — env config path does not resolve to a file.
+  - `VaultPathMissing { path }` — env vault path is empty / does not exist.
+  - `VaultPathNotDirectory { path }` — env vault path exists but is not a directory.
+  - `VaultPathInvalid { path, source }` — env vault path fails other path validation.
+  - Embedded as `DiscoveryError::Env(#[from] EnvironmentOverrideError)`.
+  - `EnvironmentOverrideError::from_vault_path_error(path, PathError)` maps `PathError` variants to the correct env error variant.
+
+- **`DiscoveryError::InvalidAnchorDirectory { path, source }`** — anchor directory (cwd at invocation time) fails `DirPath` validation.
+
+The flat `ExplicitPathMissing`, `ExplicitPathNotDirectory`, `EnvironmentPathMissing`, `EnvironmentPathNotDirectory` variants from the earlier engine were removed and replaced by the sub-error hierarchy. `engine.rs` was updated accordingly.
+
+Flag override non-existence and not-a-directory cases are collapsed into a single variant (`VaultPathNotDirectory`) because `DirPath::try_new` returns `PathError::NotADirectory` for both missing and non-directory paths — the two conditions are indistinguishable at the `DirPath` validation level.
+
+### `DiscoveryResult` Vec vs Box
+
+`DiscoveryResult` stores `Vec<CandidatePath>` rather than the `Box<[CandidatePath]>` specified in the original issue. Rationale: during discovery the list is built up incrementally; freezing to `Box<[T]>` is a Bootstrapper concern for the boundary crossing to Config, deferred until that integration slice.
+
+`into_parts() -> (Vec<CandidatePath>, Vec<CandidatePath>)` was added to allow consuming the result by value.
+
+### Engine update
+
+`discovery/engine.rs` `validate_override` was updated to produce `FlagOverrideError::VaultPathNotDirectory` for explicit paths and `EnvironmentOverrideError::VaultPathMissing` / `EnvironmentOverrideError::VaultPathNotDirectory` for environment paths, using `.into()` to coerce into `DiscoveryError`.
 
 ## Blocked by
 
@@ -73,20 +136,20 @@ The existing discovery redesign issue starts with a full DiscoveryService/proces
 
 **Key interfaces:**
 - `DiscoveryContext<'a>` — Discovery-owned input contract filled by Bootstrapper.
-- `DiscoveryFlags<'a>` — CLI-derived config path, vault path, and `suppress_global`.
-- `DiscoveryEnv<'a>` — env-derived config path, vault path, and ceiling directory raw data.
+- `DiscoveryFlags` — CLI-derived config path, vault path, and `suppress_global`. Owns validated `FilePath`/`DirPath`.
+- `DiscoveryEnv<'a>` — env-derived config path, vault path, and ceiling directory raw data. Owns validated `FilePath`/`DirPath`; borrows `OsStr` for ceiling dirs.
 - `CandidatePath` — validated candidate with `base: DirPath` and `path: FilePath`.
-- `DiscoveryResult` — separate ordered `vault` and `global` candidate lists.
+- `DiscoveryResult` — separate ordered `vault` and `global` candidate vectors. Provides `into_parts()`.
 - `DiscoveryReport` — non-fatal phase metadata only.
-- `Bootstrapper` context-acquisition seam — builds `DiscoveryContext` without invoking Discovery or Config.
+- `Bootstrapper` context-acquisition seam — builds `DiscoveryContext` without invoking Discovery or Config. Returns `Result`.
 
 **Acceptance criteria:**
-- [ ] Context acquisition is app-owned and Discovery execution is not implemented in this slice.
-- [ ] `InvocationInput` is not introduced; `DiscoveryContext` is the canonical input contract.
-- [ ] Explicit config file and explicit vault directory overrides are represented separately.
-- [ ] Invalid explicit overrides are fatal errors, not report entries.
-- [ ] Global suppression is represented as per-invocation flag state and report metadata.
-- [ ] Discovery result has `vault` and `global` lists, no separate `vault_root`, and no stored format field.
+- [x] Context acquisition is app-owned and Discovery execution is not implemented in this slice.
+- [x] `InvocationInput` is not introduced; `DiscoveryContext` is the canonical input contract.
+- [x] Explicit config file and explicit vault directory overrides are represented separately.
+- [x] Invalid explicit overrides are fatal errors, not report entries.
+- [x] Global suppression is represented as per-invocation flag state and report metadata.
+- [x] Discovery result has `vault` and `global` lists, no separate `vault_root`, and no stored format field.
 
 **Out of scope:**
 - Discovery traversal, probing, selection, global resolution, or finalization logic.
