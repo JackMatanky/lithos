@@ -321,7 +321,11 @@ mod tests {
         fn allows_markers_at_ceiling() {
             let policy = DiscoveryPolicy::default();
 
-            assert!(policy.allow_marker_at_ceiling);
+            assert!(
+                policy.allow_marker_at_ceiling,
+                "default policy should allow marker files at ceiling \
+                 directories"
+            );
         }
     }
 

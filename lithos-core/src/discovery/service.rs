@@ -3,6 +3,10 @@
 use crate::fs::{DirPath, FilePath};
 
 /// A validated candidate config path and the base directory it was found from.
+///
+/// Both `base` and `path` are filesystem-validated at construction.
+/// The `base` directory is the starting point used to resolve `path`
+/// during a traversal or global probe pass.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct CandidatePath {
@@ -106,31 +110,56 @@ mod tests {
         use super::*;
 
         #[test]
-        fn keeps_vault_and_global_candidates_separate() {
+        fn keeps_vault_candidates_separate_from_global() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
 
             let result =
-                DiscoveryResult::new(vec![vault.clone()], vec![global.clone()]);
+                DiscoveryResult::new(vec![vault.clone()], vec![global]);
 
             assert_eq!(result.vault(), [vault]);
+        }
+
+        #[test]
+        fn keeps_global_candidates_separate_from_vault() {
+            let vault_root = tempfile::tempdir().expect("vault root");
+            let global_root = tempfile::tempdir().expect("global root");
+            let vault = candidate(&vault_root, "lithos.toml");
+            let global = candidate(&global_root, "lithos.toml");
+
+            let result =
+                DiscoveryResult::new(vec![vault], vec![global.clone()]);
+
             assert_eq!(result.global(), [global]);
         }
 
         #[test]
-        fn consumes_result_into_candidate_vectors() {
+        fn into_parts_returns_vault_candidates() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
             let result =
-                DiscoveryResult::new(vec![vault.clone()], vec![global.clone()]);
+                DiscoveryResult::new(vec![vault.clone()], vec![global]);
 
-            let (vault_candidates, global_candidates) = result.into_parts();
+            let (vault_candidates, _) = result.into_parts();
 
             assert_eq!(vault_candidates, vec![vault]);
+        }
+
+        #[test]
+        fn into_parts_returns_global_candidates() {
+            let vault_root = tempfile::tempdir().expect("vault root");
+            let global_root = tempfile::tempdir().expect("global root");
+            let vault = candidate(&vault_root, "lithos.toml");
+            let global = candidate(&global_root, "lithos.toml");
+            let result =
+                DiscoveryResult::new(vec![vault], vec![global.clone()]);
+
+            let (_, global_candidates) = result.into_parts();
+
             assert_eq!(global_candidates, vec![global]);
         }
     }

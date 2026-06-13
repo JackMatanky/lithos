@@ -10,6 +10,11 @@ use crate::{
 };
 
 /// Per-invocation context Discovery needs before it can resolve candidates.
+///
+/// Groups CLI flags and environment variables into typed sub-structs, along
+/// with the filesystem anchor (working directory) supplied by the Bootstrapper.
+/// All path fields are validated at construction; holding this type guarantees
+/// the anchor, flag paths, and environment paths are filesystem-valid.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryContext<'a> {
@@ -24,16 +29,22 @@ pub(crate) struct DiscoveryContext<'a> {
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl<'a> DiscoveryContext<'a> {
     /// Creates a discovery invocation context from app-owned runtime inputs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
+    /// resolve to an existing directory.
     #[inline]
     pub(crate) fn new(
         flags: DiscoveryFlags,
         env: DiscoveryEnv<'a>,
         anchor: &Path,
     ) -> Result<Self, DiscoveryError> {
-        let anchor =
-            DirPath::try_new(anchor.to_path_buf()).map_err(|source| {
+        let anchor_buf = anchor.to_path_buf();
+        let anchor_dir =
+            DirPath::try_new(anchor_buf.clone()).map_err(|source| {
                 DiscoveryError::InvalidAnchorDirectory {
-                    path: anchor.to_path_buf(),
+                    path: anchor_buf,
                     source,
                 }
             })?;
@@ -41,7 +52,7 @@ impl<'a> DiscoveryContext<'a> {
         Ok(Self {
             flags,
             env,
-            anchor,
+            anchor: anchor_dir,
         })
     }
 
@@ -68,6 +79,10 @@ impl<'a> DiscoveryContext<'a> {
 }
 
 /// CLI-derived discovery invocation fields.
+///
+/// All path fields are validated at construction and stored as owned
+/// [`FilePath`] / [`DirPath`] values — holding this type guarantees
+/// filesystem validity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryFlags {
@@ -82,6 +97,12 @@ pub(crate) struct DiscoveryFlags {
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl DiscoveryFlags {
     /// Creates CLI-derived discovery invocation fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::Flag`] wrapping a [`FlagOverrideError`] when:
+    /// - `config_file` is `Some` but does not resolve to an existing file.
+    /// - `vault_dir` is `Some` but does not resolve to an existing directory.
     #[inline]
     pub(crate) fn new(
         config_file: Option<&Path>,
@@ -90,9 +111,10 @@ impl DiscoveryFlags {
     ) -> Result<Self, DiscoveryError> {
         let config_file = config_file
             .map(|path| {
-                FilePath::try_new(path.to_path_buf()).map_err(|source| {
+                let buf = path.to_path_buf();
+                FilePath::try_new(buf.clone()).map_err(|source| {
                     FlagOverrideError::GlobalConfigPathNotFile {
-                        path: path.to_path_buf(),
+                        path: buf,
                         source,
                     }
                 })
@@ -100,9 +122,10 @@ impl DiscoveryFlags {
             .transpose()?;
         let vault_dir = vault_dir
             .map(|path| {
-                DirPath::try_new(path.to_path_buf()).map_err(|source| {
+                let buf = path.to_path_buf();
+                DirPath::try_new(buf.clone()).map_err(|source| {
                     FlagOverrideError::VaultPathNotDirectory {
-                        path: path.to_path_buf(),
+                        path: buf,
                         source,
                     }
                 })
@@ -139,6 +162,10 @@ impl DiscoveryFlags {
 }
 
 /// Environment-derived discovery invocation fields.
+///
+/// Validated path fields are stored as owned [`FilePath`] / [`DirPath`]
+/// values. The ceiling-directory list is kept as a borrowed raw [`OsStr`]
+/// because it is split and validated later during traversal setup.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryEnv<'a> {
@@ -153,6 +180,14 @@ pub(crate) struct DiscoveryEnv<'a> {
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl<'a> DiscoveryEnv<'a> {
     /// Creates environment-derived discovery invocation fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::Env`] wrapping an [`EnvironmentOverrideError`]
+    /// when:
+    /// - `config_file` is `Some` but does not resolve to an existing file.
+    /// - `vault_dir` is `Some` but does not resolve to an existing directory,
+    ///   does not exist, or fails path validation for another reason.
     #[inline]
     pub(crate) fn new(
         config_file: Option<&Path>,
@@ -161,9 +196,10 @@ impl<'a> DiscoveryEnv<'a> {
     ) -> Result<Self, DiscoveryError> {
         let config_file = config_file
             .map(|path| {
-                FilePath::try_new(path.to_path_buf()).map_err(|source| {
+                let buf = path.to_path_buf();
+                FilePath::try_new(buf.clone()).map_err(|source| {
                     EnvironmentOverrideError::GlobalConfigPathNotFile {
-                        path: path.to_path_buf(),
+                        path: buf,
                         source,
                     }
                 })
@@ -171,11 +207,9 @@ impl<'a> DiscoveryEnv<'a> {
             .transpose()?;
         let vault_dir = vault_dir
             .map(|path| {
-                DirPath::try_new(path.to_path_buf()).map_err(|source| {
-                    EnvironmentOverrideError::from_vault_path_error(
-                        path.to_path_buf(),
-                        source,
-                    )
+                let buf = path.to_path_buf();
+                DirPath::try_new(buf.clone()).map_err(|source| {
+                    EnvironmentOverrideError::from_vault_path_error(buf, source)
                 })
             })
             .transpose()?;
@@ -233,27 +267,40 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_flags_with_all_fields_when_paths_are_valid() {
+            fn returns_config_file_when_path_is_valid() {
                 let root = tempfile::tempdir().expect("root dir");
                 let config = fixtures::valid_config_file(&root);
 
-                let flags = DiscoveryFlags::new(
-                    Some(config.as_path()),
-                    Some(root.path()),
-                    true,
-                )
-                .expect("valid flags");
+                let flags =
+                    DiscoveryFlags::new(Some(config.as_path()), None, false)
+                        .expect("valid flags");
 
                 assert_eq!(
                     flags.config_file().map(FilePath::as_path),
                     Some(config.as_path()),
                     "config_file should match the provided path"
                 );
+            }
+
+            #[test]
+            fn returns_vault_dir_when_path_is_valid() {
+                let root = tempfile::tempdir().expect("root dir");
+
+                let flags = DiscoveryFlags::new(None, Some(root.path()), false)
+                    .expect("valid flags");
+
                 assert_eq!(
                     flags.vault_dir().map(DirPath::as_path),
                     Some(root.path()),
                     "vault_dir should match the provided path"
                 );
+            }
+
+            #[test]
+            fn returns_suppress_global_when_set() {
+                let flags =
+                    DiscoveryFlags::new(None, None, true).expect("valid flags");
+
                 assert!(
                     flags.suppress_global(),
                     "suppress_global should be set"
@@ -261,17 +308,32 @@ mod tests {
             }
 
             #[test]
-            fn returns_flags_with_none_fields_when_no_overrides_given() {
+            fn returns_none_config_file_when_no_override_given() {
                 let flags = DiscoveryFlags::new(None, None, false)
                     .expect("flags with no overrides");
+
                 assert!(
                     flags.config_file().is_none(),
                     "config_file should be None"
                 );
+            }
+
+            #[test]
+            fn returns_none_vault_dir_when_no_override_given() {
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("flags with no overrides");
+
                 assert!(
                     flags.vault_dir().is_none(),
                     "vault_dir should be None"
                 );
+            }
+
+            #[test]
+            fn returns_suppress_global_false_when_not_set() {
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("flags with no overrides");
+
                 assert!(
                     !flags.suppress_global(),
                     "suppress_global should be false"
@@ -319,28 +381,41 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_env_with_all_fields_when_paths_are_valid() {
+            fn returns_config_file_when_path_is_valid() {
                 let root = tempfile::tempdir().expect("root dir");
                 let config = fixtures::valid_config_file(&root);
-                let ceiling_dirs = OsStr::new("/repo:/workspace");
 
-                let env = DiscoveryEnv::new(
-                    Some(config.as_path()),
-                    Some(root.path()),
-                    Some(ceiling_dirs),
-                )
-                .expect("valid env");
+                let env = DiscoveryEnv::new(Some(config.as_path()), None, None)
+                    .expect("valid env");
 
                 assert_eq!(
                     env.config_file().map(FilePath::as_path),
                     Some(config.as_path()),
                     "config_file should match the provided path"
                 );
+            }
+
+            #[test]
+            fn returns_vault_dir_when_path_is_valid() {
+                let root = tempfile::tempdir().expect("root dir");
+
+                let env = DiscoveryEnv::new(None, Some(root.path()), None)
+                    .expect("valid env");
+
                 assert_eq!(
                     env.vault_dir().map(DirPath::as_path),
                     Some(root.path()),
                     "vault_dir should match the provided path"
                 );
+            }
+
+            #[test]
+            fn returns_ceiling_dirs_raw_when_provided() {
+                let ceiling_dirs = OsStr::new("/repo:/workspace");
+
+                let env = DiscoveryEnv::new(None, None, Some(ceiling_dirs))
+                    .expect("valid env");
+
                 assert_eq!(
                     env.ceiling_dirs_raw(),
                     Some(ceiling_dirs),
@@ -349,14 +424,29 @@ mod tests {
             }
 
             #[test]
-            fn returns_env_with_none_fields_when_no_overrides_given() {
+            fn returns_none_config_file_when_no_override_given() {
                 let env = DiscoveryEnv::new(None, None, None)
                     .expect("env with no overrides");
+
                 assert!(
                     env.config_file().is_none(),
                     "config_file should be None"
                 );
+            }
+
+            #[test]
+            fn returns_none_vault_dir_when_no_override_given() {
+                let env = DiscoveryEnv::new(None, None, None)
+                    .expect("env with no overrides");
+
                 assert!(env.vault_dir().is_none(), "vault_dir should be None");
+            }
+
+            #[test]
+            fn returns_none_ceiling_dirs_raw_when_not_provided() {
+                let env = DiscoveryEnv::new(None, None, None)
+                    .expect("env with no overrides");
+
                 assert!(
                     env.ceiling_dirs_raw().is_none(),
                     "ceiling_dirs_raw should be None"
@@ -390,26 +480,13 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_context_preserving_flags_env_and_anchor() {
-                let flag_root = tempfile::tempdir().expect("flag root");
-                let env_root = tempfile::tempdir().expect("env root");
+            fn returns_anchor_matching_provided_path() {
                 let anchor_root = tempfile::tempdir().expect("anchor root");
-                let flag_config = fixtures::valid_config_file(&flag_root);
-                let env_config = fixtures::valid_config_file(&env_root);
-                let ceiling_dirs = OsStr::new("/repo:/workspace");
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("empty flags");
+                let env =
+                    DiscoveryEnv::new(None, None, None).expect("empty env");
 
-                let flags = DiscoveryFlags::new(
-                    Some(flag_config.as_path()),
-                    Some(flag_root.path()),
-                    true,
-                )
-                .expect("valid flags");
-                let env = DiscoveryEnv::new(
-                    Some(env_config.as_path()),
-                    Some(env_root.path()),
-                    Some(ceiling_dirs),
-                )
-                .expect("valid env");
                 let context =
                     DiscoveryContext::new(flags, env, anchor_root.path())
                         .expect("valid context");
@@ -419,30 +496,127 @@ mod tests {
                     anchor_root.path(),
                     "anchor should match the provided cwd"
                 );
+            }
+
+            #[test]
+            fn returns_flags_config_file_preserved() {
+                let flag_root = tempfile::tempdir().expect("flag root");
+                let flag_config = fixtures::valid_config_file(&flag_root);
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let flags = DiscoveryFlags::new(
+                    Some(flag_config.as_path()),
+                    None,
+                    false,
+                )
+                .expect("valid flags");
+                let env =
+                    DiscoveryEnv::new(None, None, None).expect("empty env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert_eq!(
                     context.flags().config_file().map(FilePath::as_path),
                     Some(flag_config.as_path()),
                     "flags config_file should be preserved"
                 );
+            }
+
+            #[test]
+            fn returns_flags_vault_dir_preserved() {
+                let flag_root = tempfile::tempdir().expect("flag root");
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let flags =
+                    DiscoveryFlags::new(None, Some(flag_root.path()), false)
+                        .expect("valid flags");
+                let env =
+                    DiscoveryEnv::new(None, None, None).expect("empty env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert_eq!(
                     context.flags().vault_dir().map(DirPath::as_path),
                     Some(flag_root.path()),
                     "flags vault_dir should be preserved"
                 );
+            }
+
+            #[test]
+            fn returns_suppress_global_preserved() {
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let flags =
+                    DiscoveryFlags::new(None, None, true).expect("valid flags");
+                let env =
+                    DiscoveryEnv::new(None, None, None).expect("empty env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert!(
                     context.flags().suppress_global(),
                     "suppress_global should be set"
                 );
+            }
+
+            #[test]
+            fn returns_env_config_file_preserved() {
+                let env_root = tempfile::tempdir().expect("env root");
+                let env_config = fixtures::valid_config_file(&env_root);
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("empty flags");
+                let env =
+                    DiscoveryEnv::new(Some(env_config.as_path()), None, None)
+                        .expect("valid env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert_eq!(
                     context.env().config_file().map(FilePath::as_path),
                     Some(env_config.as_path()),
                     "env config_file should be preserved"
                 );
+            }
+
+            #[test]
+            fn returns_env_vault_dir_preserved() {
+                let env_root = tempfile::tempdir().expect("env root");
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("empty flags");
+                let env = DiscoveryEnv::new(None, Some(env_root.path()), None)
+                    .expect("valid env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert_eq!(
                     context.env().vault_dir().map(DirPath::as_path),
                     Some(env_root.path()),
                     "env vault_dir should be preserved"
                 );
+            }
+
+            #[test]
+            fn returns_ceiling_dirs_raw_preserved() {
+                let anchor_root = tempfile::tempdir().expect("anchor root");
+                let ceiling_dirs = OsStr::new("/repo:/workspace");
+                let flags = DiscoveryFlags::new(None, None, false)
+                    .expect("empty flags");
+                let env = DiscoveryEnv::new(None, None, Some(ceiling_dirs))
+                    .expect("valid env");
+
+                let context =
+                    DiscoveryContext::new(flags, env, anchor_root.path())
+                        .expect("valid context");
+
                 assert_eq!(
                     context.env().ceiling_dirs_raw(),
                     Some(ceiling_dirs),

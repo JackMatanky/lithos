@@ -313,7 +313,7 @@ mod tests {
             }
 
             #[test]
-            fn returns_canonicalize_current_directory_message() {
+            fn returns_canonicalize_current_directory_message_with_path() {
                 let err = DiscoveryError::CurrentDirectoryCanonicalize {
                     path: PathBuf::from("/cwd"),
                     source: io::Error::new(
@@ -321,18 +321,31 @@ mod tests {
                         "not found",
                     ),
                 };
-                let msg = err.to_string();
                 assert!(
-                    msg.starts_with(
+                    err.to_string().starts_with(
                         "Failed to canonicalize current directory /cwd"
                     ),
-                    "unexpected message: {msg}"
+                    "unexpected message: {err}"
                 );
-                assert!(msg.contains("not found"), "missing cause in: {msg}");
             }
 
             #[test]
-            fn returns_canonicalize_path_message() {
+            fn returns_canonicalize_current_directory_message_with_cause() {
+                let err = DiscoveryError::CurrentDirectoryCanonicalize {
+                    path: PathBuf::from("/cwd"),
+                    source: io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "not found",
+                    ),
+                };
+                assert!(
+                    err.to_string().contains("not found"),
+                    "missing cause in: {err}"
+                );
+            }
+
+            #[test]
+            fn returns_canonicalize_path_message_with_path() {
                 let err = DiscoveryError::CanonicalizePath {
                     path: PathBuf::from("/some/path"),
                     source: io::Error::new(
@@ -340,16 +353,30 @@ mod tests {
                         "denied",
                     ),
                 };
-                let msg = err.to_string();
                 assert!(
-                    msg.starts_with("Failed to canonicalize path /some/path"),
-                    "unexpected message: {msg}"
+                    err.to_string()
+                        .starts_with("Failed to canonicalize path /some/path"),
+                    "unexpected message: {err}"
                 );
-                assert!(msg.contains("denied"), "missing cause in: {msg}");
             }
 
             #[test]
-            fn returns_read_directory_message() {
+            fn returns_canonicalize_path_message_with_cause() {
+                let err = DiscoveryError::CanonicalizePath {
+                    path: PathBuf::from("/some/path"),
+                    source: io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "denied",
+                    ),
+                };
+                assert!(
+                    err.to_string().contains("denied"),
+                    "missing cause in: {err}"
+                );
+            }
+
+            #[test]
+            fn returns_read_directory_message_with_path() {
                 let err = DiscoveryError::ReadDirectory {
                     path: PathBuf::from("/some/dir"),
                     source: io::Error::new(
@@ -357,12 +384,26 @@ mod tests {
                         "denied",
                     ),
                 };
-                let msg = err.to_string();
                 assert!(
-                    msg.starts_with("Failed to read directory /some/dir"),
-                    "unexpected message: {msg}"
+                    err.to_string()
+                        .starts_with("Failed to read directory /some/dir"),
+                    "unexpected message: {err}"
                 );
-                assert!(msg.contains("denied"), "missing cause in: {msg}");
+            }
+
+            #[test]
+            fn returns_read_directory_message_with_cause() {
+                let err = DiscoveryError::ReadDirectory {
+                    path: PathBuf::from("/some/dir"),
+                    source: io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "denied",
+                    ),
+                };
+                assert!(
+                    err.to_string().contains("denied"),
+                    "missing cause in: {err}"
+                );
             }
         }
     }
