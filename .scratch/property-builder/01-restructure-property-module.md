@@ -16,8 +16,11 @@ Restructure the `schema/property/` module layout so all property and spec code l
 
 - [ ] `schema/property_spec/` directory no longer exists
 - [ ] `schema/property/mod.rs` contains the former `property.rs` content
+- [ ] `schema/property/mod.rs` declares `mod spec;` (or `pub mod spec;`) to re-export the moved spec module
 - [ ] `schema/property/spec.rs` contains the former `property_spec/mod.rs` content
 - [ ] All spec files (`bool.rs`, `date.rs`, `file.rs`, `number.rs`, `string.rs`) live under `schema/property/`
+- [ ] All references to `super::property_spec::*` or `crate::schema::property_spec::*` across the codebase are updated to `super::spec::*` or `crate::schema::property::spec::*`
+- [ ] `schema/mod.rs` has `pub mod property_spec;` removed (replaced by `pub mod property;` which nests spec)
 - [ ] `cargo build` passes with no errors or warnings
 - [ ] `cargo test` passes with no regressions
 

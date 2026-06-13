@@ -10,6 +10,7 @@ Remove all legacy code that has been superseded by the new builders and differ. 
 - Delete the four `TryFrom<RawPropertyMap>` implementations in `schema/property/mod.rs` (`TryFrom<RawPropertyMap<RawPropertyInline>>`, `TryFrom<RawPropertyMap<RawPropertyBankEntry>>`, `TryFrom<HashMap<PropertyName, RawPropertyInline>>`, `TryFrom<HashMap<PropertyName, RawPropertyBankEntry>>`)
 - Remove any now-dead imports and dead code warnings that surface after the deletions
 - If `PropertyDeltaEngine` in `delta.rs` has been fully replaced, remove the engine struct and its `diff_schema` / `diff_property_bank` methods (keep `ExcludesDelta`, `ExtendsDelta`, `PropertyDelta` which are unrelated)
+- Keep the `engine` test module tests in `delta.rs` — they are ported to test the new `PropertyDiffer` in issue 02, but the originals must be deleted here to avoid duplicate test code
 
 ## Acceptance criteria
 

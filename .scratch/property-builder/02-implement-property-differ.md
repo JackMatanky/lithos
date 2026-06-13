@@ -8,10 +8,36 @@ Implement `PropertyDiffer` in `schema/property/diff.rs` as a pure hash-based dif
 
 `PropertyDiffer` accepts a `RawPropertyMap<T>` and a `RawPropertyHashIndex`, computes per-entry hashes, and returns the raw change set: a map of upserted entries, a sorted vec of removed names, and the updated hash index. It must have no knowledge of `PropertyBank`, `RefExpander`, or any domain construction logic.
 
+## Imports and types
+
+```rust
+use serde::Serialize;
+use std::fmt::Debug;
+use crate::schema::{
+    property::PropertyName,
+    raw::property::RawPropertyMap,
+    views::RawPropertyHashIndex,
+};
+```
+
+## Interface
+
+```rust
+pub fn diff<T>(
+    properties: &RawPropertyMap<T>,
+    previous_hashes: &RawPropertyHashIndex,
+) -> (RawPropertyMap<T>, Vec<PropertyName>, RawPropertyHashIndex)
+where
+    T: Clone + Serialize + Debug,
+```
+
+The upsert map is returned as `RawPropertyMap<T>` (not a bare `HashMap`) so consumers receive validated `PropertyName` keys directly compatible with `PropertyMapBuilder` methods. The orchestrator can convert via `.into_map()` or use `RawPropertyMap::<RawProperty>::split_entries()`. When `T = RawProperty`, callers can partition inline vs ref entries using the existing `split_entries()` method.
+
 ## Acceptance criteria
 
 - [ ] `schema/property/diff.rs` exists and is part of the `schema::property` module
-- [ ] `PropertyDiffer` accepts `RawPropertyMap<T>` + `RawPropertyHashIndex` and returns `(HashMap<PropertyName, T>, Vec<PropertyName>, RawPropertyHashIndex)`
+- [ ] `PropertyDiffer` is a free function or stateless struct with a `diff<T>()` method accepting `RawPropertyMap<T>` + `RawPropertyHashIndex`
+- [ ] Returns `(RawPropertyMap<T>, Vec<PropertyName>, RawPropertyHashIndex)` where upserts use the validated map wrapper
 - [ ] Returned removals are sorted deterministically
 - [ ] `PropertyDiffer` has zero imports of `PropertyBank`, `RefExpander`, or any domain builder
 - [ ] Unit tests cover: changed entry detected via hash mismatch, removed entry detected when key disappears, unchanged entry ignored when hash matches, empty map against non-empty index produces only removals
