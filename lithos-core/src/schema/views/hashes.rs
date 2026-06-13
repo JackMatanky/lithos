@@ -307,7 +307,7 @@ impl ArchivedHashRecord {
 /// Per-property hash map computed from [`RawPropertyMap`].
 ///
 /// Newtype wrapper around `Blake3HashIndex<PropertyName>` for type safety.
-/// Used in [`HashRecord`] and [`BasePropertiesView`].
+/// Used in [`HashRecord`].
 ///
 /// Computed via [`RawPropertyMap::compute_hashes()`] during ingestion.
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]

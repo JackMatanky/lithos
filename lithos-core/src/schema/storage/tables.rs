@@ -49,17 +49,6 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
     PathTable::new("raw_property_bank_view");
 
-/// Cached base properties for schema files.
-///
-/// Stores the fully converted (hydrated) property map for each schema,
-/// excluding any inherited properties. This enables skipping the
-/// `RefExpander` when the property bank has not changed.
-///
-/// Key: `SchemaId`.
-/// Value: rkyv-serialized `BasePropertiesView`.
-pub const SCHEMA_BASE_PROPERTIES: UuidTable<SchemaId, &[u8]> =
-    UuidTable::new("schema_base_properties");
-
 /// Topological inheritance graph singleton with DAG structure.
 ///
 /// Stores the persisted directed acyclic graph used for schema inheritance
