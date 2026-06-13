@@ -1,5 +1,5 @@
 ---
-title: 13-context-docs-alignment
+title: 14-context-docs-alignment
 category: documentation
 label: ready-for-agent
 status: open
@@ -28,7 +28,7 @@ This slice should remove stale terminology from context docs after the redesign 
 
 ## Acceptance criteria
 
-- [ ] `lithos-core/src/discovery/CONTEXT.md` reflects `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `InvocationInput`, `DiscoveryResult`, and `DiscoveryReport`.
+- [ ] `lithos-core/src/discovery/CONTEXT.md` reflects `DiscoveryContext`, `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `CandidatePath`, `DiscoveryResult`, and `DiscoveryReport`.
 - [ ] `lithos-core/src/discovery/CONTEXT.md` documents the FS handoff: raw paths at input boundaries, `DirPath` for validated directories, and `FilePath`/`FileNode` plus metadata for discovered marker files.
 - [ ] `lithos-core/src/discovery/CONTEXT.md` no longer documents `DiscoveryEngine`, `VaultDiscoveryResult`, `GlobalDiscoveryResult`, or `diagnostics.rs` as current architecture.
 - [ ] `lithos-core/src/config/CONTEXT.md` reflects `Builder::from_discovery()`, `build()`, `build_global()`, and `build_vault()`.
@@ -41,7 +41,7 @@ This slice should remove stale terminology from context docs after the redesign 
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/12-config-builder-discovery-decoupling.md`
+- `.scratch/root-config-discovery/13-config-builder-discovery-decoupling.md`
 
 
 ## Agent Brief
@@ -59,7 +59,7 @@ Context documentation may still describe older discovery engine, bridge, or conf
 Future agents should read the context docs and see the implemented architecture: Discovery owns root/marker discovery, Config consumes validated discovery output through a narrow adapter, and app Bootstrapper is the composition root that wires both contexts.
 
 **Key interfaces:**
-- Discovery context documentation — documents `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `InvocationInput`, `DiscoveryResult`, `DiscoveryReport`, and FS handoff rules.
+- Discovery context documentation — documents `DiscoveryContext`, `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `CandidatePath`, `DiscoveryResult`, `DiscoveryReport`, and FS handoff rules.
 - Config context documentation — documents `Builder::from_discovery()`, `build()`, `build_global()`, `build_vault()`, and the no-revalidation boundary.
 - App module docs — mention `Bootstrapper`, `BootstrapResult`, and ADR 024.
 - Deferred discovery note — trusted-path second-pass discovery is documented only as future/out-of-scope for the MVP.

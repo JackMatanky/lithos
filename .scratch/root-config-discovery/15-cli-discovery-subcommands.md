@@ -1,5 +1,5 @@
 ---
-title: 14-cli-discovery-subcommands
+title: 15-cli-discovery-subcommands
 category: enhancement
 label: ready-for-agent
 status: open
@@ -88,4 +88,4 @@ remains stdout-friendly and verbose diagnostics go to stderr.
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/13-context-docs-alignment.md`
+- `.scratch/root-config-discovery/14-context-docs-alignment.md`

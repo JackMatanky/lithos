@@ -1,5 +1,5 @@
 ---
-title: 11-bootstrapper-orchestration-flow
+title: 12-bootstrapper-orchestration-flow
 category: enhancement
 label: ready-for-agent
 status: open
@@ -32,13 +32,13 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 - [ ] `Bootstrapper` lives under `lithos-core/src/app/` and is the only component that imports both Discovery and Config.
 - [ ] CLI handlers and other executable adapters do not call `discovery/` or `config/` directly for the normal bootstrap flow.
 - [ ] `Bootstrapper` constructs `DiscoveryService` through the self-builder API with platform-resolved global directories.
-- [ ] `Bootstrapper` acquires per-invocation context and calls `DiscoveryService::discover(InvocationInput)`.
+- [ ] `Bootstrapper` acquires per-invocation context and calls `DiscoveryService::discover(DiscoveryContext)`.
 - [ ] Context acquisition includes current working directory, relevant environment variables, CLI-provided path overrides, and platform global config directories.
 - [ ] `Bootstrapper` passes `DiscoveryResult` into `config::Builder::from_discovery()` and then calls `build()`.
 - [ ] `BootstrapResult { config, report }` is returned to callers.
 - [ ] Bootstrapper maps/propagates discovery and config failures through a Bootstrapper-owned error boundary instead of leaking orchestration details into CLI handlers.
 - [ ] Bootstrapper does not construct `Config` itself; config construction stays inside `config::Builder::build()`.
-- [ ] Skipped ceilings and skipped overrides from `DiscoveryReport` are emitted with `tracing::warn!`.
+- [ ] Skipped ceilings and explicit global suppression from `DiscoveryReport` are emitted or surfaced consistently; invalid explicit overrides remain fatal discovery errors.
 - [ ] `DiscoveryReport` remains available in `BootstrapResult` for CLI rendering without being passed into Config.
 - [ ] `discovery/` does not import `config/`; `config/` does not orchestrate `discovery/`.
 - [ ] Bootstrapper does not anticipate the deferred trusted-path second discovery pass in the MVP `run()` interface.
@@ -46,7 +46,7 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 
 ## Blocked by
 
- - `.scratch/root-config-discovery/10-discovery-service-mvp-redesign.md`
+- `.scratch/root-config-discovery/11-discovery-service-mvp-redesign.md`
 
 
 ## Agent Brief
@@ -67,7 +67,7 @@ Discovery and Config orchestration is not isolated behind an app composition com
 - `Bootstrapper` — the only component that imports both Discovery and Config.
 - `BootstrapResult` — carries the built `Config` and the `DiscoveryReport`.
 - `BootstrapError` or equivalent — app-owned error boundary for discovery/config failures.
-- `DiscoveryService::discover()` — called by Bootstrapper with per-invocation input.
+- `DiscoveryService::discover()` — called by Bootstrapper with `DiscoveryContext`.
 - `config::Builder::from_discovery()` and `build()` — called by Bootstrapper without Bootstrapper constructing `Config` itself.
 - `DiscoveryReport` — warning/report metadata surfaced by Bootstrapper, never passed into Config.
 
