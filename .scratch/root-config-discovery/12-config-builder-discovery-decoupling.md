@@ -1,5 +1,5 @@
 ---
-title: 11-config-builder-discovery-decoupling
+title: 12-config-builder-discovery-decoupling
 category: refactor
 label: ready-for-agent
 status: open
@@ -49,7 +49,7 @@ This slice should make Config consume discovery output through a narrow adapter 
 
 ## Blocked by
 
- - `.scratch/root-config-discovery/12-bootstrapper-orchestration-flow.md`
+- `.scratch/root-config-discovery/11-bootstrapper-orchestration-flow.md`
 
 
 ## Agent Brief

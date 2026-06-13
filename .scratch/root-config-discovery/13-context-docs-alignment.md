@@ -41,7 +41,7 @@ This slice should remove stale terminology from context docs after the redesign 
 
 ## Blocked by
 
- - `.scratch/root-config-discovery/11-config-builder-discovery-decoupling.md`
+- `.scratch/root-config-discovery/12-config-builder-discovery-decoupling.md`
 
 
 ## Agent Brief
