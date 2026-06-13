@@ -46,7 +46,8 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/11-config-builder-discovery-decoupling.md`
+ - `.scratch/root-config-discovery/10-discovery-service-mvp-redesign.md`
+
 
 ## Agent Brief
 

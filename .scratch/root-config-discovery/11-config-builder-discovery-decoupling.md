@@ -49,7 +49,8 @@ This slice should make Config consume discovery output through a narrow adapter 
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/10-discovery-service-mvp-redesign.md`
+ - `.scratch/root-config-discovery/12-bootstrapper-orchestration-flow.md`
+
 
 ## Agent Brief
 
