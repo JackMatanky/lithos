@@ -8,11 +8,20 @@ Implement `PropertyBuilder` and `PropertyMapBuilder` in `schema/property/builder
 
 **`PropertyBuilder`** handles the single-property lifecycle. It is a stateless free function (no struct needed). Interface:
 
-> **Note**: The `BankRequired` variant does not exist in the current `error.rs` — this issue **must** add it:
+> **Note**: Add a new `PropertyBuilderError` to `schema/error.rs` (it does not exist yet). Per hexagonal architecture principles, `MissingPropertyBank` is a **construction error** (builder was misconfigured), not a property reference error. It lives in its own error type:
 > ```rust
-> // In schema/error.rs, PropertyRefError enum:
-> #[error("property bank required to resolve $ref, but no bank was provided")]
-> BankRequired,
+> // New enum in schema/error.rs:
+> #[derive(Debug, thiserror::Error)]
+> pub enum PropertyBuilderError {
+>     #[error("property bank required to resolve $ref, but no bank was provided")]
+>     MissingPropertyBank,
+> }
+> ```
+>
+> Add a corresponding variant to `SchemaError`:
+> ```rust
+> #[error(transparent)]
+> PropertyBuilder(#[from] PropertyBuilderError),
 > ```
 
 ```rust
@@ -41,12 +50,12 @@ pub fn remove(self, existing: PropertyMap, removals: &[PropertyName]) -> Propert
 
 The builder accepts `RawPropertyMap<T>` (the validated map wrapper) for all raw inputs, which matches the `PropertyDiffer` return type. The orchestrator converts differ output to builder input via `RawPropertyMap::from_map(...)` if needed — though when the differ returns `RawPropertyMap<T>` directly, no conversion is required.
 
-> **Error variant**: Calling `build_ref` (via `update_refs`) without setting a bank via `with_bank` returns `SchemaError::PropertyRef(PropertyRefError::BankRequired)`. This variant must be added to `PropertyRefError` (see note above).
+> **Error variant**: Calling `build_ref` (via `update_refs`) without setting a bank via `with_bank` returns `SchemaError::PropertyBuilder(PropertyBuilderError::MissingPropertyBank)`.
 
 ## Acceptance criteria
 
 - [ ] `schema/property/builder.rs` exists and is part of the `schema::property` module
-- [ ] `schema/error.rs` gains `PropertyRefError::BankRequired` variant
+- [ ] `schema/error.rs` gains `PropertyBuilderError::MissingPropertyBank` and `SchemaError::PropertyBuilder(#[from] PropertyBuilderError)` variant
 - [ ] `build_inline` converts `RawPropertyInline` → `Property` with a new ID
 - [ ] `build_ref` resolves `RawPropertyRef` against `PropertyBank` → `Property` preserving the bank entry's ID and applying overrides
 - [ ] `build_ref` returns `SchemaError::PropertyRef(NotFound)` when the bank target is absent
@@ -55,8 +64,8 @@ The builder accepts `RawPropertyMap<T>` (the validated map wrapper) for all raw 
 - [ ] `PropertyMapBuilder::update` applies raw upserts and preserves IDs for names present in `existing`
 - [ ] `PropertyMapBuilder::update_refs` applies ref upserts and preserves IDs for names present in `existing`
 - [ ] `PropertyMapBuilder::remove` drops named entries and returns the remaining map
-- [ ] `PropertyMapBuilder::with_bank` is required before any method that resolves `$ref` entries; calling a ref-resolving method without a bank returns `SchemaError::PropertyRef(PropertyRefError::BankRequired)`
-- [ ] Unit tests ported from `expander.rs` (ref resolution, type mismatches, missing bank targets, BankRequired error, optionality/multiplicity overrides)
+- [ ] `PropertyMapBuilder::with_bank` is required before any method that resolves `$ref` entries; calling a ref-resolving method without a bank returns `SchemaError::PropertyBuilder(PropertyBuilderError::MissingPropertyBank)`
+- [ ] Unit tests ported from `expander.rs` (ref resolution, type mismatches, missing bank targets, MissingPropertyBank error, optionality/multiplicity overrides)
 - [ ] Unit tests ported from `property.rs` `TryFrom` tests (bank required override, empty options, duplicate options)
 - [ ] `cargo test` passes with no regressions
 
