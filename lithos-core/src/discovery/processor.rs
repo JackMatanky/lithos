@@ -1,4 +1,25 @@
-use std::{marker::PhantomData, path::PathBuf};
+//! Typestate processor for the redesigned discovery pipeline.
+//!
+//! [`DiscoveryProcessor`] executes the fixed discovery process through a
+//! sequence of typed phase transitions. Each phase is a zero-sized marker type
+//! that encodes what has been computed and what transitions are valid. The
+//! compiler prevents out-of-order or illegal transitions.
+//!
+//! # Phase Sequence
+//!
+//! ```text
+//! Init
+//!  └─ FlagOverride          (probe flag vault dir; probe env vault dir; parse ceilings)
+//!      └─ EnvOverride       (set ExplicitConfigFile stop reason if config override present)
+//!          ├─ AscendingTraversal ──┬─ GlobalResolution ─┬─ Finalized
+//!          │                       └─────────────────────┘
+//!          └─────────────────────────────────────────────── Finalized
+//! ```
+//!
+//! The active branch is selected by [`DiscoveryProcessor::branch_strategy`]
+//! after the `EnvOverride` phase.
+
+use std::{collections::HashSet, marker::PhantomData, path::PathBuf};
 
 use super::{
     context::DiscoveryContext,
@@ -6,45 +27,112 @@ use super::{
     probe::FolderProbe,
     report::{
         DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
+        SkippedCeiling, SkippedCeilingReason,
     },
     service::{CandidatePath, DiscoveryResult, DiscoveryServiceConfig},
     walk::BoundedAscent,
 };
+use crate::fs::DirPath;
 
+// ---------------------------------------------------------------------------
+// Phase marker types
+// ---------------------------------------------------------------------------
+
+/// Initial phase. Holds the context and config; no probing has occurred yet.
 pub(crate) struct Init;
 
+/// Flag and environment vault directories have been probed. Ceiling data has
+/// been parsed into [`DiscoveryReport::skipped_ceilings`]. Vault candidates
+/// are populated if an explicit vault dir was provided via flags or
+/// environment.
 pub(crate) struct FlagOverride;
 
+/// All overrides have been inspected. If an explicit config file was supplied
+/// (via flags or environment), [`LocalTraversalStopReason::ExplicitConfigFile`]
+/// is already set on the report. The branch strategy is now deterministic.
 pub(crate) struct EnvOverride;
 
+/// Ascending traversal has run from the context anchor (or resolved env
+/// anchor). Vault candidates are populated from the first directory in which
+/// marker files were found, or remain empty if traversal was bounded before
+/// finding any.
 pub(crate) struct AscendingTraversal;
 
+/// Global directories have been probed. Global candidates are populated (or
+/// empty if no markers were found or global resolution was suppressed).
 pub(crate) struct GlobalResolution;
 
+/// All phases complete. [`DiscoveryProcessor::finalize`] consumes the processor
+/// and returns the [`DiscoveryResult`] and [`DiscoveryReport`].
 pub(crate) struct Finalized;
 
+// ---------------------------------------------------------------------------
+// Branch strategy
+// ---------------------------------------------------------------------------
+
+/// The execution path selected after all overrides are known.
+///
+/// Determined by [`DiscoveryProcessor::branch_strategy`] on the
+/// [`EnvOverride`] phase and used by [`DiscoveryService`] to drive the
+/// correct transition sequence.
+///
+/// [`DiscoveryService`]: super::service::DiscoveryService
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[expect(
     clippy::enum_variant_names,
-    reason = "variants describe branch strategy"
+    reason = "variants describe branch strategy, sharing a suffix is \
+              intentional"
 )]
 pub(crate) enum ExplicitOverrideBranch {
+    /// Explicit vault dir + explicit config file: vault already probed in
+    /// `FlagOverride`; global resolution is skipped because both paths are
+    /// already known.
     VaultProbedSkipGlobal,
+    /// Explicit vault dir, no explicit config file: vault already probed in
+    /// `FlagOverride`; global resolution still runs.
     VaultProbedRunGlobal,
+    /// No vault override, explicit config file: ascending traversal runs to
+    /// locate the vault, but global resolution is skipped.
     AscendSkipGlobal,
+    /// No overrides: ascending traversal runs, then global resolution runs.
     AscendThenGlobal,
 }
 
+// ---------------------------------------------------------------------------
+// Processor
+// ---------------------------------------------------------------------------
+
+/// Phase-aligned typestate processor for the discovery pipeline.
+///
+/// `'ctx` is the lifetime of both the [`DiscoveryServiceConfig`] reference and
+/// the [`DiscoveryContext`] reference (which itself borrows environment data
+/// for `'ctx`). `P` is the current phase marker type.
+///
+/// Fields:
+/// - `vault` / `global` are candidate accumulators populated across phases.
+/// - `report` accumulates non-fatal metadata across phases.
+/// - `ceilings` is computed during [`FlagOverride`] and used during
+///   [`AscendingTraversal`].
 pub(crate) struct DiscoveryProcessor<'ctx, P> {
     config: &'ctx DiscoveryServiceConfig,
     ctx: &'ctx DiscoveryContext<'ctx>,
     vault: Vec<CandidatePath>,
     global: Vec<CandidatePath>,
     report: DiscoveryReport,
+    /// Parsed and canonicalized ceiling directories. Populated during
+    /// [`FlagOverride`] so the same set is available in [`AscendingTraversal`]
+    /// without re-parsing.
+    ceilings: HashSet<PathBuf>,
     _phase: PhantomData<P>,
 }
 
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
 impl<'ctx> DiscoveryProcessor<'ctx, Init> {
+    /// Constructs the processor with its stable config and per-invocation
+    /// context. No probing occurs here.
     pub(crate) fn new(
         config: &'ctx DiscoveryServiceConfig,
         ctx: &'ctx DiscoveryContext<'ctx>,
@@ -54,46 +142,86 @@ impl<'ctx> DiscoveryProcessor<'ctx, Init> {
             ctx,
             vault: Vec::new(),
             global: Vec::new(),
-            report: DiscoveryReport {
-                skipped_ceilings: Vec::new(),
-                local_traversal_stop_reason:
-                    LocalTraversalStopReason::FilesystemRoot,
-                global_resolution_skip_reason: None,
-            },
+            report: DiscoveryReport::default(),
+            ceilings: HashSet::new(),
             _phase: PhantomData,
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Init → FlagOverride
+// ---------------------------------------------------------------------------
 
 impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
     for DiscoveryProcessor<'ctx, FlagOverride>
 {
+    /// Probes the flag and environment vault directories and parses ceiling
+    /// data.
+    ///
+    /// After this transition:
+    /// - `vault` contains candidates from the explicit vault dir (flag takes
+    ///   precedence over env; the first non-empty probe wins).
+    /// - `ceilings` contains validated, canonicalized ceiling directories.
+    /// - `report.skipped_ceilings` contains entries for invalid ceiling
+    ///   segments.
     fn from(val: DiscoveryProcessor<'ctx, Init>) -> Self {
-        let flags = val.ctx.flags();
-
-        let vault = if let Some(vault_dir) = flags.vault_dir() {
-            let probe = FolderProbe {
-                patterns: val.config.vault_marker_patterns,
-            };
-            probe.probe(vault_dir)
-        } else {
-            Vec::new()
+        let vault_probe = FolderProbe {
+            patterns: val.config.vault_marker_patterns,
         };
 
-        Self {
+        // Probe flag vault dir first (highest precedence), then env vault dir.
+        let vault = val
+            .ctx
+            .flags()
+            .vault_dir()
+            .map(|d| vault_probe.probe(d))
+            .filter(|v| !v.is_empty())
+            .or_else(|| {
+                val.ctx
+                    .env()
+                    .vault_dir()
+                    .map(|d| vault_probe.probe(d))
+                    .filter(|v| !v.is_empty())
+            })
+            .unwrap_or_default();
+
+        // Parse ceiling dirs from the raw env value.
+        let (valid_ceilings, skipped_ceilings) =
+            parse_ceiling_dirs(val.ctx.env().ceiling_dirs_raw());
+
+        let ceilings: HashSet<PathBuf> = valid_ceilings
+            .into_iter()
+            .map(|d| d.as_path().to_path_buf())
+            .collect();
+
+        let mut report = val.report;
+        report.skipped_ceilings = skipped_ceilings;
+
+        DiscoveryProcessor {
             config: val.config,
             ctx: val.ctx,
             vault,
             global: val.global,
-            report: val.report,
+            report,
+            ceilings,
             _phase: PhantomData,
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// FlagOverride → EnvOverride
+// ---------------------------------------------------------------------------
+
 impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
     for DiscoveryProcessor<'ctx, EnvOverride>
 {
+    /// Records whether an explicit config file preempts local traversal.
+    ///
+    /// If a config file override is present (via flags or environment),
+    /// [`LocalTraversalStopReason::ExplicitConfigFile`] is set on the report.
+    /// Vault candidates and ceiling data are carried forward unchanged.
     fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
         let has_config = val.ctx.flags().config_file().is_some()
             || val.ctx.env().config_file().is_some();
@@ -104,18 +232,30 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
                 LocalTraversalStopReason::ExplicitConfigFile;
         }
 
-        Self {
+        DiscoveryProcessor {
             config: val.config,
             ctx: val.ctx,
             vault: val.vault,
             global: val.global,
             report,
+            ceilings: val.ceilings,
             _phase: PhantomData,
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// EnvOverride: branch strategy
+// ---------------------------------------------------------------------------
+
 impl DiscoveryProcessor<'_, EnvOverride> {
+    /// Determines the execution path for the remainder of the pipeline.
+    ///
+    /// Must be called after the [`EnvOverride`] phase is reached. The
+    /// [`DiscoveryService`] uses the returned variant to select the correct
+    /// `From`/`TryFrom` transition.
+    ///
+    /// [`DiscoveryService`]: super::service::DiscoveryService
     pub(crate) fn branch_strategy(&self) -> ExplicitOverrideBranch {
         let has_vault_override = self.ctx.flags().vault_dir().is_some()
             || self.ctx.env().vault_dir().is_some();
@@ -131,21 +271,40 @@ impl DiscoveryProcessor<'_, EnvOverride> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// EnvOverride → AscendingTraversal
+// ---------------------------------------------------------------------------
+
 impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, EnvOverride>>
     for DiscoveryProcessor<'ctx, AscendingTraversal>
 {
     type Error = DiscoveryError;
 
+    /// Walks the directory tree upward from the context anchor, probing each
+    /// directory for vault marker files.
+    ///
+    /// This transition is only taken on the `AscendSkipGlobal` or
+    /// `AscendThenGlobal` branches — meaning no vault override is present.
+    /// The traversal anchor is therefore always `ctx.anchor()`.
+    ///
+    /// Traversal stops at:
+    /// - A configured ceiling directory (sets
+    ///   [`LocalTraversalStopReason::CeilingEnforced`]).
+    /// - A project boundary marker child (sets
+    ///   [`LocalTraversalStopReason::ProjectBoundaryMarker`]).
+    /// - The filesystem root (default; report already initialised to
+    ///   [`LocalTraversalStopReason::FilesystemRoot`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::CanonicalizePath`] if the anchor cannot be
+    /// canonicalized.
     fn try_from(
         val: DiscoveryProcessor<'ctx, EnvOverride>,
     ) -> Result<Self, Self::Error> {
-        let anchor_dir = val
-            .ctx
-            .flags()
-            .vault_dir()
-            .or_else(|| val.ctx.env().vault_dir())
-            .unwrap_or_else(|| val.ctx.anchor());
-        let anchor_path = anchor_dir.as_path().to_path_buf();
+        // No vault override is active on this branch; the anchor is always the
+        // context anchor.
+        let anchor_path = val.ctx.anchor().as_path().to_path_buf();
         let canonical = anchor_path.canonicalize().map_err(|source| {
             DiscoveryError::CanonicalizePath {
                 path: anchor_path,
@@ -157,33 +316,36 @@ impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, EnvOverride>>
             patterns: val.config.vault_marker_patterns,
         };
 
-        let (valid_ceilings, skipped) = val.ctx.env().resolve_ceiling_dirs();
-        let ceilings: std::collections::HashSet<PathBuf> =
-            valid_ceilings.iter().map(|d| d.as_path().to_path_buf()).collect();
-        let mut report = val.report;
-        report.skipped_ceilings = skipped;
+        // Destructure `val` so all fields can be moved or borrowed
+        // independently without conflicting with the partial-move rules.
+        let DiscoveryProcessor {
+            config,
+            ctx,
+            vault: init_vault,
+            global,
+            report: init_report,
+            ceilings,
+            _phase: _,
+        } = val;
 
         let walker = BoundedAscent::new(
             &canonical,
             &ceilings,
-            val.config.allow_marker_at_ceiling,
+            config.allow_marker_at_ceiling,
         );
 
-        let mut vault = val.vault;
+        let mut vault = init_vault;
+        let mut report = init_report;
 
         for current in walker {
-            if ceilings.contains(current) {
-                report.local_traversal_stop_reason =
-                    LocalTraversalStopReason::CeilingEnforced {
-                        ceiling: current.to_path_buf(),
-                    };
-                break;
-            }
-
-            let is_boundary =
-                val.config.boundary_markers.iter().any(|marker| {
-                    current.file_name().is_some_and(|name| name == *marker)
-                });
+            // A boundary marker is a well-known child directory (e.g. `.git`)
+            // whose *presence inside* the current directory signals a project
+            // root. We check whether the child exists, not whether `current`
+            // itself is named after a boundary marker.
+            let is_boundary = config
+                .boundary_markers
+                .iter()
+                .any(|marker| current.join(marker).is_dir());
 
             if is_boundary {
                 report.local_traversal_stop_reason =
@@ -193,154 +355,287 @@ impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, EnvOverride>>
                 break;
             }
 
+            // Check whether this is a ceiling directory *before* probing, so
+            // the stop reason is recorded correctly whether or not a marker is
+            // found at the ceiling.
+            let is_ceiling = ceilings.contains(current);
+
             let candidates = probe.probe_dir(current);
-            if !candidates.is_empty() {
+            let found = !candidates.is_empty();
+            if found {
                 vault = candidates;
+            }
+
+            if is_ceiling {
+                // BoundedAscent yields the ceiling once (when
+                // allow_marker_at_ceiling is true) then stops. Record the
+                // ceiling stop reason regardless of whether a marker was found.
+                report.local_traversal_stop_reason =
+                    LocalTraversalStopReason::CeilingEnforced {
+                        ceiling: current.to_path_buf(),
+                    };
+                break;
+            }
+
+            if found {
+                // Marker found in a non-ceiling directory; stop traversal.
+                // Stop reason remains FilesystemRoot (the default).
                 break;
             }
         }
 
-        Ok(Self {
-            config: val.config,
-            ctx: val.ctx,
+        Ok(DiscoveryProcessor {
+            config,
+            ctx,
             vault,
-            global: val.global,
+            global,
             report,
+            ceilings,
             _phase: PhantomData,
         })
     }
 }
 
+// ---------------------------------------------------------------------------
+// EnvOverride → GlobalResolution  (VaultProbedRunGlobal branch)
+// ---------------------------------------------------------------------------
+
 impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
     for DiscoveryProcessor<'ctx, GlobalResolution>
 {
+    /// Probes configured global directories for config markers.
+    ///
+    /// If `suppress_global` is set on the invocation flags, no probing occurs
+    /// and [`GlobalResolutionSkipReason::SuppressedByFlag`] is recorded.
     fn from(val: DiscoveryProcessor<'ctx, EnvOverride>) -> Self {
-        let probe = FolderProbe {
-            patterns: val.config.global_marker_patterns,
-        };
-
-        let mut global = Vec::new();
-        for global_dir in &val.config.global_directories {
-            let candidates = probe.probe(global_dir);
-            if !candidates.is_empty() {
-                global = candidates;
-                break;
-            }
-        }
-
-        let mut report = val.report;
-        if val.ctx.flags().suppress_global() {
-            report.global_resolution_skip_reason =
-                Some(GlobalResolutionSkipReason::SuppressedByFlag);
-        }
-
-        Self {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global,
-            report,
-            _phase: PhantomData,
-        }
+        run_global_resolution(val)
     }
 }
+
+// ---------------------------------------------------------------------------
+// EnvOverride → Finalized  (VaultProbedSkipGlobal branch)
+// ---------------------------------------------------------------------------
 
 impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
     for DiscoveryProcessor<'ctx, Finalized>
 {
+    /// Finalizes directly from `EnvOverride` when both vault and config
+    /// overrides are present — no global resolution is needed.
+    ///
+    /// Global resolution is skipped because the caller already supplied an
+    /// explicit config file path; the skip reason is left as `None` to
+    /// distinguish this from an explicit `--no-global-config` suppression.
     fn from(val: DiscoveryProcessor<'ctx, EnvOverride>) -> Self {
-        let mut report = val.report;
-        if val.ctx.flags().suppress_global() {
-            report.global_resolution_skip_reason =
-                Some(GlobalResolutionSkipReason::SuppressedByFlag);
-        }
-
-        Self {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global: val.global,
-            report,
-            _phase: PhantomData,
-        }
-    }
-}
-
-impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, AscendingTraversal>>
-    for DiscoveryProcessor<'ctx, GlobalResolution>
-{
-    type Error = DiscoveryError;
-
-    fn try_from(
-        val: DiscoveryProcessor<'ctx, AscendingTraversal>,
-    ) -> Result<Self, Self::Error> {
-        let probe = FolderProbe {
-            patterns: val.config.global_marker_patterns,
-        };
-
-        let mut global = Vec::new();
-        for global_dir in &val.config.global_directories {
-            let candidates = probe.probe(global_dir);
-            if !candidates.is_empty() {
-                global = candidates;
-                break;
-            }
-        }
-
-        Ok(Self {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global,
-            report: val.report,
-            _phase: PhantomData,
-        })
-    }
-}
-
-impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, AscendingTraversal>>
-    for DiscoveryProcessor<'ctx, Finalized>
-{
-    type Error = DiscoveryError;
-
-    fn try_from(
-        val: DiscoveryProcessor<'ctx, AscendingTraversal>,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
+        // No report mutation on this path; advance all state unchanged.
+        DiscoveryProcessor {
             config: val.config,
             ctx: val.ctx,
             vault: val.vault,
             global: val.global,
             report: val.report,
+            ceilings: val.ceilings,
             _phase: PhantomData,
-        })
+        }
     }
 }
+
+// ---------------------------------------------------------------------------
+// AscendingTraversal → GlobalResolution  (AscendThenGlobal branch)
+// ---------------------------------------------------------------------------
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
+    for DiscoveryProcessor<'ctx, GlobalResolution>
+{
+    /// Probes configured global directories for config markers.
+    ///
+    /// If `suppress_global` is set on the invocation flags, no probing occurs
+    /// and [`GlobalResolutionSkipReason::SuppressedByFlag`] is recorded.
+    fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
+        run_global_resolution(val)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AscendingTraversal → Finalized  (AscendSkipGlobal branch)
+// ---------------------------------------------------------------------------
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
+    for DiscoveryProcessor<'ctx, Finalized>
+{
+    /// Finalizes directly after ascending traversal, skipping global
+    /// resolution because an explicit config file override is present.
+    fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
+        DiscoveryProcessor {
+            config: val.config,
+            ctx: val.ctx,
+            vault: val.vault,
+            global: val.global,
+            report: val.report,
+            ceilings: val.ceilings,
+            _phase: PhantomData,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GlobalResolution → Finalized
+// ---------------------------------------------------------------------------
 
 impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
     for DiscoveryProcessor<'ctx, Finalized>
 {
     fn from(val: DiscoveryProcessor<'ctx, GlobalResolution>) -> Self {
-        Self {
+        DiscoveryProcessor {
             config: val.config,
             ctx: val.ctx,
             vault: val.vault,
             global: val.global,
             report: val.report,
+            ceilings: val.ceilings,
             _phase: PhantomData,
         }
     }
 }
 
+// ---------------------------------------------------------------------------
+// Finalized
+// ---------------------------------------------------------------------------
+
 impl DiscoveryProcessor<'_, Finalized> {
+    /// Consumes the processor and returns the discovery output.
     pub(crate) fn finalize(self) -> (DiscoveryResult, DiscoveryReport) {
         let result = DiscoveryResult::new(self.vault, self.global);
         (result, self.report)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/// Probes configured global directories and returns a processor in the
+/// [`GlobalResolution`] phase.
+///
+/// Shared by both `EnvOverride → GlobalResolution` and
+/// `AscendingTraversal → GlobalResolution` to avoid duplicating the probe loop
+/// and suppression logic.
+fn run_global_resolution<P>(
+    val: DiscoveryProcessor<'_, P>,
+) -> DiscoveryProcessor<'_, GlobalResolution> {
+    let DiscoveryProcessor {
+        config,
+        ctx,
+        vault,
+        global: _,
+        mut report,
+        ceilings,
+        _phase: _,
+    } = val;
+
+    if ctx.flags().suppress_global() {
+        report.global_resolution_skip_reason =
+            Some(GlobalResolutionSkipReason::SuppressedByFlag);
+        // Do not probe — return empty global candidates.
+        return DiscoveryProcessor {
+            config,
+            ctx,
+            vault,
+            global: Vec::new(),
+            report,
+            ceilings,
+            _phase: PhantomData,
+        };
+    }
+
+    let probe = FolderProbe {
+        patterns: config.global_marker_patterns,
+    };
+
+    let global = config
+        .global_directories
+        .iter()
+        .find_map(|global_dir| {
+            let candidates = probe.probe(global_dir);
+            (!candidates.is_empty()).then_some(candidates)
+        })
+        .unwrap_or_default();
+
+    DiscoveryProcessor {
+        config,
+        ctx,
+        vault,
+        global,
+        report,
+        ceilings,
+        _phase: PhantomData,
+    }
+}
+
+/// Parses a raw OS path-list of ceiling directories into validated
+/// [`DirPath`] values plus skipped entries.
+///
+/// Splitting, trimming, validation, and canonicalization are all done here so
+/// this logic is not coupled to [`DiscoveryEnv`].
+///
+/// [`DiscoveryEnv`]: super::context::DiscoveryEnv
+fn parse_ceiling_dirs(
+    raw: Option<&std::ffi::OsStr>,
+) -> (Vec<DirPath>, Vec<SkippedCeiling>) {
+    let Some(raw) = raw else {
+        return (Vec::new(), Vec::new());
+    };
+
+    let mut valid = Vec::new();
+    let mut skipped = Vec::new();
+
+    for segment in std::env::split_paths(raw) {
+        let trimmed = segment.to_string_lossy().trim().to_owned();
+        if trimmed.is_empty() {
+            skipped.push(SkippedCeiling {
+                segment,
+                reason: SkippedCeilingReason::EmptySegment,
+            });
+            continue;
+        }
+
+        let Ok(dir) = DirPath::try_new(PathBuf::from(&trimmed)) else {
+            skipped.push(SkippedCeiling {
+                segment: PathBuf::from(&trimmed),
+                reason: SkippedCeilingReason::InvalidPath,
+            });
+            continue;
+        };
+
+        match dir.as_path().canonicalize() {
+            Ok(canonical) => match DirPath::try_new(canonical) {
+                Ok(canon_dir) => valid.push(canon_dir),
+                Err(_) => skipped.push(SkippedCeiling {
+                    segment: PathBuf::from(&trimmed),
+                    reason: SkippedCeilingReason::InvalidPath,
+                }),
+            },
+            Err(_) => skipped.push(SkippedCeiling {
+                segment: PathBuf::from(&trimmed),
+                reason: SkippedCeilingReason::InvalidPath,
+            }),
+        }
+    }
+
+    (valid, skipped)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
+    //! Unit tests for [`DiscoveryProcessor`] phase transitions.
+    //!
+    //! Each sub-module covers one phase transition or method. Tests use
+    //! temporary directories from [`tempfile`] so filesystem state is isolated
+    //! and cleaned up automatically.
+
     use std::path::Path;
 
     use super::*;
@@ -353,6 +648,10 @@ mod tests {
         fs::DirPath,
     };
 
+    // -----------------------------------------------------------------------
+    // Shared fixtures
+    // -----------------------------------------------------------------------
+
     fn default_config() -> DiscoveryServiceConfig {
         DiscoveryServiceConfig::default()
     }
@@ -363,6 +662,8 @@ mod tests {
         DiscoveryContext::new(anchor)
     }
 
+    /// Writes an empty file at `root/relative`, creating parent directories as
+    /// needed. Returns the full path.
     fn write_marker(root: &Path, relative: &str) -> PathBuf {
         let path = root.join(relative);
         if let Some(parent) = path.parent() {
@@ -372,28 +673,83 @@ mod tests {
         path
     }
 
-    mod init {
+    // -----------------------------------------------------------------------
+    // Init::new
+    // -----------------------------------------------------------------------
+
+    mod new {
         use super::*;
 
         #[test]
-        fn stores_config_and_context_refs() {
+        fn stores_config_vault_marker_patterns() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
             let p = DiscoveryProcessor::new(&config, &ctx);
-
             assert_eq!(p.config.vault_marker_patterns, VAULT_MARKER_PATTERNS);
+        }
+
+        #[test]
+        fn stores_context_anchor() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert_eq!(p.ctx.anchor().as_path(), root.path());
+        }
+
+        #[test]
+        fn vault_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert!(p.vault.is_empty());
+        }
+
+        #[test]
+        fn global_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert!(p.global.is_empty());
+        }
+
+        #[test]
+        fn skipped_ceilings_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert!(p.report.skipped_ceilings.is_empty());
+        }
+
+        #[test]
+        fn local_traversal_stop_reason_is_filesystem_root() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert_eq!(
                 p.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::FilesystemRoot
             );
+        }
+
+        #[test]
+        fn global_resolution_skip_reason_is_none() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+            let p = DiscoveryProcessor::new(&config, &ctx);
             assert!(p.report.global_resolution_skip_reason.is_none());
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Init → FlagOverride
+    // -----------------------------------------------------------------------
 
     mod init_to_flag_override {
         use super::*;
@@ -410,30 +766,122 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
 
             assert!(!flag.vault.is_empty());
         }
 
         #[test]
-        fn leaves_vault_empty_when_no_flag_vault_dir() {
+        fn probes_env_vault_dir_when_no_flag_vault_dir() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+
+            assert!(!flag.vault.is_empty());
+        }
+
+        #[test]
+        fn flag_vault_dir_takes_precedence_over_env_vault_dir() {
+            let root = tempfile::tempdir().expect("root");
+            let flag_vault = tempfile::tempdir().expect("flag vault");
+            let env_vault = tempfile::tempdir().expect("env vault");
+            write_marker(flag_vault.path(), "lithos.toml");
+            // env vault has no marker — if env were probed first, vault would
+            // be empty flag vault has a marker — flag must win
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(None, Some(flag_vault.path()), false)
+                    .expect("flags");
+            let env = DiscoveryEnv::new(None, Some(env_vault.path()), None)
+                .expect("env");
+            let ctx = make_context(root.path())
+                .expect("ctx")
+                .with_flags(flags)
+                .with_env(env);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+
+            assert!(!flag.vault.is_empty(), "flag vault dir must win");
+        }
+
+        #[test]
+        fn vault_is_empty_when_no_vault_dir_provided() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
 
             assert!(flag.vault.is_empty());
         }
+
+        #[test]
+        fn parses_ceiling_dirs_from_env() {
+            let root = tempfile::tempdir().expect("root");
+            let ceiling = tempfile::tempdir().expect("ceiling");
+            let raw = ceiling.path().to_str().expect("utf8").to_owned();
+
+            let config = default_config();
+            let env =
+                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+
+            assert!(
+                !flag.ceilings.is_empty(),
+                "ceiling should be parsed from env"
+            );
+        }
+
+        #[test]
+        fn records_empty_ceiling_segment_as_skipped() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let env =
+                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new("")))
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+
+            assert!(!flag.report.skipped_ceilings.is_empty());
+        }
     }
+
+    // -----------------------------------------------------------------------
+    // FlagOverride → EnvOverride
+    // -----------------------------------------------------------------------
 
     mod flag_to_env_override {
         use super::*;
 
+        fn advance_to_env<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, EnvOverride> {
+            let init = DiscoveryProcessor::new(config, ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            flag.into()
+        }
+
         #[test]
-        fn sets_explicit_config_stop_reason_when_config_present() {
+        fn sets_explicit_config_stop_reason_when_flag_config_present() {
             let root = tempfile::tempdir().expect("root");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
@@ -443,22 +891,67 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let env = advance_to_env(&config, &ctx);
 
             assert_eq!(
                 env.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::ExplicitConfigFile
             );
         }
+
+        #[test]
+        fn sets_explicit_config_stop_reason_when_env_config_present() {
+            let root = tempfile::tempdir().expect("root");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let env_override =
+                DiscoveryEnv::new(Some(config_file.path()), None, None)
+                    .expect("env");
+            let ctx =
+                make_context(root.path()).expect("ctx").with_env(env_override);
+
+            let env = advance_to_env(&config, &ctx);
+
+            assert_eq!(
+                env.report.local_traversal_stop_reason,
+                LocalTraversalStopReason::ExplicitConfigFile
+            );
+        }
+
+        #[test]
+        fn leaves_stop_reason_as_filesystem_root_when_no_config_override() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let env = advance_to_env(&config, &ctx);
+
+            assert_eq!(
+                env.report.local_traversal_stop_reason,
+                LocalTraversalStopReason::FilesystemRoot
+            );
+        }
     }
+
+    // -----------------------------------------------------------------------
+    // EnvOverride::branch_strategy
+    // -----------------------------------------------------------------------
 
     mod branch_strategy {
         use super::*;
 
+        fn advance_to_env<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, EnvOverride> {
+            let init = DiscoveryProcessor::new(config, ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            flag.into()
+        }
+
         #[test]
-        fn vault_and_config_skip_both() {
+        fn vault_and_config_override_yields_vault_probed_skip_global() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             let config_file = tempfile::NamedTempFile::new().expect("config");
@@ -472,18 +965,14 @@ mod tests {
             .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
-                env.branch_strategy(),
+                advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedSkipGlobal
             );
         }
 
         #[test]
-        fn vault_only_runs_global() {
+        fn vault_override_only_yields_vault_probed_run_global() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
@@ -493,18 +982,14 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
-                env.branch_strategy(),
+                advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedRunGlobal
             );
         }
 
         #[test]
-        fn config_only_ascend_skip_global() {
+        fn config_override_only_yields_ascend_skip_global() {
             let root = tempfile::tempdir().expect("root");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
@@ -514,58 +999,58 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
-                env.branch_strategy(),
+                advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::AscendSkipGlobal
             );
         }
 
         #[test]
-        fn no_overrides_ascend_then_global() {
+        fn no_overrides_yields_ascend_then_global() {
             let root = tempfile::tempdir().expect("root");
-
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
-                env.branch_strategy(),
+                advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::AscendThenGlobal
             );
         }
 
         #[test]
-        fn vault_from_env_triggers_vault_probed() {
+        fn env_vault_dir_yields_vault_probed_run_global() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
             let config = default_config();
-            let env_override =
-                DiscoveryEnv::new(None, Some(vault_dir.path()), None)
-                    .expect("env");
-            let ctx =
-                make_context(root.path()).expect("ctx").with_env(env_override);
-
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             assert_eq!(
-                env.branch_strategy(),
+                advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedRunGlobal
             );
         }
     }
 
+    // -----------------------------------------------------------------------
+    // EnvOverride → AscendingTraversal
+    // -----------------------------------------------------------------------
+
     mod ascending_traversal {
         use super::*;
+
+        fn advance_to_ascend<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> Result<DiscoveryProcessor<'a, AscendingTraversal>, DiscoveryError>
+        {
+            let init = DiscoveryProcessor::new(config, ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            env.try_into()
+        }
 
         #[test]
         fn finds_marker_in_anchor_directory() {
@@ -575,43 +1060,122 @@ mod tests {
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env.try_into().expect("ascend");
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
 
             assert!(!ascend.vault.is_empty());
         }
 
         #[test]
-        fn stops_at_boundary_marker() {
+        fn vault_is_empty_when_no_marker_found() {
             let root = tempfile::tempdir().expect("root");
-            let boundary = root.path().join(".git");
-            std::fs::create_dir(&boundary).expect("boundary");
-            let nested = boundary.join("deep");
-            std::fs::create_dir_all(&nested).expect("nested");
-
             let config = default_config();
-            let ctx = make_context(&nested).expect("ctx");
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env.try_into().expect("ascend");
+            // Limit traversal to just root so we don't accidentally find real
+            // markers in parent directories.
+            let raw = root
+                .path()
+                .canonicalize()
+                .expect("canonical")
+                .to_str()
+                .expect("utf8")
+                .to_owned();
+            let env =
+                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
 
             assert!(ascend.vault.is_empty());
+        }
+
+        #[test]
+        fn stops_at_project_boundary_marker_present_as_child() {
+            // Correct scenario: anchor is a project directory that has a .git
+            // child, not the CWD being inside .git.
+            let root = tempfile::tempdir().expect("root");
+            std::fs::create_dir(root.path().join(".git")).expect(".git dir");
+
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
+
             assert_eq!(
                 ascend.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::ProjectBoundaryMarker {
-                    marker: boundary.canonicalize().expect("canonical")
+                    marker: root.path().canonicalize().expect("canonical")
                 }
             );
         }
 
         #[test]
-        fn records_skipped_ceilings_from_env() {
+        fn vault_is_empty_when_stopped_at_boundary_marker() {
+            let root = tempfile::tempdir().expect("root");
+            std::fs::create_dir(root.path().join(".git")).expect(".git dir");
+
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
+
+            assert!(ascend.vault.is_empty());
+        }
+
+        #[test]
+        fn stops_at_ceiling_and_records_stop_reason() {
+            let root = tempfile::tempdir().expect("root");
+            let sub = root.path().join("sub");
+            std::fs::create_dir(&sub).expect("sub dir");
+            // marker is in root, but ceiling is root — traversal must not reach
+            // it
+            write_marker(root.path(), "lithos.toml");
+
+            let ceiling =
+                root.path().canonicalize().expect("canonical ceiling");
+            let raw = ceiling.to_str().expect("utf8").to_owned();
+            let env =
+                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
+                    .expect("env");
+            let config = default_config();
+            let ctx = make_context(&sub).expect("ctx").with_env(env);
+
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
+
+            assert_eq!(
+                ascend.report.local_traversal_stop_reason,
+                LocalTraversalStopReason::CeilingEnforced {
+                    ceiling: ceiling.clone(),
+                }
+            );
+        }
+
+        #[test]
+        fn vault_is_empty_when_ceiling_stops_traversal_before_marker() {
+            let root = tempfile::tempdir().expect("root");
+            let sub = root.path().join("sub");
+            std::fs::create_dir(&sub).expect("sub dir");
+            write_marker(root.path(), "lithos.toml");
+
+            let ceiling =
+                root.path().canonicalize().expect("canonical ceiling");
+            let raw = ceiling.to_str().expect("utf8").to_owned();
+            let env =
+                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
+                    .expect("env");
+            let config = DiscoveryServiceConfig {
+                allow_marker_at_ceiling: false,
+                ..DiscoveryServiceConfig::default()
+            };
+            let ctx = make_context(&sub).expect("ctx").with_env(env);
+
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
+
+            assert!(ascend.vault.is_empty());
+        }
+
+        #[test]
+        fn ceiling_in_report_is_populated_from_env() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
             let env =
@@ -619,23 +1183,111 @@ mod tests {
                     .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env_override: DiscoveryProcessor<EnvOverride> = flag.into();
-            let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env_override.try_into().expect("ascend");
+            let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
 
             assert!(!ascend.report.skipped_ceilings.is_empty());
         }
     }
 
+    // -----------------------------------------------------------------------
+    // GlobalResolution (shared by EnvOverride and AscendingTraversal paths)
+    // -----------------------------------------------------------------------
+
+    mod global_resolution {
+        use super::*;
+
+        fn advance_to_global_from_env<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, GlobalResolution> {
+            let init = DiscoveryProcessor::new(config, ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            // EnvOverride → GlobalResolution is the VaultProbedRunGlobal path
+            env.into()
+        }
+
+        #[test]
+        fn probes_global_directories_when_not_suppressed() {
+            let root = tempfile::tempdir().expect("root");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let global = advance_to_global_from_env(&config, &ctx);
+
+            assert!(!global.global.is_empty());
+        }
+
+        #[test]
+        fn global_candidates_are_empty_when_suppress_global_is_set() {
+            let root = tempfile::tempdir().expect("root");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
+            let flags = DiscoveryFlags::new(None, None, true).expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let global = advance_to_global_from_env(&config, &ctx);
+
+            assert!(
+                global.global.is_empty(),
+                "suppressed global must produce no candidates"
+            );
+        }
+
+        #[test]
+        fn sets_suppressed_by_flag_skip_reason_when_suppress_global_set() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let flags = DiscoveryFlags::new(None, None, true).expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let global = advance_to_global_from_env(&config, &ctx);
+
+            assert_eq!(
+                global.report.global_resolution_skip_reason,
+                Some(GlobalResolutionSkipReason::SuppressedByFlag)
+            );
+        }
+
+        #[test]
+        fn skip_reason_is_none_when_not_suppressed() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let global = advance_to_global_from_env(&config, &ctx);
+
+            assert!(global.report.global_resolution_skip_reason.is_none());
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Finalized::finalize
+    // -----------------------------------------------------------------------
+
     mod finalize {
         use super::*;
 
         #[test]
-        fn returns_result_and_report() {
+        fn returns_empty_vault_when_no_candidates_found() {
             let root = tempfile::tempdir().expect("root");
-
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
 
@@ -643,18 +1295,56 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = env.into();
-            let (result, report) = final_.finalize();
+            let (result, _) = final_.finalize();
 
             assert!(result.vault().is_empty());
+        }
+
+        #[test]
+        fn returns_empty_global_when_no_candidates_found() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let (result, _) = final_.finalize();
+
             assert!(result.global().is_empty());
+        }
+
+        #[test]
+        fn returns_report_with_filesystem_root_stop_reason() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let (_, report) = final_.finalize();
+
             assert_eq!(
                 report.local_traversal_stop_reason,
                 LocalTraversalStopReason::FilesystemRoot
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end pipeline tests
+    // -----------------------------------------------------------------------
+
+    mod pipeline {
+        use super::*;
+
+        // --- VaultProbedSkipGlobal ---
 
         #[test]
-        fn vault_probed_skip_global_pipeline() {
+        fn vault_probed_skip_global_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -672,25 +1362,77 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
                 env.branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedSkipGlobal
             );
-
             let final_: DiscoveryProcessor<Finalized> = env.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.vault().is_empty());
-            assert!(result.global().is_empty());
         }
-    }
-
-    mod pipeline {
-        use super::*;
 
         #[test]
-        fn vault_probed_run_global_path() {
+        fn vault_probed_skip_global_global_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags = DiscoveryFlags::new(
+                Some(config_file.path()),
+                Some(vault_dir.path()),
+                false,
+            )
+            .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let (result, _) = final_.finalize();
+
+            assert!(result.global().is_empty());
+        }
+
+        #[test]
+        fn vault_probed_skip_global_skip_reason_is_none() {
+            // VaultProbedSkipGlobal skips global because the pipeline is
+            // complete, NOT because the user passed --no-global-config.
+            // The skip reason must therefore be None.
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags = DiscoveryFlags::new(
+                Some(config_file.path()),
+                Some(vault_dir.path()),
+                false,
+            )
+            .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let (_, report) = final_.finalize();
+
+            assert!(
+                report.global_resolution_skip_reason.is_none(),
+                "skip reason must be None when global is skipped due to \
+                 complete overrides, not --no-global-config"
+            );
+        }
+
+        // --- VaultProbedRunGlobal ---
+
+        #[test]
+        fn vault_probed_run_global_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -700,7 +1442,7 @@ mod tests {
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
                     DirPath::try_new(global_dir.path().to_path_buf())
-                        .expect("global dir"),
+                        .expect("dir"),
                 ],
                 ..DiscoveryServiceConfig::default()
             };
@@ -712,37 +1454,77 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
                 env.branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedRunGlobal
             );
-
             let global: DiscoveryProcessor<GlobalResolution> = env.into();
             let final_: DiscoveryProcessor<Finalized> = global.into();
-            let (result, report) = final_.finalize();
+            let (result, _) = final_.finalize();
 
-            assert!(
-                !result.vault().is_empty(),
-                "vault should contain candidates from flag probe"
-            );
-            assert!(
-                !result.global().is_empty(),
-                "global should contain candidates from global resolution"
-            );
-            assert!(
-                report.global_resolution_skip_reason.is_none(),
-                "global resolution should not be suppressed"
-            );
+            assert!(!result.vault().is_empty());
         }
 
         #[test]
-        fn ascend_skip_global_path() {
+        fn vault_probed_run_global_global_is_populated() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
+            let flags =
+                DiscoveryFlags::new(None, Some(vault_dir.path()), false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let (result, _) = final_.finalize();
+
+            assert!(!result.global().is_empty());
+        }
+
+        #[test]
+        fn vault_probed_run_global_skip_reason_is_none() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(None, Some(vault_dir.path()), false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let (_, report) = final_.finalize();
+
+            assert!(report.global_resolution_skip_reason.is_none());
+        }
+
+        // --- AscendSkipGlobal ---
+
+        #[test]
+        fn ascend_skip_global_global_is_empty() {
             let root = tempfile::tempdir().expect("root");
             write_marker(root.path(), "lithos.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
-            let config = DiscoveryServiceConfig::default();
+            let config = default_config();
             let flags =
                 DiscoveryFlags::new(Some(config_file.path()), None, false)
                     .expect("flags");
@@ -751,30 +1533,47 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
                 env.branch_strategy(),
                 ExplicitOverrideBranch::AscendSkipGlobal
             );
-            assert_eq!(
-                env.report.local_traversal_stop_reason,
-                LocalTraversalStopReason::ExplicitConfigFile
-            );
-
             let ascend: DiscoveryProcessor<AscendingTraversal> =
-                TryFrom::try_from(env).expect("ascend");
-            let final_: DiscoveryProcessor<Finalized> =
-                TryFrom::try_from(ascend).expect("final");
+                env.try_into().expect("ascend");
+            let final_: DiscoveryProcessor<Finalized> = ascend.into();
             let (result, _) = final_.finalize();
 
-            assert!(
-                result.global().is_empty(),
-                "global should be empty when global resolution is skipped"
-            );
+            assert!(result.global().is_empty());
         }
 
         #[test]
-        fn ascend_then_global_path() {
+        fn ascend_skip_global_stop_reason_is_explicit_config_file() {
+            let root = tempfile::tempdir().expect("root");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(Some(config_file.path()), None, false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let ascend: DiscoveryProcessor<AscendingTraversal> =
+                env.try_into().expect("ascend");
+            let final_: DiscoveryProcessor<Finalized> = ascend.into();
+            let (_, report) = final_.finalize();
+
+            assert_eq!(
+                report.local_traversal_stop_reason,
+                LocalTraversalStopReason::ExplicitConfigFile
+            );
+        }
+
+        // --- AscendThenGlobal ---
+
+        #[test]
+        fn ascend_then_global_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             write_marker(root.path(), "lithos.toml");
             let global_dir = tempfile::tempdir().expect("global dir");
@@ -783,7 +1582,7 @@ mod tests {
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
                     DirPath::try_new(global_dir.path().to_path_buf())
-                        .expect("global dir"),
+                        .expect("dir"),
                 ],
                 ..DiscoveryServiceConfig::default()
             };
@@ -792,72 +1591,80 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-
             assert_eq!(
                 env.branch_strategy(),
                 ExplicitOverrideBranch::AscendThenGlobal
             );
-
             let ascend: DiscoveryProcessor<AscendingTraversal> =
-                TryFrom::try_from(env).expect("ascend");
-            let global: DiscoveryProcessor<GlobalResolution> =
-                TryFrom::try_from(ascend).expect("global");
+                env.try_into().expect("ascend");
+            let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
             let final_: DiscoveryProcessor<Finalized> = global.into();
-            let (result, report) = final_.finalize();
+            let (result, _) = final_.finalize();
 
-            assert!(
-                !result.vault().is_empty(),
-                "vault should contain candidates from ascending traversal"
-            );
-            assert!(
-                !result.global().is_empty(),
-                "global should contain candidates from global resolution"
-            );
-            assert!(
-                report.global_resolution_skip_reason.is_none(),
-                "global resolution should not be suppressed"
-            );
+            assert!(!result.vault().is_empty());
         }
 
         #[test]
-        fn ceiling_enforced_stops_traversal() {
+        fn ascend_then_global_global_is_populated() {
             let root = tempfile::tempdir().expect("root");
-            let sub = root.path().join("sub");
-            std::fs::create_dir(&sub).expect("sub dir");
             write_marker(root.path(), "lithos.toml");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
 
-            let ceiling =
-                root.path().canonicalize().expect("canonical ceiling");
-            let raw = ceiling.to_str().expect("utf8 path");
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(raw)))
-                    .expect("env");
-            let config = DiscoveryServiceConfig::default();
-            let ctx = make_context(&sub).expect("ctx").with_env(env);
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
+            let ctx = make_context(root.path()).expect("ctx");
 
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env_override: DiscoveryProcessor<EnvOverride> = flag.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env_override.try_into().expect("ascend");
+                env.try_into().expect("ascend");
+            let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
+            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let (result, _) = final_.finalize();
 
-            assert!(
-                ascend.vault.is_empty(),
-                "ceiling should stop traversal before reaching marker"
-            );
-            assert_eq!(
-                ascend.report.local_traversal_stop_reason,
-                LocalTraversalStopReason::CeilingEnforced {
-                    ceiling: ceiling.clone(),
-                }
-            );
+            assert!(!result.global().is_empty());
         }
 
         #[test]
-        fn suppress_global_sets_report_reason() {
+        fn ascend_then_global_skip_reason_is_none() {
             let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
 
-            let config = DiscoveryServiceConfig::default();
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let ascend: DiscoveryProcessor<AscendingTraversal> =
+                env.try_into().expect("ascend");
+            let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
+            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let (_, report) = final_.finalize();
+
+            assert!(report.global_resolution_skip_reason.is_none());
+        }
+
+        // --- suppress_global correctness ---
+
+        #[test]
+        fn suppress_global_sets_report_skip_reason() {
+            let root = tempfile::tempdir().expect("root");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
             let flags = DiscoveryFlags::new(None, None, true).expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
@@ -871,6 +1678,36 @@ mod tests {
             assert_eq!(
                 report.global_resolution_skip_reason,
                 Some(GlobalResolutionSkipReason::SuppressedByFlag)
+            );
+        }
+
+        #[test]
+        fn suppress_global_produces_empty_global_candidates() {
+            let root = tempfile::tempdir().expect("root");
+            let global_dir = tempfile::tempdir().expect("global dir");
+            write_marker(global_dir.path(), "lithos.toml");
+
+            let config = DiscoveryServiceConfig {
+                global_directories: vec![
+                    DirPath::try_new(global_dir.path().to_path_buf())
+                        .expect("dir"),
+                ],
+                ..DiscoveryServiceConfig::default()
+            };
+            let flags = DiscoveryFlags::new(None, None, true).expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let init = DiscoveryProcessor::new(&config, &ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let (result, _) = final_.finalize();
+
+            assert!(
+                result.global().is_empty(),
+                "suppressed global must yield no candidates even when global \
+                 directories contain markers"
             );
         }
     }

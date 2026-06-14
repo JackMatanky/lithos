@@ -3,7 +3,12 @@
 use std::path::PathBuf;
 
 /// Non-fatal process metadata for Bootstrapper and CLI diagnostics.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// The default value represents a run with no skipped ceilings, no explicit
+/// stop reason beyond reaching the filesystem root, and global resolution not
+/// suppressed. Use [`DiscoveryReport::default`] as the zero-value when
+/// constructing a fresh processor.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryReport {
     /// Ceiling path segments ignored during traversal setup.
@@ -36,12 +41,17 @@ pub(crate) enum SkippedCeilingReason {
 }
 
 /// Reasons local traversal stopped or was skipped.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// The default value is [`LocalTraversalStopReason::FilesystemRoot`], which
+/// represents the normal termination condition when no other stop reason is
+/// set.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) enum LocalTraversalStopReason {
     /// Traversal did not run because an explicit config file was supplied.
     ExplicitConfigFile,
     /// Traversal reached the filesystem root.
+    #[default]
     FilesystemRoot,
     /// Traversal stopped at a project boundary marker.
     ProjectBoundaryMarker {

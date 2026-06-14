@@ -1,14 +1,10 @@
 //! Invocation context supplied to Discovery by the application layer.
 
-use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use std::{ffi::OsStr, path::Path};
 
 use crate::{
-    discovery::{
-        error::{DiscoveryError, EnvironmentOverrideError, FlagOverrideError},
-        report::{SkippedCeiling, SkippedCeilingReason},
+    discovery::error::{
+        DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
     },
     fs::{DirPath, FilePath},
 };
@@ -321,66 +317,6 @@ impl<'a> DiscoveryEnv<'a> {
     #[must_use]
     pub(crate) fn ceiling_dirs_raw(&self) -> Option<&'a OsStr> {
         self.ceiling_dirs_raw
-    }
-
-    /// Parses the raw ceiling directory data into validated [`DirPath`] values.
-    ///
-    /// Splits on the platform path separator, trims each segment, validates
-    /// via [`DirPath::try_new`], then canonicalizes to match [`BoundedAscent`]
-    /// output. Non-fatal issues such as empty or invalid segments are returned
-    /// as [`SkippedCeiling`] entries.
-    ///
-    /// [`BoundedAscent`]: crate::discovery::walk::BoundedAscent
-    #[must_use]
-    pub(crate) fn resolve_ceiling_dirs(
-        &self,
-    ) -> (Vec<DirPath>, Vec<SkippedCeiling>) {
-        let Some(raw) = self.ceiling_dirs_raw else {
-            return (Vec::new(), Vec::new());
-        };
-
-        let mut valid = Vec::new();
-        let mut skipped = Vec::new();
-
-        for segment in std::env::split_paths(raw) {
-            let trimmed = segment.to_string_lossy().trim().to_owned();
-            if trimmed.is_empty() {
-                skipped.push(SkippedCeiling {
-                    segment,
-                    reason: SkippedCeilingReason::EmptySegment,
-                });
-                continue;
-            }
-
-            let Ok(dir) = DirPath::try_new(PathBuf::from(&trimmed)) else {
-                skipped.push(SkippedCeiling {
-                    segment: PathBuf::from(&trimmed),
-                    reason: SkippedCeilingReason::InvalidPath,
-                });
-                continue;
-            };
-
-            match dir.as_path().canonicalize() {
-                Ok(canonical) => {
-                    if let Ok(canon_dir) = DirPath::try_new(canonical) {
-                        valid.push(canon_dir);
-                    } else {
-                        skipped.push(SkippedCeiling {
-                            segment: PathBuf::from(&trimmed),
-                            reason: SkippedCeilingReason::InvalidPath,
-                        });
-                    }
-                }
-                Err(_) => {
-                    skipped.push(SkippedCeiling {
-                        segment: PathBuf::from(&trimmed),
-                        reason: SkippedCeilingReason::InvalidPath,
-                    });
-                }
-            }
-        }
-
-        (valid, skipped)
     }
 }
 
@@ -747,81 +683,6 @@ mod tests {
                     )
                 );
             }
-        }
-    }
-
-    mod resolve_ceiling_dirs {
-        use pretty_assertions::assert_eq;
-
-        use super::*;
-
-        #[test]
-        fn returns_empty_when_no_ceiling_raw() {
-            let env = DiscoveryEnv::default();
-            let (valid, skipped) = env.resolve_ceiling_dirs();
-            assert!(valid.is_empty());
-            assert!(skipped.is_empty());
-        }
-
-        #[test]
-        fn returns_valid_dir_for_each_segment() {
-            let a = tempfile::tempdir().expect("dir a");
-            let b = tempfile::tempdir().expect("dir b");
-
-            let raw = format!("{}:{}", a.path().display(), b.path().display());
-            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
-                .expect("env");
-
-            let (valid, skipped) = env.resolve_ceiling_dirs();
-            assert_eq!(valid.len(), 2);
-            assert!(skipped.is_empty());
-        }
-
-        #[test]
-        fn records_empty_segment_as_skipped() {
-            let valid_dir = tempfile::tempdir().expect("dir");
-            let raw = format!(":{}", valid_dir.path().display());
-            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
-                .expect("env");
-
-            let (valid, skipped) = env.resolve_ceiling_dirs();
-            assert_eq!(valid.len(), 1);
-            assert_eq!(skipped.len(), 1);
-            assert_eq!(
-                skipped.first().unwrap().reason,
-                SkippedCeilingReason::EmptySegment
-            );
-        }
-
-        #[test]
-        fn records_invalid_path_as_skipped() {
-            let raw = "/\0invalid";
-            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(raw)))
-                .expect("env");
-
-            let (valid, skipped) = env.resolve_ceiling_dirs();
-            assert!(valid.is_empty());
-            assert_eq!(skipped.len(), 1);
-            assert_eq!(
-                skipped.first().unwrap().reason,
-                SkippedCeilingReason::InvalidPath
-            );
-        }
-
-        #[test]
-        fn trims_whitespace_from_segments() {
-            let valid_dir = tempfile::tempdir().expect("dir");
-            let raw = format!(" {}", valid_dir.path().display());
-            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
-                .expect("env");
-
-            let (valid, skipped) = env.resolve_ceiling_dirs();
-            assert_eq!(
-                valid.len(),
-                1,
-                "whitespace-prefixed path should be accepted after trim"
-            );
-            assert!(skipped.is_empty());
         }
     }
 

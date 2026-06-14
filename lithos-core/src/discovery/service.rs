@@ -216,15 +216,14 @@ impl DiscoveryPort for DiscoveryService {
             ExplicitOverrideBranch::AscendSkipGlobal => {
                 let ascend: DiscoveryProcessor<AscendingTraversal> =
                     TryFrom::try_from(env)?;
-                let final_s: DiscoveryProcessor<Finalized> =
-                    TryFrom::try_from(ascend)?;
+                let final_s: DiscoveryProcessor<Finalized> = From::from(ascend);
                 Ok(final_s.finalize())
             }
             ExplicitOverrideBranch::AscendThenGlobal => {
                 let ascend: DiscoveryProcessor<AscendingTraversal> =
                     TryFrom::try_from(env)?;
                 let global: DiscoveryProcessor<GlobalResolution> =
-                    TryFrom::try_from(ascend)?;
+                    From::from(ascend);
                 let final_s: DiscoveryProcessor<Finalized> = From::from(global);
                 Ok(final_s.finalize())
             }
