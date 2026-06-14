@@ -1,6 +1,11 @@
-use walkdir::DirEntry;
+use std::path::Path;
 
-use crate::indexer::scan::ScanFilters;
+use walkdir::{DirEntry, WalkDir};
+
+use crate::indexer::{
+    scan::ScanFilters,
+    scanner::skipped::{ScanResult, SkipReason, SkippedEntry},
+};
 
 pub(crate) struct WalkdirAdapter {
     filters: ScanFilters,
@@ -11,6 +16,49 @@ impl WalkdirAdapter {
         Self {
             filters,
         }
+    }
+
+    pub(crate) fn scan(&self, root: &Path) -> ScanResult {
+        let mut result = ScanResult::default();
+        let walker = WalkDir::new(root).into_iter();
+
+        for entry in walker {
+            match entry {
+                Ok(entry) => {
+                    if !entry.file_type().is_file()
+                        && !entry.file_type().is_dir()
+                        && !entry.file_type().is_symlink()
+                    {
+                        result.skipped.push(SkippedEntry {
+                            path: entry.path().to_path_buf(),
+                            reason: SkipReason::UnsupportedEntryType,
+                        });
+                    } else if self.filter_entry(&entry) {
+                        result.entries.push(entry.path().to_path_buf());
+                    } else {
+                        // Entry filtered out
+                    }
+                }
+                Err(e) => {
+                    let path =
+                        e.path().map(Path::to_path_buf).unwrap_or_default();
+                    if e.io_error().is_some_and(|ioe| {
+                        ioe.kind() == std::io::ErrorKind::PermissionDenied
+                    }) {
+                        result.skipped.push(SkippedEntry {
+                            path,
+                            reason: SkipReason::PermissionDenied,
+                        });
+                    } else {
+                        result.skipped.push(SkippedEntry {
+                            path,
+                            reason: SkipReason::UnsupportedEntryType,
+                        });
+                    }
+                }
+            }
+        }
+        result
     }
 
     pub(crate) fn filter_entry(&self, entry: &DirEntry) -> bool {
