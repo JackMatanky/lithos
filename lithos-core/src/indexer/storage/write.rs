@@ -20,8 +20,30 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), IndexerRepositoryError> {
         self.store
             .write(|tx| {
-                // Primary table
                 let mut files_table = tx.inner.open_table(FILES)?;
+
+                // If this is an update, clean up stale secondary index entries
+                if let Some(old) =
+                    files_table.get(record.id())?.map(|guard| guard.value())
+                {
+                    let mut path_table =
+                        tx.inner.open_table(FILE_ID_BY_PATH)?;
+                    path_table.remove(old.path().as_str())?;
+
+                    let mut basename_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+                    basename_table.remove(old.name().as_str(), record.id())?;
+
+                    let mut parent_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+                    parent_table.remove(old.parent_id(), record.id())?;
+
+                    let mut format_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+                    format_table.remove(old.format().as_str(), record.id())?;
+                }
+
+                // Primary table
                 files_table.insert(record.id(), record.clone())?;
 
                 // Secondary indexes
@@ -51,8 +73,17 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), IndexerRepositoryError> {
         self.store
             .write(|tx| {
-                // Primary table
                 let mut dirs_table = tx.inner.open_table(DIRS)?;
+
+                // If this is an update, clean up stale secondary index entry
+                if let Some(old) =
+                    dirs_table.get(record.id())?.map(|guard| guard.value())
+                {
+                    let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+                    path_table.remove(old.path().as_str())?;
+                }
+
+                // Primary table
                 dirs_table.insert(record.id(), record.clone())?;
 
                 // Secondary index
@@ -358,6 +389,124 @@ mod tests {
 
             // Should not error when deleting non-existent directory
             repo.delete_dir(id).unwrap();
+        }
+    }
+
+    mod update {
+        use super::*;
+
+        #[test]
+        fn save_file_cleans_stale_indexes_when_record_changes() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let old_path = PathKey::try_new("old/file.txt").unwrap();
+            let old_name = FileName::new("file.txt".into());
+            let old_format = FileFormat::Markdown;
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 123, false);
+            let recorded_at = SystemTime::now();
+
+            let old_record = FileRecord::new(
+                id,
+                parent_id,
+                old_path.clone(),
+                old_name,
+                old_format,
+                metadata.clone(),
+                recorded_at,
+            );
+
+            repo.save_file(&old_record).unwrap();
+
+            // Update record with new properties
+            let new_path = PathKey::try_new("new/file.txt").unwrap();
+            let new_format = FileFormat::Json;
+            let new_record = FileRecord::new(
+                id,
+                parent_id,
+                new_path.clone(),
+                FileName::new("file.txt".into()),
+                new_format,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_file(&new_record).unwrap();
+
+            // Assert old indexes are cleaned up
+            assert!(
+                repo.find_file_by_path(&old_path).unwrap().is_none(),
+                "old path index should be removed"
+            );
+            let format_results = repo.list_files_by_format(old_format).unwrap();
+            assert!(
+                !format_results.contains(&new_record),
+                "old format index should not contain new record"
+            );
+            assert!(
+                format_results.is_empty(),
+                "old format index should be empty"
+            );
+
+            // Assert new indexes are present
+            assert_eq!(
+                repo.find_file_by_path(&new_path).unwrap().unwrap(),
+                new_record
+            );
+            assert!(
+                repo.list_files_by_format(new_format)
+                    .unwrap()
+                    .contains(&new_record)
+            );
+        }
+
+        #[test]
+        fn save_dir_cleans_stale_path_index_when_path_changes() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let old_path = PathKey::try_new("old/dir").unwrap();
+            let name = crate::fs::name::DirName::new("dir".into());
+            let metadata =
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
+            let recorded_at = SystemTime::now();
+
+            let old_record = DirRecord::new(
+                id,
+                Some(parent_id),
+                old_path.clone(),
+                name.clone(),
+                metadata.clone(),
+                recorded_at,
+            );
+
+            repo.save_dir(&old_record).unwrap();
+
+            // Update record with new path
+            let new_path = PathKey::try_new("new/dir").unwrap();
+            let new_record = DirRecord::new(
+                id,
+                Some(parent_id),
+                new_path.clone(),
+                name,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_dir(&new_record).unwrap();
+
+            // Assert old path index is cleaned up
+            assert!(
+                repo.find_dir_by_path(&old_path).unwrap().is_none(),
+                "old path index should be removed"
+            );
+
+            // Assert new path index is present
+            assert_eq!(
+                repo.find_dir_by_path(&new_path).unwrap().unwrap(),
+                new_record
+            );
         }
     }
 }
