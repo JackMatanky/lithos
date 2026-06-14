@@ -1,43 +1,90 @@
 //! Indexer error types.
 
-/// Errors that can occur during indexer operations.
+use std::path::PathBuf;
+
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum IndexerError {
-    /// An internal error with a descriptive message.
-    #[error("internal error: {0}")]
-    Internal(Box<str>),
+    #[error(transparent)]
+    Scanner(#[from] ScannerError),
+    #[error(transparent)]
+    Repository(#[from] IndexerRepositoryError),
+}
 
-    /// An I/O error from the underlying filesystem.
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+/// Fatal errors that prevent a scan from starting or completing.
+/// Per-entry failures (permission denied, unsupported type) are NOT errors —
+/// they are recorded in `ScanResult::skipped`.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum ScannerError {
+    /// A walkdir entry or metadata read failed during traversal.
+    #[error("traversal failed for {path}: {source}")]
+    Traversal {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+/// Repository-layer errors surfaced through the port boundary.
+/// redb and rkyv types never appear here.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum IndexerRepositoryError {
+    /// Transparent wrapper around the shared `DbError` (follows
+    /// `VaultRepositoryError` pattern).
+    #[error("storage error: {0}")]
+    Storage(#[from] crate::db::DbError),
+    /// A `PathKey` write would create a duplicate entry.
+    #[error("duplicate path: {0}")]
+    DuplicatePath(crate::fs::path::PathKey),
 }
 
 #[cfg(test)]
 mod tests {
-    mod formatting {
-        use super::super::IndexerError;
+    mod conversions {
+        use std::path::PathBuf;
+
+        use super::super::*;
 
         #[test]
-        fn internal_error_displays_message() {
-            let err = IndexerError::Internal("test failure".into());
-            assert!(err.to_string().contains("test failure"));
+        fn converts_scanner_error_to_indexer_error() {
+            let io_err =
+                std::io::Error::new(std::io::ErrorKind::NotFound, "test error");
+            let scanner_err = ScannerError::Traversal {
+                path: PathBuf::from("/test/path"),
+                source: io_err,
+            };
+
+            let indexer_err: IndexerError = scanner_err.into();
+
+            assert!(matches!(
+                indexer_err,
+                IndexerError::Scanner(ScannerError::Traversal { .. })
+            ));
+            assert!(indexer_err.to_string().contains("/test/path"));
+            assert!(indexer_err.to_string().contains("test error"));
         }
 
         #[test]
-        fn io_error_displays_source_message() {
-            let io = std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "file missing",
-            );
-            let err = IndexerError::Io(io);
-            assert!(err.to_string().contains("file missing"));
-        }
+        fn converts_db_error_to_repository_error_to_indexer_error() {
+            let db_err =
+                crate::db::DbError::Serialization("failed to serialize".into());
+            let repo_err: IndexerRepositoryError = db_err.into();
+            let indexer_err: IndexerError = repo_err.into();
 
-        #[test]
-        fn internal_error_has_internal_prefix() {
-            let err = IndexerError::Internal("oops".into());
-            assert!(err.to_string().starts_with("internal error:"));
+            assert!(matches!(
+                indexer_err,
+                IndexerError::Repository(IndexerRepositoryError::Storage(
+                    crate::db::DbError::Serialization(_)
+                ))
+            ));
+
+            // Verify DbError wraps through IndexerRepositoryError::Storage and
+            // Display output remains actionable
+            let msg = indexer_err.to_string();
+            assert!(msg.contains(
+                "storage error: serialization error: failed to serialize"
+            ));
         }
     }
 }
