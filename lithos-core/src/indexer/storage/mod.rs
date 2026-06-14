@@ -36,6 +36,7 @@ impl RedbRepository {
 
 pub(crate) mod read;
 pub(crate) mod tables;
+pub(crate) mod write;
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,169 @@
+use crate::indexer::{
+    error::IndexerRepositoryError,
+    model::{DirRecord, FileRecord, FsRecordId},
+    repository::WriteRepository,
+    storage::{
+        RedbRepository,
+        tables::{
+            FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME, FILE_IDS_BY_FORMAT,
+            FILE_IDS_BY_PARENT, FILES,
+        },
+    },
+};
+
+impl WriteRepository for RedbRepository {
+    fn save_file(
+        &self,
+        record: &FileRecord,
+    ) -> Result<(), IndexerRepositoryError> {
+        self.store
+            .write(|tx| {
+                // Primary table
+                let mut files_table = tx.inner.open_table(FILES)?;
+                files_table.insert(record.id(), record.clone())?;
+
+                // Secondary indexes
+                let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+                path_table.insert(record.path().as_str(), record.id())?;
+
+                let mut basename_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+                basename_table.insert(record.name().as_str(), record.id())?;
+
+                let mut parent_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+                parent_table.insert(record.parent_id(), record.id())?;
+
+                let mut format_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+                format_table.insert(record.format().as_str(), record.id())?;
+
+                Ok(())
+            })
+            .map_err(Into::into)
+    }
+
+    fn save_dir(
+        &self,
+        _record: &DirRecord,
+    ) -> Result<(), IndexerRepositoryError> {
+        Err(IndexerRepositoryError::Storage(
+            crate::db::DbError::Deserialization("Not implemented".into()),
+        ))
+    }
+
+    fn delete_file(
+        &self,
+        _id: FsRecordId,
+    ) -> Result<(), IndexerRepositoryError> {
+        Err(IndexerRepositoryError::Storage(
+            crate::db::DbError::Deserialization("Not implemented".into()),
+        ))
+    }
+
+    fn delete_dir(
+        &self,
+        _id: FsRecordId,
+    ) -> Result<(), IndexerRepositoryError> {
+        Err(IndexerRepositoryError::Storage(
+            crate::db::DbError::Deserialization("Not implemented".into()),
+        ))
+    }
+
+    fn save_many_records(
+        &self,
+        _files: &[FileRecord],
+        _dirs: &[DirRecord],
+    ) -> Result<(), IndexerRepositoryError> {
+        Err(IndexerRepositoryError::Storage(
+            crate::db::DbError::Deserialization("Not implemented".into()),
+        ))
+    }
+
+    fn delete_many_records(
+        &self,
+        _file_ids: &[FsRecordId],
+        _dir_ids: &[FsRecordId],
+    ) -> Result<(), IndexerRepositoryError> {
+        Err(IndexerRepositoryError::Storage(
+            crate::db::DbError::Deserialization("Not implemented".into()),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::SystemTime};
+
+    use crate::{
+        db::Store,
+        fs::{
+            FileFormat, FileMetadata, metadata::FsTimes, name::FileName,
+            path::PathKey,
+        },
+        indexer::{
+            model::{FileRecord, FsRecordId},
+            repository::{ReadRepository, WriteRepository},
+            storage::RedbRepository,
+        },
+    };
+
+    fn setup_repo() -> (tempfile::TempDir, RedbRepository) {
+        let (tempdir, store) = Store::open_temp().unwrap();
+        (tempdir, RedbRepository::new(Arc::new(store)))
+    }
+
+    mod create {
+        use super::*;
+
+        #[test]
+        fn save_file_persists_primary_and_indexes() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("dir/file.txt").unwrap();
+            let name = FileName::new("file.txt".into());
+            let format = FileFormat::Markdown;
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 123, false);
+            let recorded_at = SystemTime::now();
+
+            let record = FileRecord::new(
+                id,
+                parent_id,
+                path.clone(),
+                name,
+                format,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_file(&record).unwrap();
+
+            // Assert primary
+            let found =
+                repo.find_file(id).unwrap().expect("primary record missing");
+            assert_eq!(found, record);
+
+            // Assert path index
+            let found_by_path = repo
+                .find_file_by_path(&path)
+                .unwrap()
+                .expect("path index missing");
+            assert_eq!(found_by_path, record);
+
+            // Assert basename index
+            let found_by_basename =
+                repo.list_files_by_basename("file.txt").unwrap();
+            assert!(found_by_basename.contains(&record));
+
+            // Assert parent index
+            let found_by_parent = repo.list_files_by_parent(parent_id).unwrap();
+            assert!(found_by_parent.contains(&record));
+
+            // Assert format index
+            let found_by_format = repo.list_files_by_format(format).unwrap();
+            assert!(found_by_format.contains(&record));
+        }
+    }
+}
