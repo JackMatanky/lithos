@@ -1,12 +1,26 @@
 //! Bootstrap orchestration seams for runtime context acquisition.
 
-use crate::discovery::{
-    context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
-    error::DiscoveryError,
-    port::DiscoveryPort,
-    report::DiscoveryReport,
-    service::DiscoveryResult,
+use std::{env, path::PathBuf};
+
+use crate::{
+    discovery::{
+        context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
+        error::DiscoveryError,
+        port::DiscoveryPort,
+        report::DiscoveryReport,
+        service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
+    },
+    fs::DirPath,
 };
+
+/// App-owned bootstrap error boundary.
+#[derive(Debug, thiserror::Error)]
+#[allow(dead_code, reason = "Concrete orchestration slice; CLI wiring follows")]
+pub(crate) enum BootstrapError {
+    /// Discovery setup or execution failed.
+    #[error(transparent)]
+    Discovery(#[from] DiscoveryError),
+}
 
 /// Application-owned bootstrap orchestration entry point.
 ///
@@ -62,9 +76,73 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     pub(crate) fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError> {
-        self.port.discover(context)
+    ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
+        self.port.discover(context).map_err(Into::into)
     }
+}
+
+#[allow(dead_code, reason = "Concrete orchestration slice; CLI wiring follows")]
+impl Bootstrapper<DiscoveryService> {
+    /// Creates the concrete discovery bootstrapper from platform config dirs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BootstrapError`] if the concrete discovery service rejects
+    /// its stable configuration.
+    pub(crate) fn from_platform() -> Result<Self, BootstrapError> {
+        Self::with_global_directories(platform_global_directories())
+    }
+
+    /// Creates the concrete discovery bootstrapper with explicit global dirs.
+    ///
+    /// This keeps platform resolution outside tests while using the same
+    /// concrete [`DiscoveryService`] construction path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BootstrapError`] if the concrete discovery service rejects
+    /// its stable configuration.
+    pub(crate) fn with_global_directories(
+        global_directories: Vec<DirPath>,
+    ) -> Result<Self, BootstrapError> {
+        let config = DiscoveryServiceConfig {
+            global_directories,
+            ..DiscoveryServiceConfig::default()
+        };
+        let service = DiscoveryService::new(config)?;
+        Ok(Self::new(service))
+    }
+}
+
+fn platform_global_directories() -> Vec<DirPath> {
+    platform_global_directory_candidates()
+        .into_iter()
+        .filter_map(|path| DirPath::try_new(path).ok())
+        .collect()
+}
+
+fn platform_global_directory_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    match (env::var_os("XDG_CONFIG_HOME"), env::var_os("HOME")) {
+        (Some(xdg_config_home), _) => {
+            candidates.push(PathBuf::from(xdg_config_home).join("lithos"));
+        }
+        (None, Some(home)) => {
+            candidates.push(PathBuf::from(home).join(".config/lithos"));
+        }
+        (None, None) => {}
+    }
+
+    #[cfg(windows)]
+    if let Some(appdata) = env::var_os("APPDATA") {
+        candidates.push(PathBuf::from(appdata).join("Lithos"));
+    }
+
+    #[cfg(unix)]
+    candidates.push(PathBuf::from("/etc/lithos"));
+
+    candidates
 }
 
 #[cfg(test)]
@@ -78,8 +156,11 @@ mod tests {
         discovery::{
             context::DiscoveryContext,
             error::DiscoveryError,
-            report::{DiscoveryReport, LocalTraversalStopReason},
-            service::DiscoveryResult,
+            report::{
+                DiscoveryReport, GlobalResolutionSkipReason,
+                LocalTraversalStopReason, SkippedCeiling, SkippedCeilingReason,
+            },
+            service::{CandidatePath, DiscoveryResult, DiscoveryService},
         },
         fs::{DirPath, FilePath, PathError},
     };
@@ -332,9 +413,89 @@ mod tests {
                 bootstrapper.discover(&ctx).expect_err("discover should fail");
 
             assert!(
-                matches!(err, DiscoveryError::InvalidAnchorDirectory { .. }),
+                matches!(
+                    err,
+                    BootstrapError::Discovery(
+                        DiscoveryError::InvalidAnchorDirectory { .. }
+                    )
+                ),
                 "expected InvalidAnchorDirectory, got: {err:?}"
             );
+        }
+
+        #[test]
+        fn returns_report_from_port_when_port_succeeds() {
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![SkippedCeiling {
+                    segment: std::path::PathBuf::from("/missing"),
+                    reason: SkippedCeilingReason::InvalidPath,
+                }],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::ExplicitConfigFile,
+                global_resolution_skip_reason: Some(
+                    GlobalResolutionSkipReason::SuppressedByFlag,
+                ),
+            };
+            let anchor = tempfile::tempdir().expect("anchor");
+            let ctx =
+                DiscoveryContext::new(anchor.path()).expect("valid context");
+
+            let mut mock = MockDiscoveryPort::new();
+            let expected = report.clone();
+            mock.expect_discover().with(always()).once().returning(move |_| {
+                Ok((DiscoveryResult::new(vec![], vec![]), expected.clone()))
+            });
+            let bootstrapper = Bootstrapper::new(mock);
+
+            let (_, result) =
+                bootstrapper.discover(&ctx).expect("discover should succeed");
+
+            assert_eq!(result, report);
+        }
+    }
+
+    mod concrete_service {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn returns_app_result_from_concrete_discovery_service() {
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            std::fs::write(&config_path, "").expect("write config");
+            let flags = DiscoveryFlags::new(
+                Some(config_path.as_path()),
+                Some(root.path()),
+                true,
+            )
+            .expect("valid flags");
+            let context = Bootstrapper::<DiscoveryService>::build_context(
+                Some(flags),
+                None,
+                root.path(),
+            )
+            .expect("valid context");
+            let expected = CandidatePath::new(
+                DirPath::try_new(root.path().to_path_buf())
+                    .expect("valid base dir"),
+                FilePath::try_new(config_path).expect("valid config file"),
+            );
+            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+                .expect("valid bootstrapper");
+
+            let (result, _) = bootstrapper
+                .discover(&context)
+                .expect("discovery should succeed");
+
+            assert_eq!(result.vault(), [expected]);
+        }
+
+        #[test]
+        fn constructs_concrete_service_from_platform_directories() {
+            let result = Bootstrapper::from_platform();
+
+            assert!(result.is_ok());
         }
     }
 }
