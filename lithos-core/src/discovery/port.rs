@@ -31,9 +31,6 @@ pub(crate) trait DiscoveryPort {
 }
 
 #[cfg(test)]
-pub(crate) use tests::MockDiscoveryPort;
-
-#[cfg(test)]
 mod tests {
     use mockall::{mock, predicate::always};
 

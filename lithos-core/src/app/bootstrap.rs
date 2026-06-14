@@ -70,16 +70,26 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
 mod tests {
     use std::ffi::OsStr;
 
-    use mockall::predicate::always;
+    use mockall::{mock, predicate::always};
 
     use super::*;
     use crate::{
         discovery::{
             context::DiscoveryContext, error::DiscoveryError,
-            port::MockDiscoveryPort, service::DiscoveryResult,
+            service::DiscoveryResult,
         },
         fs::{DirPath, FilePath, PathError},
     };
+
+    mock! {
+        DiscoveryPort {}
+        impl crate::discovery::port::DiscoveryPort for DiscoveryPort {
+            fn discover<'ctx>(
+                &self,
+                context: &DiscoveryContext<'ctx>,
+            ) -> Result<DiscoveryResult, DiscoveryError>;
+        }
+    }
 
     // --- Fixtures ---
 
