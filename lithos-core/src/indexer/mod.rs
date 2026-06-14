@@ -34,3 +34,20 @@ pub(crate) use scanner::{
 pub(crate) use summary::{
     DeletedNodes, IndexNodeFailure, IndexReport, IndexResult, IndexedNodes,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_indexer_exports() {
+        // These should be accessible via `super::` or `crate::indexer::`
+        // if correctly re-exported as pub(crate).
+        let _: Option<ReadRepository> = None;
+        let _: Option<WriteRepository> = None;
+        let _: Option<Repository> = None;
+        let _: Option<RedbRepository> = None;
+        let _: Option<InMemoryRepository> = None;
+        let _: Option<ScannerPort> = None;
+    }
+}

@@ -1,17 +1,151 @@
-use redb::{ReadableMultimapTable, ReadableTable};
+use redb::{ReadableMultimapTable, ReadableTable, WriteTransaction};
 
-use crate::indexer::{
-    error::IndexerRepositoryError,
-    model::{DirRecord, FileRecord, FsRecordId},
-    repository::WriteRepository,
-    storage::{
-        RedbRepository,
-        tables::{
-            DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-            FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+use crate::{
+    db::DbError,
+    indexer::{
+        error::IndexerRepositoryError,
+        model::{DirRecord, FileRecord, FsRecordId},
+        repository::WriteRepository,
+        storage::{
+            RedbRepository,
+            tables::{
+                DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
+                FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+            },
         },
     },
 };
+
+impl RedbRepository {
+    fn save_file_in_tx(
+        tx: &crate::db::WriteTx,
+        record: &FileRecord,
+    ) -> Result<(), DbError> {
+        let mut files_table = tx.inner.open_table(FILES)?;
+
+        // If this is an update, clean up stale secondary index entries
+        if let Some(old) = files_table
+            .get(record.id())?
+            .map(|guard: redb::AccessGuard<'_, FileRecord>| guard.value())
+        {
+            let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+            path_table.remove(old.path().as_str())?;
+
+            let mut basename_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+            basename_table.remove(old.name().as_str(), record.id())?;
+
+            let mut parent_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+            parent_table.remove(old.parent_id(), record.id())?;
+
+            let mut format_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+            format_table.remove(old.format().as_str(), record.id())?;
+        }
+
+        // Primary table
+        files_table.insert(record.id(), record.clone())?;
+
+        // Secondary indexes
+        let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+        path_table.insert(record.path().as_str(), record.id())?;
+
+        let mut basename_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+        basename_table.insert(record.name().as_str(), record.id())?;
+
+        let mut parent_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+        parent_table.insert(record.parent_id(), record.id())?;
+
+        let mut format_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+        format_table.insert(record.format().as_str(), record.id())?;
+
+        Ok(())
+    }
+
+    fn save_dir_in_tx(
+        tx: &crate::db::WriteTx,
+        record: &DirRecord,
+    ) -> Result<(), DbError> {
+        let mut dirs_table = tx.inner.open_table(DIRS)?;
+
+        // If this is an update, clean up stale secondary index entry
+        if let Some(old) = dirs_table
+            .get(record.id())?
+            .map(|guard: redb::AccessGuard<'_, DirRecord>| guard.value())
+        {
+            let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+            path_table.remove(old.path().as_str())?;
+        }
+
+        // Primary table
+        dirs_table.insert(record.id(), record.clone())?;
+
+        // Secondary index
+        let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+        path_table.insert(record.path().as_str(), record.id())?;
+
+        Ok(())
+    }
+
+    fn delete_file_in_tx(
+        tx: &crate::db::WriteTx,
+        id: FsRecordId,
+    ) -> Result<(), DbError> {
+        let mut files_table = tx.inner.open_table(FILES)?;
+
+        // Load the record first to know what to remove from indexes
+        // We map to the owned value to drop the AccessGuard immediately
+        let record = files_table.get(id)?.map(|guard| guard.value());
+
+        if let Some(record) = record {
+            // Cleanup secondary indexes
+            let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+            path_table.remove(record.path().as_str())?;
+
+            let mut basename_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+            basename_table.remove(record.name().as_str(), id)?;
+
+            let mut parent_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+            parent_table.remove(record.parent_id(), id)?;
+
+            let mut format_table =
+                tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+            format_table.remove(record.format().as_str(), id)?;
+
+            // Primary table
+            files_table.remove(id)?;
+        }
+
+        Ok(())
+    }
+
+    fn delete_dir_in_tx(
+        tx: &crate::db::WriteTx,
+        id: FsRecordId,
+    ) -> Result<(), DbError> {
+        let mut dirs_table = tx.inner.open_table(DIRS)?;
+
+        // Load the record first to know what to remove from indexes
+        let record = dirs_table.get(id)?.map(|guard| guard.value());
+
+        if let Some(record) = record {
+            // Cleanup secondary index
+            let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+            path_table.remove(record.path().as_str())?;
+
+            // Primary table
+            dirs_table.remove(id)?;
+        }
+
+        Ok(())
+    }
+}
 
 impl WriteRepository for RedbRepository {
     fn save_file(
@@ -19,51 +153,7 @@ impl WriteRepository for RedbRepository {
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
-                let mut files_table = tx.inner.open_table(FILES)?;
-
-                // If this is an update, clean up stale secondary index entries
-                if let Some(old) =
-                    files_table.get(record.id())?.map(|guard| guard.value())
-                {
-                    let mut path_table =
-                        tx.inner.open_table(FILE_ID_BY_PATH)?;
-                    path_table.remove(old.path().as_str())?;
-
-                    let mut basename_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-                    basename_table.remove(old.name().as_str(), record.id())?;
-
-                    let mut parent_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
-                    parent_table.remove(old.parent_id(), record.id())?;
-
-                    let mut format_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
-                    format_table.remove(old.format().as_str(), record.id())?;
-                }
-
-                // Primary table
-                files_table.insert(record.id(), record.clone())?;
-
-                // Secondary indexes
-                let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
-                path_table.insert(record.path().as_str(), record.id())?;
-
-                let mut basename_table =
-                    tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-                basename_table.insert(record.name().as_str(), record.id())?;
-
-                let mut parent_table =
-                    tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
-                parent_table.insert(record.parent_id(), record.id())?;
-
-                let mut format_table =
-                    tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
-                format_table.insert(record.format().as_str(), record.id())?;
-
-                Ok(())
-            })
+            .write(|tx| Self::save_file_in_tx(tx, record))
             .map_err(Into::into)
     }
 
@@ -72,26 +162,7 @@ impl WriteRepository for RedbRepository {
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
-                let mut dirs_table = tx.inner.open_table(DIRS)?;
-
-                // If this is an update, clean up stale secondary index entry
-                if let Some(old) =
-                    dirs_table.get(record.id())?.map(|guard| guard.value())
-                {
-                    let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-                    path_table.remove(old.path().as_str())?;
-                }
-
-                // Primary table
-                dirs_table.insert(record.id(), record.clone())?;
-
-                // Secondary index
-                let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-                path_table.insert(record.path().as_str(), record.id())?;
-
-                Ok(())
-            })
+            .write(|tx| Self::save_dir_in_tx(tx, record))
             .map_err(Into::into)
     }
 
@@ -100,80 +171,50 @@ impl WriteRepository for RedbRepository {
         id: FsRecordId,
     ) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
-                let mut files_table = tx.inner.open_table(FILES)?;
-
-                // Load the record first to know what to remove from indexes
-                // We map to the owned value to drop the AccessGuard immediately
-                let record = files_table.get(id)?.map(|guard| guard.value());
-
-                if let Some(record) = record {
-                    // Cleanup secondary indexes
-                    let mut path_table =
-                        tx.inner.open_table(FILE_ID_BY_PATH)?;
-                    path_table.remove(record.path().as_str())?;
-
-                    let mut basename_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-                    basename_table.remove(record.name().as_str(), id)?;
-
-                    let mut parent_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
-                    parent_table.remove(record.parent_id(), id)?;
-
-                    let mut format_table =
-                        tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
-                    format_table.remove(record.format().as_str(), id)?;
-
-                    // Primary table
-                    files_table.remove(id)?;
-                }
-
-                Ok(())
-            })
+            .write(|tx| Self::delete_file_in_tx(tx, id))
             .map_err(Into::into)
     }
 
     fn delete_dir(&self, id: FsRecordId) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
-                let mut dirs_table = tx.inner.open_table(DIRS)?;
-
-                // Load the record first to know what to remove from indexes
-                let record = dirs_table.get(id)?.map(|guard| guard.value());
-
-                if let Some(record) = record {
-                    // Cleanup secondary index
-                    let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-                    path_table.remove(record.path().as_str())?;
-
-                    // Primary table
-                    dirs_table.remove(id)?;
-                }
-
-                Ok(())
-            })
+            .write(|tx| Self::delete_dir_in_tx(tx, id))
             .map_err(Into::into)
     }
 
     fn save_many_records(
         &self,
-        _files: &[FileRecord],
-        _dirs: &[DirRecord],
+        files: &[FileRecord],
+        dirs: &[DirRecord],
     ) -> Result<(), IndexerRepositoryError> {
-        Err(IndexerRepositoryError::Storage(
-            crate::db::DbError::Deserialization("Not implemented".into()),
-        ))
+        self.store
+            .write(|tx| {
+                for file in files {
+                    Self::save_file_in_tx(tx, file)?;
+                }
+                for dir in dirs {
+                    Self::save_dir_in_tx(tx, dir)?;
+                }
+                Ok(())
+            })
+            .map_err(Into::into)
     }
 
     fn delete_many_records(
         &self,
-        _file_ids: &[FsRecordId],
-        _dir_ids: &[FsRecordId],
+        file_ids: &[FsRecordId],
+        dir_ids: &[FsRecordId],
     ) -> Result<(), IndexerRepositoryError> {
-        Err(IndexerRepositoryError::Storage(
-            crate::db::DbError::Deserialization("Not implemented".into()),
-        ))
+        self.store
+            .write(|tx| {
+                for id in file_ids {
+                    Self::delete_file_in_tx(tx, *id)?;
+                }
+                for id in dir_ids {
+                    Self::delete_dir_in_tx(tx, *id)?;
+                }
+                Ok(())
+            })
+            .map_err(Into::into)
     }
 }
 
@@ -507,6 +548,94 @@ mod tests {
                 repo.find_dir_by_path(&new_path).unwrap().unwrap(),
                 new_record
             );
+        }
+    }
+
+    mod transactions {
+        use super::*;
+
+        #[test]
+        fn save_many_records_persists_files_and_dirs_together() {
+            let (_tempdir, repo) = setup_repo();
+
+            let f_id = FsRecordId::new();
+            let f_path = PathKey::try_new("file.txt").unwrap();
+            let file = FileRecord::new(
+                f_id,
+                FsRecordId::new(),
+                f_path.clone(),
+                FileName::new("file.txt".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 123, false),
+                SystemTime::now(),
+            );
+
+            let d_id = FsRecordId::new();
+            let d_path = PathKey::try_new("subdir").unwrap();
+            let dir = DirRecord::new(
+                d_id,
+                None,
+                d_path.clone(),
+                crate::fs::name::DirName::new("subdir".into()),
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            );
+
+            repo.save_many_records(&[file.clone()], &[dir.clone()]).unwrap();
+
+            // Verify both are present
+            assert_eq!(repo.find_file(f_id).unwrap().unwrap(), file);
+            assert_eq!(repo.find_dir(d_id).unwrap().unwrap(), dir);
+
+            // Verify indexes
+            assert_eq!(repo.find_file_by_path(&f_path).unwrap().unwrap(), file);
+            assert_eq!(repo.find_dir_by_path(&d_path).unwrap().unwrap(), dir);
+        }
+
+        #[test]
+        fn delete_many_records_removes_files_and_dirs_together() {
+            let (_tempdir, repo) = setup_repo();
+
+            // Setup: 1 file and 1 dir
+            let f_id = FsRecordId::new();
+            let f_path = PathKey::try_new("file.txt").unwrap();
+            let file = FileRecord::new(
+                f_id,
+                FsRecordId::new(),
+                f_path.clone(),
+                FileName::new("file.txt".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 123, false),
+                SystemTime::now(),
+            );
+
+            let d_id = FsRecordId::new();
+            let d_path = PathKey::try_new("subdir").unwrap();
+            let dir = DirRecord::new(
+                d_id,
+                None,
+                d_path.clone(),
+                crate::fs::name::DirName::new("subdir".into()),
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            );
+
+            repo.save_many_records(&[file.clone()], &[dir.clone()]).unwrap();
+
+            // Verify they exist
+            assert!(repo.find_file(f_id).unwrap().is_some());
+            assert!(repo.find_dir(d_id).unwrap().is_some());
+
+            // Delete many
+            repo.delete_many_records(&[f_id], &[d_id]).unwrap();
+
+            // Verify both removed
+            assert!(repo.find_file(f_id).unwrap().is_none());
+            assert!(repo.find_dir(d_id).unwrap().is_none());
+
+            // Verify indexes removed
+            assert!(repo.find_file_by_path(&f_path).unwrap().is_none());
+            assert!(repo.find_dir_by_path(&d_path).unwrap().is_none());
         }
     }
 }
