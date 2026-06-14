@@ -6,11 +6,14 @@
 use crate::fs::path::PathKey;
 
 /// Filters applied during a filesystem scan to include or exclude nodes.
-///
-/// Currently holds no fields; reserved for extension with glob patterns,
-/// extension filters, and depth limits.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ScanFilters {}
+pub(crate) struct ScanFilters {
+    /// Optional file extensions to include (e.g., `["md", "toml"]`).
+    pub(crate) included_extensions: Vec<String>,
+    /// Exact directory or file names to exclude (e.g., `[".git",
+    /// "node_modules"]`).
+    pub(crate) excluded_names: Vec<String>,
+}
 
 /// The scope of an indexing operation.
 ///
@@ -72,6 +75,11 @@ mod tests {
     mod scan_scope {
         mod constructor {
             use crate::indexer::scan::{IndexOptions, IndexScope, ScanFilters};
+
+            #[test]
+            fn scans_only_partial_scope_root() {
+                // Placeholder for partial scope scanning test
+            }
 
             #[test]
             fn full_scope_wraps_filters() {

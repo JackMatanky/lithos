@@ -1,0 +1,628 @@
+use redb::ReadableTable;
+
+use crate::{
+    fs::path::PathKey,
+    indexer::{
+        error::IndexerRepositoryError,
+        model::{DirRecord, FileRecord, FsRecordId},
+        repository::ReadRepository,
+        storage::{
+            RedbRepository,
+            tables::{
+                DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
+                FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+            },
+        },
+    },
+};
+
+impl ReadRepository for RedbRepository {
+    fn find_file(
+        &self,
+        id: FsRecordId,
+    ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(FILES)?;
+                let file = table.get(id)?;
+                Ok(file.map(|v| v.value()))
+            })
+            .map_err(Into::into)
+    }
+
+    fn find_dir(
+        &self,
+        id: FsRecordId,
+    ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(DIRS)?;
+                let dir = table.get(id)?;
+                Ok(dir.map(|v| v.value()))
+            })
+            .map_err(Into::into)
+    }
+
+    fn find_file_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+                let id = path_table.get(path.as_str())?;
+
+                if let Some(id_value) = id {
+                    let file_table = tx.inner.open_table(FILES)?;
+                    let file = file_table.get(id_value.value())?;
+                    Ok(file.map(|v| v.value()))
+                } else {
+                    Ok(None)
+                }
+            })
+            .map_err(Into::into)
+    }
+
+    fn find_dir_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+                let id = path_table.get(path.as_str())?;
+
+                if let Some(id_value) = id {
+                    let dir_table = tx.inner.open_table(DIRS)?;
+                    let dir = dir_table.get(id_value.value())?;
+                    Ok(dir.map(|v| v.value()))
+                } else {
+                    Ok(None)
+                }
+            })
+            .map_err(Into::into)
+    }
+
+    fn list_files_by_parent(
+        &self,
+        parent_id: FsRecordId,
+    ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let id_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+                let file_table = tx.inner.open_table(FILES)?;
+
+                let mut records = Vec::new();
+                let iter = id_table.get(parent_id)?;
+                for id in iter {
+                    if let Some(record) = file_table.get(id?.value())? {
+                        records.push(record.value());
+                    }
+                }
+
+                Ok(records.into_boxed_slice())
+            })
+            .map_err(Into::into)
+    }
+
+    fn list_dirs_by_parent(
+        &self,
+        parent_id: FsRecordId,
+    ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let table = tx.inner.open_table(DIRS)?;
+                let mut records = Vec::new();
+
+                for result in table.iter()? {
+                    let (_id_guard, record_guard) = result?;
+                    let record: DirRecord = record_guard.value();
+                    if record.parent_id() == Some(parent_id) {
+                        records.push(record);
+                    }
+                }
+
+                Ok(records.into_boxed_slice())
+            })
+            .map_err(Into::into)
+    }
+
+    fn list_files_by_format(
+        &self,
+        format: crate::fs::FileFormat,
+    ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let id_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+                let file_table = tx.inner.open_table(FILES)?;
+
+                let mut records = Vec::new();
+                let iter = id_table.get(format.as_str())?;
+                for id in iter {
+                    if let Some(record) = file_table.get(id?.value())? {
+                        records.push(record.value());
+                    }
+                }
+
+                Ok(records.into_boxed_slice())
+            })
+            .map_err(Into::into)
+    }
+
+    fn list_files_by_basename(
+        &self,
+        basename: &str,
+    ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let id_table =
+                    tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+                let file_table = tx.inner.open_table(FILES)?;
+
+                let mut records = Vec::new();
+                let iter = id_table.get(basename)?;
+                for id in iter {
+                    if let Some(record) = file_table.get(id?.value())? {
+                        records.push(record.value());
+                    }
+                }
+
+                Ok(records.into_boxed_slice())
+            })
+            .map_err(Into::into)
+    }
+
+    fn all_paths(&self) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
+        self.store
+            .read(|tx| {
+                let file_path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+                let dir_path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+
+                let mut paths = Vec::new();
+
+                for result in file_path_table.iter()? {
+                    let (path, _id) = result?;
+                    let key = PathKey::try_new(path.value()).map_err(|_| {
+                        crate::db::DbError::Corruption(
+                            "Invalid path in database".into(),
+                        )
+                    })?;
+                    paths.push(key);
+                }
+
+                for result in dir_path_table.iter()? {
+                    let (path, _id) = result?;
+                    let key = PathKey::try_new(path.value()).map_err(|_| {
+                        crate::db::DbError::Corruption(
+                            "Invalid path in database".into(),
+                        )
+                    })?;
+                    paths.push(key);
+                }
+
+                Ok(paths.into_boxed_slice())
+            })
+            .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::SystemTime};
+
+    use super::*;
+    use crate::{
+        db::Store,
+        fs::{
+            FileFormat, FileMetadata, metadata::FsTimes, name::FileName,
+            path::PathKey,
+        },
+        indexer::{
+            model::{DirRecord, FileRecord, FsRecordId},
+            repository::ReadRepository,
+            storage::tables::FILES,
+        },
+    };
+
+    fn setup_repo() -> (tempfile::TempDir, RedbRepository) {
+        let (tempdir, store) = Store::open_temp().unwrap();
+        (tempdir, RedbRepository::new(Arc::new(store)))
+    }
+
+    mod lookup {
+        use super::*;
+        use crate::indexer::storage::tables::FILE_IDS_BY_BASENAME;
+
+        #[test]
+        fn find_file_returns_none_when_missing() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            assert!(repo.find_file(id).unwrap().is_none());
+        }
+
+        #[test]
+        fn find_file_returns_record_when_present() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("test").unwrap();
+            let name = FileName::new("test".into());
+            let format = FileFormat::Unknown;
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 0, false);
+            let recorded_at = SystemTime::now();
+
+            let record = FileRecord::new(
+                id,
+                parent_id,
+                path,
+                name,
+                format,
+                metadata,
+                recorded_at,
+            );
+            // Need to insert record using write tx
+            repo.store
+                .write(|tx| {
+                    let mut table = tx.inner.open_table(FILES).unwrap();
+                    table.insert(id, record.clone()).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            assert_eq!(repo.find_file(id).unwrap().unwrap(), record);
+        }
+
+        #[test]
+        fn find_dir_returns_none_when_missing() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            assert!(repo.find_dir(id).unwrap().is_none());
+        }
+
+        #[test]
+        fn find_dir_returns_record_when_present() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let path = PathKey::try_new("test_dir").unwrap();
+            let name = crate::fs::name::DirName::new("test_dir".into());
+            let metadata =
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
+            let recorded_at = SystemTime::now();
+
+            let record =
+                DirRecord::new(id, None, path, name, metadata, recorded_at);
+            // Need to insert record using write tx
+            repo.store
+                .write(|tx| {
+                    let mut table = tx.inner.open_table(DIRS).unwrap();
+                    table.insert(id, record.clone()).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            assert_eq!(repo.find_dir(id).unwrap().unwrap(), record);
+        }
+
+        #[test]
+        fn find_file_by_path_returns_record_when_path_exists() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("test").unwrap();
+            let name = FileName::new("test".into());
+            let format = FileFormat::Unknown;
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 0, false);
+            let recorded_at = SystemTime::now();
+
+            let record = FileRecord::new(
+                id,
+                parent_id,
+                path.clone(),
+                name,
+                format,
+                metadata,
+                recorded_at,
+            );
+            // Seed both primary and secondary tables
+            repo.store
+                .write(|tx| {
+                    let mut f_table = tx.inner.open_table(FILES).unwrap();
+                    f_table.insert(id, record.clone()).unwrap();
+                    let mut p_table =
+                        tx.inner.open_table(FILE_ID_BY_PATH).unwrap();
+                    p_table.insert(path.as_str(), id).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            assert_eq!(repo.find_file_by_path(&path).unwrap().unwrap(), record);
+        }
+
+        #[test]
+        fn find_dir_by_path_returns_record_when_path_exists() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let path = PathKey::try_new("test_dir").unwrap();
+            let name = crate::fs::name::DirName::new("test_dir".into());
+            let metadata =
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
+            let recorded_at = SystemTime::now();
+
+            let record = DirRecord::new(
+                id,
+                None,
+                path.clone(),
+                name,
+                metadata,
+                recorded_at,
+            );
+            // Seed both primary and secondary tables
+            repo.store
+                .write(|tx| {
+                    let mut d_table = tx.inner.open_table(DIRS).unwrap();
+                    d_table.insert(id, record.clone()).unwrap();
+                    let mut p_table =
+                        tx.inner.open_table(DIR_ID_BY_PATH).unwrap();
+                    p_table.insert(path.as_str(), id).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            assert_eq!(repo.find_dir_by_path(&path).unwrap().unwrap(), record);
+        }
+
+        #[test]
+        fn returns_files_for_basename() {
+            let (_tempdir, repo) = setup_repo();
+            let basename = "target.txt";
+
+            let file1_id = FsRecordId::new();
+            let file1 = FileRecord::new(
+                file1_id,
+                FsRecordId::new(),
+                PathKey::try_new("dir1/target.txt").unwrap(),
+                FileName::new("target.txt".into()),
+                FileFormat::Unknown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            let file2_id = FsRecordId::new();
+            let file2 = FileRecord::new(
+                file2_id,
+                FsRecordId::new(),
+                PathKey::try_new("dir2/target.txt").unwrap(),
+                FileName::new("target.txt".into()),
+                FileFormat::Unknown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            repo.store
+                .write(|tx| {
+                    let mut f_table = tx.inner.open_table(FILES).unwrap();
+                    f_table.insert(file1_id, file1.clone()).unwrap();
+                    f_table.insert(file2_id, file2.clone()).unwrap();
+
+                    let mut p_table = tx
+                        .inner
+                        .open_multimap_table(FILE_IDS_BY_BASENAME)
+                        .unwrap();
+                    p_table.insert(basename, file1_id).unwrap();
+                    p_table.insert(basename, file2_id).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.list_files_by_basename(basename).unwrap();
+            assert_eq!(results.len(), 2);
+            assert!(results.contains(&file1));
+            assert!(results.contains(&file2));
+        }
+    }
+
+    mod list {
+        use super::*;
+        use crate::indexer::storage::tables::FILE_IDS_BY_PARENT;
+
+        #[test]
+        fn returns_files_for_parent() {
+            let (_tempdir, repo) = setup_repo();
+            let parent_id = FsRecordId::new();
+
+            let file1_id = FsRecordId::new();
+            let file1 = FileRecord::new(
+                file1_id,
+                parent_id,
+                PathKey::try_new("parent/file1").unwrap(),
+                FileName::new("file1".into()),
+                FileFormat::Unknown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            let file2_id = FsRecordId::new();
+            let file2 = FileRecord::new(
+                file2_id,
+                parent_id,
+                PathKey::try_new("parent/file2").unwrap(),
+                FileName::new("file2".into()),
+                FileFormat::Unknown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            let other_id = FsRecordId::new();
+            let other_file = FileRecord::new(
+                other_id,
+                FsRecordId::new(),
+                PathKey::try_new("other/file").unwrap(),
+                FileName::new("file".into()),
+                FileFormat::Unknown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            repo.store
+                .write(|tx| {
+                    let mut f_table = tx.inner.open_table(FILES).unwrap();
+                    f_table.insert(file1_id, file1.clone()).unwrap();
+                    f_table.insert(file2_id, file2.clone()).unwrap();
+                    f_table.insert(other_id, other_file).unwrap();
+
+                    let mut p_table = tx
+                        .inner
+                        .open_multimap_table(FILE_IDS_BY_PARENT)
+                        .unwrap();
+                    p_table.insert(parent_id, file1_id).unwrap();
+                    p_table.insert(parent_id, file2_id).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.list_files_by_parent(parent_id).unwrap();
+            assert_eq!(results.len(), 2);
+            assert!(results.contains(&file1));
+            assert!(results.contains(&file2));
+        }
+
+        #[test]
+        fn returns_dirs_for_parent() {
+            let (_tempdir, repo) = setup_repo();
+            let parent_id = FsRecordId::new();
+
+            let dir1_id = FsRecordId::new();
+            let dir1 = DirRecord::new(
+                dir1_id,
+                Some(parent_id),
+                PathKey::try_new("parent/dir1").unwrap(),
+                crate::fs::name::DirName::new("dir1".into()),
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            );
+
+            let dir2_id = FsRecordId::new();
+            let dir2 = DirRecord::new(
+                dir2_id,
+                Some(parent_id),
+                PathKey::try_new("parent/dir2").unwrap(),
+                crate::fs::name::DirName::new("dir2".into()),
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            );
+
+            let other_id = FsRecordId::new();
+            let other_dir = DirRecord::new(
+                other_id,
+                None,
+                PathKey::try_new("root_dir").unwrap(),
+                crate::fs::name::DirName::new("root_dir".into()),
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            );
+
+            repo.store
+                .write(|tx| {
+                    let mut d_table = tx.inner.open_table(DIRS).unwrap();
+                    d_table.insert(dir1_id, dir1.clone()).unwrap();
+                    d_table.insert(dir2_id, dir2.clone()).unwrap();
+                    d_table.insert(other_id, other_dir).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.list_dirs_by_parent(parent_id).unwrap();
+            assert_eq!(results.len(), 2);
+            assert!(results.contains(&dir1));
+            assert!(results.contains(&dir2));
+        }
+
+        #[test]
+        fn returns_all_paths() {
+            let (_tempdir, repo) = setup_repo();
+
+            let file_path = PathKey::try_new("dir/file.txt").unwrap();
+            let dir_path = PathKey::try_new("dir").unwrap();
+
+            repo.store
+                .write(|tx| {
+                    let mut f_p_table =
+                        tx.inner.open_table(FILE_ID_BY_PATH).unwrap();
+                    f_p_table
+                        .insert(file_path.as_str(), FsRecordId::new())
+                        .unwrap();
+
+                    let mut d_p_table =
+                        tx.inner.open_table(DIR_ID_BY_PATH).unwrap();
+                    d_p_table
+                        .insert(dir_path.as_str(), FsRecordId::new())
+                        .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.all_paths().unwrap();
+            assert_eq!(results.len(), 2);
+            assert!(results.contains(&file_path));
+            assert!(results.contains(&dir_path));
+        }
+    }
+
+    mod filter {
+        use super::*;
+        use crate::indexer::storage::tables::FILE_IDS_BY_FORMAT;
+
+        #[test]
+        fn returns_files_for_format() {
+            let (_tempdir, repo) = setup_repo();
+            let format = FileFormat::Markdown;
+
+            let file1_id = FsRecordId::new();
+            let file1 = FileRecord::new(
+                file1_id,
+                FsRecordId::new(),
+                PathKey::try_new("file1.md").unwrap(),
+                FileName::new("file1.md".into()),
+                format,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            let other_format = FileFormat::Unknown;
+            let file2_id = FsRecordId::new();
+            let file2 = FileRecord::new(
+                file2_id,
+                FsRecordId::new(),
+                PathKey::try_new("file2.txt").unwrap(),
+                FileName::new("file2.txt".into()),
+                other_format,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+
+            repo.store
+                .write(|tx| {
+                    let mut f_table = tx.inner.open_table(FILES).unwrap();
+                    f_table.insert(file1_id, file1.clone()).unwrap();
+                    f_table.insert(file2_id, file2).unwrap();
+
+                    let mut p_table = tx
+                        .inner
+                        .open_multimap_table(FILE_IDS_BY_FORMAT)
+                        .unwrap();
+                    p_table.insert(format.as_str(), file1_id).unwrap();
+                    p_table.insert(other_format.as_str(), file2_id).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.list_files_by_format(format).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first(), Some(&file1));
+        }
+    }
+}

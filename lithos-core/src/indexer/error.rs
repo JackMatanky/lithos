@@ -1,6 +1,6 @@
 //! Indexer error types.
 
-use std::path::PathBuf;
+use crate::{db::DbError, fs::path::PathKey, indexer::scanner::ScannerError};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -11,20 +11,6 @@ pub(crate) enum IndexerError {
     Repository(#[from] IndexerRepositoryError),
 }
 
-/// Fatal errors that prevent a scan from starting or completing.
-/// Per-entry failures (permission denied, unsupported type) are NOT errors —
-/// they are recorded in `ScanResult::skipped`.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub(crate) enum ScannerError {
-    /// A walkdir entry or metadata read failed during traversal.
-    #[error("traversal failed for {path}: {source}")]
-    Traversal {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-}
-
 /// Repository-layer errors surfaced through the port boundary.
 /// redb and rkyv types never appear here.
 #[derive(Debug, thiserror::Error)]
@@ -33,10 +19,10 @@ pub(crate) enum IndexerRepositoryError {
     /// Transparent wrapper around the shared `DbError` (follows
     /// `VaultRepositoryError` pattern).
     #[error("storage error: {0}")]
-    Storage(#[from] crate::db::DbError),
+    Storage(#[from] DbError),
     /// A `PathKey` write would create a duplicate entry.
     #[error("duplicate path: {0}")]
-    DuplicatePath(crate::fs::path::PathKey),
+    DuplicatePath(PathKey),
 }
 
 #[cfg(test)]

@@ -17,14 +17,20 @@
 mod entry;
 mod error;
 mod model;
+pub(crate) mod repository;
 mod scan;
-pub(crate) mod scanner;
+/// Scanner module
+pub mod scanner;
+pub(crate) mod storage;
 mod summary;
 
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub(crate) use error::IndexerError;
 pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
 pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
+pub(crate) use scanner::{
+    ScanResult, ScannerPort, SkipReason, SkippedEntry, walkdir::WalkdirAdapter,
+};
 pub(crate) use summary::{
     DeletedNodes, IndexNodeFailure, IndexReport, IndexResult, IndexedNodes,
 };
