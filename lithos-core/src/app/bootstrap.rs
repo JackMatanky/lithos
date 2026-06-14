@@ -4,6 +4,7 @@ use crate::discovery::{
     context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
     error::DiscoveryError,
     port::DiscoveryPort,
+    report::DiscoveryReport,
     service::DiscoveryResult,
 };
 
@@ -61,7 +62,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     pub(crate) fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<DiscoveryResult, DiscoveryError> {
+    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError> {
         self.port.discover(context)
     }
 }
@@ -75,7 +76,9 @@ mod tests {
     use super::*;
     use crate::{
         discovery::{
-            context::DiscoveryContext, error::DiscoveryError,
+            context::DiscoveryContext,
+            error::DiscoveryError,
+            report::{DiscoveryReport, LocalTraversalStopReason},
             service::DiscoveryResult,
         },
         fs::{DirPath, FilePath, PathError},
@@ -87,7 +90,10 @@ mod tests {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
-            ) -> Result<DiscoveryResult, DiscoveryError>;
+            ) -> Result<
+                (DiscoveryResult, DiscoveryReport),
+                DiscoveryError,
+            >;
         }
     }
 
@@ -280,19 +286,26 @@ mod tests {
         #[test]
         fn returns_result_from_port_when_port_succeeds() {
             let expected = DiscoveryResult::new(vec![], vec![]);
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::FilesystemRoot,
+                global_resolution_skip_reason: None,
+            };
             let anchor = tempfile::tempdir().expect("anchor");
             let ctx =
                 DiscoveryContext::new(anchor.path()).expect("valid context");
 
             let mut mock = MockDiscoveryPort::new();
             let ret = expected.clone();
+            let rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok(ret.clone()));
+                .returning(move |_| Ok((ret.clone(), rep.clone())));
             let bootstrapper = Bootstrapper::new(mock);
 
-            let result =
+            let (result, _) =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
 
             assert_eq!(result, expected);

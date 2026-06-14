@@ -58,6 +58,7 @@ pub(crate) mod error;
 pub(crate) mod policy;
 pub(crate) mod port;
 pub(super) mod probe;
+pub(super) mod processor;
 pub(crate) mod report;
 pub(super) mod selector;
 pub(crate) mod service;

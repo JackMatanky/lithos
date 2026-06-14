@@ -3,11 +3,18 @@
 
 use crate::{
     discovery::{
+        context::DiscoveryContext,
         error::{DiscoveryError, ServiceConfigError},
         policy::{
             BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS, MarkerPattern,
             VAULT_MARKER_PATTERNS,
         },
+        port::DiscoveryPort,
+        processor::{
+            AscendingTraversal, DiscoveryProcessor, EnvOverride,
+            ExplicitOverrideBranch, Finalized, FlagOverride, GlobalResolution,
+        },
+        report::DiscoveryReport,
     },
     fs::{DirPath, FilePath},
 };
@@ -183,6 +190,45 @@ impl DiscoveryService {
         Ok(Self {
             config,
         })
+    }
+}
+
+impl DiscoveryPort for DiscoveryService {
+    fn discover(
+        &self,
+        context: &DiscoveryContext<'_>,
+    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError> {
+        let init = DiscoveryProcessor::new(&self.config, context);
+        let flag: DiscoveryProcessor<FlagOverride> = From::from(init);
+        let env: DiscoveryProcessor<EnvOverride> = From::from(flag);
+
+        match env.branch_strategy() {
+            ExplicitOverrideBranch::VaultProbedSkipGlobal => {
+                let final_s: DiscoveryProcessor<Finalized> = From::from(env);
+                Ok(final_s.finalize())
+            }
+            ExplicitOverrideBranch::VaultProbedRunGlobal => {
+                let global: DiscoveryProcessor<GlobalResolution> =
+                    From::from(env);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                Ok(final_s.finalize())
+            }
+            ExplicitOverrideBranch::AscendSkipGlobal => {
+                let ascend: DiscoveryProcessor<AscendingTraversal> =
+                    TryFrom::try_from(env)?;
+                let final_s: DiscoveryProcessor<Finalized> =
+                    TryFrom::try_from(ascend)?;
+                Ok(final_s.finalize())
+            }
+            ExplicitOverrideBranch::AscendThenGlobal => {
+                let ascend: DiscoveryProcessor<AscendingTraversal> =
+                    TryFrom::try_from(env)?;
+                let global: DiscoveryProcessor<GlobalResolution> =
+                    TryFrom::try_from(ascend)?;
+                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                Ok(final_s.finalize())
+            }
+        }
     }
 }
 

@@ -20,7 +20,13 @@
 use std::path::Path;
 
 use super::{engine::DiscoveredMarker, error::DiscoveryError};
-use crate::fs::format::StructuredFileFormat;
+use crate::{
+    discovery::service::CandidatePath,
+    fs::{
+        format::StructuredFileFormat,
+        path::{DirPath, FilePath},
+    },
+};
 
 /// Trait for types that can examine a directory and return discovery results.
 ///
@@ -154,6 +160,63 @@ pub(crate) const GLOBAL_MARKER_FILES: &[MarkerPattern] = &[
         is_nested: true,
     },
 ];
+
+/// Infallible directory probe that checks for marker files by iterating
+/// patterns × format precedence.
+///
+/// Unlike [`VaultRootProbe`] and [`GlobalRootProbe`], this probe does not
+/// canonicalize paths or return errors — all input paths are pre-validated
+/// before reaching it.
+#[allow(
+    dead_code,
+    reason = "Added for new processor; wired into discovery later"
+)]
+pub(crate) struct FolderProbe {
+    /// Ordered marker patterns to search for.
+    pub(crate) patterns: &'static [super::policy::MarkerPattern],
+}
+
+#[allow(
+    dead_code,
+    reason = "Added for new processor; wired into discovery later"
+)]
+impl FolderProbe {
+    /// Probes a directory for all matching marker files.
+    ///
+    /// Returns candidates ordered by pattern precedence then format
+    /// precedence (TOML > JSON > YAML > YML).
+    pub(crate) fn probe(&self, dir: &DirPath) -> Vec<CandidatePath> {
+        self.probe_inner(dir.as_path())
+    }
+
+    /// Probes a raw path (used during ascending traversal where paths are
+    /// filesystem paths, not validated `DirPath`).
+    pub(crate) fn probe_dir(&self, dir: &Path) -> Vec<CandidatePath> {
+        self.probe_inner(dir)
+    }
+
+    fn probe_inner(&self, dir: &Path) -> Vec<CandidatePath> {
+        let mut results = Vec::new();
+        for pattern in self.patterns {
+            for format in StructuredFileFormat::PRECEDENCE {
+                let mut path = dir.join(pattern.prefix);
+                path.set_extension(format.extension());
+
+                if !path.is_file() {
+                    continue;
+                }
+
+                if let (Ok(base), Ok(file)) = (
+                    DirPath::try_new(dir.to_path_buf()),
+                    FilePath::try_new(path),
+                ) {
+                    results.push(CandidatePath::new(base, file));
+                }
+            }
+        }
+        results
+    }
+}
 
 fn marker_from_path(
     base: &Path,

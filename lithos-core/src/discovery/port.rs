@@ -6,7 +6,8 @@
 //! This allows the bootstrap layer to be tested with a mock without
 //! running the real filesystem traversal.
 use crate::discovery::{
-    context::DiscoveryContext, error::DiscoveryError, service::DiscoveryResult,
+    context::DiscoveryContext, error::DiscoveryError, report::DiscoveryReport,
+    service::DiscoveryResult,
 };
 
 /// Inbound port for vault and global config candidate discovery.
@@ -27,7 +28,7 @@ pub(crate) trait DiscoveryPort {
     fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<DiscoveryResult, DiscoveryError>;
+    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>;
 }
 
 #[cfg(test)]
@@ -36,7 +37,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        discovery::service::CandidatePath,
+        discovery::{
+            report::{DiscoveryReport, LocalTraversalStopReason},
+            service::CandidatePath,
+        },
         fs::{DirPath, FilePath, PathError},
     };
 
@@ -47,7 +51,7 @@ mod tests {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
-            ) -> Result<DiscoveryResult, DiscoveryError>;
+            ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>;
         }
     }
 
@@ -72,18 +76,25 @@ mod tests {
                 let root = tempfile::tempdir().expect("root");
                 let candidate = make_candidate(&root, "lithos.toml");
                 let expected = DiscoveryResult::new(vec![candidate], vec![]);
+                let report = DiscoveryReport {
+                    skipped_ceilings: vec![],
+                    local_traversal_stop_reason:
+                        LocalTraversalStopReason::FilesystemRoot,
+                    global_resolution_skip_reason: None,
+                };
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
 
                 let mut mock = MockDiscoveryPort::new();
                 let ret = expected.clone();
+                let rep = report.clone();
                 mock.expect_discover()
                     .with(always())
                     .once()
-                    .returning(move |_| Ok(ret.clone()));
+                    .returning(move |_| Ok((ret.clone(), rep.clone())));
 
-                let result =
+                let (result, _) =
                     mock.discover(&ctx).expect("discover should succeed");
 
                 assert_eq!(result, expected);
@@ -97,12 +108,21 @@ mod tests {
                     .expect("valid context");
 
                 let mut mock = MockDiscoveryPort::new();
-                mock.expect_discover()
-                    .with(always())
-                    .once()
-                    .returning(|_| Ok(DiscoveryResult::new(vec![], vec![])));
+                mock.expect_discover().with(always()).once().returning(
+                    move |_| {
+                        Ok((
+                            DiscoveryResult::new(vec![], vec![]),
+                            DiscoveryReport {
+                                skipped_ceilings: vec![],
+                                local_traversal_stop_reason:
+                                    LocalTraversalStopReason::FilesystemRoot,
+                                global_resolution_skip_reason: None,
+                            },
+                        ))
+                    },
+                );
 
-                let result =
+                let (result, _) =
                     mock.discover(&ctx).expect("discover should succeed");
 
                 assert_eq!(result, empty);

@@ -1,10 +1,14 @@
 //! Invocation context supplied to Discovery by the application layer.
 
-use std::{ffi::OsStr, path::Path};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use crate::{
-    discovery::error::{
-        DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
+    discovery::{
+        error::{DiscoveryError, EnvironmentOverrideError, FlagOverrideError},
+        report::{SkippedCeiling, SkippedCeilingReason},
     },
     fs::{DirPath, FilePath},
 };
@@ -317,6 +321,45 @@ impl<'a> DiscoveryEnv<'a> {
     #[must_use]
     pub(crate) fn ceiling_dirs_raw(&self) -> Option<&'a OsStr> {
         self.ceiling_dirs_raw
+    }
+
+    /// Parses the raw ceiling directory data into validated [`DirPath`] values.
+    ///
+    /// Splits on the platform path separator, trims each segment, and validates
+    /// via [`DirPath::try_new`]. Non-fatal issues such as empty or invalid
+    /// segments are returned as [`SkippedCeiling`] entries.
+    #[must_use]
+    pub(crate) fn resolve_ceiling_dirs(
+        &self,
+    ) -> (Vec<DirPath>, Vec<SkippedCeiling>) {
+        let Some(raw) = self.ceiling_dirs_raw else {
+            return (Vec::new(), Vec::new());
+        };
+
+        let mut skipped = Vec::new();
+        let valid = std::env::split_paths(raw)
+            .filter_map(|segment| {
+                let trimmed = segment.to_string_lossy().trim().to_owned();
+                if trimmed.is_empty() {
+                    skipped.push(SkippedCeiling {
+                        segment,
+                        reason: SkippedCeilingReason::EmptySegment,
+                    });
+                    return None;
+                }
+                if let Ok(dir) = DirPath::try_new(PathBuf::from(&trimmed)) {
+                    Some(dir)
+                } else {
+                    skipped.push(SkippedCeiling {
+                        segment: PathBuf::from(&trimmed),
+                        reason: SkippedCeilingReason::InvalidPath,
+                    });
+                    None
+                }
+            })
+            .collect();
+
+        (valid, skipped)
     }
 }
 
@@ -683,6 +726,65 @@ mod tests {
                     )
                 );
             }
+        }
+    }
+
+    mod resolve_ceiling_dirs {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn returns_empty_when_no_ceiling_raw() {
+            let env = DiscoveryEnv::default();
+            let (valid, skipped) = env.resolve_ceiling_dirs();
+            assert!(valid.is_empty());
+            assert!(skipped.is_empty());
+        }
+
+        #[test]
+        fn returns_valid_dir_for_each_segment() {
+            let a = tempfile::tempdir().expect("dir a");
+            let b = tempfile::tempdir().expect("dir b");
+
+            let raw = format!("{}:{}", a.path().display(), b.path().display());
+            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
+                .expect("env");
+
+            let (valid, skipped) = env.resolve_ceiling_dirs();
+            assert_eq!(valid.len(), 2);
+            assert!(skipped.is_empty());
+        }
+
+        #[test]
+        fn records_empty_segment_as_skipped() {
+            let valid_dir = tempfile::tempdir().expect("dir");
+            let raw = format!(":{}", valid_dir.path().display());
+            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
+                .expect("env");
+
+            let (valid, skipped) = env.resolve_ceiling_dirs();
+            assert_eq!(valid.len(), 1);
+            assert_eq!(skipped.len(), 1);
+            assert_eq!(
+                skipped.first().unwrap().reason,
+                SkippedCeilingReason::EmptySegment
+            );
+        }
+
+        #[test]
+        fn records_invalid_path_as_skipped() {
+            let raw = "/\0invalid";
+            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(raw)))
+                .expect("env");
+
+            let (valid, skipped) = env.resolve_ceiling_dirs();
+            assert!(valid.is_empty());
+            assert_eq!(skipped.len(), 1);
+            assert_eq!(
+                skipped.first().unwrap().reason,
+                SkippedCeilingReason::InvalidPath
+            );
         }
     }
 
