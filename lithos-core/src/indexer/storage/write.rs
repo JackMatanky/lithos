@@ -1,3 +1,5 @@
+use redb::{ReadableMultimapTable, ReadableTable};
+
 use crate::indexer::{
     error::IndexerRepositoryError,
     model::{DirRecord, FileRecord, FsRecordId},
@@ -64,11 +66,41 @@ impl WriteRepository for RedbRepository {
 
     fn delete_file(
         &self,
-        _id: FsRecordId,
+        id: FsRecordId,
     ) -> Result<(), IndexerRepositoryError> {
-        Err(IndexerRepositoryError::Storage(
-            crate::db::DbError::Deserialization("Not implemented".into()),
-        ))
+        self.store
+            .write(|tx| {
+                let mut files_table = tx.inner.open_table(FILES)?;
+
+                // Load the record first to know what to remove from indexes
+                // We map to the owned value to drop the AccessGuard immediately
+                let record = files_table.get(id)?.map(|guard| guard.value());
+
+                if let Some(record) = record {
+                    // Cleanup secondary indexes
+                    let mut path_table =
+                        tx.inner.open_table(FILE_ID_BY_PATH)?;
+                    path_table.remove(record.path().as_str())?;
+
+                    let mut basename_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+                    basename_table.remove(record.name().as_str(), id)?;
+
+                    let mut parent_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+                    parent_table.remove(record.parent_id(), id)?;
+
+                    let mut format_table =
+                        tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+                    format_table.remove(record.format().as_str(), id)?;
+
+                    // Primary table
+                    files_table.remove(id)?;
+                }
+
+                Ok(())
+            })
+            .map_err(Into::into)
     }
 
     fn delete_dir(
@@ -214,6 +246,61 @@ mod tests {
             // ReadRepository::list_dirs_by_parent)
             let found_by_parent = repo.list_dirs_by_parent(parent_id).unwrap();
             assert!(found_by_parent.contains(&record));
+        }
+    }
+
+    mod delete {
+        use super::*;
+
+        #[test]
+        fn delete_file_removes_primary_and_indexes() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("dir/file.txt").unwrap();
+            let name = FileName::new("file.txt".into());
+            let format = FileFormat::Markdown;
+            let metadata =
+                FileMetadata::new(FsTimes::new(None, None), 123, false);
+            let recorded_at = SystemTime::now();
+
+            let record = FileRecord::new(
+                id,
+                parent_id,
+                path.clone(),
+                name,
+                format,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_file(&record).unwrap();
+
+            // Verify it exists
+            assert!(repo.find_file(id).unwrap().is_some());
+
+            // Delete
+            repo.delete_file(id).unwrap();
+
+            // Assert primary removed
+            assert!(repo.find_file(id).unwrap().is_none());
+
+            // Assert indexes removed
+            assert!(repo.find_file_by_path(&path).unwrap().is_none());
+            assert!(
+                repo.list_files_by_basename("file.txt").unwrap().is_empty()
+            );
+            assert!(repo.list_files_by_parent(parent_id).unwrap().is_empty());
+            assert!(repo.list_files_by_format(format).unwrap().is_empty());
+        }
+
+        #[test]
+        fn delete_file_is_idempotent_when_missing() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+
+            // Should not error when deleting non-existent file
+            repo.delete_file(id).unwrap();
         }
     }
 }
