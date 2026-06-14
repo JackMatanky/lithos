@@ -43,8 +43,13 @@ Files added or modified:
 - `lithos-core/src/app/bootstrap.rs` — new
 - `lithos-core/src/app/mod.rs` — module declaration added
 - `lithos-core/src/discovery/engine.rs` — updated to use new `FlagOverrideError` / `EnvironmentOverrideError`
+- `lithos-core/src/discovery/port.rs` — new (post-initial; see §DiscoveryPort below)
 
-All 1813 unit tests pass. Lint and format clean.
+Post-initial passes (committed separately):
+- **rust-best-practices pass** (commit `779b5c2a`): eliminated double `to_path_buf()` allocations at all 5 path-validation sites in `context.rs`; fixed `anchor` variable shadow (`anchor_dir` rename); split all multi-assertion tests into single-assertion tests; added `# Errors` doc sections to the three fallible constructors; improved struct-level doc comments. 1832 tests after this pass.
+- **Builder + port refactor** (commit `1c06560a`): `DiscoveryContext::new` signature changed (see §Builder below); `DiscoveryFlags` and `DiscoveryEnv` gained `Default`; `Bootstrapper` redesigned (see §Bootstrapper below); `discovery/port.rs` added (see §DiscoveryPort below). 1847 tests after this pass.
+
+All 1847 unit tests pass (baseline 1813 at initial implementation; grew to 1832 after rust-best-practices pass; grew to 1847 after builder + port refactors). Lint, format, deny, and ADR validation clean.
 
 ## Acceptance criteria
 
@@ -115,6 +120,45 @@ Flag override non-existence and not-a-directory cases are collapsed into a singl
 ### Engine update
 
 `discovery/engine.rs` `validate_override` was updated to produce `FlagOverrideError::VaultPathNotDirectory` for explicit paths and `EnvironmentOverrideError::VaultPathMissing` / `EnvironmentOverrideError::VaultPathNotDirectory` for environment paths, using `.into()` to coerce into `DiscoveryError`.
+
+### Builder pattern on `DiscoveryContext` (post-initial)
+
+The original `DiscoveryContext::new(flags, env, anchor)` three-argument constructor was replaced with a builder:
+
+```rust
+DiscoveryContext::new(anchor: &Path) -> Result<Self, DiscoveryError>
+fn with_flags(self, flags: DiscoveryFlags) -> Self
+fn with_env(self, env: DiscoveryEnv<'a>) -> Self
+```
+
+`anchor` is the only required field. `DiscoveryFlags` and `DiscoveryEnv` both derive `Default` (all-`None` / `false`); the context defaults to empty flags and env when neither builder method is called. This eliminates the forced construction of empty sub-structs (`DiscoveryFlags::new(None, None, false)`) at call sites where no overrides are present.
+
+### `Bootstrapper` redesign (post-initial)
+
+`Bootstrapper` became generic over `D: DiscoveryPort`:
+
+```rust
+pub(crate) struct Bootstrapper<D: DiscoveryPort> { port: D }
+```
+
+`discovery_context()` was renamed `build_context()`, made a static method, and now accepts `Option<DiscoveryFlags>` and `Option<DiscoveryEnv>` (calling `with_flags` / `with_env` only when `Some`).
+
+A new `discover()` instance method delegates to `self.port.discover(context)`, making the bootstrap layer testable with a mock `D` without touching the filesystem.
+
+### `DiscoveryPort` inbound port (post-initial)
+
+`lithos-core/src/discovery/port.rs` defines:
+
+```rust
+pub(crate) trait DiscoveryPort {
+    fn discover(
+        &self,
+        context: &DiscoveryContext<'_>,
+    ) -> Result<DiscoveryResult, DiscoveryError>;
+}
+```
+
+The trait lives in `discovery/` (domain owns its inbound port). `Bootstrapper<D: DiscoveryPort>` calls through it. `DiscoveryEngine` will implement this trait when the full discovery pipeline lands. In tests, `MockPort` implements `DiscoveryPort` returning a fixed result, proving the orchestration layer is independent of the filesystem.
 
 ## Blocked by
 
