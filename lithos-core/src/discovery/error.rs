@@ -64,6 +64,38 @@ pub(crate) enum DiscoveryError {
         #[source]
         source: PathError,
     },
+    /// Invalid discovery service configuration.
+    #[error(transparent)]
+    Config(#[from] ServiceConfigError),
+}
+
+/// Errors produced by [`DiscoveryServiceConfig`] validation.
+///
+/// These errors occur at service construction time, before any discovery
+/// execution begins.
+///
+/// [`DiscoveryServiceConfig`]: crate::discovery::service::DiscoveryServiceConfig
+#[allow(
+    dead_code,
+    reason = "Contract slice; wired in once orchestration lands"
+)]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "Variants are intentionally explicit — the error type describes \
+              WHAT is empty (vault patterns, global patterns, boundary \
+              markers)"
+)]
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ServiceConfigError {
+    /// Vault marker pattern list is empty.
+    #[error("vault_marker_patterns must not be empty")]
+    VaultMarkerPatterns,
+    /// Global marker pattern list is empty.
+    #[error("global_marker_patterns must not be empty")]
+    GlobalMarkerPatterns,
+    /// Boundary marker list is empty.
+    #[error("boundary_markers must not be empty")]
+    BoundaryMarkerPatterns,
 }
 
 /// Fatal errors produced by explicit CLI flag override validation.
@@ -148,119 +180,6 @@ pub(crate) enum EnvironmentOverrideError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod flag_override {
-        use super::*;
-
-        mod formatting {
-            use super::*;
-
-            #[test]
-            fn returns_global_config_path_not_found_message() {
-                let err = FlagOverrideError::GlobalConfigPathNotFound {
-                    path: PathBuf::from("/missing/lithos.toml"),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Explicit config file path not found: /missing/lithos.toml"
-                );
-            }
-
-            #[test]
-            fn returns_global_config_path_not_file_message() {
-                let err = FlagOverrideError::GlobalConfigPathNotFile {
-                    path: PathBuf::from("/some/dir"),
-                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Explicit config file is not a file: /some/dir"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_not_found_message() {
-                let err = FlagOverrideError::VaultPathNotFound {
-                    path: PathBuf::from("/missing/vault"),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Explicit vault path not found: /missing/vault"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_not_directory_message() {
-                let err = FlagOverrideError::VaultPathNotDirectory {
-                    path: PathBuf::from("/some/file"),
-                    source: PathError::NotADirectory(PathBuf::from(
-                        "/some/file",
-                    )),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Explicit vault path is not a directory: /some/file"
-                );
-            }
-        }
-    }
-
-    mod environment_override {
-        use super::*;
-
-        mod formatting {
-            use super::*;
-
-            #[test]
-            fn returns_global_config_path_not_found_message() {
-                let err = EnvironmentOverrideError::GlobalConfigPathNotFound {
-                    path: PathBuf::from("/missing/lithos.toml"),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Environment config file path not found: \
-                     /missing/lithos.toml"
-                );
-            }
-
-            #[test]
-            fn returns_global_config_path_not_file_message() {
-                let err = EnvironmentOverrideError::GlobalConfigPathNotFile {
-                    path: PathBuf::from("/some/dir"),
-                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Environment config file is not a file: /some/dir"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_not_found_message() {
-                let err = EnvironmentOverrideError::VaultPathNotFound {
-                    path: PathBuf::from("/nonexistent"),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Environment vault path not found: /nonexistent"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_not_directory_message() {
-                let err = EnvironmentOverrideError::VaultPathNotDirectory {
-                    path: PathBuf::from("/some/file"),
-                    source: PathError::NotADirectory(PathBuf::from(
-                        "/some/file",
-                    )),
-                };
-                assert_eq!(
-                    err.to_string(),
-                    "Environment vault path is not a directory: /some/file"
-                );
-            }
-        }
-    }
 
     mod discovery_error {
         use super::*;
@@ -385,6 +304,160 @@ mod tests {
                 assert!(
                     err.to_string().contains("denied"),
                     "missing cause in: {err}"
+                );
+            }
+        }
+    }
+
+    mod flag_override {
+        use super::*;
+
+        mod formatting {
+            use super::*;
+
+            #[test]
+            fn returns_global_config_path_not_found_message() {
+                let err = FlagOverrideError::GlobalConfigPathNotFound {
+                    path: PathBuf::from("/missing/lithos.toml"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit config file path not found: /missing/lithos.toml"
+                );
+            }
+
+            #[test]
+            fn returns_global_config_path_not_file_message() {
+                let err = FlagOverrideError::GlobalConfigPathNotFile {
+                    path: PathBuf::from("/some/dir"),
+                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit config file is not a file: /some/dir"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_found_message() {
+                let err = FlagOverrideError::VaultPathNotFound {
+                    path: PathBuf::from("/missing/vault"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit vault path not found: /missing/vault"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_directory_message() {
+                let err = FlagOverrideError::VaultPathNotDirectory {
+                    path: PathBuf::from("/some/file"),
+                    source: PathError::NotADirectory(PathBuf::from(
+                        "/some/file",
+                    )),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit vault path is not a directory: /some/file"
+                );
+            }
+        }
+    }
+
+    mod environment_override {
+        use super::*;
+
+        mod formatting {
+            use super::*;
+
+            #[test]
+            fn returns_global_config_path_not_found_message() {
+                let err = EnvironmentOverrideError::GlobalConfigPathNotFound {
+                    path: PathBuf::from("/missing/lithos.toml"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment config file path not found: \
+                     /missing/lithos.toml"
+                );
+            }
+
+            #[test]
+            fn returns_global_config_path_not_file_message() {
+                let err = EnvironmentOverrideError::GlobalConfigPathNotFile {
+                    path: PathBuf::from("/some/dir"),
+                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment config file is not a file: /some/dir"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_found_message() {
+                let err = EnvironmentOverrideError::VaultPathNotFound {
+                    path: PathBuf::from("/nonexistent"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment vault path not found: /nonexistent"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_directory_message() {
+                let err = EnvironmentOverrideError::VaultPathNotDirectory {
+                    path: PathBuf::from("/some/file"),
+                    source: PathError::NotADirectory(PathBuf::from(
+                        "/some/file",
+                    )),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment vault path is not a directory: /some/file"
+                );
+            }
+        }
+    }
+
+    mod service_config {
+        use super::*;
+
+        mod formatting {
+            use super::*;
+
+            #[test]
+            fn returns_empty_vault_marker_patterns_message() {
+                let err = DiscoveryError::Config(
+                    ServiceConfigError::VaultMarkerPatterns,
+                );
+                assert_eq!(
+                    err.to_string(),
+                    "vault_marker_patterns must not be empty"
+                );
+            }
+
+            #[test]
+            fn returns_empty_global_marker_patterns_message() {
+                let err = DiscoveryError::Config(
+                    ServiceConfigError::GlobalMarkerPatterns,
+                );
+                assert_eq!(
+                    err.to_string(),
+                    "global_marker_patterns must not be empty"
+                );
+            }
+
+            #[test]
+            fn returns_empty_boundary_marker_patterns_message() {
+                let err = DiscoveryError::Config(
+                    ServiceConfigError::BoundaryMarkerPatterns,
+                );
+                assert_eq!(
+                    err.to_string(),
+                    "boundary_markers must not be empty"
                 );
             }
         }

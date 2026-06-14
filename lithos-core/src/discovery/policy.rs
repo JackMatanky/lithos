@@ -24,6 +24,7 @@
     dead_code,
     reason = "Contract slice; traversal still uses legacy probe"
 )]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct MarkerPattern {
     /// Filename prefix before a structured file extension is applied.
     pub(crate) prefix: &'static str,
@@ -36,7 +37,7 @@ pub(crate) struct MarkerPattern {
     dead_code,
     reason = "Contract slice; traversal still uses legacy probe"
 )]
-pub(crate) const ROOT_MARKER_PATTERNS: &[MarkerPattern] = &[
+pub(crate) const VAULT_MARKER_PATTERNS: &[MarkerPattern] = &[
     MarkerPattern {
         prefix: "lithos",
         is_nested: false,
@@ -66,6 +67,17 @@ pub(crate) const GLOBAL_MARKER_PATTERNS: &[MarkerPattern] = &[
         is_nested: true,
     },
 ];
+
+/// Standard project boundary directory names that stop ascending traversal.
+///
+/// When the ascending walk encounters one of these directory names, it
+/// treats that directory as a project boundary and stops before or at
+/// the boundary (depending on `allow_marker_at_ceiling`).
+#[allow(
+    dead_code,
+    reason = "Contract slice; wired in once orchestration lands"
+)]
+pub(crate) const BOUNDARY_MARKER_PATTERNS: &[&str] = &[".git", ".workspace"];
 
 /// Defines the behavior and precedence rules for configuration discovery.
 ///
@@ -286,14 +298,31 @@ mod tests {
         use super::*;
 
         #[test]
-        fn declares_marker_pattern_contracts_with_pattern_names() {
+        fn declares_vault_marker_pattern_contract_prefix() {
             assert_eq!(
-                ROOT_MARKER_PATTERNS.first().expect("root pattern").prefix,
+                VAULT_MARKER_PATTERNS.first().expect("vault pattern").prefix,
                 "lithos"
             );
+        }
+
+        #[test]
+        fn declares_global_marker_pattern_contract_prefix() {
             assert_eq!(
                 GLOBAL_MARKER_PATTERNS.first().expect("global pattern").prefix,
                 "lithos"
+            );
+        }
+
+        #[test]
+        fn declares_boundary_marker_patterns() {
+            let patterns: Vec<&str> = BOUNDARY_MARKER_PATTERNS.to_vec();
+            assert!(
+                !patterns.is_empty(),
+                "boundary patterns must not be empty"
+            );
+            assert!(
+                patterns.contains(&".git"),
+                "expected .git boundary marker"
             );
         }
 

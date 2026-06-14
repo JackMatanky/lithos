@@ -1,6 +1,15 @@
 //! Boundary data returned by the redesigned discovery service.
 
-use crate::fs::{DirPath, FilePath};
+use crate::{
+    discovery::{
+        error::{DiscoveryError, ServiceConfigError},
+        policy::{
+            BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS, MarkerPattern,
+            VAULT_MARKER_PATTERNS,
+        },
+    },
+    fs::{DirPath, FilePath},
+};
 
 /// A validated candidate config path and the base directory it was found from.
 ///
@@ -90,10 +99,96 @@ impl DiscoveryResult {
     }
 }
 
+/// Explicit stable configuration for the discovery service.
+///
+/// This configuration object holds the stable knobs that are set once per
+/// application run: marker patterns, boundary markers, global directories,
+/// and traversal policy. Per-invocation state like `suppress_global`,
+/// explicit paths, and anchor directory belong in
+/// [`DiscoveryContext`](crate::discovery::context::DiscoveryContext).
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DiscoveryServiceConfig {
+    /// Ordered marker patterns for vault/local config candidates.
+    pub(crate) vault_marker_patterns: &'static [MarkerPattern],
+    /// Ordered marker patterns for global config candidates.
+    pub(crate) global_marker_patterns: &'static [MarkerPattern],
+    /// Project boundary directory names that stop ascending traversal.
+    pub(crate) boundary_markers: &'static [&'static str],
+    /// Pre-resolved global namespace directories supplied by the app layer.
+    pub(crate) global_directories: Vec<DirPath>,
+    /// Whether a marker at the ceiling directory is valid.
+    pub(crate) allow_marker_at_ceiling: bool,
+}
+
+impl Default for DiscoveryServiceConfig {
+    fn default() -> Self {
+        Self {
+            vault_marker_patterns: VAULT_MARKER_PATTERNS,
+            global_marker_patterns: GLOBAL_MARKER_PATTERNS,
+            boundary_markers: BOUNDARY_MARKER_PATTERNS,
+            global_directories: Vec::new(),
+            allow_marker_at_ceiling: true,
+        }
+    }
+}
+
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+impl DiscoveryServiceConfig {
+    /// Validates internal consistency of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::Config`] if any marker pattern list is
+    /// empty.
+    pub(crate) fn validate(&self) -> Result<(), DiscoveryError> {
+        if self.vault_marker_patterns.is_empty() {
+            return Err(ServiceConfigError::VaultMarkerPatterns.into());
+        }
+        if self.global_marker_patterns.is_empty() {
+            return Err(ServiceConfigError::GlobalMarkerPatterns.into());
+        }
+        if self.boundary_markers.is_empty() {
+            return Err(ServiceConfigError::BoundaryMarkerPatterns.into());
+        }
+        Ok(())
+    }
+}
+
+/// The concrete discovery service that will implement [`DiscoveryPort`].
+///
+/// Construction validates that the provided configuration is internally
+/// consistent. No discovery execution happens at construction time.
+///
+/// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DiscoveryService {
+    /// Stable service configuration.
+    config: DiscoveryServiceConfig,
+}
+
+#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
+impl DiscoveryService {
+    /// Constructs a validated discovery service from the given config.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::Config`] if the configuration is invalid.
+    pub(crate) fn new(
+        config: DiscoveryServiceConfig,
+    ) -> Result<Self, DiscoveryError> {
+        config.validate()?;
+        Ok(Self {
+            config,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fs::{DirPath, FilePath};
+    use crate::fs::FilePath;
 
     fn candidate(root: &tempfile::TempDir, name: &str) -> CandidatePath {
         let path = root.path().join(name);
@@ -104,6 +199,11 @@ mod tests {
                 .expect("valid base dir"),
             FilePath::try_new(path).expect("valid candidate file"),
         )
+    }
+
+    fn make_dirpath(root: &tempfile::TempDir) -> DirPath {
+        DirPath::try_new(root.path().to_path_buf())
+            .expect("valid global directory")
     }
 
     mod discovery_result {
@@ -161,6 +261,195 @@ mod tests {
             let (_, global_candidates) = result.into_parts();
 
             assert_eq!(global_candidates, vec![global]);
+        }
+    }
+
+    mod discovery_service_config {
+        use super::*;
+        use crate::discovery::policy::{
+            BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS,
+            VAULT_MARKER_PATTERNS,
+        };
+
+        mod default {
+            use super::*;
+
+            #[test]
+            fn uses_vault_marker_patterns() {
+                let config = DiscoveryServiceConfig::default();
+                assert_eq!(config.vault_marker_patterns, VAULT_MARKER_PATTERNS);
+            }
+
+            #[test]
+            fn uses_global_marker_patterns() {
+                let config = DiscoveryServiceConfig::default();
+                assert_eq!(
+                    config.global_marker_patterns,
+                    GLOBAL_MARKER_PATTERNS
+                );
+            }
+
+            #[test]
+            fn uses_default_boundary_markers() {
+                let config = DiscoveryServiceConfig::default();
+                assert_eq!(config.boundary_markers, BOUNDARY_MARKER_PATTERNS);
+            }
+
+            #[test]
+            fn has_empty_global_directories() {
+                let config = DiscoveryServiceConfig::default();
+                assert!(config.global_directories.is_empty());
+            }
+
+            #[test]
+            fn allows_marker_at_ceiling() {
+                let config = DiscoveryServiceConfig::default();
+                assert!(
+                    config.allow_marker_at_ceiling,
+                    "default should allow marker at ceiling"
+                );
+            }
+        }
+
+        mod construction {
+            use super::*;
+
+            #[test]
+            fn accepts_explicit_global_directories() {
+                let dir = tempfile::tempdir().expect("global dir");
+                let global_dir = make_dirpath(&dir);
+
+                let config = DiscoveryServiceConfig {
+                    vault_marker_patterns: VAULT_MARKER_PATTERNS,
+                    global_marker_patterns: GLOBAL_MARKER_PATTERNS,
+                    boundary_markers: BOUNDARY_MARKER_PATTERNS,
+                    global_directories: vec![global_dir],
+                    allow_marker_at_ceiling: false,
+                };
+
+                assert_eq!(config.global_directories.len(), 1);
+                assert!(!config.allow_marker_at_ceiling);
+            }
+        }
+    }
+
+    mod discovery_service {
+        use super::*;
+        use crate::discovery::policy::{
+            BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS,
+            VAULT_MARKER_PATTERNS,
+        };
+
+        mod new {
+            use super::*;
+
+            #[test]
+            fn succeeds_with_default_config() {
+                let service =
+                    DiscoveryService::new(DiscoveryServiceConfig::default());
+                assert!(
+                    service.is_ok(),
+                    "expected Ok, got: {:?}",
+                    service.as_ref().err()
+                );
+            }
+
+            #[test]
+            fn succeeds_with_explicit_config() {
+                let dir = tempfile::tempdir().expect("global dir");
+                let config = DiscoveryServiceConfig {
+                    vault_marker_patterns: VAULT_MARKER_PATTERNS,
+                    global_marker_patterns: GLOBAL_MARKER_PATTERNS,
+                    boundary_markers: BOUNDARY_MARKER_PATTERNS,
+                    global_directories: vec![make_dirpath(&dir)],
+                    allow_marker_at_ceiling: false,
+                };
+
+                let service = DiscoveryService::new(config);
+                assert!(
+                    service.is_ok(),
+                    "expected Ok, got: {:?}",
+                    service.as_ref().err()
+                );
+            }
+
+            #[test]
+            fn rejects_empty_vault_marker_patterns() {
+                let config = DiscoveryServiceConfig {
+                    vault_marker_patterns: &[],
+                    ..DiscoveryServiceConfig::default()
+                };
+
+                let err = DiscoveryService::new(config)
+                    .expect_err("should reject empty vault patterns");
+
+                assert!(
+                    matches!(
+                        err,
+                        DiscoveryError::Config(
+                            ServiceConfigError::VaultMarkerPatterns,
+                        )
+                    ),
+                    "expected VaultMarkerPatterns, got: {err:?}"
+                );
+            }
+
+            #[test]
+            fn rejects_empty_global_marker_patterns() {
+                let config = DiscoveryServiceConfig {
+                    global_marker_patterns: &[],
+                    ..DiscoveryServiceConfig::default()
+                };
+
+                let err = DiscoveryService::new(config)
+                    .expect_err("should reject empty global patterns");
+
+                assert!(
+                    matches!(
+                        err,
+                        DiscoveryError::Config(
+                            ServiceConfigError::GlobalMarkerPatterns,
+                        )
+                    ),
+                    "expected GlobalMarkerPatterns, got: {err:?}"
+                );
+            }
+
+            #[test]
+            fn rejects_empty_boundary_markers() {
+                let config = DiscoveryServiceConfig {
+                    boundary_markers: &[],
+                    ..DiscoveryServiceConfig::default()
+                };
+
+                let err = DiscoveryService::new(config)
+                    .expect_err("should reject empty boundary markers");
+
+                assert!(
+                    matches!(
+                        err,
+                        DiscoveryError::Config(
+                            ServiceConfigError::BoundaryMarkerPatterns,
+                        )
+                    ),
+                    "expected BoundaryMarkerPatterns, got: {err:?}"
+                );
+            }
+        }
+    }
+
+    mod suppress_global_is_not_in_config {
+        use super::*;
+
+        #[test]
+        fn belongs_to_discovery_flags_not_service_config() {
+            let config = DiscoveryServiceConfig::default();
+            let debug_repr = format!("{config:?}");
+            assert!(
+                !debug_repr.contains("suppress_global"),
+                "suppress_global belongs in DiscoveryFlags, not \
+                 DiscoveryServiceConfig: {debug_repr}"
+            );
         }
     }
 }
