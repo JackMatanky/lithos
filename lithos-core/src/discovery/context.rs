@@ -325,9 +325,12 @@ impl<'a> DiscoveryEnv<'a> {
 
     /// Parses the raw ceiling directory data into validated [`DirPath`] values.
     ///
-    /// Splits on the platform path separator, trims each segment, and validates
-    /// via [`DirPath::try_new`]. Non-fatal issues such as empty or invalid
-    /// segments are returned as [`SkippedCeiling`] entries.
+    /// Splits on the platform path separator, trims each segment, validates
+    /// via [`DirPath::try_new`], then canonicalizes to match [`BoundedAscent`]
+    /// output. Non-fatal issues such as empty or invalid segments are returned
+    /// as [`SkippedCeiling`] entries.
+    ///
+    /// [`BoundedAscent`]: crate::discovery::walk::BoundedAscent
     #[must_use]
     pub(crate) fn resolve_ceiling_dirs(
         &self,
@@ -336,28 +339,46 @@ impl<'a> DiscoveryEnv<'a> {
             return (Vec::new(), Vec::new());
         };
 
+        let mut valid = Vec::new();
         let mut skipped = Vec::new();
-        let valid = std::env::split_paths(raw)
-            .filter_map(|segment| {
-                let trimmed = segment.to_string_lossy().trim().to_owned();
-                if trimmed.is_empty() {
-                    skipped.push(SkippedCeiling {
-                        segment,
-                        reason: SkippedCeilingReason::EmptySegment,
-                    });
-                    return None;
+
+        for segment in std::env::split_paths(raw) {
+            let trimmed = segment.to_string_lossy().trim().to_owned();
+            if trimmed.is_empty() {
+                skipped.push(SkippedCeiling {
+                    segment,
+                    reason: SkippedCeilingReason::EmptySegment,
+                });
+                continue;
+            }
+
+            let Ok(dir) = DirPath::try_new(PathBuf::from(&trimmed)) else {
+                skipped.push(SkippedCeiling {
+                    segment: PathBuf::from(&trimmed),
+                    reason: SkippedCeilingReason::InvalidPath,
+                });
+                continue;
+            };
+
+            match dir.as_path().canonicalize() {
+                Ok(canonical) => {
+                    if let Ok(canon_dir) = DirPath::try_new(canonical) {
+                        valid.push(canon_dir);
+                    } else {
+                        skipped.push(SkippedCeiling {
+                            segment: PathBuf::from(&trimmed),
+                            reason: SkippedCeilingReason::InvalidPath,
+                        });
+                    }
                 }
-                if let Ok(dir) = DirPath::try_new(PathBuf::from(&trimmed)) {
-                    Some(dir)
-                } else {
+                Err(_) => {
                     skipped.push(SkippedCeiling {
                         segment: PathBuf::from(&trimmed),
                         reason: SkippedCeilingReason::InvalidPath,
                     });
-                    None
                 }
-            })
-            .collect();
+            }
+        }
 
         (valid, skipped)
     }
@@ -785,6 +806,22 @@ mod tests {
                 skipped.first().unwrap().reason,
                 SkippedCeilingReason::InvalidPath
             );
+        }
+
+        #[test]
+        fn trims_whitespace_from_segments() {
+            let valid_dir = tempfile::tempdir().expect("dir");
+            let raw = format!(" {}", valid_dir.path().display());
+            let env = DiscoveryEnv::new(None, None, Some(OsStr::new(&raw)))
+                .expect("env");
+
+            let (valid, skipped) = env.resolve_ceiling_dirs();
+            assert_eq!(
+                valid.len(),
+                1,
+                "whitespace-prefixed path should be accepted after trim"
+            );
+            assert!(skipped.is_empty());
         }
     }
 

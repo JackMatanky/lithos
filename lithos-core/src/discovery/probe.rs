@@ -1,16 +1,19 @@
 //! Logic for examining individual directories for configuration marker files.
 //!
-//! This module provides the [`DiscoveryProbe`] trait and implementations for
+//! This module provides the [`DiscoveryProbe`] trait and [`FolderProbe`] for
 //! detecting marker files in a single directory. It abstracts the filesystem
 //! mechanics of checking for supported filename patterns and structured
 //! formats.
 //!
 //! # Probes
 //!
+//! - [`FolderProbe`]: Infallible marker probe used by the typestate processor.
+//!   Iterates patterns × format precedence without canonicalizing or returning
+//!   errors — input paths are pre-validated before reaching it.
 //! - [`VaultRootProbe`]: Searches for root markers (e.g., `lithos.toml`,
-//!   `.lithos/config.toml`) that establish a vault boundary.
+//!   `.lithos/config.toml`) that establish a vault boundary. (Legacy.)
 //! - [`GlobalRootProbe`]: Searches for global configuration markers (e.g.,
-//!   `lithos/config.json`) in standard system or user locations.
+//!   `lithos/config.json`) in standard system or user locations. (Legacy.)
 //!
 //! # Patterns and Formats
 //!
