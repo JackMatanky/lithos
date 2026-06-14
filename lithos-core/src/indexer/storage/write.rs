@@ -17,34 +17,71 @@ use crate::{
 };
 
 impl RedbRepository {
+    fn load_file_delete_context(
+        tx: &crate::db::WriteTx,
+        id: FsRecordId,
+    ) -> Result<Option<FileRecord>, DbError> {
+        let table = tx.inner.open_table(FILES)?;
+        Ok(table.get(id)?.map(|guard| guard.value()))
+    }
+
+    fn load_dir_delete_context(
+        tx: &crate::db::WriteTx,
+        id: FsRecordId,
+    ) -> Result<Option<DirRecord>, DbError> {
+        let table = tx.inner.open_table(DIRS)?;
+        Ok(table.get(id)?.map(|guard| guard.value()))
+    }
+
+    fn remove_file_graph(
+        tx: &crate::db::WriteTx,
+        record: &FileRecord,
+    ) -> Result<(), DbError> {
+        let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
+        path_table.remove(record.path().as_str())?;
+
+        let mut basename_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+        basename_table.remove(record.name().as_str(), record.id())?;
+
+        let mut parent_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+        parent_table.remove(record.parent_id(), record.id())?;
+
+        let mut format_table =
+            tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+        format_table.remove(record.format().as_str(), record.id())?;
+
+        let mut files_table = tx.inner.open_table(FILES)?;
+        files_table.remove(record.id())?;
+
+        Ok(())
+    }
+
+    fn remove_dir_graph(
+        tx: &crate::db::WriteTx,
+        record: &DirRecord,
+    ) -> Result<(), DbError> {
+        let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+        path_table.remove(record.path().as_str())?;
+
+        let mut dirs_table = tx.inner.open_table(DIRS)?;
+        dirs_table.remove(record.id())?;
+
+        Ok(())
+    }
+
     fn save_file_in_tx(
         tx: &crate::db::WriteTx,
         record: &FileRecord,
     ) -> Result<(), DbError> {
-        let mut files_table = tx.inner.open_table(FILES)?;
-
-        // If this is an update, clean up stale secondary index entries
-        if let Some(old) = files_table
-            .get(record.id())?
-            .map(|guard: redb::AccessGuard<'_, FileRecord>| guard.value())
-        {
-            let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
-            path_table.remove(old.path().as_str())?;
-
-            let mut basename_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-            basename_table.remove(old.name().as_str(), record.id())?;
-
-            let mut parent_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
-            parent_table.remove(old.parent_id(), record.id())?;
-
-            let mut format_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
-            format_table.remove(old.format().as_str(), record.id())?;
+        // If this is an update, clean up stale graph entries
+        if let Some(old) = Self::load_file_delete_context(tx, record.id())? {
+            Self::remove_file_graph(tx, &old)?;
         }
 
         // Primary table
+        let mut files_table = tx.inner.open_table(FILES)?;
         files_table.insert(record.id(), record.clone())?;
 
         // Secondary indexes
@@ -70,18 +107,13 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         record: &DirRecord,
     ) -> Result<(), DbError> {
-        let mut dirs_table = tx.inner.open_table(DIRS)?;
-
-        // If this is an update, clean up stale secondary index entry
-        if let Some(old) = dirs_table
-            .get(record.id())?
-            .map(|guard: redb::AccessGuard<'_, DirRecord>| guard.value())
-        {
-            let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-            path_table.remove(old.path().as_str())?;
+        // If this is an update, clean up stale graph entries
+        if let Some(old) = Self::load_dir_delete_context(tx, record.id())? {
+            Self::remove_dir_graph(tx, &old)?;
         }
 
         // Primary table
+        let mut dirs_table = tx.inner.open_table(DIRS)?;
         dirs_table.insert(record.id(), record.clone())?;
 
         // Secondary index
@@ -95,31 +127,10 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         id: FsRecordId,
     ) -> Result<(), DbError> {
-        let mut files_table = tx.inner.open_table(FILES)?;
-
         // Load the record first to know what to remove from indexes
         // We map to the owned value to drop the AccessGuard immediately
-        let record = files_table.get(id)?.map(|guard| guard.value());
-
-        if let Some(record) = record {
-            // Cleanup secondary indexes
-            let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
-            path_table.remove(record.path().as_str())?;
-
-            let mut basename_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-            basename_table.remove(record.name().as_str(), id)?;
-
-            let mut parent_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
-            parent_table.remove(record.parent_id(), id)?;
-
-            let mut format_table =
-                tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
-            format_table.remove(record.format().as_str(), id)?;
-
-            // Primary table
-            files_table.remove(id)?;
+        if let Some(record) = Self::load_file_delete_context(tx, id)? {
+            Self::remove_file_graph(tx, &record)?;
         }
 
         Ok(())
@@ -129,18 +140,10 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         id: FsRecordId,
     ) -> Result<(), DbError> {
-        let mut dirs_table = tx.inner.open_table(DIRS)?;
-
         // Load the record first to know what to remove from indexes
-        let record = dirs_table.get(id)?.map(|guard| guard.value());
-
-        if let Some(record) = record {
-            // Cleanup secondary index
-            let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-            path_table.remove(record.path().as_str())?;
-
-            // Primary table
-            dirs_table.remove(id)?;
+        // We map to the owned value to drop the AccessGuard immediately
+        if let Some(record) = Self::load_dir_delete_context(tx, id)? {
+            Self::remove_dir_graph(tx, &record)?;
         }
 
         Ok(())
@@ -237,7 +240,7 @@ mod tests {
 
     fn setup_repo() -> (tempfile::TempDir, RedbRepository) {
         let (tempdir, store) = Store::open_temp().unwrap();
-        (tempdir, RedbRepository::new(Arc::new(store)))
+        (tempdir, RedbRepository::try_new(Arc::new(store)).unwrap())
     }
 
     mod create {

@@ -228,7 +228,7 @@ mod tests {
 
     fn setup_repo() -> (tempfile::TempDir, RedbRepository) {
         let (tempdir, store) = Store::open_temp().unwrap();
-        (tempdir, RedbRepository::new(Arc::new(store)))
+        (tempdir, RedbRepository::try_new(Arc::new(store)).unwrap())
     }
 
     mod lookup {

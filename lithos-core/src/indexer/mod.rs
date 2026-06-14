@@ -25,12 +25,13 @@ pub(crate) mod storage;
 mod summary;
 
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
-pub(crate) use error::IndexerError;
+pub(crate) use error::{IndexerError, IndexerRepositoryError};
 pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
 pub(crate) use repository::{ReadRepository, Repository, WriteRepository};
 pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
 pub(crate) use scanner::{
-    ScanResult, ScannerPort, SkipReason, SkippedEntry, walkdir::WalkdirAdapter,
+    ScanResult, ScannerError, ScannerPort, SkipReason, SkippedEntry,
+    walkdir::WalkdirAdapter,
 };
 #[cfg(test)]
 pub(crate) use storage::InMemoryRepository;

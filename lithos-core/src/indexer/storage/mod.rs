@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     db::DbError,
-    indexer::storage::tables::{
-        DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-        FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+    indexer::{
+        IndexerRepositoryError,
+        storage::tables::{
+            DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
+            FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+        },
     },
 };
 
@@ -13,9 +16,11 @@ pub(crate) struct RedbRepository {
 }
 
 impl RedbRepository {
-    pub(crate) fn new(store: Arc<crate::db::Store>) -> Self {
+    pub(crate) fn try_new(
+        store: Arc<crate::db::Store>,
+    ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
-        if let Err(e) = store.write(|tx| {
+        store.write(|tx| {
             tx.inner.open_table(FILES)?;
             tx.inner.open_table(DIRS)?;
             tx.inner.open_table(FILE_ID_BY_PATH)?;
@@ -24,13 +29,11 @@ impl RedbRepository {
             tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
             tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
             Ok(())
-        }) {
-            eprintln!("failed to initialize indexer tables: {e}");
-        }
+        })?;
 
-        Self {
+        Ok(Self {
             store,
-        }
+        })
     }
 }
 
@@ -59,6 +62,6 @@ mod tests {
         let store = Arc::new(
             Store::open(tmp_file.path()).expect("failed to open database"),
         );
-        let _repo = RedbRepository::new(store);
+        let _repo = RedbRepository::try_new(store).unwrap();
     }
 }
