@@ -51,6 +51,7 @@ pub(crate) struct IndexReport {
     fresh: usize,
     stale: usize,
     deleted: usize,
+    skipped: Box<[crate::indexer::scanner::SkippedEntry]>,
     failures: Box<[IndexNodeFailure]>,
 }
 
@@ -68,6 +69,7 @@ impl IndexReport {
         fresh: usize,
         stale: usize,
         deleted: usize,
+        skipped: Box<[crate::indexer::scanner::SkippedEntry]>,
         failures: Box<[IndexNodeFailure]>,
     ) -> Self {
         Self {
@@ -76,6 +78,7 @@ impl IndexReport {
             fresh,
             stale,
             deleted,
+            skipped,
             failures,
         }
     }
@@ -113,6 +116,13 @@ impl IndexReport {
     #[must_use]
     pub(crate) fn deleted_count(&self) -> usize {
         self.deleted
+    }
+
+    /// Returns the entries skipped during the scan.
+    #[inline]
+    #[must_use]
+    pub(crate) fn skipped(&self) -> &[crate::indexer::scanner::SkippedEntry] {
+        &self.skipped
     }
 
     /// Returns the failures encountered during the scan.
@@ -391,13 +401,49 @@ mod tests {
 
             #[test]
             fn stores_counts_and_failures() {
-                let report = IndexReport::new(10, 2, 5, 3, 1, Box::new([]));
+                let report = IndexReport::new(
+                    10,
+                    2,
+                    5,
+                    3,
+                    1,
+                    Box::new([]),
+                    Box::new([]),
+                );
                 assert_eq!(report.scanned(), 10);
                 assert_eq!(report.new_count(), 2);
                 assert_eq!(report.fresh_count(), 5);
                 assert_eq!(report.stale_count(), 3);
                 assert_eq!(report.deleted_count(), 1);
+                assert_eq!(report.skipped().len(), 0);
                 assert_eq!(report.failures().len(), 0);
+            }
+
+            #[test]
+            fn stores_skipped_entries() {
+                use std::path::PathBuf;
+
+                use crate::indexer::scanner::{SkipReason, SkippedEntry};
+
+                let skipped = vec![SkippedEntry {
+                    path: PathBuf::from("restricted"),
+                    reason: SkipReason::PermissionDenied,
+                }];
+                let report = IndexReport::new(
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    skipped.into_boxed_slice(),
+                    Box::new([]),
+                );
+
+                assert_eq!(report.skipped().len(), 1);
+                assert_eq!(
+                    report.skipped().first().unwrap().path,
+                    PathBuf::from("restricted")
+                );
             }
         }
     }

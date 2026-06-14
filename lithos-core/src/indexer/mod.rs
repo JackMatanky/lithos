@@ -27,10 +27,14 @@ mod summary;
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub(crate) use error::IndexerError;
 pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
+pub(crate) use repository::{ReadRepository, Repository, WriteRepository};
 pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
 pub(crate) use scanner::{
     ScanResult, ScannerPort, SkipReason, SkippedEntry, walkdir::WalkdirAdapter,
 };
+#[cfg(test)]
+pub(crate) use storage::InMemoryRepository;
+pub(crate) use storage::RedbRepository;
 pub(crate) use summary::{
     DeletedNodes, IndexNodeFailure, IndexReport, IndexResult, IndexedNodes,
 };
@@ -43,11 +47,11 @@ mod tests {
     fn test_indexer_exports() {
         // These should be accessible via `super::` or `crate::indexer::`
         // if correctly re-exported as pub(crate).
-        let _: Option<ReadRepository> = None;
-        let _: Option<WriteRepository> = None;
-        let _: Option<Repository> = None;
+        let _: Option<&dyn ReadRepository> = None;
+        let _: Option<&dyn WriteRepository> = None;
+        let _: Option<&dyn Repository> = None;
         let _: Option<RedbRepository> = None;
         let _: Option<InMemoryRepository> = None;
-        let _: Option<ScannerPort> = None;
+        let _: Option<&dyn ScannerPort> = None;
     }
 }

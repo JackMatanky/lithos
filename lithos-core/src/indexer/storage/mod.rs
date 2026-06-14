@@ -39,6 +39,12 @@ pub(crate) mod tables;
 pub(crate) mod write;
 
 #[cfg(test)]
+pub(crate) mod testing;
+
+#[cfg(test)]
+pub(crate) use self::testing::InMemoryRepository;
+
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 

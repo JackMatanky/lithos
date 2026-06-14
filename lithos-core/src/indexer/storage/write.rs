@@ -581,7 +581,11 @@ mod tests {
                 SystemTime::now(),
             );
 
-            repo.save_many_records(&[file.clone()], &[dir.clone()]).unwrap();
+            repo.save_many_records(
+                std::slice::from_ref(&file),
+                std::slice::from_ref(&dir),
+            )
+            .unwrap();
 
             // Verify both are present
             assert_eq!(repo.find_file(f_id).unwrap().unwrap(), file);
@@ -620,7 +624,11 @@ mod tests {
                 SystemTime::now(),
             );
 
-            repo.save_many_records(&[file.clone()], &[dir.clone()]).unwrap();
+            repo.save_many_records(
+                std::slice::from_ref(&file),
+                std::slice::from_ref(&dir),
+            )
+            .unwrap();
 
             // Verify they exist
             assert!(repo.find_file(f_id).unwrap().is_some());
