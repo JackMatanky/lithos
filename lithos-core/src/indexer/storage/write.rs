@@ -5,8 +5,8 @@ use crate::indexer::{
     storage::{
         RedbRepository,
         tables::{
-            FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME, FILE_IDS_BY_FORMAT,
-            FILE_IDS_BY_PARENT, FILES,
+            DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
+            FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
         },
     },
 };
@@ -45,11 +45,21 @@ impl WriteRepository for RedbRepository {
 
     fn save_dir(
         &self,
-        _record: &DirRecord,
+        record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
-        Err(IndexerRepositoryError::Storage(
-            crate::db::DbError::Deserialization("Not implemented".into()),
-        ))
+        self.store
+            .write(|tx| {
+                // Primary table
+                let mut dirs_table = tx.inner.open_table(DIRS)?;
+                dirs_table.insert(record.id(), record.clone())?;
+
+                // Secondary index
+                let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+                path_table.insert(record.path().as_str(), record.id())?;
+
+                Ok(())
+            })
+            .map_err(Into::into)
     }
 
     fn delete_file(
@@ -102,7 +112,7 @@ mod tests {
             path::PathKey,
         },
         indexer::{
-            model::{FileRecord, FsRecordId},
+            model::{DirRecord, FileRecord, FsRecordId},
             repository::{ReadRepository, WriteRepository},
             storage::RedbRepository,
         },
@@ -164,6 +174,46 @@ mod tests {
             // Assert format index
             let found_by_format = repo.list_files_by_format(format).unwrap();
             assert!(found_by_format.contains(&record));
+        }
+
+        #[test]
+        fn save_dir_persists_primary_and_path_index() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("dir/subdir").unwrap();
+            let name = crate::fs::name::DirName::new("subdir".into());
+            let metadata =
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
+            let recorded_at = SystemTime::now();
+
+            let record = DirRecord::new(
+                id,
+                Some(parent_id),
+                path.clone(),
+                name,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_dir(&record).unwrap();
+
+            // Assert primary
+            let found =
+                repo.find_dir(id).unwrap().expect("primary record missing");
+            assert_eq!(found, record);
+
+            // Assert path index
+            let found_by_path = repo
+                .find_dir_by_path(&path)
+                .unwrap()
+                .expect("path index missing");
+            assert_eq!(found_by_path, record);
+
+            // Assert parent listing (verifies
+            // ReadRepository::list_dirs_by_parent)
+            let found_by_parent = repo.list_dirs_by_parent(parent_id).unwrap();
+            assert!(found_by_parent.contains(&record));
         }
     }
 }
