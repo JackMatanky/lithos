@@ -14,6 +14,7 @@ pub(crate) struct SkippedEntry {
 pub(crate) enum SkipReason {
     PermissionDenied,
     UnsupportedEntryType,
+    Unknown(String),
 }
 
 /// The result of a scan operation.

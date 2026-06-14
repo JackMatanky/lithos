@@ -52,7 +52,7 @@ impl WalkdirAdapter {
                     } else {
                         result.skipped.push(SkippedEntry {
                             path,
-                            reason: SkipReason::UnsupportedEntryType,
+                            reason: SkipReason::Unknown(e.to_string()),
                         });
                     }
                 }
