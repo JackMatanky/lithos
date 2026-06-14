@@ -53,6 +53,8 @@ base64.workspace = true
 
 [dev-dependencies]
 # NO tokio - deferred to Phase 2 (LSP)
+mockall = { workspace = true }
+pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 proptest = { workspace = true }
 tempfile.workspace = true

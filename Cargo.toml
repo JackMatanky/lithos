@@ -64,6 +64,8 @@ regex = "1.12"
 walkdir = "2.5"
 
 # Testing
+mockall = "0.13"
+pretty_assertions = "1.4"
 proptest = "1.11"
 rstest = "0.26"
 tempfile = "3.27"
