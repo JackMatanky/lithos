@@ -8,6 +8,7 @@
 use crate::discovery::{
     context::DiscoveryContext, error::DiscoveryError, service::DiscoveryResult,
 };
+
 /// Inbound port for vault and global config candidate discovery.
 ///
 /// The application layer depends on this trait rather than on
@@ -30,51 +31,26 @@ pub(crate) trait DiscoveryPort {
 }
 
 #[cfg(test)]
+pub(crate) use tests::MockDiscoveryPort;
+
+#[cfg(test)]
 mod tests {
+    use mockall::{mock, predicate::always};
+
     use super::*;
     use crate::{
         discovery::service::CandidatePath,
         fs::{DirPath, FilePath, PathError},
     };
 
-    // A minimal mock that returns a fixed DiscoveryResult.
-    struct MockDiscoveryPort {
-        result: Result<DiscoveryResult, DiscoveryError>,
-    }
-
-    impl MockDiscoveryPort {
-        fn returning(result: Result<DiscoveryResult, DiscoveryError>) -> Self {
-            Self {
-                result,
-            }
-        }
-    }
-
-    impl DiscoveryPort for MockDiscoveryPort {
-        fn discover(
-            &self,
-            _context: &DiscoveryContext<'_>,
-        ) -> Result<DiscoveryResult, DiscoveryError> {
-            // Clone the result for each call.
-            match &self.result {
-                Ok(r) => Ok(r.clone()),
-                Err(e) => Err(clone_error(e)),
-            }
-        }
-    }
-
-    /// Helper: reconstruct a `DiscoveryError` for testing since it is not
-    /// `Clone`. We use the simplest variant that requires no filesystem state.
-    fn clone_error(e: &DiscoveryError) -> DiscoveryError {
-        // Reconstruct by re-parsing the display string as
-        // InvalidAnchorDirectory is not available without a real path,
-        // so we use a known-failing path.
-        let _ = e; // silence unused warning
-        DiscoveryError::InvalidAnchorDirectory {
-            path: std::path::PathBuf::from("/nonexistent"),
-            source: PathError::NotADirectory(std::path::PathBuf::from(
-                "/nonexistent",
-            )),
+    // Generate a mock using mock! so the production trait keeps `'_`.
+    mock! {
+        pub(crate) DiscoveryPort {}
+        impl DiscoveryPort for DiscoveryPort {
+            fn discover<'ctx>(
+                &self,
+                context: &DiscoveryContext<'ctx>,
+            ) -> Result<DiscoveryResult, DiscoveryError>;
         }
     }
 
@@ -99,37 +75,40 @@ mod tests {
                 let root = tempfile::tempdir().expect("root");
                 let candidate = make_candidate(&root, "lithos.toml");
                 let expected = DiscoveryResult::new(vec![candidate], vec![]);
-                let port = MockDiscoveryPort::returning(Ok(expected.clone()));
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
 
-                let result =
-                    port.discover(&ctx).expect("discover should succeed");
+                let mut mock = MockDiscoveryPort::new();
+                let ret = expected.clone();
+                mock.expect_discover()
+                    .with(always())
+                    .once()
+                    .returning(move |_| Ok(ret.clone()));
 
-                assert_eq!(
-                    result, expected,
-                    "mock should return the fixed DiscoveryResult"
-                );
+                let result =
+                    mock.discover(&ctx).expect("discover should succeed");
+
+                assert_eq!(result, expected);
             }
 
             #[test]
             fn returns_empty_result_when_mock_returns_empty() {
                 let empty = DiscoveryResult::new(vec![], vec![]);
-                let port = MockDiscoveryPort::returning(Ok(
-                    DiscoveryResult::new(vec![], vec![]),
-                ));
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
 
-                let result =
-                    port.discover(&ctx).expect("discover should succeed");
+                let mut mock = MockDiscoveryPort::new();
+                mock.expect_discover()
+                    .with(always())
+                    .once()
+                    .returning(|_| Ok(DiscoveryResult::new(vec![], vec![])));
 
-                assert_eq!(
-                    result, empty,
-                    "mock should return an empty DiscoveryResult"
-                );
+                let result =
+                    mock.discover(&ctx).expect("discover should succeed");
+
+                assert_eq!(result, empty);
             }
         }
 
@@ -138,20 +117,22 @@ mod tests {
 
             #[test]
             fn returns_error_from_mock() {
-                let port = MockDiscoveryPort::returning(Err(
-                    DiscoveryError::InvalidAnchorDirectory {
-                        path: std::path::PathBuf::from("/bad"),
-                        source: PathError::NotADirectory(
-                            std::path::PathBuf::from("/bad"),
-                        ),
-                    },
-                ));
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
 
+                let mut mock = MockDiscoveryPort::new();
+                mock.expect_discover().with(always()).once().returning(|_| {
+                    Err(DiscoveryError::InvalidAnchorDirectory {
+                        path: std::path::PathBuf::from("/bad"),
+                        source: PathError::NotADirectory(
+                            std::path::PathBuf::from("/bad"),
+                        ),
+                    })
+                });
+
                 let err =
-                    port.discover(&ctx).expect_err("discover should fail");
+                    mock.discover(&ctx).expect_err("discover should fail");
 
                 assert!(
                     matches!(

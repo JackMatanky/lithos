@@ -70,56 +70,16 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
 mod tests {
     use std::ffi::OsStr;
 
+    use mockall::predicate::always;
+
     use super::*;
     use crate::{
         discovery::{
             context::DiscoveryContext, error::DiscoveryError,
-            service::DiscoveryResult,
+            port::MockDiscoveryPort, service::DiscoveryResult,
         },
         fs::{DirPath, FilePath, PathError},
     };
-
-    // --- Mock port ---
-
-    struct MockPort {
-        result: Result<DiscoveryResult, DiscoveryError>,
-    }
-
-    impl MockPort {
-        fn succeeding(result: DiscoveryResult) -> Self {
-            Self {
-                result: Ok(result),
-            }
-        }
-
-        fn failing() -> Self {
-            Self {
-                result: Err(DiscoveryError::InvalidAnchorDirectory {
-                    path: std::path::PathBuf::from("/bad"),
-                    source: PathError::NotADirectory(std::path::PathBuf::from(
-                        "/bad",
-                    )),
-                }),
-            }
-        }
-    }
-
-    impl DiscoveryPort for MockPort {
-        fn discover(
-            &self,
-            _context: &DiscoveryContext<'_>,
-        ) -> Result<DiscoveryResult, DiscoveryError> {
-            match &self.result {
-                Ok(r) => Ok(r.clone()),
-                Err(_) => Err(DiscoveryError::InvalidAnchorDirectory {
-                    path: std::path::PathBuf::from("/bad"),
-                    source: PathError::NotADirectory(std::path::PathBuf::from(
-                        "/bad",
-                    )),
-                }),
-            }
-        }
-    }
 
     // --- Fixtures ---
 
@@ -170,7 +130,7 @@ mod tests {
                     Some(self.ceilings),
                 )
                 .expect("valid env");
-                Bootstrapper::<MockPort>::build_context(
+                Bootstrapper::<MockDiscoveryPort>::build_context(
                     Some(flags),
                     Some(env),
                     self.cwd.path(),
@@ -185,6 +145,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -267,7 +229,7 @@ mod tests {
             #[test]
             fn returns_context_with_default_flags_when_none_given() {
                 let cwd = tempfile::tempdir().expect("cwd dir");
-                let context = Bootstrapper::<MockPort>::build_context(
+                let context = Bootstrapper::<MockDiscoveryPort>::build_context(
                     None,
                     None,
                     cwd.path(),
@@ -283,7 +245,7 @@ mod tests {
             #[test]
             fn returns_context_with_default_env_when_none_given() {
                 let cwd = tempfile::tempdir().expect("cwd dir");
-                let context = Bootstrapper::<MockPort>::build_context(
+                let context = Bootstrapper::<MockDiscoveryPort>::build_context(
                     None,
                     None,
                     cwd.path(),
@@ -301,32 +263,47 @@ mod tests {
     // --- discover tests ---
 
     mod discover {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
         fn returns_result_from_port_when_port_succeeds() {
             let expected = DiscoveryResult::new(vec![], vec![]);
-            let bootstrapper =
-                Bootstrapper::new(MockPort::succeeding(expected.clone()));
             let anchor = tempfile::tempdir().expect("anchor");
             let ctx =
                 DiscoveryContext::new(anchor.path()).expect("valid context");
+
+            let mut mock = MockDiscoveryPort::new();
+            let ret = expected.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok(ret.clone()));
+            let bootstrapper = Bootstrapper::new(mock);
 
             let result =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
 
-            assert_eq!(
-                result, expected,
-                "bootstrapper should return the result from the port"
-            );
+            assert_eq!(result, expected);
         }
 
         #[test]
         fn propagates_error_from_port_when_port_fails() {
-            let bootstrapper = Bootstrapper::new(MockPort::failing());
             let anchor = tempfile::tempdir().expect("anchor");
             let ctx =
                 DiscoveryContext::new(anchor.path()).expect("valid context");
+
+            let mut mock = MockDiscoveryPort::new();
+            mock.expect_discover().with(always()).once().returning(|_| {
+                Err(DiscoveryError::InvalidAnchorDirectory {
+                    path: std::path::PathBuf::from("/bad"),
+                    source: PathError::NotADirectory(std::path::PathBuf::from(
+                        "/bad",
+                    )),
+                })
+            });
+            let bootstrapper = Bootstrapper::new(mock);
 
             let err =
                 bootstrapper.discover(&ctx).expect_err("discover should fail");

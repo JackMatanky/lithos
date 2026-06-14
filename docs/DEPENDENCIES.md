@@ -39,7 +39,8 @@ Legend:
 | dhat | dormant | perf tooling | heap profiling | perf | remove (for now) |
 | assert_cmd | dormant | testing | CLI process tests | cli/test | remove (re-add later) |
 | predicates | dormant | testing | assertion matchers | cli/test | remove (re-add later) |
-| mockall | dormant | testing | mocks | test | remove (unless strategy changes) |
+| mockall | active | testing | mocks via `#[automock]` | test | keep — used in `discovery/port.rs` and `app/bootstrap.rs` |
+| pretty_assertions | active | testing | colored assertion diffs | test | keep — used in `discovery/port.rs` and `app/bootstrap.rs` |
 
 ---
 
@@ -54,7 +55,7 @@ Legend:
 - `dhat`
 - `assert_cmd`
 - `predicates`
-- `mockall`
+
 
 ### Keep
 - `redb`, `rkyv`, `thiserror`, `miette`, `minijinja`, `pulldown-cmark`
@@ -272,9 +273,14 @@ Recommendation:
 - References: `docs/adr/012-benchmarking-infrastructure.md`
 
 ### mockall
-- Purpose: mock-based testing.
-- Current state: not active in manifests/test setup.
-- Recommendation: remove unless testing strategy explicitly adopts mocking.
+- Purpose: mock-based testing via `#[automock]` proc-macro.
+- Current state: active — `MockDiscoveryPort` generated in `lithos-core/src/discovery/port.rs`; used in `lithos-core/src/app/bootstrap.rs` tests.
+- Recommendation: keep. Remove dormant recommendation rescinded.
+
+### pretty_assertions
+- Purpose: drop-in replacement for `assert_eq!`/`assert_ne!` with colored diff output on failure.
+- Current state: active — used in `lithos-core/src/discovery/port.rs` and `lithos-core/src/app/bootstrap.rs` test modules.
+- Recommendation: keep. Propagate to other test modules over time.
 
 ---
 
