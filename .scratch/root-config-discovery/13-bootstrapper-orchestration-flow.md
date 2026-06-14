@@ -31,7 +31,7 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 
 - [ ] `Bootstrapper` lives under `lithos-core/src/app/` and is the only component that imports both Discovery and Config.
 - [ ] CLI handlers and other executable adapters do not call `discovery/` or `config/` directly for the normal bootstrap flow.
-- [ ] `Bootstrapper` constructs `DiscoveryService` through the self-builder API with platform-resolved global directories.
+- [ ] `Bootstrapper` constructs `DiscoveryServiceConfig` with platform-resolved global directories and then calls `DiscoveryService::new(config)`.
 - [ ] `Bootstrapper` acquires per-invocation context and calls `DiscoveryService::discover(DiscoveryContext)`.
 - [ ] Context acquisition includes current working directory, relevant environment variables, CLI-provided path overrides, and platform global config directories.
 - [ ] `Bootstrapper` passes `DiscoveryResult` into `config::Builder::from_discovery()` and then calls `build()`.
@@ -74,7 +74,7 @@ Discovery and Config orchestration is not isolated behind an app composition com
 **Acceptance criteria:**
 - [ ] Bootstrapper is the single app-layer orchestration point for Discovery plus Config.
 - [ ] CLI handlers do not directly compose Discovery and Config for the normal bootstrap flow.
-- [ ] Bootstrapper constructs DiscoveryService with platform-resolved global directories.
+- [ ] Bootstrapper constructs `DiscoveryServiceConfig` with platform-resolved global directories and creates `DiscoveryService` through `DiscoveryService::new(config)`.
 - [ ] Bootstrapper obtains invocation context, runs discovery, emits skipped ceiling/override warnings, builds Config through Config builder, and returns `BootstrapResult`.
 - [ ] Bootstrapper has an explicit error propagation/mapping seam for discovery and config failures.
 - [ ] Discovery does not import Config and Config does not orchestrate Discovery.
