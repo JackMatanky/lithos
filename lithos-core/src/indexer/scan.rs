@@ -10,7 +10,13 @@ use crate::fs::path::PathKey;
 /// Currently holds no fields; reserved for extension with glob patterns,
 /// extension filters, and depth limits.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ScanFilters {}
+pub(crate) struct ScanFilters {
+    /// File extensions to include, without a leading dot. Empty means all
+    /// files.
+    pub(crate) included_extensions: Vec<Box<str>>,
+    /// Entry names to exclude from traversal or file results.
+    pub(crate) excluded_names: Vec<Box<str>>,
+}
 
 /// The scope of an indexing operation.
 ///

@@ -18,6 +18,7 @@ mod entry;
 mod error;
 mod model;
 mod scan;
+mod scanner;
 mod summary;
 
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
