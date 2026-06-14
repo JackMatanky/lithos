@@ -3,25 +3,66 @@
 use crate::discovery::{
     context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
     error::DiscoveryError,
+    port::DiscoveryPort,
+    service::DiscoveryResult,
 };
 
 /// Application-owned bootstrap orchestration entry point.
+///
+/// `Bootstrapper` is generic over `D: DiscoveryPort` so that the discovery
+/// implementation can be swapped out in tests without touching the
+/// orchestration logic.
 #[derive(Debug, Default)]
 #[allow(dead_code, reason = "Contract slice; full orchestration lands later")]
-pub(crate) struct Bootstrapper;
+pub(crate) struct Bootstrapper<D: DiscoveryPort> {
+    port: D,
+}
 
-impl Bootstrapper {
+#[allow(dead_code, reason = "Contract slice; full orchestration lands later")]
+impl<D: DiscoveryPort> Bootstrapper<D> {
+    /// Creates a bootstrapper backed by the given discovery port.
+    pub(crate) fn new(port: D) -> Self {
+        Self {
+            port,
+        }
+    }
+
     /// Builds Discovery's input contract from app-owned runtime sources.
-    #[allow(
-        dead_code,
-        reason = "Contract slice; full orchestration lands later"
-    )]
-    pub(crate) fn discovery_context<'a>(
-        flags: DiscoveryFlags,
-        env: DiscoveryEnv<'a>,
+    ///
+    /// `anchor` is the working directory and is always required. `flags` and
+    /// `env` are optional overrides from the CLI and environment respectively;
+    /// pass `None` for either when no user-supplied override is present.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
+    /// resolve to an existing directory, or a flag/env validation error if the
+    /// provided paths are invalid.
+    pub(crate) fn build_context<'a>(
+        flags: Option<DiscoveryFlags>,
+        env: Option<DiscoveryEnv<'a>>,
         anchor: &std::path::Path,
     ) -> Result<DiscoveryContext<'a>, DiscoveryError> {
-        DiscoveryContext::new(flags, env, anchor)
+        let mut ctx = DiscoveryContext::new(anchor)?;
+        if let Some(f) = flags {
+            ctx = ctx.with_flags(f);
+        }
+        if let Some(e) = env {
+            ctx = ctx.with_env(e);
+        }
+        Ok(ctx)
+    }
+
+    /// Runs discovery using the bootstrapper's port and the given context.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`DiscoveryError`] returned by the port implementation.
+    pub(crate) fn discover(
+        &self,
+        context: &DiscoveryContext<'_>,
+    ) -> Result<DiscoveryResult, DiscoveryError> {
+        self.port.discover(context)
     }
 }
 
@@ -30,7 +71,57 @@ mod tests {
     use std::ffi::OsStr;
 
     use super::*;
-    use crate::fs::path::{DirPath, FilePath};
+    use crate::{
+        discovery::{
+            context::DiscoveryContext, error::DiscoveryError,
+            service::DiscoveryResult,
+        },
+        fs::{DirPath, FilePath, PathError},
+    };
+
+    // --- Mock port ---
+
+    struct MockPort {
+        result: Result<DiscoveryResult, DiscoveryError>,
+    }
+
+    impl MockPort {
+        fn succeeding(result: DiscoveryResult) -> Self {
+            Self {
+                result: Ok(result),
+            }
+        }
+
+        fn failing() -> Self {
+            Self {
+                result: Err(DiscoveryError::InvalidAnchorDirectory {
+                    path: std::path::PathBuf::from("/bad"),
+                    source: PathError::NotADirectory(std::path::PathBuf::from(
+                        "/bad",
+                    )),
+                }),
+            }
+        }
+    }
+
+    impl DiscoveryPort for MockPort {
+        fn discover(
+            &self,
+            _context: &DiscoveryContext<'_>,
+        ) -> Result<DiscoveryResult, DiscoveryError> {
+            match &self.result {
+                Ok(r) => Ok(r.clone()),
+                Err(_) => Err(DiscoveryError::InvalidAnchorDirectory {
+                    path: std::path::PathBuf::from("/bad"),
+                    source: PathError::NotADirectory(std::path::PathBuf::from(
+                        "/bad",
+                    )),
+                }),
+            }
+        }
+    }
+
+    // --- Fixtures ---
 
     mod fixtures {
         use super::*;
@@ -79,12 +170,18 @@ mod tests {
                     Some(self.ceilings),
                 )
                 .expect("valid env");
-                Bootstrapper::discovery_context(flags, env, self.cwd.path())
+                Bootstrapper::<MockPort>::build_context(
+                    Some(flags),
+                    Some(env),
+                    self.cwd.path(),
+                )
             }
         }
     }
 
-    mod discovery_context {
+    // --- build_context tests ---
+
+    mod build_context {
         use super::*;
 
         mod constructor {
@@ -166,6 +263,78 @@ mod tests {
                     "ceiling_dirs_raw should match the injected ceiling dirs"
                 );
             }
+
+            #[test]
+            fn returns_context_with_default_flags_when_none_given() {
+                let cwd = tempfile::tempdir().expect("cwd dir");
+                let context = Bootstrapper::<MockPort>::build_context(
+                    None,
+                    None,
+                    cwd.path(),
+                )
+                .expect("valid context");
+                assert_eq!(
+                    context.flags(),
+                    &DiscoveryFlags::default(),
+                    "flags should be default when None given"
+                );
+            }
+
+            #[test]
+            fn returns_context_with_default_env_when_none_given() {
+                let cwd = tempfile::tempdir().expect("cwd dir");
+                let context = Bootstrapper::<MockPort>::build_context(
+                    None,
+                    None,
+                    cwd.path(),
+                )
+                .expect("valid context");
+                assert_eq!(
+                    context.env(),
+                    &DiscoveryEnv::default(),
+                    "env should be default when None given"
+                );
+            }
+        }
+    }
+
+    // --- discover tests ---
+
+    mod discover {
+        use super::*;
+
+        #[test]
+        fn returns_result_from_port_when_port_succeeds() {
+            let expected = DiscoveryResult::new(vec![], vec![]);
+            let bootstrapper =
+                Bootstrapper::new(MockPort::succeeding(expected.clone()));
+            let anchor = tempfile::tempdir().expect("anchor");
+            let ctx =
+                DiscoveryContext::new(anchor.path()).expect("valid context");
+
+            let result =
+                bootstrapper.discover(&ctx).expect("discover should succeed");
+
+            assert_eq!(
+                result, expected,
+                "bootstrapper should return the result from the port"
+            );
+        }
+
+        #[test]
+        fn propagates_error_from_port_when_port_fails() {
+            let bootstrapper = Bootstrapper::new(MockPort::failing());
+            let anchor = tempfile::tempdir().expect("anchor");
+            let ctx =
+                DiscoveryContext::new(anchor.path()).expect("valid context");
+
+            let err =
+                bootstrapper.discover(&ctx).expect_err("discover should fail");
+
+            assert!(
+                matches!(err, DiscoveryError::InvalidAnchorDirectory { .. }),
+                "expected InvalidAnchorDirectory, got: {err:?}"
+            );
         }
     }
 }
