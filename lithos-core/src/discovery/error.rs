@@ -185,6 +185,8 @@ mod tests {
         use super::*;
 
         mod formatting {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -313,6 +315,8 @@ mod tests {
         use super::*;
 
         mod formatting {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -369,6 +373,8 @@ mod tests {
         use super::*;
 
         mod formatting {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -426,6 +432,8 @@ mod tests {
         use super::*;
 
         mod formatting {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]

@@ -1,4 +1,5 @@
-//! Boundary data returned by the redesigned discovery service.
+//! Service facade, configuration, and boundary data for the redesigned
+//! discovery service.
 
 use crate::{
     discovery::{
@@ -207,6 +208,8 @@ mod tests {
     }
 
     mod discovery_result {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -272,6 +275,8 @@ mod tests {
         };
 
         mod default {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -311,7 +316,9 @@ mod tests {
             }
         }
 
-        mod construction {
+        mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -320,14 +327,20 @@ mod tests {
                 let global_dir = make_dirpath(&dir);
 
                 let config = DiscoveryServiceConfig {
-                    vault_marker_patterns: VAULT_MARKER_PATTERNS,
-                    global_marker_patterns: GLOBAL_MARKER_PATTERNS,
-                    boundary_markers: BOUNDARY_MARKER_PATTERNS,
                     global_directories: vec![global_dir],
-                    allow_marker_at_ceiling: false,
+                    ..DiscoveryServiceConfig::default()
                 };
 
                 assert_eq!(config.global_directories.len(), 1);
+            }
+
+            #[test]
+            fn disables_marker_at_ceiling() {
+                let config = DiscoveryServiceConfig {
+                    allow_marker_at_ceiling: false,
+                    ..DiscoveryServiceConfig::default()
+                };
+
                 assert!(!config.allow_marker_at_ceiling);
             }
         }
@@ -340,7 +353,7 @@ mod tests {
             VAULT_MARKER_PATTERNS,
         };
 
-        mod new {
+        mod constructor {
             use super::*;
 
             #[test]
