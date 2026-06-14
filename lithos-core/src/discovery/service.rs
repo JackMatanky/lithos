@@ -12,7 +12,8 @@ use crate::{
         port::DiscoveryPort,
         processor::{
             AscendingTraversal, DiscoveryProcessor, EnvOverride,
-            ExplicitOverrideBranch, Finalized, FlagOverride, GlobalResolution,
+            ExplicitOverrideBranch, Finalized, FlagBranch, FlagOverride,
+            GlobalResolution,
         },
         report::DiscoveryReport,
     },
@@ -200,6 +201,24 @@ impl DiscoveryPort for DiscoveryService {
     ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError> {
         let init = DiscoveryProcessor::new(&self.config, context);
         let flag: DiscoveryProcessor<FlagOverride> = From::from(init);
+
+        // Flags have highest precedence. If they fully determine the pipeline
+        // path, skip env entirely.
+        match flag.flag_branch() {
+            FlagBranch::VaultAndConfigSet => {
+                let final_s: DiscoveryProcessor<Finalized> = From::from(flag);
+                return Ok(final_s.finalize());
+            }
+            FlagBranch::VaultOnlySet => {
+                let global: DiscoveryProcessor<GlobalResolution> =
+                    From::from(flag);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                return Ok(final_s.finalize());
+            }
+            FlagBranch::ConsultEnv => {}
+        }
+
+        // Flags were insufficient; consult environment variables.
         let env: DiscoveryProcessor<EnvOverride> = From::from(flag);
 
         match env.branch_strategy() {

@@ -9,15 +9,20 @@
 //!
 //! ```text
 //! Init
-//!  └─ FlagOverride          (probe flag vault dir; probe env vault dir; parse ceilings)
-//!      └─ EnvOverride       (set ExplicitConfigFile stop reason if config override present)
-//!          ├─ AscendingTraversal ──┬─ GlobalResolution ─┬─ Finalized
-//!          │                       └─────────────────────┘
-//!          └─────────────────────────────────────────────── Finalized
+//!  └─ FlagOverride      (probe flag vault/config; parse ceilings)
+//!      ├─ [flag vault + flag config] ──────────────────────────── Finalized
+//!      ├─ [flag vault only] ───────────── GlobalResolution ─────► Finalized
+//!      └─ [flags insufficient] ──► EnvOverride
+//!                                      ├─ [env vault + env config] ── Finalized
+//!                                      ├─ [env vault only] ─── GlobalResolution ─► Finalized
+//!                                      ├─ [env config only] ─► AscendingTraversal ─► Finalized
+//!                                      └─ [no overrides] ────► AscendingTraversal ─► GlobalResolution ─► Finalized
 //! ```
 //!
-//! The active branch is selected by [`DiscoveryProcessor::branch_strategy`]
-//! after the `EnvOverride` phase.
+//! Flags have highest precedence. [`FlagOverride::flag_branch`] decides
+//! whether the pipeline is complete from flags alone. Only when flags are
+//! insufficient does the pipeline advance to [`EnvOverride`], where
+//! [`EnvOverride::branch_strategy`] makes the final routing decision.
 
 use std::{collections::HashSet, marker::PhantomData, path::PathBuf};
 
@@ -41,15 +46,21 @@ use crate::fs::DirPath;
 /// Initial phase. Holds the context and config; no probing has occurred yet.
 pub(crate) struct Init;
 
-/// Flag and environment vault directories have been probed. Ceiling data has
-/// been parsed into [`DiscoveryReport::skipped_ceilings`]. Vault candidates
-/// are populated if an explicit vault dir was provided via flags or
-/// environment.
+/// CLI flag overrides have been applied. Vault candidates are populated if a
+/// flag vault dir was provided. Ceiling data is parsed. [`flag_branch`] on
+/// this phase decides whether the pipeline is complete from flags alone or
+/// must advance to [`EnvOverride`] to consult environment variables.
+///
+/// [`flag_branch`]: DiscoveryProcessor::flag_branch
 pub(crate) struct FlagOverride;
 
-/// All overrides have been inspected. If an explicit config file was supplied
-/// (via flags or environment), [`LocalTraversalStopReason::ExplicitConfigFile`]
-/// is already set on the report. The branch strategy is now deterministic.
+/// Environment variable overrides have been applied. Reached only when CLI
+/// flags alone were insufficient to determine the full pipeline path. If an
+/// explicit config file was supplied (via env),
+/// [`LocalTraversalStopReason::ExplicitConfigFile`] is set on the report.
+/// [`branch_strategy`] on this phase makes the final routing decision.
+///
+/// [`branch_strategy`]: DiscoveryProcessor::branch_strategy
 pub(crate) struct EnvOverride;
 
 /// Ascending traversal has run from the context anchor (or resolved env
@@ -96,6 +107,27 @@ pub(crate) enum ExplicitOverrideBranch {
     AscendSkipGlobal,
     /// No overrides: ascending traversal runs, then global resolution runs.
     AscendThenGlobal,
+}
+
+/// The routing decision made from CLI flags alone, before env vars are read.
+///
+/// Returned by [`DiscoveryProcessor::flag_branch`] on the [`FlagOverride`]
+/// phase. If flags fully determine the pipeline path, the service skips
+/// [`EnvOverride`] entirely, enforcing flag > env precedence at the
+/// structural level.
+///
+/// [`DiscoveryService`]: super::service::DiscoveryService
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FlagBranch {
+    /// Flag vault dir + flag config file: both paths are known from flags
+    /// alone. Skip global resolution and env entirely.
+    VaultAndConfigSet,
+    /// Flag vault dir only, no flag config file: vault is known; global
+    /// resolution still runs. Env is not consulted.
+    VaultOnlySet,
+    /// Flags alone are insufficient to determine the full path. Advance to
+    /// [`EnvOverride`] to check environment variables.
+    ConsultEnv,
 }
 
 // ---------------------------------------------------------------------------
@@ -211,26 +243,46 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
 }
 
 // ---------------------------------------------------------------------------
-// FlagOverride → EnvOverride
+// FlagOverride: branch decision
+// ---------------------------------------------------------------------------
+
+impl DiscoveryProcessor<'_, FlagOverride> {
+    /// Decides the pipeline path from CLI flags alone.
+    ///
+    /// Called by [`DiscoveryService`] before consulting env vars. When the
+    /// return value is not [`FlagBranch::ConsultEnv`], the service uses the
+    /// appropriate `FlagOverride →` transition directly and never constructs
+    /// an [`EnvOverride`] processor.
+    ///
+    /// [`DiscoveryService`]: super::service::DiscoveryService
+    pub(crate) fn flag_branch(&self) -> FlagBranch {
+        let has_flag_vault = self.ctx.flags().vault_dir().is_some();
+        let has_flag_config = self.ctx.flags().config_file().is_some();
+
+        match (has_flag_vault, has_flag_config) {
+            (true, true) => FlagBranch::VaultAndConfigSet,
+            (true, false) => FlagBranch::VaultOnlySet,
+            _ => FlagBranch::ConsultEnv,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FlagOverride → Finalized  (VaultAndConfigSet branch)
 // ---------------------------------------------------------------------------
 
 impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
-    for DiscoveryProcessor<'ctx, EnvOverride>
+    for DiscoveryProcessor<'ctx, Finalized>
 {
-    /// Records whether an explicit config file preempts local traversal.
+    /// Finalizes directly from `FlagOverride` when both a vault dir and a
+    /// config file were supplied via CLI flags.
     ///
-    /// If a config file override is present (via flags or environment),
-    /// [`LocalTraversalStopReason::ExplicitConfigFile`] is set on the report.
-    /// Vault candidates and ceiling data are carried forward unchanged.
+    /// Neither env vars nor global resolution are consulted — flags have
+    /// the highest precedence and fully determine the result.
     fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
-        let has_config = val.ctx.flags().config_file().is_some()
-            || val.ctx.env().config_file().is_some();
-
         let mut report = val.report;
-        if has_config {
-            report.local_traversal_stop_reason =
-                LocalTraversalStopReason::ExplicitConfigFile;
-        }
+        report.local_traversal_stop_reason =
+            LocalTraversalStopReason::ExplicitConfigFile;
 
         DiscoveryProcessor {
             config: val.config,
@@ -245,24 +297,96 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
 }
 
 // ---------------------------------------------------------------------------
+// FlagOverride → GlobalResolution  (VaultOnlySet branch)
+// ---------------------------------------------------------------------------
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
+    for DiscoveryProcessor<'ctx, GlobalResolution>
+{
+    /// Advances to global resolution when only a flag vault dir is set (no
+    /// flag config file).
+    ///
+    /// The vault is already probed; env vars are not consulted because the
+    /// vault source is fully determined by the flag.
+    fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
+        run_global_resolution(val)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FlagOverride → EnvOverride  (ConsultEnv branch)
+// ---------------------------------------------------------------------------
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
+    for DiscoveryProcessor<'ctx, EnvOverride>
+{
+    /// Applies environment variable overrides.
+    ///
+    /// Only reached when [`flag_branch`] returned [`FlagBranch::ConsultEnv`],
+    /// meaning no flag vault dir was set. This transition probes the env vault
+    /// dir (if present) and records
+    /// [`LocalTraversalStopReason::ExplicitConfigFile`] if an env config
+    /// file is set.
+    ///
+    /// [`flag_branch`]: DiscoveryProcessor::flag_branch
+    fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
+        let vault_probe = FolderProbe {
+            patterns: val.config.vault_marker_patterns,
+        };
+
+        // No flag vault dir on this path (flag_branch ruled that out).
+        // Probe env vault dir if present.
+        let vault = val
+            .ctx
+            .env()
+            .vault_dir()
+            .map(|d| vault_probe.probe(d))
+            .filter(|v| !v.is_empty())
+            .unwrap_or(val.vault);
+
+        // A flag config file also preempts local traversal even on the
+        // ConsultEnv path (flag config + no flag vault). Record this here so
+        // the stop reason is correct for all ConsultEnv sub-paths.
+        let has_config_override = val.ctx.flags().config_file().is_some()
+            || val.ctx.env().config_file().is_some();
+        let mut report = val.report;
+        if has_config_override {
+            report.local_traversal_stop_reason =
+                LocalTraversalStopReason::ExplicitConfigFile;
+        }
+
+        DiscoveryProcessor {
+            config: val.config,
+            ctx: val.ctx,
+            vault,
+            global: val.global,
+            report,
+            ceilings: val.ceilings,
+            _phase: PhantomData,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // EnvOverride: branch strategy
 // ---------------------------------------------------------------------------
 
 impl DiscoveryProcessor<'_, EnvOverride> {
-    /// Determines the execution path for the remainder of the pipeline.
+    /// Determines the execution path when flags alone were insufficient.
     ///
-    /// Must be called after the [`EnvOverride`] phase is reached. The
-    /// [`DiscoveryService`] uses the returned variant to select the correct
-    /// `From`/`TryFrom` transition.
+    /// Only called after [`FlagBranch::ConsultEnv`] was returned by
+    /// [`flag_branch`]. Checks environment variables only — CLI flags have
+    /// already been ruled out as insufficient at this point.
     ///
-    /// [`DiscoveryService`]: super::service::DiscoveryService
+    /// [`flag_branch`]: DiscoveryProcessor::flag_branch
     pub(crate) fn branch_strategy(&self) -> ExplicitOverrideBranch {
-        let has_vault_override = self.ctx.flags().vault_dir().is_some()
-            || self.ctx.env().vault_dir().is_some();
-        let has_config_override = self.ctx.flags().config_file().is_some()
-            || self.ctx.env().config_file().is_some();
+        // This phase is only reached when flag_branch() returned ConsultEnv,
+        // so no flag vault dir or flag config file is set. Branch on env vars
+        // only.
+        let has_env_vault = self.ctx.env().vault_dir().is_some();
+        let has_env_config = self.ctx.env().config_file().is_some();
 
-        match (has_vault_override, has_config_override) {
+        match (has_env_vault, has_env_config) {
             (true, true) => ExplicitOverrideBranch::VaultProbedSkipGlobal,
             (true, false) => ExplicitOverrideBranch::VaultProbedRunGlobal,
             (false, true) => ExplicitOverrideBranch::AscendSkipGlobal,
@@ -773,50 +897,7 @@ mod tests {
         }
 
         #[test]
-        fn probes_env_vault_dir_when_no_flag_vault_dir() {
-            let root = tempfile::tempdir().expect("root");
-            let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
-
-            let config = default_config();
-            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
-                .expect("env");
-            let ctx = make_context(root.path()).expect("ctx").with_env(env);
-
-            let flag: DiscoveryProcessor<FlagOverride> =
-                DiscoveryProcessor::new(&config, &ctx).into();
-
-            assert!(!flag.vault.is_empty());
-        }
-
-        #[test]
-        fn flag_vault_dir_takes_precedence_over_env_vault_dir() {
-            let root = tempfile::tempdir().expect("root");
-            let flag_vault = tempfile::tempdir().expect("flag vault");
-            let env_vault = tempfile::tempdir().expect("env vault");
-            write_marker(flag_vault.path(), "lithos.toml");
-            // env vault has no marker — if env were probed first, vault would
-            // be empty flag vault has a marker — flag must win
-
-            let config = default_config();
-            let flags =
-                DiscoveryFlags::new(None, Some(flag_vault.path()), false)
-                    .expect("flags");
-            let env = DiscoveryEnv::new(None, Some(env_vault.path()), None)
-                .expect("env");
-            let ctx = make_context(root.path())
-                .expect("ctx")
-                .with_flags(flags)
-                .with_env(env);
-
-            let flag: DiscoveryProcessor<FlagOverride> =
-                DiscoveryProcessor::new(&config, &ctx).into();
-
-            assert!(!flag.vault.is_empty(), "flag vault dir must win");
-        }
-
-        #[test]
-        fn vault_is_empty_when_no_vault_dir_provided() {
+        fn vault_is_empty_when_no_flag_vault_dir() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
@@ -842,10 +923,7 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
 
-            assert!(
-                !flag.ceilings.is_empty(),
-                "ceiling should be parsed from env"
-            );
+            assert!(!flag.ceilings.is_empty());
         }
 
         #[test]
@@ -865,12 +943,115 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // FlagOverride → EnvOverride
+    // FlagOverride::flag_branch
+    // -----------------------------------------------------------------------
+
+    mod flag_branch {
+        use super::*;
+
+        fn make_flag<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, FlagOverride> {
+            DiscoveryProcessor::new(config, ctx).into()
+        }
+
+        #[test]
+        fn both_flag_vault_and_config_yields_vault_and_config_set() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags = DiscoveryFlags::new(
+                Some(config_file.path()),
+                Some(vault_dir.path()),
+                false,
+            )
+            .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            assert_eq!(
+                make_flag(&config, &ctx).flag_branch(),
+                FlagBranch::VaultAndConfigSet
+            );
+        }
+
+        #[test]
+        fn flag_vault_only_yields_vault_only_set() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(None, Some(vault_dir.path()), false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            assert_eq!(
+                make_flag(&config, &ctx).flag_branch(),
+                FlagBranch::VaultOnlySet
+            );
+        }
+
+        #[test]
+        fn flag_config_only_yields_consult_env() {
+            // A flag config file alone does not short-circuit; env must still
+            // be consulted for a possible vault override.
+            let root = tempfile::tempdir().expect("root");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(Some(config_file.path()), None, false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            assert_eq!(
+                make_flag(&config, &ctx).flag_branch(),
+                FlagBranch::ConsultEnv
+            );
+        }
+
+        #[test]
+        fn no_flags_yields_consult_env() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            assert_eq!(
+                make_flag(&config, &ctx).flag_branch(),
+                FlagBranch::ConsultEnv
+            );
+        }
+
+        #[test]
+        fn env_vault_does_not_affect_flag_branch() {
+            // flag_branch only reads CLI flags; env vars are ignored here.
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            assert_eq!(
+                make_flag(&config, &ctx).flag_branch(),
+                FlagBranch::ConsultEnv
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // FlagOverride → EnvOverride  (ConsultEnv path only)
     // -----------------------------------------------------------------------
 
     mod flag_to_env_override {
         use super::*;
 
+        /// Advances to `EnvOverride` via the `ConsultEnv` path (no flag
+        /// vault dir set, so `flag_branch` returns `ConsultEnv`).
         fn advance_to_env<'a>(
             config: &'a DiscoveryServiceConfig,
             ctx: &'a DiscoveryContext<'a>,
@@ -881,7 +1062,36 @@ mod tests {
         }
 
         #[test]
+        fn probes_env_vault_dir_when_present() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let env_p = advance_to_env(&config, &ctx);
+
+            assert!(!env_p.vault.is_empty());
+        }
+
+        #[test]
+        fn vault_is_empty_when_no_env_vault_dir() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let env_p = advance_to_env(&config, &ctx);
+
+            assert!(env_p.vault.is_empty());
+        }
+
+        #[test]
         fn sets_explicit_config_stop_reason_when_flag_config_present() {
+            // Flag config only reaches EnvOverride via ConsultEnv; the stop
+            // reason must be set here even though env has no config override.
             let root = tempfile::tempdir().expect("root");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
@@ -891,10 +1101,10 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let env = advance_to_env(&config, &ctx);
+            let env_p = advance_to_env(&config, &ctx);
 
             assert_eq!(
-                env.report.local_traversal_stop_reason,
+                env_p.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::ExplicitConfigFile
             );
         }
@@ -911,36 +1121,38 @@ mod tests {
             let ctx =
                 make_context(root.path()).expect("ctx").with_env(env_override);
 
-            let env = advance_to_env(&config, &ctx);
+            let env_p = advance_to_env(&config, &ctx);
 
             assert_eq!(
-                env.report.local_traversal_stop_reason,
+                env_p.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::ExplicitConfigFile
             );
         }
 
         #[test]
-        fn leaves_stop_reason_as_filesystem_root_when_no_config_override() {
+        fn leaves_stop_reason_as_filesystem_root_when_no_env_config() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
 
-            let env = advance_to_env(&config, &ctx);
+            let env_p = advance_to_env(&config, &ctx);
 
             assert_eq!(
-                env.report.local_traversal_stop_reason,
+                env_p.report.local_traversal_stop_reason,
                 LocalTraversalStopReason::FilesystemRoot
             );
         }
     }
 
     // -----------------------------------------------------------------------
-    // EnvOverride::branch_strategy
+    // EnvOverride::branch_strategy  (env vars only; no flag overrides)
     // -----------------------------------------------------------------------
 
     mod branch_strategy {
         use super::*;
 
+        /// Advances to `EnvOverride` with no CLI flags set, so only env vars
+        /// influence `branch_strategy`.
         fn advance_to_env<'a>(
             config: &'a DiscoveryServiceConfig,
             ctx: &'a DiscoveryContext<'a>,
@@ -951,19 +1163,19 @@ mod tests {
         }
 
         #[test]
-        fn vault_and_config_override_yields_vault_probed_skip_global() {
+        fn env_vault_and_config_yields_vault_probed_skip_global() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
-            let flags = DiscoveryFlags::new(
+            let env = DiscoveryEnv::new(
                 Some(config_file.path()),
                 Some(vault_dir.path()),
-                false,
+                None,
             )
-            .expect("flags");
-            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+            .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             assert_eq!(
                 advance_to_env(&config, &ctx).branch_strategy(),
@@ -972,53 +1184,7 @@ mod tests {
         }
 
         #[test]
-        fn vault_override_only_yields_vault_probed_run_global() {
-            let root = tempfile::tempdir().expect("root");
-            let vault_dir = tempfile::tempdir().expect("vault dir");
-
-            let config = default_config();
-            let flags =
-                DiscoveryFlags::new(None, Some(vault_dir.path()), false)
-                    .expect("flags");
-            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
-
-            assert_eq!(
-                advance_to_env(&config, &ctx).branch_strategy(),
-                ExplicitOverrideBranch::VaultProbedRunGlobal
-            );
-        }
-
-        #[test]
-        fn config_override_only_yields_ascend_skip_global() {
-            let root = tempfile::tempdir().expect("root");
-            let config_file = tempfile::NamedTempFile::new().expect("config");
-
-            let config = default_config();
-            let flags =
-                DiscoveryFlags::new(Some(config_file.path()), None, false)
-                    .expect("flags");
-            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
-
-            assert_eq!(
-                advance_to_env(&config, &ctx).branch_strategy(),
-                ExplicitOverrideBranch::AscendSkipGlobal
-            );
-        }
-
-        #[test]
-        fn no_overrides_yields_ascend_then_global() {
-            let root = tempfile::tempdir().expect("root");
-            let config = default_config();
-            let ctx = make_context(root.path()).expect("ctx");
-
-            assert_eq!(
-                advance_to_env(&config, &ctx).branch_strategy(),
-                ExplicitOverrideBranch::AscendThenGlobal
-            );
-        }
-
-        #[test]
-        fn env_vault_dir_yields_vault_probed_run_global() {
+        fn env_vault_only_yields_vault_probed_run_global() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
@@ -1030,6 +1196,34 @@ mod tests {
             assert_eq!(
                 advance_to_env(&config, &ctx).branch_strategy(),
                 ExplicitOverrideBranch::VaultProbedRunGlobal
+            );
+        }
+
+        #[test]
+        fn env_config_only_yields_ascend_skip_global() {
+            let root = tempfile::tempdir().expect("root");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            assert_eq!(
+                advance_to_env(&config, &ctx).branch_strategy(),
+                ExplicitOverrideBranch::AscendSkipGlobal
+            );
+        }
+
+        #[test]
+        fn no_env_overrides_yields_ascend_then_global() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            assert_eq!(
+                advance_to_env(&config, &ctx).branch_strategy(),
+                ExplicitOverrideBranch::AscendThenGlobal
             );
         }
     }
@@ -1341,10 +1535,11 @@ mod tests {
     mod pipeline {
         use super::*;
 
-        // --- VaultProbedSkipGlobal ---
+        // --- FlagOverride → Finalized (flag vault + flag config) ---
+        // Both paths are known from flags; EnvOverride is never entered.
 
         #[test]
-        fn vault_probed_skip_global_vault_is_populated() {
+        fn flag_vault_and_config_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -1359,21 +1554,17 @@ mod tests {
             .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            assert_eq!(
-                env.branch_strategy(),
-                ExplicitOverrideBranch::VaultProbedSkipGlobal
-            );
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            assert_eq!(flag.flag_branch(), FlagBranch::VaultAndConfigSet);
+            let final_: DiscoveryProcessor<Finalized> = flag.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.vault().is_empty());
         }
 
         #[test]
-        fn vault_probed_skip_global_global_is_empty() {
+        fn flag_vault_and_config_global_is_empty() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -1388,20 +1579,17 @@ mod tests {
             .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let final_: DiscoveryProcessor<Finalized> = flag.into();
             let (result, _) = final_.finalize();
 
             assert!(result.global().is_empty());
         }
 
         #[test]
-        fn vault_probed_skip_global_skip_reason_is_none() {
-            // VaultProbedSkipGlobal skips global because the pipeline is
-            // complete, NOT because the user passed --no-global-config.
-            // The skip reason must therefore be None.
+        fn flag_vault_and_config_skip_reason_is_none() {
+            // Pipeline is complete from flags — not suppressed by --no-global.
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -1416,23 +1604,45 @@ mod tests {
             .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let final_: DiscoveryProcessor<Finalized> = flag.into();
             let (_, report) = final_.finalize();
 
-            assert!(
-                report.global_resolution_skip_reason.is_none(),
-                "skip reason must be None when global is skipped due to \
-                 complete overrides, not --no-global-config"
+            assert!(report.global_resolution_skip_reason.is_none());
+        }
+
+        #[test]
+        fn flag_vault_and_config_stop_reason_is_explicit_config_file() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags = DiscoveryFlags::new(
+                Some(config_file.path()),
+                Some(vault_dir.path()),
+                false,
+            )
+            .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let final_: DiscoveryProcessor<Finalized> = flag.into();
+            let (_, report) = final_.finalize();
+
+            assert_eq!(
+                report.local_traversal_stop_reason,
+                LocalTraversalStopReason::ExplicitConfigFile
             );
         }
 
-        // --- VaultProbedRunGlobal ---
+        // --- FlagOverride → GlobalResolution (flag vault only) ---
+        // Vault is known from flag; global still runs; EnvOverride is skipped.
 
         #[test]
-        fn vault_probed_run_global_vault_is_populated() {
+        fn flag_vault_only_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -1451,14 +1661,10 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            assert_eq!(
-                env.branch_strategy(),
-                ExplicitOverrideBranch::VaultProbedRunGlobal
-            );
-            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            assert_eq!(flag.flag_branch(), FlagBranch::VaultOnlySet);
+            let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = global.into();
             let (result, _) = final_.finalize();
 
@@ -1466,7 +1672,7 @@ mod tests {
         }
 
         #[test]
-        fn vault_probed_run_global_global_is_populated() {
+        fn flag_vault_only_global_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
             write_marker(vault_dir.path(), "lithos.toml");
@@ -1485,10 +1691,9 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = global.into();
             let (result, _) = final_.finalize();
 
@@ -1496,7 +1701,7 @@ mod tests {
         }
 
         #[test]
-        fn vault_probed_run_global_skip_reason_is_none() {
+        fn flag_vault_only_skip_reason_is_none() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
@@ -1506,22 +1711,26 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let global: DiscoveryProcessor<GlobalResolution> = env.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = global.into();
             let (_, report) = final_.finalize();
 
             assert!(report.global_resolution_skip_reason.is_none());
         }
 
-        // --- AscendSkipGlobal ---
+        // --- ConsultEnv → AscendSkipGlobal (flag config only; no flag vault)
+        // ---
 
         #[test]
-        fn ascend_skip_global_global_is_empty() {
+        fn flag_config_only_branch_strategy_is_ascend_then_global() {
+            // With only a flag config (no flag vault, no env overrides),
+            // branch_strategy checks env vars only and finds none →
+            // AscendThenGlobal. The stop reason is still ExplicitConfigFile
+            // (set during FlagOverride → EnvOverride). Global resolution
+            // still runs because no vault is known.
             let root = tempfile::tempdir().expect("root");
-            write_marker(root.path(), "lithos.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
@@ -1530,15 +1739,66 @@ mod tests {
                     .expect("flags");
             let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            assert_eq!(flag.flag_branch(), FlagBranch::ConsultEnv);
+            let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
+
             assert_eq!(
-                env.branch_strategy(),
+                env_p.branch_strategy(),
+                ExplicitOverrideBranch::AscendThenGlobal
+            );
+        }
+
+        #[test]
+        fn flag_config_only_stop_reason_is_explicit_config_file() {
+            let root = tempfile::tempdir().expect("root");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let flags =
+                DiscoveryFlags::new(Some(config_file.path()), None, false)
+                    .expect("flags");
+            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
+            let ascend: DiscoveryProcessor<AscendingTraversal> =
+                env_p.try_into().expect("ascend");
+            let final_: DiscoveryProcessor<Finalized> = ascend.into();
+            let (_, report) = final_.finalize();
+
+            assert_eq!(
+                report.local_traversal_stop_reason,
+                LocalTraversalStopReason::ExplicitConfigFile
+            );
+        }
+
+        // --- ConsultEnv → AscendSkipGlobal (env config only; no flag
+        // overrides) ---
+
+        #[test]
+        fn env_config_only_ascend_skip_global_global_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            write_marker(root.path(), "lithos.toml");
+            let config_file = tempfile::NamedTempFile::new().expect("config");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            assert_eq!(flag.flag_branch(), FlagBranch::ConsultEnv);
+            let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
+            assert_eq!(
+                env_p.branch_strategy(),
                 ExplicitOverrideBranch::AscendSkipGlobal
             );
             let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env.try_into().expect("ascend");
+                env_p.try_into().expect("ascend");
             let final_: DiscoveryProcessor<Finalized> = ascend.into();
             let (result, _) = final_.finalize();
 
@@ -1546,21 +1806,21 @@ mod tests {
         }
 
         #[test]
-        fn ascend_skip_global_stop_reason_is_explicit_config_file() {
+        fn env_config_only_ascend_skip_global_stop_reason_is_explicit_config_file()
+         {
             let root = tempfile::tempdir().expect("root");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
-            let flags =
-                DiscoveryFlags::new(Some(config_file.path()), None, false)
-                    .expect("flags");
-            let ctx = make_context(root.path()).expect("ctx").with_flags(flags);
+            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
+                .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
-            let init = DiscoveryProcessor::new(&config, &ctx);
-            let flag: DiscoveryProcessor<FlagOverride> = init.into();
-            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            let flag: DiscoveryProcessor<FlagOverride> =
+                DiscoveryProcessor::new(&config, &ctx).into();
+            let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
             let ascend: DiscoveryProcessor<AscendingTraversal> =
-                env.try_into().expect("ascend");
+                env_p.try_into().expect("ascend");
             let final_: DiscoveryProcessor<Finalized> = ascend.into();
             let (_, report) = final_.finalize();
 
