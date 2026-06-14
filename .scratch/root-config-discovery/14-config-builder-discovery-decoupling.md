@@ -1,6 +1,6 @@
 ---
 title: 14-config-builder-discovery-decoupling
-category: refactor
+category: enhancement
 label: ready-for-agent
 status: open
 date_created: 2026-06-12
@@ -19,33 +19,53 @@ AFK
 
 - `.scratch/root-config-discovery/PRD.md`
 - `.scratch/root-config-discovery/discovery-redesign-decisions.md`
+- `.scratch/root-config-discovery/10-bootstrap-context-discovery-contracts.md`
+- `.scratch/root-config-discovery/11-discovery-service-config.md`
+- `.scratch/root-config-discovery/12-discovery-typestate-run.md`
+- `.scratch/root-config-discovery/13-bootstrapper-orchestration-flow.md`
 - `docs/adr/config/0001-config-builder-decoupling.md`
 
 ## What to build
 
 Refactor `config/Builder` so Config no longer orchestrates Discovery.
 
-This slice should make Config consume discovery output through a narrow adapter method, then build global and vault config through Config-owned processors only.
+This slice should make Config consume the app-level Discovery output established by issue `13` through a narrow adapter method, then build global and vault config through Config-owned processors only.
+
+Issue `13` must land first because `Builder::from_discovery()` should be implemented against the real `DiscoveryResult` produced by the Bootstrapper flow, not against a speculative Discovery API from older ADR text.
+
+## Current state
+
+Issues `10`-`13` are the implementation source of truth for this slice, even where older ADR text differs.
+
+The active Discovery handoff is:
+
+- `DiscoveryResult` with separate ordered `vault` and `global` candidate vectors.
+- `CandidatePath { base: DirPath, path: FilePath }`.
+- No separate `vault_root`; the vault root is derived from the selected vault candidate's `base`.
+- No stored format field; format-sensitive behavior must derive from the candidate path when Config needs it.
+- No `DiscoveredMarker`, `InvocationInput`, `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, or `DiscoveryPolicy` in the new integration path.
 
 ## Acceptance criteria
 
-- [ ] `Builder::from_discovery()` is the only Config entry point that accepts a `discovery::DiscoveryResult`.
-- [ ] `Builder::from_discovery()` validates `vault_root` into `VaultRoot`, gets or creates `VaultId`, and stores winning global/vault marker state internally.
+- [ ] `Builder::from_discovery()` is the only Config entry point that accepts a `discovery::service::DiscoveryResult`.
+- [ ] `Builder::from_discovery()` derives the vault root from the winning vault `CandidatePath::base()`, validates it into `VaultRoot`, gets or creates `VaultId`, and stores winning global/vault candidate state internally.
 - [ ] `Builder::from_discovery()` stays thin: type conversion, `VaultId` lookup/creation, winner marker extraction, and internal builder state only.
-- [ ] `Builder::from_discovery()` consumes Discovery's validated FS path/metadata handoff (`DirPath`, `FilePath`/`FileNode`, `FileMetadata`) instead of re-validating plain `PathBuf` marker paths.
+- [ ] `Builder::from_discovery()` consumes Discovery's validated `CandidatePath { base: DirPath, path: FilePath }` handoff instead of re-validating plain `PathBuf` marker paths.
 - [ ] `Builder::build()` orchestrates `build_global()` and `build_vault()` based on discovered marker presence.
+- [ ] `Builder::from_discovery()` returns an explicit error when no vault candidate exists, because the current `Config` aggregate requires a runtime `VaultRoot` for vault metadata even when only Environment Config was discovered.
 - [ ] `Builder::build()` returns an error when both global and vault marker state are absent.
-- [ ] `Builder::build()` calls `build_global()` only for global-only input, calls `build_vault()` only for vault-only input, and calls both then merges through `build_from_layers()` when both are present.
+- [ ] `Builder::build()` calls `build_vault()` only for vault-only input and calls both `build_global()` and `build_vault()` then merges through `build_from_layers()` when both are present.
 - [ ] `Builder::build_global()` and `Builder::build_vault()` are independently testable and contain no discovery orchestration.
 - [ ] `build_from_layers()` remains the unchanged pure config-domain merge seam.
 - [ ] `Builder` no longer stores `start_dir`.
 - [ ] `config/root.rs` is deleted; `ConfigDiscoveryResult` and `DiscoveredConfigFile` are removed.
 - [ ] `config/builder.rs` no longer imports `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, or discovery policy types.
-- [ ] `ConfigDiscoveryPipeline` keeps its name but receives already-extracted winner marker file nodes/metadata from `Builder::from_discovery()`.
+- [ ] `config/builder.rs` imports the new `discovery::service::DiscoveryResult` only for `Builder::from_discovery()`.
+- [ ] `ConfigDiscoveryPipeline` keeps its name but receives already-extracted winning `CandidatePath` data from `Builder::from_discovery()`.
 - [ ] `ConfigDiscoveryPipeline` has no dependency on discovery types.
-- [ ] Config only reads file contents and queries cached views; file-vs-directory validation and marker metadata capture remain owned by Discovery/FS.
+- [ ] Config only reads file contents and queries/captures cached file views; file-vs-directory validation remains owned by Discovery/FS path types.
 - [ ] Existing staleness behavior remains owned by `ConfigFileProcessor::compare()`; no `BuildMode` is introduced.
-- [ ] Tests prove Config can build from vault-only, global-only, and combined discovery outputs.
+- [ ] Tests prove Config can build from vault-only and combined discovery outputs, and returns an explicit error for global-only/no-vault discovery output.
 
 ## Blocked by
 
@@ -61,31 +81,32 @@ This slice should make Config consume discovery output through a narrow adapter 
 **Summary:** Refactor Config builder so Config consumes discovery results without orchestrating Discovery.
 
 **Current behavior:**
-Config builder responsibilities include or depend on discovery orchestration concepts, which couples Config to the process that locates roots and marker files.
+Config builder responsibilities still include legacy discovery orchestration concepts (`DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, `DiscoveryPolicy`, and `config/root.rs` bridge types), which couples Config to the process that locates roots and marker files.
 
 **Desired behavior:**
-Config receives already-discovered, FS-validated marker data through a narrow `Builder::from_discovery()` adapter. Config then owns only Config-domain work: resolving vault identity, reading selected marker files, comparing staleness, processing global/vault layers, and producing `Config`.
+Config receives the Bootstrapper-produced, FS-validated `DiscoveryResult` through a narrow `Builder::from_discovery()` adapter. Config then owns only Config-domain work: resolving vault identity from the winning vault candidate base, reading selected marker files, comparing staleness, processing global/vault layers, and producing `Config`.
 
 **Key interfaces:**
-- `Builder::from_discovery()` — the only Config entry point that accepts `discovery::DiscoveryResult`.
-- `Builder::from_discovery()` — stays a thin adapter: conversion, vault identity, and selected marker state.
+- `Builder::from_discovery()` — the only Config entry point that accepts `discovery::service::DiscoveryResult`.
+- `CandidatePath` — validated Discovery candidate with `base: DirPath` and `path: FilePath`.
+- `Builder::from_discovery()` — stays a thin adapter: candidate selection, vault-root conversion, vault identity, and selected marker state.
 - `Builder::build()` — Config-owned orchestration of global/vault build methods.
 - `Builder::build_global()` and `Builder::build_vault()` — independently testable source processors.
-- `ConfigDiscoveryPipeline` — keeps its name, receives already-selected marker file nodes or metadata, and does not import discovery types.
+- `ConfigDiscoveryPipeline` — keeps its name, receives already-selected Config-owned candidate state, and does not import discovery types.
 - `ConfigFileProcessor::compare()` — continues to own staleness behavior.
 - `build_from_layers()` — remains the unchanged merge seam.
 
 **Acceptance criteria:**
-- [ ] Config imports `discovery::DiscoveryResult` in exactly one adapter method.
+- [ ] Config imports `discovery::service::DiscoveryResult` in exactly one adapter method.
 - [ ] Config no longer orchestrates discovery and no longer imports discovery engine/input/policy types.
-- [ ] `Builder::from_discovery()` converts discovery output into Config-domain state without re-proving marker file identity.
-- [ ] `Builder::build()` implements the empty/global-only/vault-only/combined marker matrix from the redesign decisions.
+- [ ] `Builder::from_discovery()` converts `DiscoveryResult` / `CandidatePath` output into Config-domain state without re-proving marker file identity.
+- [ ] `Builder::build()` implements the empty/vault-only/combined marker matrix, while no-vault/global-only discovery output fails before build with a clear missing vault root error.
 - [ ] `build_global()`, `build_vault()`, and `build()` are testable separately from discovery.
 - [ ] Redundant discovery bridge types are removed with `config/root.rs`.
-- [ ] Tests prove vault-only, global-only, and combined discovery outputs build correctly.
+- [ ] Tests prove vault-only and combined discovery outputs build correctly, and global-only/no-vault output fails clearly.
 
 **Out of scope:**
 - Changing the DiscoveryService public API.
-- Bootstrapper implementation.
+- Bootstrapper implementation beyond consuming the result shape from issue `13`.
 - CLI discovery subcommands.
 - Replacing existing staleness comparison with a new build mode.

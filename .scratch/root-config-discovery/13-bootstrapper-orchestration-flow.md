@@ -19,30 +19,48 @@ AFK
 
 - `.scratch/root-config-discovery/PRD.md`
 - `.scratch/root-config-discovery/discovery-redesign-decisions.md`
+- `.scratch/root-config-discovery/10-bootstrap-context-discovery-contracts.md`
+- `.scratch/root-config-discovery/11-discovery-service-config.md`
+- `.scratch/root-config-discovery/12-discovery-typestate-run.md`
 - `docs/adr/024-bootstrapper-orchestration.md`
 
 ## What to build
 
-Add the `app/Bootstrapper` orchestration flow that wires Discovery to Config without coupling either context to the other.
+Add the `app/Bootstrapper` orchestration flow that runs the redesigned Discovery service and exposes the discovered candidates plus report metadata through the app layer.
 
-This slice should make `app/` the only layer that imports both `discovery/` and `config/`, returning a `BootstrapResult` for CLI and future app-level callers.
+This slice should turn the existing `Bootstrapper<D: DiscoveryPort>` seam from issue `10` into the app-level runtime entry point for Discovery. It must construct `DiscoveryServiceConfig`, create `DiscoveryService::new(config)`, acquire per-invocation `DiscoveryContext`, run the `DiscoveryPort`, and return discovery output for CLI and future config integration.
+
+Do not implement Config builder decoupling here. Issue `14` consumes this app-level discovery result and then wires Config through `Builder::from_discovery()`.
+
+## Current state
+
+Issues `10`-`12` are the implementation source of truth for this slice, even where older ADR text differs.
+
+Already available:
+
+- `DiscoveryContext<'a>` with `DiscoveryFlags`, `DiscoveryEnv<'a>`, and app-owned anchor/current-directory input.
+- `DiscoveryServiceConfig` as an explicit stable configuration object.
+- `DiscoveryService::new(config)` as the concrete service constructor.
+- `DiscoveryPort::discover(&DiscoveryContext) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>`.
+- `DiscoveryResult` with separate ordered `vault: Vec<CandidatePath>` and `global: Vec<CandidatePath>` collections.
+- `CandidatePath { base: DirPath, path: FilePath }`; no stored format and no separate `vault_root` field.
+- `DiscoveryReport` with skipped ceilings, local traversal stop reason, and explicit global suppression metadata.
+- `app::Bootstrapper<D: DiscoveryPort>` with `build_context()` and `discover()` test seams.
 
 ## Acceptance criteria
 
-- [ ] `Bootstrapper` lives under `lithos-core/src/app/` and is the only component that imports both Discovery and Config.
-- [ ] CLI handlers and other executable adapters do not call `discovery/` or `config/` directly for the normal bootstrap flow.
+- [ ] `Bootstrapper` remains under `lithos-core/src/app/` and is the executable adapter entry point for normal Discovery bootstrap.
+- [ ] CLI handlers and other executable adapters do not call `DiscoveryService` directly for the normal discovery bootstrap flow.
 - [ ] `Bootstrapper` constructs `DiscoveryServiceConfig` with platform-resolved global directories and then calls `DiscoveryService::new(config)`.
-- [ ] `Bootstrapper` acquires per-invocation context and calls `DiscoveryService::discover(DiscoveryContext)`.
+- [ ] `Bootstrapper` acquires per-invocation context and calls the `DiscoveryPort` implemented by `DiscoveryService` with `DiscoveryContext`.
 - [ ] Context acquisition includes current working directory, relevant environment variables, CLI-provided path overrides, and platform global config directories.
-- [ ] `Bootstrapper` passes `DiscoveryResult` into `config::Builder::from_discovery()` and then calls `build()`.
-- [ ] `BootstrapResult { config, report }` is returned to callers.
-- [ ] Bootstrapper maps/propagates discovery and config failures through a Bootstrapper-owned error boundary instead of leaking orchestration details into CLI handlers.
-- [ ] Bootstrapper does not construct `Config` itself; config construction stays inside `config::Builder::build()`.
+- [ ] `Bootstrapper` returns app-owned discovery output, e.g. `BootstrapDiscoveryResult { discovery, report }`, where `discovery` is the `DiscoveryResult` from the port.
+- [ ] Bootstrapper maps/propagates discovery failures through a Bootstrapper-owned error boundary or documented app-level result type instead of leaking setup details into CLI handlers.
 - [ ] Skipped ceilings and explicit global suppression from `DiscoveryReport` are emitted or surfaced consistently; invalid explicit overrides remain fatal discovery errors.
-- [ ] `DiscoveryReport` remains available in `BootstrapResult` for CLI rendering without being passed into Config.
-- [ ] `discovery/` does not import `config/`; `config/` does not orchestrate `discovery/`.
+- [ ] `DiscoveryReport` remains available to callers for CLI rendering and is not mixed into `DiscoveryResult`.
+- [ ] `discovery/` does not import `config/`; this slice does not add Config orchestration.
 - [ ] Bootstrapper does not anticipate the deferred trusted-path second discovery pass in the MVP `run()` interface.
-- [ ] Tests cover the complete Bootstrapper happy path and report propagation.
+- [ ] Tests cover concrete-service Bootstrapper construction, context acquisition, discovery happy path, discovery error propagation, and report propagation.
 
 ## Blocked by
 
@@ -55,33 +73,36 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 
 **Category:** enhancement
 
-**Summary:** Add the app-level Bootstrapper that wires Discovery to Config as the single orchestration point.
+**Summary:** Add the app-level Bootstrapper flow that runs the concrete Discovery service and returns discovery output plus report metadata.
 
 **Current behavior:**
-Discovery and Config orchestration is not isolated behind an app composition component, so executable adapters risk importing or sequencing domain contexts directly.
+The app layer has a test seam (`Bootstrapper<D: DiscoveryPort>`) and Discovery execution exists behind `DiscoveryPort`, but no concrete app-level Bootstrapper flow constructs `DiscoveryServiceConfig`, builds `DiscoveryService`, acquires runtime context, and returns `(DiscoveryResult, DiscoveryReport)` as an app result.
 
 **Desired behavior:**
-`Bootstrapper` lives in the app layer, constructs and invokes Discovery, emits report warnings, passes only `DiscoveryResult` into Config builder, and returns `BootstrapResult { config, report }` for callers. Discovery and Config remain independent contexts.
+`Bootstrapper` lives in the app layer, constructs and invokes Discovery through the current `DiscoveryServiceConfig` / `DiscoveryService::new(config)` / `DiscoveryPort` contracts, emits or surfaces report warnings, and returns an app-level discovery result for callers. Discovery remains independent from Config; Config integration is handled in issue `14` after this discovery result exists.
 
 **Key interfaces:**
-- `Bootstrapper` — the only component that imports both Discovery and Config.
-- `BootstrapResult` — carries the built `Config` and the `DiscoveryReport`.
-- `BootstrapError` or equivalent — app-owned error boundary for discovery/config failures.
-- `DiscoveryService::discover()` — called by Bootstrapper with `DiscoveryContext`.
-- `config::Builder::from_discovery()` and `build()` — called by Bootstrapper without Bootstrapper constructing `Config` itself.
-- `DiscoveryReport` — warning/report metadata surfaced by Bootstrapper, never passed into Config.
+- `Bootstrapper` — app-level discovery bootstrap entry point.
+- `BootstrapDiscoveryResult` or equivalent — carries `DiscoveryResult` and `DiscoveryReport`.
+- `BootstrapError` or equivalent — app-owned error boundary for discovery setup/execution failures.
+- `DiscoveryServiceConfig` — constructed with platform-resolved global directories.
+- `DiscoveryService::new(config)` — creates the concrete Discovery implementation.
+- `DiscoveryPort::discover(&DiscoveryContext)` — called by Bootstrapper; returns `(DiscoveryResult, DiscoveryReport)`.
+- `CandidatePath` — config candidate handoff with `base: DirPath` and `path: FilePath`.
+- `DiscoveryReport` — warning/report metadata surfaced by Bootstrapper and kept separate from `DiscoveryResult`.
 
 **Acceptance criteria:**
-- [ ] Bootstrapper is the single app-layer orchestration point for Discovery plus Config.
-- [ ] CLI handlers do not directly compose Discovery and Config for the normal bootstrap flow.
+- [ ] Bootstrapper is the app-layer orchestration point for concrete Discovery bootstrap.
+- [ ] CLI handlers do not directly construct or call `DiscoveryService` for the normal discovery bootstrap flow.
 - [ ] Bootstrapper constructs `DiscoveryServiceConfig` with platform-resolved global directories and creates `DiscoveryService` through `DiscoveryService::new(config)`.
-- [ ] Bootstrapper obtains invocation context, runs discovery, emits skipped ceiling/override warnings, builds Config through Config builder, and returns `BootstrapResult`.
-- [ ] Bootstrapper has an explicit error propagation/mapping seam for discovery and config failures.
-- [ ] Discovery does not import Config and Config does not orchestrate Discovery.
-- [ ] Tests cover the Bootstrapper happy path and report propagation.
+- [ ] Bootstrapper obtains invocation context, runs discovery, emits or surfaces skipped ceiling/global suppression warnings, and returns discovery output plus report metadata.
+- [ ] Bootstrapper has an explicit error propagation/mapping seam for discovery setup/execution failures.
+- [ ] Discovery does not import Config, and this slice does not add Config orchestration.
+- [ ] Tests cover the Bootstrapper discovery happy path, discovery failure path, and report propagation.
 
 **Out of scope:**
 - Discovery internals refactor.
-- Config builder decoupling internals.
+- Config builder decoupling or `Builder::from_discovery()`.
+- Returning a built `Config`.
 - Indexer startup or broader application pipeline orchestration.
 - Deferred two-phase discovery through global config trusted paths.
