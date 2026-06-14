@@ -122,41 +122,66 @@ impl DiscoveryFlags {
     /// # Errors
     ///
     /// Returns [`DiscoveryError::Flag`] wrapping a [`FlagOverrideError`] when:
-    /// - `config_file` is `Some` but does not resolve to an existing file.
-    /// - `vault_dir` is `Some` but does not resolve to an existing directory.
+    /// - `config_file` is `Some` but does not exist on the filesystem
+    ///   ([`FlagOverrideError::GlobalConfigPathNotFound`]), or exists but is
+    ///   not a file ([`FlagOverrideError::GlobalConfigPathNotFile`]).
+    /// - `vault_dir` is `Some` but does not exist on the filesystem
+    ///   ([`FlagOverrideError::VaultPathNotFound`]), or exists but is not a
+    ///   directory ([`FlagOverrideError::VaultPathNotDirectory`]).
     #[inline]
     pub(crate) fn new(
         config_file: Option<&Path>,
         vault_dir: Option<&Path>,
         suppress_global: bool,
     ) -> Result<Self, DiscoveryError> {
-        let config_file = config_file
-            .map(|path| {
-                let buf = path.to_path_buf();
-                FilePath::try_new(buf.clone()).map_err(|source| {
-                    FlagOverrideError::GlobalConfigPathNotFile {
-                        path: buf,
-                        source,
-                    }
-                })
-            })
-            .transpose()?;
-        let vault_dir = vault_dir
-            .map(|path| {
-                let buf = path.to_path_buf();
-                DirPath::try_new(buf.clone()).map_err(|source| {
-                    FlagOverrideError::VaultPathNotDirectory {
-                        path: buf,
-                        source,
-                    }
-                })
-            })
-            .transpose()?;
+        let config_file =
+            config_file.map(Self::validate_config_file).transpose()?;
+        let vault_dir = vault_dir.map(Self::validate_vault_dir).transpose()?;
 
         Ok(Self {
             config_file,
             vault_dir,
             suppress_global,
+        })
+    }
+
+    /// Validates a config file path for a CLI flag override.
+    ///
+    /// Checks existence first so we can produce a `NotFound` error distinct
+    /// from "exists but is not a file".
+    fn validate_config_file(
+        path: &Path,
+    ) -> Result<FilePath, FlagOverrideError> {
+        let buf = path.to_path_buf();
+        if !path.exists() {
+            return Err(FlagOverrideError::GlobalConfigPathNotFound {
+                path: buf,
+            });
+        }
+        FilePath::try_new(buf.clone()).map_err(|source| {
+            FlagOverrideError::GlobalConfigPathNotFile {
+                path: buf,
+                source,
+            }
+        })
+    }
+
+    /// Validates a vault directory path for a CLI flag override.
+    ///
+    /// Checks existence first so we can produce a `NotFound` error distinct
+    /// from "exists but is not a directory".
+    fn validate_vault_dir(path: &Path) -> Result<DirPath, FlagOverrideError> {
+        let buf = path.to_path_buf();
+        if !path.exists() {
+            return Err(FlagOverrideError::VaultPathNotFound {
+                path: buf,
+            });
+        }
+        DirPath::try_new(buf.clone()).map_err(|source| {
+            FlagOverrideError::VaultPathNotDirectory {
+                path: buf,
+                source,
+            }
         })
     }
 
@@ -207,39 +232,69 @@ impl<'a> DiscoveryEnv<'a> {
     ///
     /// Returns [`DiscoveryError::Env`] wrapping an [`EnvironmentOverrideError`]
     /// when:
-    /// - `config_file` is `Some` but does not resolve to an existing file.
-    /// - `vault_dir` is `Some` but does not resolve to an existing directory,
-    ///   does not exist, or fails path validation for another reason.
+    /// - `config_file` is `Some` but does not exist on the filesystem
+    ///   ([`EnvironmentOverrideError::GlobalConfigPathNotFound`]), or exists
+    ///   but is not a file
+    ///   ([`EnvironmentOverrideError::GlobalConfigPathNotFile`]).
+    /// - `vault_dir` is `Some` but does not exist on the filesystem
+    ///   ([`EnvironmentOverrideError::VaultPathNotFound`]), or exists but is
+    ///   not a directory ([`EnvironmentOverrideError::VaultPathNotDirectory`]).
     #[inline]
     pub(crate) fn new(
         config_file: Option<&Path>,
         vault_dir: Option<&Path>,
         ceiling_dirs_raw: Option<&'a OsStr>,
     ) -> Result<Self, DiscoveryError> {
-        let config_file = config_file
-            .map(|path| {
-                let buf = path.to_path_buf();
-                FilePath::try_new(buf.clone()).map_err(|source| {
-                    EnvironmentOverrideError::GlobalConfigPathNotFile {
-                        path: buf,
-                        source,
-                    }
-                })
-            })
-            .transpose()?;
-        let vault_dir = vault_dir
-            .map(|path| {
-                let buf = path.to_path_buf();
-                DirPath::try_new(buf.clone()).map_err(|source| {
-                    EnvironmentOverrideError::from_vault_path_error(buf, source)
-                })
-            })
-            .transpose()?;
+        let config_file =
+            config_file.map(Self::validate_config_file).transpose()?;
+        let vault_dir = vault_dir.map(Self::validate_vault_dir).transpose()?;
 
         Ok(Self {
             config_file,
             vault_dir,
             ceiling_dirs_raw,
+        })
+    }
+
+    /// Validates a config file path for an environment variable override.
+    ///
+    /// Checks existence first so we can produce a `NotFound` error distinct
+    /// from "exists but is not a file".
+    fn validate_config_file(
+        path: &Path,
+    ) -> Result<FilePath, EnvironmentOverrideError> {
+        let buf = path.to_path_buf();
+        if !path.exists() {
+            return Err(EnvironmentOverrideError::GlobalConfigPathNotFound {
+                path: buf,
+            });
+        }
+        FilePath::try_new(buf.clone()).map_err(|source| {
+            EnvironmentOverrideError::GlobalConfigPathNotFile {
+                path: buf,
+                source,
+            }
+        })
+    }
+
+    /// Validates a vault directory path for an environment variable override.
+    ///
+    /// Checks existence first so we can produce a `NotFound` error distinct
+    /// from "exists but is not a directory".
+    fn validate_vault_dir(
+        path: &Path,
+    ) -> Result<DirPath, EnvironmentOverrideError> {
+        let buf = path.to_path_buf();
+        if !path.exists() {
+            return Err(EnvironmentOverrideError::VaultPathNotFound {
+                path: buf,
+            });
+        }
+        DirPath::try_new(buf.clone()).map_err(|source| {
+            EnvironmentOverrideError::VaultPathNotDirectory {
+                path: buf,
+                source,
+            }
         })
     }
 
@@ -286,6 +341,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -398,7 +455,21 @@ mod tests {
         }
 
         mod validation {
+            use pretty_assertions::assert_eq;
+
             use super::*;
+
+            #[test]
+            fn rejects_config_file_when_path_does_not_exist() {
+                let path = std::path::Path::new("/nonexistent/lithos.toml");
+                let err = DiscoveryFlags::new(Some(path), None, false)
+                    .expect_err("nonexistent path should be rejected");
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit config file path not found: \
+                     /nonexistent/lithos.toml"
+                );
+            }
 
             #[test]
             fn rejects_config_file_when_path_is_a_directory() {
@@ -411,6 +482,17 @@ mod tests {
                         "Explicit config file is not a file: {}",
                         dir.path().display()
                     )
+                );
+            }
+
+            #[test]
+            fn rejects_vault_dir_when_path_does_not_exist() {
+                let path = std::path::Path::new("/nonexistent/vault");
+                let err = DiscoveryFlags::new(None, Some(path), false)
+                    .expect_err("nonexistent path should be rejected");
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit vault path not found: /nonexistent/vault"
                 );
             }
 
@@ -434,6 +516,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -545,7 +629,46 @@ mod tests {
         }
 
         mod validation {
+            use pretty_assertions::assert_eq;
+
             use super::*;
+
+            #[test]
+            fn rejects_config_file_when_path_does_not_exist() {
+                let path = std::path::Path::new("/nonexistent/lithos.toml");
+                let err = DiscoveryEnv::new(Some(path), None, None)
+                    .expect_err("nonexistent path should be rejected");
+                assert_eq!(
+                    err.to_string(),
+                    "Environment config file path not found: \
+                     /nonexistent/lithos.toml"
+                );
+            }
+
+            #[test]
+            fn rejects_config_file_when_path_is_a_directory() {
+                let dir = tempfile::tempdir().expect("dir");
+                let err = DiscoveryEnv::new(Some(dir.path()), None, None)
+                    .expect_err("directory is not a valid config file");
+                assert_eq!(
+                    err.to_string(),
+                    format!(
+                        "Environment config file is not a file: {}",
+                        dir.path().display()
+                    )
+                );
+            }
+
+            #[test]
+            fn rejects_vault_dir_when_path_does_not_exist() {
+                let path = std::path::Path::new("/nonexistent/vault");
+                let err = DiscoveryEnv::new(None, Some(path), None)
+                    .expect_err("nonexistent path should be rejected");
+                assert_eq!(
+                    err.to_string(),
+                    "Environment vault path not found: /nonexistent/vault"
+                );
+            }
 
             #[test]
             fn rejects_vault_dir_when_path_is_a_file() {
@@ -567,6 +690,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             // --- anchor ---
@@ -635,6 +760,8 @@ mod tests {
         }
 
         mod with_flags {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -697,6 +824,8 @@ mod tests {
         }
 
         mod with_env {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]

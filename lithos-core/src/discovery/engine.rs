@@ -252,16 +252,13 @@ impl DiscoveryEngine {
         if !path.exists() {
             return Err(match source {
                 VaultSourceType::ExplicitFlag => {
-                    FlagOverrideError::VaultPathNotDirectory {
+                    FlagOverrideError::VaultPathNotFound {
                         path: path.to_path_buf(),
-                        source: crate::fs::PathError::NotADirectory(
-                            path.to_path_buf(),
-                        ),
                     }
                     .into()
                 }
                 VaultSourceType::EnvVar => {
-                    EnvironmentOverrideError::VaultPathMissing {
+                    EnvironmentOverrideError::VaultPathNotFound {
                         path: path.to_path_buf(),
                     }
                     .into()
@@ -292,6 +289,9 @@ impl DiscoveryEngine {
                 VaultSourceType::EnvVar => {
                     EnvironmentOverrideError::VaultPathNotDirectory {
                         path: path.to_path_buf(),
+                        source: crate::fs::PathError::NotADirectory(
+                            path.to_path_buf(),
+                        ),
                     }
                     .into()
                 }
@@ -714,10 +714,7 @@ mod tests {
 
             assert_eq!(
                 error.to_string(),
-                format!(
-                    "Explicit vault path is not a directory: {}",
-                    missing.display()
-                ),
+                format!("Explicit vault path not found: {}", missing.display()),
             );
         }
 
@@ -762,7 +759,7 @@ mod tests {
             assert_eq!(
                 error.to_string(),
                 format!(
-                    "Environment vault path does not exist: {}",
+                    "Environment vault path not found: {}",
                     missing.display()
                 ),
             );

@@ -73,9 +73,13 @@ pub(crate) enum DiscoveryError {
 )]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum FlagOverrideError {
-    /// Explicit config file override does not refer to a file.
-    ///
-    /// Covers both non-existent paths and paths that exist but are directories.
+    /// Explicit config file override path does not exist on the filesystem.
+    #[error("Explicit config file path not found: {path}")]
+    GlobalConfigPathNotFound {
+        /// The path that was not found.
+        path: PathBuf,
+    },
+    /// Explicit config file override exists but does not refer to a file.
     #[error("Explicit config file is not a file: {path}")]
     GlobalConfigPathNotFile {
         /// The invalid config file path.
@@ -84,9 +88,14 @@ pub(crate) enum FlagOverrideError {
         #[source]
         source: PathError,
     },
-    /// Explicit vault directory override does not refer to a directory.
-    ///
-    /// Covers both non-existent paths and paths that exist but are files.
+    /// Explicit vault directory override path does not exist on the filesystem.
+    #[error("Explicit vault path not found: {path}")]
+    VaultPathNotFound {
+        /// The path that was not found.
+        path: PathBuf,
+    },
+    /// Explicit vault directory override exists but does not refer to a
+    /// directory.
     #[error("Explicit vault path is not a directory: {path}")]
     VaultPathNotDirectory {
         /// The invalid vault directory path.
@@ -104,7 +113,13 @@ pub(crate) enum FlagOverrideError {
 )]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum EnvironmentOverrideError {
-    /// Config file path from environment does not refer to a file.
+    /// Config file path from environment does not exist on the filesystem.
+    #[error("Environment config file path not found: {path}")]
+    GlobalConfigPathNotFound {
+        /// The path that was not found.
+        path: PathBuf,
+    },
+    /// Config file path from environment exists but does not refer to a file.
     #[error("Environment config file is not a file: {path}")]
     GlobalConfigPathNotFile {
         /// The invalid environment config path.
@@ -113,10 +128,10 @@ pub(crate) enum EnvironmentOverrideError {
         #[source]
         source: PathError,
     },
-    /// Vault path from environment does not exist.
-    #[error("Environment vault path does not exist: {path}")]
-    VaultPathMissing {
-        /// The missing path.
+    /// Vault path from environment does not exist on the filesystem.
+    #[error("Environment vault path not found: {path}")]
+    VaultPathNotFound {
+        /// The path that was not found.
         path: PathBuf,
     },
     /// Vault path from environment exists but is not a directory.
@@ -124,37 +139,10 @@ pub(crate) enum EnvironmentOverrideError {
     VaultPathNotDirectory {
         /// The non-directory path.
         path: PathBuf,
-    },
-    /// Vault path from environment failed path validation for another reason.
-    #[error("Environment vault path is invalid: {path}")]
-    VaultPathInvalid {
-        /// The invalid path.
-        path: PathBuf,
         /// The underlying filesystem path validation error.
         #[source]
         source: PathError,
     },
-}
-
-impl EnvironmentOverrideError {
-    /// Constructs the appropriate environment vault error from a [`PathError`].
-    pub(crate) fn from_vault_path_error(
-        path: PathBuf,
-        source: PathError,
-    ) -> Self {
-        match source {
-            PathError::Empty => Self::VaultPathMissing {
-                path,
-            },
-            PathError::NotADirectory(_) => Self::VaultPathNotDirectory {
-                path,
-            },
-            source => Self::VaultPathInvalid {
-                path,
-                source,
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -168,30 +156,50 @@ mod tests {
             use super::*;
 
             #[test]
-            fn returns_global_config_path_not_file_message() {
-                let err = FlagOverrideError::GlobalConfigPathNotFile {
+            fn returns_global_config_path_not_found_message() {
+                let err = FlagOverrideError::GlobalConfigPathNotFound {
                     path: PathBuf::from("/missing/lithos.toml"),
-                    source: PathError::NotAFile(PathBuf::from(
-                        "/missing/lithos.toml",
-                    )),
                 };
                 assert_eq!(
                     err.to_string(),
-                    "Explicit config file is not a file: /missing/lithos.toml"
+                    "Explicit config file path not found: /missing/lithos.toml"
+                );
+            }
+
+            #[test]
+            fn returns_global_config_path_not_file_message() {
+                let err = FlagOverrideError::GlobalConfigPathNotFile {
+                    path: PathBuf::from("/some/dir"),
+                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit config file is not a file: /some/dir"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_found_message() {
+                let err = FlagOverrideError::VaultPathNotFound {
+                    path: PathBuf::from("/missing/vault"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Explicit vault path not found: /missing/vault"
                 );
             }
 
             #[test]
             fn returns_vault_path_not_directory_message() {
                 let err = FlagOverrideError::VaultPathNotDirectory {
-                    path: PathBuf::from("/missing/vault"),
+                    path: PathBuf::from("/some/file"),
                     source: PathError::NotADirectory(PathBuf::from(
-                        "/missing/vault",
+                        "/some/file",
                     )),
                 };
                 assert_eq!(
                     err.to_string(),
-                    "Explicit vault path is not a directory: /missing/vault"
+                    "Explicit vault path is not a directory: /some/file"
                 );
             }
         }
@@ -200,67 +208,41 @@ mod tests {
     mod environment_override {
         use super::*;
 
-        mod from_vault_path_error {
-            use super::*;
-
-            #[test]
-            fn returns_vault_path_missing_when_source_is_empty() {
-                let err = EnvironmentOverrideError::from_vault_path_error(
-                    PathBuf::from("/gone"),
-                    PathError::Empty,
-                );
-                assert!(
-                    matches!(
-                        err,
-                        EnvironmentOverrideError::VaultPathMissing { .. }
-                    ),
-                    "expected VaultPathMissing, got: {err:?}"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_not_directory_when_source_is_not_a_directory()
-            {
-                let err = EnvironmentOverrideError::from_vault_path_error(
-                    PathBuf::from("/file"),
-                    PathError::NotADirectory(PathBuf::from("/file")),
-                );
-                assert!(
-                    matches!(
-                        err,
-                        EnvironmentOverrideError::VaultPathNotDirectory { .. }
-                    ),
-                    "expected VaultPathNotDirectory, got: {err:?}"
-                );
-            }
-
-            #[test]
-            fn returns_vault_path_invalid_for_other_path_errors() {
-                let err = EnvironmentOverrideError::from_vault_path_error(
-                    PathBuf::from("/bad"),
-                    PathError::NotRelative(PathBuf::from("/bad")),
-                );
-                assert!(
-                    matches!(
-                        err,
-                        EnvironmentOverrideError::VaultPathInvalid { .. }
-                    ),
-                    "expected VaultPathInvalid, got: {err:?}"
-                );
-            }
-        }
-
         mod formatting {
             use super::*;
 
             #[test]
-            fn returns_vault_path_missing_message() {
-                let err = EnvironmentOverrideError::VaultPathMissing {
+            fn returns_global_config_path_not_found_message() {
+                let err = EnvironmentOverrideError::GlobalConfigPathNotFound {
+                    path: PathBuf::from("/missing/lithos.toml"),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment config file path not found: \
+                     /missing/lithos.toml"
+                );
+            }
+
+            #[test]
+            fn returns_global_config_path_not_file_message() {
+                let err = EnvironmentOverrideError::GlobalConfigPathNotFile {
+                    path: PathBuf::from("/some/dir"),
+                    source: PathError::NotAFile(PathBuf::from("/some/dir")),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "Environment config file is not a file: /some/dir"
+                );
+            }
+
+            #[test]
+            fn returns_vault_path_not_found_message() {
+                let err = EnvironmentOverrideError::VaultPathNotFound {
                     path: PathBuf::from("/nonexistent"),
                 };
                 assert_eq!(
                     err.to_string(),
-                    "Environment vault path does not exist: /nonexistent"
+                    "Environment vault path not found: /nonexistent"
                 );
             }
 
@@ -268,6 +250,9 @@ mod tests {
             fn returns_vault_path_not_directory_message() {
                 let err = EnvironmentOverrideError::VaultPathNotDirectory {
                     path: PathBuf::from("/some/file"),
+                    source: PathError::NotADirectory(PathBuf::from(
+                        "/some/file",
+                    )),
                 };
                 assert_eq!(
                     err.to_string(),
@@ -286,29 +271,26 @@ mod tests {
             #[test]
             fn returns_flag_variant_message_transparently() {
                 let err = DiscoveryError::from(
-                    FlagOverrideError::GlobalConfigPathNotFile {
+                    FlagOverrideError::GlobalConfigPathNotFound {
                         path: PathBuf::from("/missing/lithos.toml"),
-                        source: PathError::NotAFile(PathBuf::from(
-                            "/missing/lithos.toml",
-                        )),
                     },
                 );
                 assert_eq!(
                     err.to_string(),
-                    "Explicit config file is not a file: /missing/lithos.toml"
+                    "Explicit config file path not found: /missing/lithos.toml"
                 );
             }
 
             #[test]
             fn returns_env_variant_message_transparently() {
                 let err = DiscoveryError::from(
-                    EnvironmentOverrideError::VaultPathMissing {
+                    EnvironmentOverrideError::VaultPathNotFound {
                         path: PathBuf::from("/nonexistent"),
                     },
                 );
                 assert_eq!(
                     err.to_string(),
-                    "Environment vault path does not exist: /nonexistent"
+                    "Environment vault path not found: /nonexistent"
                 );
             }
 
