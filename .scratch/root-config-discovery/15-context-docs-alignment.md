@@ -1,5 +1,5 @@
 ---
-title: 14-context-docs-alignment
+title: 15-context-docs-alignment
 category: documentation
 label: ready-for-agent
 status: open
@@ -41,7 +41,7 @@ This slice should remove stale terminology from context docs after the redesign 
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/13-config-builder-discovery-decoupling.md`
+- `.scratch/root-config-discovery/14-config-builder-discovery-decoupling.md`
 
 
 ## Agent Brief

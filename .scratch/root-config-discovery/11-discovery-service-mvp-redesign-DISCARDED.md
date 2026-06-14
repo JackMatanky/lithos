@@ -1,8 +1,8 @@
 ---
-title: 11-discovery-service-mvp-redesign
+title: 11-discovery-service-mvp-redesign-DISCARDED
 category: refactor
 label: needs-triage
-status: open
+status: discarded
 date_created: 2026-06-12
 ---
 

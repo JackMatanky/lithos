@@ -1,5 +1,5 @@
 ---
-title: 12-bootstrapper-orchestration-flow
+title: 13-bootstrapper-orchestration-flow
 category: enhancement
 label: ready-for-agent
 status: open
@@ -46,7 +46,7 @@ This slice should make `app/` the only layer that imports both `discovery/` and 
 
 ## Blocked by
 
-- `.scratch/root-config-discovery/11-discovery-service-mvp-redesign.md`
+- `.scratch/root-config-discovery/12-discovery-typestate-run.md`
 
 
 ## Agent Brief
