@@ -103,13 +103,26 @@ impl WriteRepository for RedbRepository {
             .map_err(Into::into)
     }
 
-    fn delete_dir(
-        &self,
-        _id: FsRecordId,
-    ) -> Result<(), IndexerRepositoryError> {
-        Err(IndexerRepositoryError::Storage(
-            crate::db::DbError::Deserialization("Not implemented".into()),
-        ))
+    fn delete_dir(&self, id: FsRecordId) -> Result<(), IndexerRepositoryError> {
+        self.store
+            .write(|tx| {
+                let mut dirs_table = tx.inner.open_table(DIRS)?;
+
+                // Load the record first to know what to remove from indexes
+                let record = dirs_table.get(id)?.map(|guard| guard.value());
+
+                if let Some(record) = record {
+                    // Cleanup secondary index
+                    let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
+                    path_table.remove(record.path().as_str())?;
+
+                    // Primary table
+                    dirs_table.remove(id)?;
+                }
+
+                Ok(())
+            })
+            .map_err(Into::into)
     }
 
     fn save_many_records(
@@ -301,6 +314,50 @@ mod tests {
 
             // Should not error when deleting non-existent file
             repo.delete_file(id).unwrap();
+        }
+
+        #[test]
+        fn delete_dir_removes_primary_and_path_index() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let parent_id = FsRecordId::new();
+            let path = PathKey::try_new("dir/subdir").unwrap();
+            let name = crate::fs::name::DirName::new("subdir".into());
+            let metadata =
+                crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
+            let recorded_at = SystemTime::now();
+
+            let record = DirRecord::new(
+                id,
+                Some(parent_id),
+                path.clone(),
+                name,
+                metadata,
+                recorded_at,
+            );
+
+            repo.save_dir(&record).unwrap();
+
+            // Verify it exists
+            assert!(repo.find_dir(id).unwrap().is_some());
+
+            // Delete
+            repo.delete_dir(id).unwrap();
+
+            // Assert primary removed
+            assert!(repo.find_dir(id).unwrap().is_none());
+
+            // Assert path index removed
+            assert!(repo.find_dir_by_path(&path).unwrap().is_none());
+        }
+
+        #[test]
+        fn delete_dir_is_idempotent_when_missing() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+
+            // Should not error when deleting non-existent directory
+            repo.delete_dir(id).unwrap();
         }
     }
 }
