@@ -2,8 +2,9 @@
 title: 14-config-builder-discovery-decoupling
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-06-12
+date_completed: 2026-06-15
 ---
 
 ## Type
@@ -180,6 +181,51 @@ identity in the DB — builder state stays minimal.
 
 - `.scratch/root-config-discovery/13-bootstrapper-orchestration-flow.md` —
   **RESOLVED** (completed 2026-06-14)
+
+## Implementation Notes
+
+**Commit:** `a3fffdd5` on branch `feat/issue-14-config-builder-discovery-decoupling`
+
+### What was built
+
+`Builder<R>` struct fields replaced: `start_dir: PathBuf` → `vault: Box<[CandidatePath]>` + `global: Box<[CandidatePath]>`.
+
+New entry point:
+- `Builder::from_discovery(result: DiscoveryResult, repository: R) -> Self` — infallible; calls `result.into_parts()` and stores the two boxed slices plus repository. No file I/O, no validation, no VaultId resolution.
+
+New build methods:
+- `build_vault()` — indexes `self.vault[0]`, calls `VaultRoot::from_dir_path(candidate.base().clone())`, calls `get_or_create_vault_id()`, reads `FsMetadata`, parses `RawVaultConfig` via `FileReader::from_system_root()`, fetches `RawVaultConfigView` from DB. Returns `VaultBuildResult` type alias.
+- `build_global()` — same pipeline for `self.global.first()`; returns `(None, None)` when no global candidate. Returns `GlobalBuildResult` type alias.
+- `build()` — orchestrates both, feeds processor outcomes into `ConfigResolver::resolve()` → `execute_plan()`.
+
+`execute_plan` and `rebuild_with_configs` refactored to read file paths from `self.vault.first()` / `self.global.first()` rather than the old `config::discovery::DiscoveryResult` parameter.
+
+Deleted: `config/discovery.rs` (ConfigDiscoveryPipeline, config-owned DiscoveryResult, GlobalDiscovery, VaultDiscovery), `config/root.rs` (ConfigDiscoveryResult, DiscoveredConfigFile). Removed their `mod` declarations from `config/mod.rs`.
+
+### Architecture tests updated
+
+- `builder_must_not_use_known_vault_root_discovery_shortcut`: removed the now-obsolete `assert!(content.contains("find_vault"))` check; kept the `find_known_vault` prohibition.
+- New test `builder_imports_only_discovery_service_result_from_discovery`: verifies builder contains no `discovery::engine`, `discovery::policy`, `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, or `DiscoveryPolicy` references.
+
+### Tests added (18 unit tests)
+
+- `from_discovery`: stores_vault_candidates_as_boxed_slice, stores_global_candidates_as_boxed_slice, is_infallible, stores_repository
+- `build_vault`: derives_vault_root_from_candidate_base, resolves_vault_id_from_database, reads_file_metadata_from_candidate, queries_database_for_vault_view, parses_raw_config_from_candidate_file, returns_raw_vault_config
+- `build_global`: returns_none_when_no_global_candidate, reads_file_and_returns_raw_global_config, queries_database_for_global_view
+- `build`: orchestrates_vault_and_global, builds_from_vault_only_discovery
+- `build_from_layers_regression`: preserves_existing_merge_behavior_vault_overrides_global, preserves_existing_merge_behavior_global_used_when_no_vault, preserves_existing_merge_behavior_defaults_used_when_no_sources
+
+### Deviations from plan
+
+None. All 9 TDD phases implemented as specified. One divergence from the TDD plan's test name conventions: `build::runs_config_file_processor` is folded into `build_vault` / `build_global` integration (processor is invoked inside `build()`, tested implicitly by the `build::orchestrates_*` tests which exercise full staleness and merge behavior). A separate `runs_config_file_processor` unit test was not added since it would require mocking `ConfigFileProcessor` internals.
+
+### Bootstrapper wiring gap
+
+`Builder::from_discovery()` is `pub(crate)` and annotated with `#[cfg_attr(not(test), expect(dead_code, ...))]`. The old `Builder::new(start_dir, repo)` + `Builder::load()` entry point that internally drove `DiscoveryEngine` is gone. **Nothing in production code calls `Builder::from_discovery()` yet.** The Bootstrapper (`app::Bootstrapper`) produces a `DiscoveryResult` (issue 13), and the Config builder now consumes it (issue 14), but the call-site connecting them — the CLI command handler or app service layer — has not been created. This wiring is not covered by issues 10–16 in the current plan. A new issue is needed (see "Blocks" below).
+
+## Blocks
+
+A follow-on issue is needed to wire `Bootstrapper::discover()` → `Builder::from_discovery()` in the app/CLI layer. Without it, `Builder` is structurally ready but unreachable from any executable path. The old `Builder::new` + `load()` path was the only production caller and is now removed.
 
 
 ## Agent Brief
