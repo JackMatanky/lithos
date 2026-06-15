@@ -61,14 +61,25 @@ impl CandidatePath {
     }
 }
 
+/// Owned, frozen list of candidates produced by discovery.
+///
+/// `Box<[T]>` signals that the list is immutable after construction and
+/// avoids carrying unused `Vec` capacity across the boundary.
+type CandidateSlice = Box<[CandidatePath]>;
+
 /// Pure discovery output consumed by downstream configuration loading.
+///
+/// Candidates are stored as boxed slices — the list is frozen once
+/// [`DiscoveryProcessor::finalize`] is called and never grows after that
+/// point, so `Box<[T]>` communicates immutability and avoids carrying
+/// unused `Vec` capacity into downstream callers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryResult {
     /// Ordered vault-local candidates.
-    vault: Vec<CandidatePath>,
+    vault: CandidateSlice,
     /// Ordered global candidates.
-    global: Vec<CandidatePath>,
+    global: CandidateSlice,
 }
 
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
@@ -77,12 +88,12 @@ impl DiscoveryResult {
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        vault: Vec<CandidatePath>,
-        global: Vec<CandidatePath>,
+        vault: impl Into<CandidateSlice>,
+        global: impl Into<CandidateSlice>,
     ) -> Self {
         Self {
-            vault,
-            global,
+            vault: vault.into(),
+            global: global.into(),
         }
     }
 
@@ -100,10 +111,10 @@ impl DiscoveryResult {
         &self.global
     }
 
-    /// Consumes the result into owned candidate vectors.
+    /// Consumes the result into owned boxed candidate slices.
     #[inline]
     #[must_use]
-    pub(crate) fn into_parts(self) -> (Vec<CandidatePath>, Vec<CandidatePath>) {
+    pub(crate) fn into_parts(self) -> (CandidateSlice, CandidateSlice) {
         (self.vault, self.global)
     }
 }
@@ -313,7 +324,7 @@ mod tests {
 
             let (vault_candidates, _) = result.into_parts();
 
-            assert_eq!(vault_candidates, vec![vault]);
+            assert_eq!(*vault_candidates, [vault]);
         }
 
         #[test]
@@ -327,7 +338,7 @@ mod tests {
 
             let (_, global_candidates) = result.into_parts();
 
-            assert_eq!(global_candidates, vec![global]);
+            assert_eq!(*global_candidates, [global]);
         }
     }
 
