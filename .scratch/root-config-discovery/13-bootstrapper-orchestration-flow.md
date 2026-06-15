@@ -2,8 +2,9 @@
 title: 13-bootstrapper-orchestration-flow
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 date_created: 2026-06-12
+date_completed: 2026-06-14
 ---
 
 ## Type
@@ -49,18 +50,26 @@ Already available:
 
 ## Acceptance criteria
 
-- [ ] `Bootstrapper` remains under `lithos-core/src/app/` and is the executable adapter entry point for normal Discovery bootstrap.
-- [ ] CLI handlers and other executable adapters do not call `DiscoveryService` directly for the normal discovery bootstrap flow.
-- [ ] `Bootstrapper` constructs `DiscoveryServiceConfig` with platform-resolved global directories and then calls `DiscoveryService::new(config)`.
-- [ ] `Bootstrapper` acquires per-invocation context and calls the `DiscoveryPort` implemented by `DiscoveryService` with `DiscoveryContext`.
-- [ ] Context acquisition includes current working directory, relevant environment variables, CLI-provided path overrides, and platform global config directories.
-- [ ] `Bootstrapper` returns app-owned discovery output, e.g. `BootstrapDiscoveryResult { discovery, report }`, where `discovery` is the `DiscoveryResult` from the port.
-- [ ] Bootstrapper maps/propagates discovery failures through a Bootstrapper-owned error boundary or documented app-level result type instead of leaking setup details into CLI handlers.
-- [ ] Skipped ceilings and explicit global suppression from `DiscoveryReport` are emitted or surfaced consistently; invalid explicit overrides remain fatal discovery errors.
-- [ ] `DiscoveryReport` remains available to callers for CLI rendering and is not mixed into `DiscoveryResult`.
-- [ ] `discovery/` does not import `config/`; this slice does not add Config orchestration.
-- [ ] Bootstrapper does not anticipate the deferred trusted-path second discovery pass in the MVP `run()` interface.
-- [ ] Tests cover concrete-service Bootstrapper construction, context acquisition, discovery happy path, discovery error propagation, and report propagation.
+- [x] Bootstrapper remains under `lithos-core/src/app/` and is the executable adapter entry point for normal Discovery bootstrap.
+- [x] CLI handlers and other executable adapters do not call `DiscoveryService` directly for the normal discovery bootstrap flow.
+- [x] Bootstrapper constructs `DiscoveryServiceConfig` with platform-resolved global directories and then calls `DiscoveryService::new(config)`.
+- [x] Bootstrapper acquires per-invocation context and calls the `DiscoveryPort` implemented by `DiscoveryService` with `DiscoveryContext`.
+- [x] Context acquisition includes current working directory, relevant environment variables, CLI-provided path overrides, and platform global config directories.
+- [x] Bootstrapper returns app-owned discovery output, e.g. `(DiscoveryResult, DiscoveryReport)`, where `discovery` is the `DiscoveryResult` from the port.
+- [x] Bootstrapper maps/propagates discovery failures through a Bootstrapper-owned error boundary or documented app-level result type instead of leaking setup details into CLI handlers.
+- [x] Skipped ceilings and explicit global suppression from `DiscoveryReport` are emitted or surfaced consistently; invalid explicit overrides remain fatal discovery errors.
+- [x] `DiscoveryReport` remains available to callers for CLI rendering and is not mixed into `DiscoveryResult`.
+- [x] `discovery/` does not import `config/`; this slice does not add Config orchestration.
+- [x] Bootstrapper does not anticipate the deferred trusted-path second discovery pass in the MVP `run()` interface.
+- [x] Tests cover concrete-service Bootstrapper construction, context acquisition, discovery happy path, discovery error propagation, and report propagation.
+
+## Implementation Notes
+
+- Orchestration logic resides in `lithos-core/src/app/bootstrap.rs` as `Bootstrapper<D: DiscoveryPort>`.
+- Concrete service usage via `Bootstrapper<DiscoveryService>` with `from_platform()` for standard resolution and `with_global_directories()` for test injection.
+- Result/Report pair returned directly by `Bootstrapper::discover()` with `BootstrapError` boundary.
+- Platform global directory resolution implemented with XDG/HOME/UNIX `/etc` fallback strategy.
+
 
 ## Blocked by
 
@@ -83,7 +92,6 @@ The app layer has a test seam (`Bootstrapper<D: DiscoveryPort>`) and Discovery e
 
 **Key interfaces:**
 - `Bootstrapper` — app-level discovery bootstrap entry point.
-- `BootstrapDiscoveryResult` or equivalent — carries `DiscoveryResult` and `DiscoveryReport`.
 - `BootstrapError` or equivalent — app-owned error boundary for discovery setup/execution failures.
 - `DiscoveryServiceConfig` — constructed with platform-resolved global directories.
 - `DiscoveryService::new(config)` — creates the concrete Discovery implementation.
