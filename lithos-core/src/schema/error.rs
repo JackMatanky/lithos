@@ -399,59 +399,28 @@ pub enum SchemaNameError {
     },
 }
 
-/// Identifies where a property name was used for better diagnostics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum PropertyNameContext {
-    /// Property name defined in a schema file.
-    SchemaProperty,
-    /// Property name defined in a property bank file.
-    PropertyBank,
-    /// Property name used in an excludes list.
-    Exclude,
-}
-
-impl std::fmt::Display for PropertyNameContext {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let label = match *self {
-            Self::SchemaProperty => "schema property",
-            Self::PropertyBank => "property bank",
-            Self::Exclude => "exclude list",
-        };
-        f.write_str(label)
-    }
-}
-
 /// Property name validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PropertyNameError {
     /// Returned when the property name is empty.
-    #[error("property name cannot be empty ({context})")]
-    Empty {
-        /// Context of the property name.
-        context: PropertyNameContext,
-    },
+    #[error("property name cannot be empty")]
+    Empty,
 
     /// Returned when the property name exceeds the maximum length.
-    #[error("property name too long: {len} (max {max}) ({context})")]
+    #[error("property name too long: {len} (max {max})")]
     TooLong {
         /// Length of the provided name.
         len: usize,
         /// Maximum allowed length.
         max: usize,
-        /// Context of the property name.
-        context: PropertyNameContext,
     },
 
     /// Returned when the property name does not match the expected format.
-    #[error("invalid property name: {name} ({context})")]
+    #[error("invalid property name: {name}")]
     InvalidFormat {
         /// The invalid name.
         name: Box<str>,
-        /// Context of the property name.
-        context: PropertyNameContext,
     },
 
     /// Returned when the property name regex fails to compile.
@@ -964,7 +933,6 @@ mod tests {
             assert_send_sync::<SchemaVersionError>();
             assert_send_sync::<SchemaSyntaxError>();
             assert_send_sync::<SchemaNameError>();
-            assert_send_sync::<PropertyNameContext>();
             assert_send_sync::<PropertyNameError>();
             assert_send_sync::<PropertySpecError>();
             assert_send_sync::<PropertyValueError>();
@@ -981,27 +949,6 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case::schema_property(
-            PropertyNameContext::SchemaProperty,
-            "schema property"
-        )]
-        #[case::property_bank(
-            PropertyNameContext::PropertyBank,
-            "property bank"
-        )]
-        #[case::exclude(PropertyNameContext::Exclude, "exclude list")]
-        fn property_name_context_formats(
-            #[case] context: PropertyNameContext,
-            #[case] expected: &str,
-        ) {
-            assert_eq!(
-                context.to_string(),
-                expected,
-                "Expected context label '{expected}', got '{context}'"
-            );
-        }
-
-        #[rstest]
         #[case::schema_name_empty(
             SchemaError::Syntax(SchemaSyntaxError::SchemaName(
                 SchemaNameError::Empty
@@ -1010,9 +957,7 @@ mod tests {
         )]
         #[case::property_name_empty(
             SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                PropertyNameError::Empty {
-                    context: PropertyNameContext::SchemaProperty,
-                }
+                PropertyNameError::Empty
             )),
             "property name cannot be empty"
         )]
@@ -1192,18 +1137,13 @@ mod tests {
 
         #[test]
         fn property_name_error_converts_into_schema_error() {
-            let error: SchemaError = PropertyNameError::Empty {
-                context: PropertyNameContext::SchemaProperty,
-            }
-            .into();
+            let error: SchemaError = PropertyNameError::Empty.into();
 
             assert!(
                 matches!(
                     error,
                     SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                        PropertyNameError::Empty {
-                            context: PropertyNameContext::SchemaProperty,
-                        }
+                        PropertyNameError::Empty
                     ))
                 ),
                 "Expected PropertyNameError::Empty to convert into \

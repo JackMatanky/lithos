@@ -40,7 +40,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
-    error::SchemaError,
+    error::{PropertyNameError, PropertyValueError, SchemaError},
     property_spec::PropertySpec,
     raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
 };
@@ -499,12 +499,10 @@ impl Property {
     ) -> Result<(), SchemaError> {
         if self.multiplicity == Multiplicity::Many {
             let arr = value.as_array().ok_or_else(|| {
-                SchemaError::PropertyValue(
-                    super::error::PropertyValueError::InvalidType {
-                        value: value.to_string().into(),
-                        expected: "array".into(),
-                    },
-                )
+                SchemaError::PropertyValue(PropertyValueError::InvalidType {
+                    value: value.to_string().into(),
+                    expected: "array".into(),
+                })
             })?;
             for item in arr {
                 self.spec.validate(item)?;
@@ -667,23 +665,7 @@ impl PropertyName {
     /// ```
     #[inline]
     pub fn try_new(name: &str) -> Result<Self, SchemaError> {
-        Self::try_new_with_context(
-            name,
-            super::error::PropertyNameContext::SchemaProperty,
-        )
-    }
-
-    /// Create a new `PropertyName` with validation and context.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::Syntax` if the name is empty, too long, or fails
-    /// the property name format validation for the provided context.
-    #[inline]
-    pub fn try_new_with_context(
-        name: &str,
-        context: super::error::PropertyNameContext,
-    ) -> Result<Self, SchemaError> {
-        Self::validate(name, context)?;
+        Self::validate(name)?;
         Ok(Self(name.into()))
     }
 
@@ -695,38 +677,29 @@ impl PropertyName {
     }
 
     #[inline]
-    fn validate(
-        name: &str,
-        context: super::error::PropertyNameContext,
-    ) -> Result<(), SchemaError> {
+    fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
         if name.is_empty() {
-            return Err(super::error::PropertyNameError::Empty {
-                context,
-            }
-            .into());
+            return Err(PropertyNameError::Empty.into());
         }
         if name.len() > Self::MAX_LEN {
-            return Err(super::error::PropertyNameError::TooLong {
+            return Err(PropertyNameError::TooLong {
                 len: name.len(),
                 max: Self::MAX_LEN,
-                context,
             }
             .into());
         }
 
-        let re = RE.as_ref().map_err(|error| {
-            super::error::PropertyNameError::InvalidRegex {
+        let re =
+            RE.as_ref().map_err(|error| PropertyNameError::InvalidRegex {
                 reason: error.to_string().into(),
-            }
-        })?;
+            })?;
 
         if !re.is_match(name) {
-            return Err(super::error::PropertyNameError::InvalidFormat {
+            return Err(PropertyNameError::InvalidFormat {
                 name: name.into(),
-                context,
             }
             .into());
         }
@@ -785,10 +758,7 @@ impl TryFrom<Box<str>> for PropertyName {
 
     #[inline]
     fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
-        Self::validate(
-            &value,
-            crate::schema::error::PropertyNameContext::SchemaProperty,
-        )?;
+        Self::validate(&value)?;
         Ok(Self(value))
     }
 }
@@ -1217,7 +1187,7 @@ mod tests {
                     res,
                     Err(SchemaError::Syntax(
                         crate::schema::error::SchemaSyntaxError::PropertyName(
-                            crate::schema::error::PropertyNameError::Empty { .. }
+                            crate::schema::error::PropertyNameError::Empty
                         )
                     ))
                 ),

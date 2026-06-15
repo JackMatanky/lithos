@@ -36,7 +36,9 @@ use super::{
 };
 use crate::{
     schema::{
-        error::SchemaError, identifier::SchemaName, property::PropertyName,
+        error::{PropertyNameError, SchemaError, SchemaSyntaxError},
+        identifier::SchemaName,
+        property::PropertyName,
     },
     support::{
         content_hash::{Blake3Hash, hash_structured},
@@ -439,19 +441,15 @@ impl TryFrom<String> for RawPropertyRefPath {
     fn try_from(path: String) -> Result<Self, Self::Error> {
         // Validate prefix
         let target = path.strip_prefix("#property_bank/").ok_or_else(|| {
-            SchemaError::Syntax(crate::schema::error::SchemaSyntaxError::PropertyName(
-                crate::schema::error::PropertyNameError::InvalidFormat {
+            SchemaError::Syntax(SchemaSyntaxError::PropertyName(
+                PropertyNameError::InvalidFormat {
                     name: path.clone().into(),
-                    context: crate::schema::error::PropertyNameContext::PropertyBank,
                 },
             ))
         })?;
 
         // Validate and construct target PropertyName
-        let target_name = PropertyName::try_new_with_context(
-            target,
-            crate::schema::error::PropertyNameContext::PropertyBank,
-        )?;
+        let target_name = PropertyName::try_new(target)?;
 
         Ok(RawPropertyRefPath {
             full_path: path.into_boxed_str(),

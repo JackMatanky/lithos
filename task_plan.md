@@ -10,8 +10,8 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
 
 ## Phases
 - [x] Phase 1: Initialize Planning <!-- id: 0 -->
-- [ ] Phase 2: Finalize Planning & Verify Enums (STRICT: NO CODE) <!-- id: 1 -->
-- [ ] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
+- [x] Phase 2: Finalize Planning & Verify Enums (STRICT: NO CODE) <!-- id: 1 -->
+- [in_progress] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
 - [ ] Phase 4: Property Specification & Value Error Refactor <!-- id: 3 -->
 - [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->

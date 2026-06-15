@@ -179,10 +179,12 @@ SchemaError (The Central Umbrella)
  │    ├── PropertyBuilderError
  │    ├── SchemaInheritanceError (Graph structural constraints)
  │    └── SchemaResolutionError (Final semantic consolidation)
- ├── PropertyMapError (Duplicate Property ID/Name constraints)
+ ├── SchemaNameError (Syntax validation)
+ ├── PropertyNameError (Syntax validation)
  ├── PropertySpecError (Structural invalidity of Spec definitions)
- ├── PropertyRefError (Invalid $ref references)
  ├── PropertyValueError (Data fails to adhere to Spec validation rules)
+ ├── PropertyRefError (Invalid $ref references)
+ ├── PropertyMapError (Duplicate Property ID/Name constraints)
  └── SchemaRepositoryError (Persistence Phase)
 ```
 
