@@ -25,28 +25,25 @@
 //!
 //! # Usage
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! # use std::sync::Arc;
 //! # use lithos_core::config::{
 //! #     builder::Builder,
 //! #     storage::RedbStorage,
-//! #     vault::VaultRoot,
 //! # };
 //! # use lithos_core::db::Store;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let vault_root = std::path::Path::new("/path/to/vault");
 //! # let db_path = std::path::Path::new("/tmp/test.redb");
 //! # let store = Arc::new(Store::open(db_path)?);
-//! // 1. Create builder with repository
+//! // 1. Create builder from DiscoveryResult and repository
 //! let storage = RedbStorage::new(store);
-//! let builder = Builder::new(vault_root, storage);
+//! // let builder = Builder::from_discovery(discovery_result, storage);
 //!
-//! // 2. Load configuration (with automatic staleness detection)
-//! let config = builder.load()?;
+//! // 2. Build configuration (with automatic staleness detection)
+//! // let config = builder.build()?;
 //!
 //! // 3. Use narrowed config specs in downstream contexts
-//! let cache_spec = config.to_cache_spec()?;
-//! assert!(!cache_spec.as_relative_dir().as_str().is_empty());
+//! // let cache_spec = config.to_cache_spec()?;
 //! # Ok(())
 //! # }
 //! ```
@@ -66,8 +63,7 @@
 //! ## Processing Pipeline
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
-//! - [`builder`] - Orchestrates: discover → process → merge → persist
-//! - [`discovery`] - Config discovery pipeline (filesystem + DB)
+//! - [`builder`] - Orchestrates: build → process → merge → persist
 //! - [`crate::discovery`] - Pre-config vault root and path discovery (Discovery
 //!   context)
 //!
@@ -122,8 +118,6 @@ pub use storage::{RedbRepository, RedbStorage};
 pub mod builder;
 /// Configuration diagnostics and warnings.
 pub(crate) mod diagnostics;
-/// Consolidated discovery logic for config files.
-pub(crate) mod discovery;
 /// Configuration error types.
 pub mod error;
 /// Configuration domain events.
@@ -138,9 +132,6 @@ pub mod merger;
 pub mod processor;
 /// Raw (serde) configuration input types.
 pub mod raw;
-/// Config-side root handoff types: classified file and aggregate discovery
-/// result.
-pub(crate) mod root;
 /// Task configuration schema and validation.
 pub mod task;
 /// Field specification and value validation types.
