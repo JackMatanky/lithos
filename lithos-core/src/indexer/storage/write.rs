@@ -110,6 +110,7 @@ impl RedbRepository {
     fn save_file_in_tx(
         tx: &crate::db::WriteTx,
         record: &FileRecord,
+        bytes: &[u8],
     ) -> Result<(), DbError> {
         // If this is an update, clean up stale graph entries
         if let Some(old) = Self::load_file_delete_context(tx, record.id())? {
@@ -118,9 +119,7 @@ impl RedbRepository {
 
         // Primary table
         let mut files_table = tx.inner.open_table(FILES.definition())?;
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
-        files_table.insert(record.id(), bytes.as_slice())?;
+        files_table.insert(record.id(), bytes)?;
 
         // Secondary indexes
         let mut path_table =
@@ -145,6 +144,7 @@ impl RedbRepository {
     fn save_dir_in_tx(
         tx: &crate::db::WriteTx,
         record: &DirRecord,
+        bytes: &[u8],
     ) -> Result<(), DbError> {
         // If this is an update, clean up stale graph entries
         if let Some(old) = Self::load_dir_delete_context(tx, record.id())? {
@@ -153,9 +153,7 @@ impl RedbRepository {
 
         // Primary table
         let mut dirs_table = tx.inner.open_table(DIRS.definition())?;
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
-        dirs_table.insert(record.id(), bytes.as_slice())?;
+        dirs_table.insert(record.id(), bytes)?;
 
         // Secondary indexes
         let mut path_table =
@@ -203,8 +201,10 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
         self.store
-            .write(|tx| Self::save_file_in_tx(tx, record))
+            .write(|tx| Self::save_file_in_tx(tx, record, bytes.as_slice()))
             .map_err(Into::into)
     }
 
@@ -212,8 +212,10 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
         self.store
-            .write(|tx| Self::save_dir_in_tx(tx, record))
+            .write(|tx| Self::save_dir_in_tx(tx, record, bytes.as_slice()))
             .map_err(Into::into)
     }
 
@@ -237,13 +239,24 @@ impl WriteRepository for RedbRepository {
         files: &[FileRecord],
         dirs: &[DirRecord],
     ) -> Result<(), IndexerRepositoryError> {
+        let file_archives: Vec<_> = files
+            .iter()
+            .map(rkyv::to_bytes::<rkyv::rancor::Error>)
+            .collect::<Result<_, _>>()
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        let dir_archives: Vec<_> = dirs
+            .iter()
+            .map(rkyv::to_bytes::<rkyv::rancor::Error>)
+            .collect::<Result<_, _>>()
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+
         self.store
             .write(|tx| {
-                for file in files {
-                    Self::save_file_in_tx(tx, file)?;
+                for (file, archive) in files.iter().zip(file_archives.iter()) {
+                    Self::save_file_in_tx(tx, file, archive.as_slice())?;
                 }
-                for dir in dirs {
-                    Self::save_dir_in_tx(tx, dir)?;
+                for (dir, archive) in dirs.iter().zip(dir_archives.iter()) {
+                    Self::save_dir_in_tx(tx, dir, archive.as_slice())?;
                 }
                 Ok(())
             })
