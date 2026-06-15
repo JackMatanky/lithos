@@ -9,8 +9,7 @@
 //!    ([`SchemaParseError`]).
 //! 3. **Versioning**: Schema version compatibility checks
 //!    ([`SchemaVersionError`]).
-//! 4. **Syntax**: Name and shape validation for raw schema inputs
-//!    ([`SchemaSyntaxError`]).
+//! 4. **Syntax**: Name and shape validation for raw schema inputs.
 //! 5. **Validation/Resolution**: Domain-level validation, property resolution,
 //!    and inheritance checks ([`SchemaError`] umbrella).
 //! 6. **Persistence**: Storage integrity and lookup behavior
@@ -26,7 +25,6 @@
 //!  │    ├── SchemaFileError (I/O & Naming)
 //!  │    ├── SchemaParseError (Syntax & Extraction)
 //!  │    ├── SchemaVersionError (Version Gate)
-//!  │    ├── SchemaSyntaxError (Raw Validation)
 //!  │    └── SchemaError (Domain Validation)
 //!  ├── SchemaError (Domain Umbrella)
 //!  │    ├── PropertySpecError, PropertyValueError
@@ -75,9 +73,13 @@ use crate::db::DbError;
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaError {
-    /// Returned when raw syntax validation fails.
+    /// Returned when the schema name is invalid.
     #[error(transparent)]
-    Syntax(#[from] SchemaSyntaxError),
+    SchemaName(#[from] SchemaNameError),
+
+    /// Returned when a property name is invalid.
+    #[error(transparent)]
+    PropertyName(#[from] PropertyNameError),
 
     /// Returned when property specification configuration is invalid.
     #[error(transparent)]
@@ -133,10 +135,6 @@ pub enum SchemaIngestionError {
     /// Returned when schema version validation fails.
     #[error(transparent)]
     Version(#[from] SchemaVersionError),
-
-    /// Returned when syntax validation fails.
-    #[error(transparent)]
-    Syntax(#[from] SchemaSyntaxError),
 
     /// Returned when repository access fails during ingestion.
     #[error(transparent)]
@@ -354,30 +352,17 @@ pub enum SchemaVersionError {
     },
 }
 
-/// Syntax validation failures in raw schema inputs.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SchemaSyntaxError {
-    /// Returned when the schema name is invalid.
-    #[error(transparent)]
-    SchemaName(#[from] SchemaNameError),
-
-    /// Returned when a property name is invalid.
-    #[error(transparent)]
-    PropertyName(#[from] PropertyNameError),
-}
-
 /// Schema name validation failures.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaNameError {
     /// Returned when the schema name is empty.
     #[error("schema name cannot be empty")]
-    Empty,
+    NameIsEmpty,
 
     /// Returned when the schema name exceeds the maximum length.
     #[error("schema name too long: {len} (max {max})")]
-    TooLong {
+    NameExceedsMaxLength {
         /// Length of the provided name.
         len: usize,
         /// Maximum allowed length.
@@ -386,14 +371,14 @@ pub enum SchemaNameError {
 
     /// Returned when the schema name does not match the expected format.
     #[error("invalid schema name: {name}")]
-    InvalidFormat {
+    ContainsInvalidCharacters {
         /// The invalid name.
         name: Box<str>,
     },
 
     /// Returned when the schema name regex fails to compile.
     #[error("invalid schema name regex: {reason}")]
-    InvalidRegex {
+    RegexCompilationFailed {
         /// Regex error details.
         reason: Box<str>,
     },
@@ -405,11 +390,11 @@ pub enum SchemaNameError {
 pub enum PropertyNameError {
     /// Returned when the property name is empty.
     #[error("property name cannot be empty")]
-    Empty,
+    NameIsEmpty,
 
     /// Returned when the property name exceeds the maximum length.
     #[error("property name too long: {len} (max {max})")]
-    TooLong {
+    NameExceedsMaxLength {
         /// Length of the provided name.
         len: usize,
         /// Maximum allowed length.
@@ -418,14 +403,14 @@ pub enum PropertyNameError {
 
     /// Returned when the property name does not match the expected format.
     #[error("invalid property name: {name}")]
-    InvalidFormat {
+    ContainsInvalidCharacters {
         /// The invalid name.
         name: Box<str>,
     },
 
     /// Returned when the property name regex fails to compile.
     #[error("invalid property name regex: {reason}")]
-    InvalidRegex {
+    RegexCompilationFailed {
         /// Regex error details.
         reason: Box<str>,
     },
@@ -765,20 +750,6 @@ pub enum SchemaResolutionError {
     NotDirected,
 }
 
-impl From<SchemaNameError> for SchemaError {
-    #[inline]
-    fn from(err: SchemaNameError) -> Self {
-        Self::Syntax(err.into())
-    }
-}
-
-impl From<PropertyNameError> for SchemaError {
-    #[inline]
-    fn from(err: PropertyNameError) -> Self {
-        Self::Syntax(err.into())
-    }
-}
-
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::ParseError) -> Self {
@@ -931,7 +902,6 @@ mod tests {
             assert_send_sync::<SchemaFileError>();
             assert_send_sync::<SchemaParseError>();
             assert_send_sync::<SchemaVersionError>();
-            assert_send_sync::<SchemaSyntaxError>();
             assert_send_sync::<SchemaNameError>();
             assert_send_sync::<PropertyNameError>();
             assert_send_sync::<PropertySpecError>();
@@ -950,15 +920,11 @@ mod tests {
 
         #[rstest]
         #[case::schema_name_empty(
-            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                SchemaNameError::Empty
-            )),
+            SchemaError::SchemaName(SchemaNameError::NameIsEmpty),
             "schema name cannot be empty"
         )]
         #[case::property_name_empty(
-            SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                PropertyNameError::Empty
-            )),
+            SchemaError::PropertyName(PropertyNameError::NameIsEmpty),
             "property name cannot be empty"
         )]
         #[case::property_ref_invalid(
@@ -1121,33 +1087,29 @@ mod tests {
 
         #[test]
         fn schema_name_error_converts_into_schema_error() {
-            let error: SchemaError = SchemaNameError::Empty.into();
+            let error: SchemaError = SchemaNameError::NameIsEmpty.into();
 
             assert!(
                 matches!(
                     error,
-                    SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                        SchemaNameError::Empty
-                    ))
+                    SchemaError::SchemaName(SchemaNameError::NameIsEmpty)
                 ),
-                "Expected SchemaNameError::Empty to convert into \
-                 SchemaError::Syntax"
+                "Expected SchemaNameError::NameIsEmpty to convert into \
+                 SchemaError::SchemaName"
             );
         }
 
         #[test]
         fn property_name_error_converts_into_schema_error() {
-            let error: SchemaError = PropertyNameError::Empty.into();
+            let error: SchemaError = PropertyNameError::NameIsEmpty.into();
 
             assert!(
                 matches!(
                     error,
-                    SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                        PropertyNameError::Empty
-                    ))
+                    SchemaError::PropertyName(PropertyNameError::NameIsEmpty)
                 ),
-                "Expected PropertyNameError::Empty to convert into \
-                 SchemaError::Syntax"
+                "Expected PropertyNameError::NameIsEmpty to convert into \
+                 SchemaError::PropertyName"
             );
         }
 
@@ -1181,7 +1143,6 @@ mod tests {
                 other @ (SchemaIngestionError::File(_)
                 | SchemaIngestionError::Parse(_)
                 | SchemaIngestionError::Version(_)
-                | SchemaIngestionError::Syntax(_)
                 | SchemaIngestionError::Repository(_)
                 | SchemaIngestionError::Schema {
                     ..

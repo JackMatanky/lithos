@@ -36,7 +36,7 @@ use super::{
 };
 use crate::{
     schema::{
-        error::{PropertyNameError, SchemaError, SchemaSyntaxError},
+        error::{PropertyNameError, SchemaError},
         identifier::SchemaName,
         property::PropertyName,
     },
@@ -441,11 +441,9 @@ impl TryFrom<String> for RawPropertyRefPath {
     fn try_from(path: String) -> Result<Self, Self::Error> {
         // Validate prefix
         let target = path.strip_prefix("#property_bank/").ok_or_else(|| {
-            SchemaError::Syntax(SchemaSyntaxError::PropertyName(
-                PropertyNameError::InvalidFormat {
-                    name: path.clone().into(),
-                },
-            ))
+            PropertyNameError::ContainsInvalidCharacters {
+                name: path.clone().into(),
+            }
         })?;
 
         // Validate and construct target PropertyName

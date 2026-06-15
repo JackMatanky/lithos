@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::{
     fs::{BaseName, PathKey},
-    schema::error::{SchemaError, SchemaNameError, SchemaSyntaxError},
+    schema::error::{SchemaError, SchemaNameError},
     utils::UuidV7,
 };
 
@@ -185,23 +185,24 @@ impl SchemaName {
             LazyLock::new(|| Regex::new(SchemaName::PATTERN));
 
         if name.is_empty() {
-            return Err(SchemaNameError::Empty.into());
+            return Err(SchemaNameError::NameIsEmpty.into());
         }
         if name.len() > 64 {
-            return Err(SchemaNameError::TooLong {
+            return Err(SchemaNameError::NameExceedsMaxLength {
                 len: name.len(),
                 max: 64,
             }
             .into());
         }
 
-        let re =
-            RE.as_ref().map_err(|error| SchemaNameError::InvalidRegex {
+        let re = RE.as_ref().map_err(|error| {
+            SchemaNameError::RegexCompilationFailed {
                 reason: error.to_string().into(),
-            })?;
+            }
+        })?;
 
         if !re.is_match(name) {
-            return Err(SchemaNameError::InvalidFormat {
+            return Err(SchemaNameError::ContainsInvalidCharacters {
                 name: name.into(),
             }
             .into());
@@ -327,24 +328,13 @@ impl TryFrom<&PathKey> for SchemaName {
     #[inline]
     fn try_from(path: &PathKey) -> Result<Self, Self::Error> {
         let filename = path.as_str().rsplit('/').next().ok_or_else(|| {
-            SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                SchemaNameError::InvalidFormat {
-                    name: format!("Path has no filename: {}", path.as_str())
-                        .into(),
-                },
-            ))
+            SchemaNameError::ContainsInvalidCharacters {
+                name: format!("Path has no filename: {}", path.as_str()).into(),
+            }
         })?;
         let basename = BaseName::try_from(std::path::Path::new(filename))
-            .map_err(|_| {
-                SchemaError::Syntax(SchemaSyntaxError::SchemaName(
-                    SchemaNameError::InvalidFormat {
-                        name: format!(
-                            "Path has no basename: {}",
-                            path.as_str()
-                        )
-                        .into(),
-                    },
-                ))
+            .map_err(|_| SchemaNameError::ContainsInvalidCharacters {
+                name: format!("Path has no basename: {}", path.as_str()).into(),
             })?;
 
         Self::try_new(basename.as_str())

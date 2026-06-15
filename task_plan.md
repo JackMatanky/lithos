@@ -12,7 +12,11 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
 - [x] Phase 1: Initialize Planning <!-- id: 0 -->
 - [x] Phase 2: Finalize Planning & Verify Enums (STRICT: NO CODE) <!-- id: 1 -->
 - [in_progress] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
-- [ ] Phase 4: Property Specification & Value Error Refactor <!-- id: 3 -->
+    - [ ] Redefine `SchemaNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
+    - [ ] Redefine `PropertyNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
+    - [ ] Remove `SchemaSyntaxError` and flatten into `SchemaError`
+    - [ ] Update all callers of `SchemaNameError`, `PropertyNameError`, and `SchemaSyntaxError`
+- [ ] Phase 4: Property Specification & Value Error Refactor (REQUIRES USER CONSENT) <!-- id: 3 -->
 - [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
 - [ ] Phase 7: Verification <!-- id: 6 -->

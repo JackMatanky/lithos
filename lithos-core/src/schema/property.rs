@@ -682,23 +682,24 @@ impl PropertyName {
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
         if name.is_empty() {
-            return Err(PropertyNameError::Empty.into());
+            return Err(PropertyNameError::NameIsEmpty.into());
         }
         if name.len() > Self::MAX_LEN {
-            return Err(PropertyNameError::TooLong {
+            return Err(PropertyNameError::NameExceedsMaxLength {
                 len: name.len(),
                 max: Self::MAX_LEN,
             }
             .into());
         }
 
-        let re =
-            RE.as_ref().map_err(|error| PropertyNameError::InvalidRegex {
+        let re = RE.as_ref().map_err(|error| {
+            PropertyNameError::RegexCompilationFailed {
                 reason: error.to_string().into(),
-            })?;
+            }
+        })?;
 
         if !re.is_match(name) {
-            return Err(PropertyNameError::InvalidFormat {
+            return Err(PropertyNameError::ContainsInvalidCharacters {
                 name: name.into(),
             }
             .into());
@@ -1159,14 +1160,13 @@ mod tests {
             // WHEN: creating a PropertyName
             let res = PropertyName::try_new(&long_name);
 
-            // THEN: it should return a PropertyNameError::TooLong error
+            // THEN: it should return a PropertyNameError::NameExceedsMaxLength
+            // error
             assert!(
                 matches!(
                     res,
-                    Err(SchemaError::Syntax(
-                        crate::schema::error::SchemaSyntaxError::PropertyName(
-                            crate::schema::error::PropertyNameError::TooLong { .. }
-                        )
+                    Err(SchemaError::PropertyName(
+                        crate::schema::error::PropertyNameError::NameExceedsMaxLength { .. }
                     ))
                 ),
                 "Property name >64 chars should be rejected, got: {res:?}"
@@ -1181,14 +1181,12 @@ mod tests {
             // WHEN: creating a PropertyName
             let res = PropertyName::try_new("");
 
-            // THEN: it should return a PropertyNameError::Empty error
+            // THEN: it should return a PropertyNameError::NameIsEmpty error
             assert!(
                 matches!(
                     res,
-                    Err(SchemaError::Syntax(
-                        crate::schema::error::SchemaSyntaxError::PropertyName(
-                            crate::schema::error::PropertyNameError::Empty
-                        )
+                    Err(SchemaError::PropertyName(
+                        crate::schema::error::PropertyNameError::NameIsEmpty
                     ))
                 ),
                 "Empty property name should be rejected, got: {res:?}"
