@@ -253,6 +253,45 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
 
 ## Changlog
 
+### 2026-06-15 — Session 4: Adversarial review — hexagonal boundary enforcement
+
+**Commits**: (pending)
+
+Fixed 7 architectural violations identified during adversarial review against
+`docs/refs/rust/guides/hexagonal_architecture.md`:
+
+1. **Port defined inside adapter module**: Moved `ScannerPort`, `ScanResult`,
+   `SkippedEntry`, `SkipReason` from `scanner/` into new `indexer/port.rs`.
+   ScannerError went to `indexer/error.rs` alongside other error types.
+   `scanner/mod.rs` now purely declares the adapter submodule.
+
+2. **Walkdir dependency not encapsulated**: `mod walkdir` made private (was
+   `pub(crate)`). `pub mod scanner` changed to `pub(crate) mod scanner`.
+   `WalkdirAdapter` no longer re-exported from `indexer/mod.rs`. No walkdir
+   types visible outside the adapter.
+
+3. **`ScannerError::Unknown(String)` removed**: dead code — all traversal
+   errors have a concrete `Traversal { path, source }` path.
+
+4. **`SkipReason::Unknown(String)` removed**: dead code — all skipped entries
+   are `PermissionDenied` or `UnsupportedEntryType`.
+
+5. **`#[allow(clippy::excessive_nesting)]` removed**: extracted
+   `WalkdirAdapter::handle_entry` to flatten the walkdir loop body.
+
+6. **`ScanFilters` type mismatch**: changed `Vec<String>` to `Vec<Box<str>>`
+   on both `included_extensions` and `excluded_names` fields, matching the
+   issue spec.
+
+7. **Module doc comments**: added `//!` doc to `repository.rs`, `port.rs`,
+   `report.rs`; updated `scanner/mod.rs` and `walkdir.rs` docs.
+
+Structural changes:
+- `report.rs` created: `IndexReport`, `IndexNodeFailure`, `SkippedEntry`,
+  `SkipReason` — report/skipped types from `summary.rs` + `port.rs`
+- `port.rs` shrinks to just `ScannerPort` + `ScanResult` (the pure port contract)
+- `summary.rs` trimmed to `IndexResult`, `IndexedNodes`, `DeletedNodes`
+
 ### 2026-06-15 — Session 3: Serialization before write transaction (perf)
 
 **Commits**: `ea4646bd`
@@ -310,10 +349,14 @@ Replaced raw table definitions with typed wrappers (`UuidTable`, `PathUuidTable`
 
 ## Status
 
-**Label**: `ready-for-agent` (still open — scanner and walkdir adapter not yet
-implemented).
+**Label**: `ready-for-agent` (awaiting issue 04 — scanner and adapters
+complete).
 
-**Completed** (repository/storage layer):
+**Completed**:
+- [x] `ScannerPort` trait and `ScanResult`/`SkippedEntry`/`SkipReason` types
+- [x] `WalkdirAdapter` implementing `ScannerPort`
+- [x] `ScanFilters` with extension inclusion and name exclusion (`Vec<Box<str>>`)
+- [x] `IndexReport::skipped` field
 - [x] `ReadRepository`, `WriteRepository`, `Repository` traits defined
 - [x] `RedbRepository` implements all three traits
 - [x] All 7 tables defined with typed wrappers
@@ -325,14 +368,8 @@ implemented).
 - [x] `IndexerError`, `ScannerError`, `IndexerRepositoryError` defined
 - [x] Raw `&[u8]` storage via `rkyv::to_bytes`/`rkyv::from_bytes`
 - [x] Serialization outside write transaction (perf)
-
-**Pending** (scanner/walkdir — not started):
-- [ ] `ScannerPort` trait and `ScanResult`/`SkippedEntry`/`SkipReason` types
-- [ ] `WalkdirAdapter` implementing `ScannerPort`
-- [ ] Scanner mockall annotation
-- [ ] `ScanFilters` with extension inclusion and name exclusion
-- [ ] `IndexReport::skipped` field
-- [ ] Module wiring for scanner and walkdir
+- [x] Hexagonal boundary enforcement (port in `port.rs`, adapter in `scanner/`,
+      walkdir encapsulated, Unknown variants removed, nesting flattened)
 
 ---
 

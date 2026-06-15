@@ -1,6 +1,8 @@
 //! Indexer error types.
 
-use crate::{db::DbError, fs::path::PathKey, indexer::scanner::ScannerError};
+use std::path::PathBuf;
+
+use crate::{db::DbError, fs::path::PathKey};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -23,6 +25,19 @@ pub(crate) enum IndexerRepositoryError {
     /// A `PathKey` write would create a duplicate entry.
     #[error("duplicate path: {0}")]
     DuplicatePath(PathKey),
+}
+
+/// Errors that can occur during filesystem scanning.
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum ScannerError {
+    /// A walkdir entry or metadata read failed during traversal.
+    #[error("traversal failed for {path}: {source}")]
+    Traversal {
+        /// Path where the error occurred.
+        path: PathBuf,
+        /// Underlying I/O error.
+        source: std::io::Error,
+    },
 }
 
 #[cfg(test)]

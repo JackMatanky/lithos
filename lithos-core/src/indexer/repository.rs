@@ -1,3 +1,9 @@
+//! Indexer repository port — persistence contract for indexed records.
+//!
+//! Defines the `ReadRepository` and `WriteRepository` traits that form the
+//! persistence boundary of the indexer context. Adapters (e.g.,
+//! `RedbRepository`, `InMemoryRepository`) live in the storage submodule.
+
 use crate::{
     fs::{FileFormat, path::PathKey},
     indexer::{

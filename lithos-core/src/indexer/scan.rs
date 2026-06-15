@@ -9,10 +9,10 @@ use crate::fs::path::PathKey;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ScanFilters {
     /// Optional file extensions to include (e.g., `["md", "toml"]`).
-    pub(crate) included_extensions: Vec<String>,
+    pub(crate) included_extensions: Vec<Box<str>>,
     /// Exact directory or file names to exclude (e.g., `[".git",
     /// "node_modules"]`).
-    pub(crate) excluded_names: Vec<String>,
+    pub(crate) excluded_names: Vec<Box<str>>,
 }
 
 /// The scope of an indexing operation.

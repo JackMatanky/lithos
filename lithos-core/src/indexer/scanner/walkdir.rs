@@ -5,10 +5,10 @@ use walkdir::WalkDir;
 use crate::{
     fs::{DirPath, FsNode},
     indexer::{
+        error::ScannerError,
+        port::{ScanResult, ScannerPort},
+        report::{SkipReason, SkippedEntry},
         scan::{IndexScope, ScanFilters},
-        scanner::{
-            ScanResult, ScannerError, ScannerPort, SkipReason, SkippedEntry,
-        },
     },
 };
 
@@ -29,7 +29,7 @@ impl WalkdirAdapter {
 
     fn filter_entry(entry: &walkdir::DirEntry, filters: &ScanFilters) -> bool {
         let name = entry.file_name().to_string_lossy();
-        if filters.excluded_names.iter().any(|n: &String| n.as_str() == name) {
+        if filters.excluded_names.iter().any(|n| n.as_ref() == name.as_ref()) {
             return false;
         }
 
@@ -45,7 +45,7 @@ impl WalkdirAdapter {
                 if !filters
                     .included_extensions
                     .iter()
-                    .any(|allowed: &String| allowed.as_str() == ext)
+                    .any(|allowed| allowed.as_ref() == ext)
                 {
                     return false;
                 }
@@ -56,13 +56,72 @@ impl WalkdirAdapter {
 
         true
     }
+
+    fn handle_entry(
+        entry: walkdir::DirEntry,
+        result: &mut ScanResult,
+        scan_root: &Path,
+        filters: &ScanFilters,
+    ) {
+        let file_type = entry.file_type();
+        if !file_type.is_file()
+            && !file_type.is_dir()
+            && !file_type.is_symlink()
+        {
+            result.skipped.push(SkippedEntry {
+                path: entry.path().to_path_buf(),
+                reason: SkipReason::UnsupportedEntryType,
+            });
+            return;
+        }
+
+        if !Self::filter_entry(&entry, filters) {
+            return;
+        }
+
+        let entry_path = entry.path().to_path_buf();
+        match FsNode::try_from(entry) {
+            Ok(FsNode::File(node)) => result.files.push(node),
+            Ok(FsNode::Dir(node)) => {
+                if node.path().as_path() != scan_root {
+                    result.dirs.push(node);
+                }
+            }
+            Err(_) => {
+                result.skipped.push(SkippedEntry {
+                    path: entry_path,
+                    reason: SkipReason::PermissionDenied,
+                });
+            }
+        }
+    }
+
+    fn handle_entry_error(
+        e: walkdir::Error,
+        result: &mut ScanResult,
+    ) -> Result<(), ScannerError> {
+        let path = e.path().map(Path::to_path_buf).unwrap_or_default();
+        if e.io_error().is_some_and(|ioe| {
+            ioe.kind() == std::io::ErrorKind::PermissionDenied
+        }) {
+            result.skipped.push(SkippedEntry {
+                path,
+                reason: SkipReason::PermissionDenied,
+            });
+            Ok(())
+        } else {
+            let source = e.into_io_error().unwrap_or_else(|| {
+                std::io::Error::other("Unknown traversal error")
+            });
+            Err(ScannerError::Traversal {
+                path,
+                source,
+            })
+        }
+    }
 }
 
 impl ScannerPort for WalkdirAdapter {
-    #[allow(
-        clippy::excessive_nesting,
-        reason = "Walkdir traversal requires deep nesting"
-    )]
     fn scan(&self, scope: &IndexScope) -> Result<ScanResult, ScannerError> {
         let mut result = ScanResult::default();
 
@@ -85,59 +144,10 @@ impl ScannerPort for WalkdirAdapter {
         for entry in walker {
             match entry {
                 Ok(entry) => {
-                    let file_type = entry.file_type();
-                    if !file_type.is_file()
-                        && !file_type.is_dir()
-                        && !file_type.is_symlink()
-                    {
-                        result.skipped.push(SkippedEntry {
-                            path: entry.path().to_path_buf(),
-                            reason: SkipReason::UnsupportedEntryType,
-                        });
-                        continue;
-                    }
-
-                    if !Self::filter_entry(&entry, filters) {
-                        continue;
-                    }
-
-                    let entry_path = entry.path().to_path_buf();
-                    match FsNode::try_from(entry) {
-                        Ok(FsNode::File(node)) => result.files.push(node),
-                        Ok(FsNode::Dir(node)) => {
-                            // Skip the scan root directory itself in results to
-                            // match DirScanner behavior
-                            if node.path().as_path() != scan_root {
-                                result.dirs.push(node);
-                            }
-                        }
-                        Err(_) => {
-                            result.skipped.push(SkippedEntry {
-                                path: entry_path,
-                                reason: SkipReason::PermissionDenied,
-                            });
-                        }
-                    }
+                    Self::handle_entry(entry, &mut result, scan_root, filters);
                 }
                 Err(e) => {
-                    let path =
-                        e.path().map(Path::to_path_buf).unwrap_or_default();
-                    if e.io_error().is_some_and(|ioe| {
-                        ioe.kind() == std::io::ErrorKind::PermissionDenied
-                    }) {
-                        result.skipped.push(SkippedEntry {
-                            path,
-                            reason: SkipReason::PermissionDenied,
-                        });
-                    } else {
-                        let source = e.into_io_error().unwrap_or_else(|| {
-                            std::io::Error::other("Unknown traversal error")
-                        });
-                        return Err(ScannerError::Traversal {
-                            path,
-                            source,
-                        });
-                    }
+                    Self::handle_entry_error(e, &mut result)?;
                 }
             }
         }
