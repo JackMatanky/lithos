@@ -227,6 +227,96 @@ None. All 9 TDD phases implemented as specified. One divergence from the TDD pla
 
 A follow-on issue is needed to wire `Bootstrapper::discover()` → `Builder::from_discovery()` in the app/CLI layer. Without it, `Builder` is structurally ready but unreachable from any executable path. The old `Builder::new` + `load()` path was the only production caller and is now removed.
 
+## TDD Plan — Phase 10: `Bootstrapper::run()` wiring
+
+Extends the issue with the wiring that closes the dead-code gap in `from_discovery`.
+
+### Context
+
+`Bootstrapper::discover()` already returns `(DiscoveryResult, DiscoveryReport)`.
+`Builder::from_discovery(result, repo).build()` already returns `Result<Config, ConfigError>`.
+The only missing piece is the method that sequences them and the error variant that carries `ConfigError` out of the bootstrap boundary.
+
+### Phase 10: Extend `BootstrapError` and add `Bootstrapper::run()`
+
+#### 10.1 `bootstrap_error::includes_config_variant`
+
+- **Module**: `app/bootstrap.rs` → `mod tests` → `mod bootstrap_error`
+- **Behavior**: `BootstrapError` has a `Config(#[from] ConfigError)` variant so `?` works on `Builder::build()` inside `run()`.
+- **Test**: Construct `BootstrapError::Config(ConfigError::Ingestion("x".into()))`, assert `matches!(e, BootstrapError::Config(_))`.
+- **Implementation**: Add `Config(#[from] ConfigError)` to the `BootstrapError` enum. Remove the `#[allow(dead_code)]` on `BootstrapError` — both variants are now reachable.
+
+#### 10.2 `run::builds_config_from_vault_only_discovery`
+
+- **Module**: `app/bootstrap.rs` → `mod tests` → `mod run`
+- **Behavior**: `Bootstrapper::run(flags, env, anchor, repo)` returns `Ok((Config, DiscoveryReport))` when discovery finds a vault candidate and config builds successfully.
+- **Test**: Create a temp dir with a `lithos.toml`, pass its path as a `DiscoveryFlags` vault + config override, call `run()` with `InMemoryRepository`, assert `Ok((config, _))`.
+- **Implementation**:
+  ```rust
+  pub(crate) fn run<R: Repository>(
+      &self,
+      flags: Option<DiscoveryFlags>,
+      env: Option<DiscoveryEnv<'_>>,
+      anchor: &std::path::Path,
+      repository: R,
+  ) -> Result<(Config, DiscoveryReport), BootstrapError> {
+      let context = Self::build_context(flags, env, anchor)?;
+      let (discovery, report) = self.discover(&context)?;
+      let config = Builder::from_discovery(discovery, repository).build()?;
+      Ok((config, report))
+  }
+  ```
+  Add imports: `crate::config::{aggregate::Config, builder::Builder, repository::Repository}`.
+
+#### 10.3 `run::propagates_discovery_error`
+
+- **Behavior**: `run()` returns `Err(BootstrapError::Discovery(_))` when the discovery port fails.
+- **Test**: Use `MockDiscoveryPort` returning `Err(DiscoveryError::InvalidAnchorDirectory { .. })`, assert error variant matches.
+
+#### 10.4 `run::propagates_config_error`
+
+- **Behavior**: `run()` returns `Err(BootstrapError::Config(_))` when `Builder::build()` fails (e.g. unparseable TOML).
+- **Test**: Create a `lithos.toml` containing invalid TOML, wire through flags, assert `Err(BootstrapError::Config(_))`.
+
+#### 10.5 `run::returns_report_alongside_config`
+
+- **Behavior**: The `DiscoveryReport` is returned unchanged alongside the built `Config`.
+- **Test**: Use `MockDiscoveryPort` returning a report with a known `local_traversal_stop_reason`, assert the returned report matches.
+
+#### 10.6 `run::concrete_service_builds_config_from_vault_with_platform_bootstrapper`
+
+- **Module**: `mod concrete_service` (existing)
+- **Behavior**: End-to-end smoke test through `Bootstrapper<DiscoveryService>`: `with_global_directories([])`, flag-supplied vault + config, `run()` succeeds.
+- **Test**: Mirrors the existing `returns_app_result_from_concrete_discovery_service` test but calls `run()` instead of `discover()`, asserts `config` is returned.
+
+### Test suite additions
+
+```
+mod bootstrap_error {
+    #[test] fn includes_config_variant() {}
+}
+mod run {
+    #[test] fn builds_config_from_vault_only_discovery() {}
+    #[test] fn propagates_discovery_error() {}
+    #[test] fn propagates_config_error() {}
+    #[test] fn returns_report_alongside_config() {}
+}
+mod concrete_service {
+    // existing tests unchanged
+    #[test] fn run_builds_config_from_vault_with_platform_bootstrapper() {}
+}
+```
+
+### Definition of Done — Phase 10
+
+- [ ] `BootstrapError::Config(#[from] ConfigError)` variant added
+- [ ] `#[allow(dead_code)]` removed from `BootstrapError` (both variants reachable)
+- [ ] `Bootstrapper::run<R: Repository>(flags, env, anchor, repo) -> Result<(Config, DiscoveryReport), BootstrapError>` added
+- [ ] `#[cfg_attr(not(test), expect(dead_code, ...))]` removed from `Builder::from_discovery` (now called from production code in `run()`)
+- [ ] `run()` is on `impl<D: DiscoveryPort> Bootstrapper<D>`, not only on `impl Bootstrapper<DiscoveryService>`
+- [ ] All 6 new tests pass
+- [ ] `mise run verify` clean
+
 
 ## Agent Brief
 
