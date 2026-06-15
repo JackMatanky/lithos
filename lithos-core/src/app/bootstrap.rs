@@ -3,6 +3,10 @@
 use std::{env, path::PathBuf};
 
 use crate::{
+    config::{
+        aggregate::Config, builder::Builder, error::ConfigError,
+        repository::Repository,
+    },
     discovery::{
         context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
         error::DiscoveryError,
@@ -15,11 +19,19 @@ use crate::{
 
 /// App-owned bootstrap error boundary.
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code, reason = "Concrete orchestration slice; CLI wiring follows")]
+#[allow(
+    dead_code,
+    reason = "CLI wiring pending; variants used via run() which has no \
+              production caller yet"
+)]
 pub(crate) enum BootstrapError {
     /// Discovery setup or execution failed.
     #[error(transparent)]
     Discovery(#[from] DiscoveryError),
+
+    /// Configuration building failed.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
 }
 
 /// Application-owned bootstrap orchestration entry point.
@@ -28,12 +40,20 @@ pub(crate) enum BootstrapError {
 /// implementation can be swapped out in tests without touching the
 /// orchestration logic.
 #[derive(Debug, Default)]
-#[allow(dead_code, reason = "Contract slice; full orchestration lands later")]
+#[allow(
+    dead_code,
+    reason = "CLI wiring pending; exercised via tests until CLI layer wires \
+              run()"
+)]
 pub(crate) struct Bootstrapper<D: DiscoveryPort> {
     port: D,
 }
 
-#[allow(dead_code, reason = "Contract slice; full orchestration lands later")]
+#[allow(
+    dead_code,
+    reason = "CLI wiring pending; all methods exercised via tests until CLI \
+              layer wires run()"
+)]
 impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Creates a bootstrapper backed by the given discovery port.
     pub(crate) fn new(port: D) -> Self {
@@ -79,9 +99,36 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
         self.port.discover(context).map_err(Into::into)
     }
+
+    /// Runs the full bootstrap pipeline: discovery → config build.
+    ///
+    /// Builds the [`DiscoveryContext`] from the provided runtime inputs, runs
+    /// discovery through the port, then builds a [`Config`] from the
+    /// discovered candidate paths using the given `repository`.
+    ///
+    /// # Errors
+    ///
+    /// - [`BootstrapError::Discovery`] if discovery setup or execution fails.
+    /// - [`BootstrapError::Config`] if configuration building fails.
+    pub(crate) fn run<R: Repository>(
+        &self,
+        flags: Option<DiscoveryFlags>,
+        env: Option<DiscoveryEnv<'_>>,
+        anchor: &std::path::Path,
+        repository: R,
+    ) -> Result<(Config, DiscoveryReport), BootstrapError> {
+        let context = Self::build_context(flags, env, anchor)?;
+        let (discovery, report) = self.discover(&context)?;
+        let config = Builder::from_discovery(discovery, repository).build()?;
+        Ok((config, report))
+    }
 }
 
-#[allow(dead_code, reason = "Concrete orchestration slice; CLI wiring follows")]
+#[allow(
+    dead_code,
+    reason = "CLI wiring pending; concrete service methods exercised via \
+              tests until CLI layer wires run()"
+)]
 impl Bootstrapper<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
@@ -454,6 +501,189 @@ mod tests {
         }
     }
 
+    mod bootstrap_error {
+        use super::*;
+        use crate::config::error::ConfigError;
+
+        #[test]
+        fn includes_config_variant() {
+            let e = BootstrapError::Config(ConfigError::Ingestion("x".into()));
+            assert!(matches!(e, BootstrapError::Config(_)));
+        }
+    }
+
+    mod run {
+        use mockall::predicate::always;
+
+        use super::*;
+        use crate::{
+            config::storage::testing::InMemoryRepository,
+            discovery::service::{CandidatePath, DiscoveryResult},
+            fs::{DirPath, FilePath},
+        };
+
+        #[test]
+        fn builds_config_from_vault_only_discovery() {
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            std::fs::write(
+                &config_path,
+                "[template]\ndirectory = \"templates\"",
+            )
+            .expect("write config");
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(root.path().to_path_buf())
+                    .expect("valid base dir"),
+                FilePath::try_new(config_path).expect("valid file path"),
+            );
+            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::FilesystemRoot,
+                global_resolution_skip_reason: None,
+            };
+            let mut mock = MockDiscoveryPort::new();
+            let disc = discovery.clone();
+            let rep = report.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok((disc.clone(), rep.clone())));
+            let bootstrapper = Bootstrapper::new(mock);
+            let anchor = tempfile::tempdir().expect("anchor");
+
+            let result = bootstrapper.run::<InMemoryRepository>(
+                None,
+                None,
+                anchor.path(),
+                InMemoryRepository::new(),
+            );
+
+            assert!(result.is_ok(), "expected Ok, got: {result:?}");
+        }
+
+        #[test]
+        fn propagates_discovery_error() {
+            let mut mock = MockDiscoveryPort::new();
+            mock.expect_discover().with(always()).once().returning(|_| {
+                Err(DiscoveryError::InvalidAnchorDirectory {
+                    path: std::path::PathBuf::from("/bad"),
+                    source: crate::fs::PathError::NotADirectory(
+                        std::path::PathBuf::from("/bad"),
+                    ),
+                })
+            });
+            let bootstrapper = Bootstrapper::new(mock);
+            let anchor = tempfile::tempdir().expect("anchor");
+
+            let err = bootstrapper
+                .run::<InMemoryRepository>(
+                    None,
+                    None,
+                    anchor.path(),
+                    InMemoryRepository::new(),
+                )
+                .expect_err("expected error");
+
+            assert!(
+                matches!(err, BootstrapError::Discovery(_)),
+                "expected Discovery error, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn propagates_config_error() {
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            // Write invalid TOML to trigger a ConfigError::Ingestion
+            std::fs::write(&config_path, "not = [toml").expect("write config");
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(root.path().to_path_buf())
+                    .expect("valid base dir"),
+                FilePath::try_new(config_path).expect("valid file path"),
+            );
+            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::FilesystemRoot,
+                global_resolution_skip_reason: None,
+            };
+            let mut mock = MockDiscoveryPort::new();
+            let disc = discovery.clone();
+            let rep = report.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok((disc.clone(), rep.clone())));
+            let bootstrapper = Bootstrapper::new(mock);
+            let anchor = tempfile::tempdir().expect("anchor");
+
+            let err = bootstrapper
+                .run::<InMemoryRepository>(
+                    None,
+                    None,
+                    anchor.path(),
+                    InMemoryRepository::new(),
+                )
+                .expect_err("expected error");
+
+            assert!(
+                matches!(err, BootstrapError::Config(_)),
+                "expected Config error, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn returns_report_alongside_config() {
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            std::fs::write(
+                &config_path,
+                "[template]\ndirectory = \"templates\"",
+            )
+            .expect("write config");
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(root.path().to_path_buf())
+                    .expect("valid base dir"),
+                FilePath::try_new(config_path).expect("valid file path"),
+            );
+            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let expected_report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::ExplicitConfigFile,
+                global_resolution_skip_reason: Some(
+                    GlobalResolutionSkipReason::SuppressedByFlag,
+                ),
+            };
+            let mut mock = MockDiscoveryPort::new();
+            let disc = discovery.clone();
+            let rep = expected_report.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok((disc.clone(), rep.clone())));
+            let bootstrapper = Bootstrapper::new(mock);
+            let anchor = tempfile::tempdir().expect("anchor");
+
+            let (_, returned_report) = bootstrapper
+                .run::<InMemoryRepository>(
+                    None,
+                    None,
+                    anchor.path(),
+                    InMemoryRepository::new(),
+                )
+                .expect("run should succeed");
+
+            assert_eq!(
+                returned_report, expected_report,
+                "returned report should match mock report"
+            );
+        }
+    }
+
     mod concrete_service {
         use pretty_assertions::assert_eq;
 
@@ -496,6 +726,36 @@ mod tests {
             let result = Bootstrapper::from_platform();
 
             assert!(result.is_ok());
+        }
+
+        #[test]
+        fn run_builds_config_from_vault_with_platform_bootstrapper() {
+            use crate::config::storage::testing::InMemoryRepository;
+
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            std::fs::write(
+                &config_path,
+                "[template]\ndirectory = \"templates\"",
+            )
+            .expect("write config");
+            let flags = DiscoveryFlags::new(
+                Some(config_path.as_path()),
+                Some(root.path()),
+                true,
+            )
+            .expect("valid flags");
+            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+                .expect("valid bootstrapper");
+
+            let result = bootstrapper.run(
+                Some(flags),
+                None,
+                root.path(),
+                InMemoryRepository::new(),
+            );
+
+            assert!(result.is_ok(), "expected Ok, got: {result:?}");
         }
     }
 }

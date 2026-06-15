@@ -235,15 +235,8 @@ where
     /// - `repository`: Database repository for persistence.
     #[inline]
     #[must_use]
-    // LINT: `from_discovery` is `pub(crate)` — it is currently only exercised
-    // by tests while Bootstrapper wiring is deferred to a follow-on issue.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "New Bootstrapper API — wired up in a follow-on issue"
-        )
-    )]
+    // LINT: called from Bootstrapper::run() which is itself pending CLI wiring.
+    #[allow(dead_code, reason = "Wired via run(); CLI caller lands next issue")]
     pub(crate) fn from_discovery(
         result: DiscoveryResult,
         repository: R,
