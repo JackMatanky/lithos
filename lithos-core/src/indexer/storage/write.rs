@@ -23,7 +23,15 @@ impl RedbRepository {
         id: FsRecordId,
     ) -> Result<Option<FileRecord>, DbError> {
         let table = tx.inner.open_table(FILES.definition())?;
-        Ok(table.get(id)?.map(|guard| guard.value()))
+        table
+            .get(id)?
+            .map(|guard| {
+                rkyv::from_bytes::<FileRecord, rkyv::rancor::Error>(
+                    guard.value(),
+                )
+                .map_err(|e| DbError::Deserialization(e.to_string()))
+            })
+            .transpose()
     }
 
     fn load_dir_delete_context(
@@ -31,7 +39,15 @@ impl RedbRepository {
         id: FsRecordId,
     ) -> Result<Option<DirRecord>, DbError> {
         let table = tx.inner.open_table(DIRS.definition())?;
-        Ok(table.get(id)?.map(|guard| guard.value()))
+        table
+            .get(id)?
+            .map(|guard| {
+                rkyv::from_bytes::<DirRecord, rkyv::rancor::Error>(
+                    guard.value(),
+                )
+                .map_err(|e| DbError::Deserialization(e.to_string()))
+            })
+            .transpose()
     }
 
     fn remove_file_graph(
@@ -91,7 +107,9 @@ impl RedbRepository {
 
         // Primary table
         let mut files_table = tx.inner.open_table(FILES.definition())?;
-        files_table.insert(record.id(), record.clone())?;
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        files_table.insert(record.id(), bytes.as_slice())?;
 
         // Secondary indexes
         let mut path_table =
@@ -124,7 +142,9 @@ impl RedbRepository {
 
         // Primary table
         let mut dirs_table = tx.inner.open_table(DIRS.definition())?;
-        dirs_table.insert(record.id(), record.clone())?;
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        dirs_table.insert(record.id(), bytes.as_slice())?;
 
         // Secondary indexes
         let mut path_table =
