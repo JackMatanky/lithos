@@ -20,3 +20,4 @@
 //!   for rendering; not CLI-formatted output.
 
 pub(crate) mod bootstrap;
+pub(crate) mod error;
