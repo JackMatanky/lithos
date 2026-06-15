@@ -338,6 +338,23 @@ pub enum SchemaParseError {
     },
 }
 
+/// Errors raised by property builder and override operations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyBuilderError {
+    /// Returned when a `$ref` override changes the property type.
+    #[error(
+        "cannot change property type via override: expected {expected}, got \
+         {actual}"
+    )]
+    OverridePropertyRefSpecTypeMismatch {
+        /// Expected type.
+        expected: Box<str>,
+        /// Actual override type.
+        actual: Box<str>,
+    },
+}
+
 /// Schema version validation errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -418,6 +435,25 @@ pub enum PropertyNameError {
     RegexCompilationFailed {
         /// Regex error details.
         reason: Box<str>,
+    },
+}
+
+/// Errors raised by property map constraints.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyMapError {
+    /// Returned when a property name is defined more than once.
+    #[error("duplicate property name: {name}")]
+    DuplicatePropertyName {
+        /// Property name.
+        name: Box<str>,
+    },
+
+    /// Returned when a property ID is reused for a different name.
+    #[error("duplicate property id: {id}")]
+    DuplicatePropertyId {
+        /// Property id.
+        id: Box<str>,
     },
 }
 
@@ -692,42 +728,6 @@ pub enum PropertyRefError {
     TargetPropertyNotFoundInBank {
         /// The reference string.
         reference: Box<str>,
-    },
-}
-
-/// Errors raised by property builder and override operations.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum PropertyBuilderError {
-    /// Returned when a `$ref` override changes the property type.
-    #[error(
-        "cannot change property type via override: expected {expected}, got \
-         {actual}"
-    )]
-    OverridePropertyRefSpecTypeMismatch {
-        /// Expected type.
-        expected: Box<str>,
-        /// Actual override type.
-        actual: Box<str>,
-    },
-}
-
-/// Errors raised by property map constraints.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum PropertyMapError {
-    /// Returned when a property name is defined more than once.
-    #[error("duplicate property name: {name}")]
-    DuplicatePropertyName {
-        /// Property name.
-        name: Box<str>,
-    },
-
-    /// Returned when a property ID is reused for a different name.
-    #[error("duplicate property id: {id}")]
-    DuplicatePropertyId {
-        /// Property id.
-        id: Box<str>,
     },
 }
 
