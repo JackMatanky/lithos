@@ -135,3 +135,157 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 - Engine compilation or rendering
 - Template service, artifact pipeline, CLI
 - Frontmatter parsing or query semantics
+
+---
+
+## TDD Plan
+
+### Pre-step: Add `find_template_by_path` to `ReadRepository`
+
+The current `ReadRepository` trait (`lithos-core/src/template/repository.rs`) does not expose a path-to-template lookup. The `Construction` stage requires this to resolve an existing `TemplateId` without scanning all templates. This method must be added before implementing the processor.
+
+Files to change:
+- `lithos-core/src/template/repository.rs` — add `find_template_by_path(&self, path: &PathKey) -> Result<Option<Template>, TemplateRepositoryError>` to `ReadRepository`
+- `lithos-core/src/template/storage/testing.rs` — implement on `InMemoryRepository`
+- `lithos-core/src/template/storage/read.rs` — implement on `RedbRepository` (redb adapter implementation deferred per out-of-scope rules; stub or `todo!()` acceptable if adapter is not yet wired)
+
+Tests (in `testing.rs`):
+- `find_template_by_path_returns_none_when_repository_is_empty`
+- `find_template_by_path_returns_some_after_saving_template`
+- `find_template_by_path_returns_none_for_unknown_path_after_saving_different_template`
+
+### Error types
+
+Add `TemplateReadError` to `lithos-core/src/template/error.rs`:
+
+```rust
+/// Errors returned when reading a template file from the filesystem.
+///
+/// Wraps [`crate::fs::ReadError`] so file I/O failures surface through the
+/// template error hierarchy without leaking `fs` internals into call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateReadError {
+    #[error(transparent)]
+    Read(#[from] crate::fs::ReadError),
+}
+```
+
+Add a `Read` variant to `TemplateError`:
+
+```rust
+/// A template file read error.
+#[error(transparent)]
+Read(#[from] TemplateReadError),
+```
+
+`TemplateError` then covers all processor failure modes:
+
+| Failure kind           | Path                                                              |
+|------------------------|-------------------------------------------------------------------|
+| File read / I/O        | `fs::ReadError` → `TemplateReadError` → `TemplateError::Read`    |
+| Empty body             | `TemplateBodyError` → `TemplateError::Body`                      |
+| Name derivation        | `TemplateNameError` → `TemplateError::Name`                      |
+| Repository persistence | `TemplateRepositoryError` → `TemplateError::Repository`          |
+
+The processor uses `TemplateError` as its single `Result` error type throughout. No separate loader error type is introduced.
+
+Tests for the new error type:
+- `template_read_error_wraps_fs_read_error_via_from`
+- `template_error_read_variant_wraps_template_read_error_via_from`
+
+### Phase 1 — `Discovery` stage
+
+**File:** `lithos-core/src/template/processor.rs` (new file)
+
+Entry struct: `TemplateProcessor<Discovery, Discovered>` built from a slice of pre-discovered entries. Each entry carries `FilePath`, `PathKey`, and `FileMetadata` — the same shape as `FileIndexEntry` from `indexer/` for forward-compatibility. A thin `from_scan` constructor runs `DirScanner` scoped to `.md` files and converts results into this slice.
+
+Tests:
+- `from_entries_with_empty_slice_produces_processor_with_no_entries`
+- `from_entries_stores_path_and_metadata_for_each_entry`
+- `from_scan_produces_same_shape_as_from_entries` (integration: requires a temp dir with `.md` files)
+
+### Phase 2 — `Comparison` stage, fresh path (tracer bullet)
+
+Batch-load `RawTemplateView`s via `find_raw_template_views_by_paths`. Classify each discovered entry against its cached view. Also collect `PathKey`s present in the repository but absent from discovery as deleted.
+
+Status branches produced by comparison:
+- `Missing` — no cached view exists
+- `Fresh` — timestamps match; no content read needed
+- `Suspect` — timestamps differ; content has been read for hash comparison
+- `Deleted` — view exists in repository but path not discovered on disk
+
+`Fresh` transitions infallibly via `From` to `Construction<Fresh>`. All other branches are explicit methods.
+
+Tests:
+- `comparison_classifies_entry_as_fresh_when_timestamps_match`
+- `comparison_classifies_entry_as_missing_when_no_cached_view_exists`
+- `comparison_classifies_entry_as_suspect_when_timestamps_differ`
+- `comparison_detects_deleted_entry_when_path_absent_from_discovery`
+- `comparison_batch_correctly_classifies_mixed_entries` (fresh + missing + suspect + deleted in one batch)
+- `fresh_path_produces_no_repository_writes`
+
+### Phase 3 — New file path (`Missing` → `Parsed` → `Construction` → `Completed`)
+
+`Parsed<Missing>` reads content via `FileReader`, computes `Blake3Hash`, constructs `TemplateName` and `TemplateBody`, builds a `Template` with a fresh `TemplateId::new()`, and persists both `Template` and a new `RawTemplateView`.
+
+Tests:
+- `new_file_reads_content_via_file_reader_not_std_fs`
+- `new_file_constructs_template_name_from_path_relative_to_template_dir`
+- `new_file_persists_template_and_raw_template_view`
+- `new_file_assigns_new_template_id`
+- `new_file_with_empty_content_returns_template_error_body`
+- `new_file_with_io_failure_returns_template_error_read`
+- `new_file_repository_write_failure_returns_template_error_repository`
+
+### Phase 4 — Stale content path (`Suspect` → content hash mismatch → `Parsed<Stale>` → `Construction` → `Completed`)
+
+When timestamps differ and the content hash also differs, the file is fully stale. The processor re-reads content (already read in `Comparison` to compute the hash), looks up the existing `TemplateId` via `find_template_by_path`, reconstructs the `Template` aggregate, and persists both `Template` and a new `RawTemplateView`.
+
+Tests:
+- `stale_content_detects_hash_mismatch_after_timestamp_mismatch`
+- `stale_content_resolves_existing_template_id_via_path_lookup`
+- `stale_content_persists_updated_template_and_new_raw_template_view`
+- `stale_content_repository_write_failure_returns_template_error_repository`
+
+### Phase 5 — Stale timestamp only (`Suspect` → content hash match → `Refresh<StaleTimestamps>` → `Construction<Fresh>` → `Completed`)
+
+When timestamps differ but the content hash matches, only the `RawTemplateView` metadata is updated. The `Template` aggregate is not re-written.
+
+Tests:
+- `stale_timestamp_only_detects_hash_match_after_timestamp_mismatch`
+- `stale_timestamp_only_saves_raw_template_view_with_updated_metadata`
+- `stale_timestamp_only_does_not_call_save_template`
+- `stale_timestamp_only_fetches_existing_template_without_reconstruction`
+
+### Phase 6 — Deleted-cache entries
+
+Entries present in the repository's cached views but absent from the discovered set are deleted from both `Template` and `RawTemplateView` storage.
+
+Tests:
+- `deleted_entry_removes_template_from_repository`
+- `deleted_entry_removes_raw_template_view_from_repository`
+- `deleted_entry_delete_failure_returns_template_error_repository`
+
+### Phase 7 — Typestate compile-time intent
+
+Doc tests on stage-specific methods confirm that only legal transitions are callable at each phase. `From` impls cover infallible pure-payload transitions; fallible/IO/branching transitions are explicit `Result`-returning methods.
+
+Examples to verify at compile time (via doc tests or `compile_fail` tests where appropriate):
+- `TemplateProcessor<Discovery, Discovered>` exposes `compare` but not `parse` or `construct`
+- `TemplateProcessor<Construction, Fresh>` exposes `fetch` but not `create`
+- `TemplateProcessor<Construction, New>` exposes `create` but not `fetch`
+- `From<TemplateProcessor<Comparison, Fresh>>` for `TemplateProcessor<Construction, Fresh>` compiles
+- `From<TemplateProcessor<Refresh, StaleTimestamps>>` for `TemplateProcessor<Construction, Fresh>` compiles
+
+### Test coverage matrix
+
+| Scenario               | Phase path                                                         | Repository writes                              |
+|------------------------|--------------------------------------------------------------------|------------------------------------------------|
+| Fresh (no-op)          | Discovery → Comparison → Construction → Completed                  | None                                           |
+| New file               | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
+| Stale content          | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
+| Stale timestamp only   | Discovery → Comparison → Refresh → Construction → Completed        | `save_raw_template_view` only                  |
+| Deleted-cache entry    | Detected in Comparison batch diff                                  | `delete_template` + `delete_raw_template_view` |
+| Batch path correctness | Mixed batch with all of the above                                  | Correct per-entry branching                    |
+| Repository failure     | Any write or delete path                                           | `Err` propagated, no panic                     |
+| File read failure      | New file or stale content path                                     | `Err(TemplateError::Read(...))`, no panic      |
