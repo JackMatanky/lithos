@@ -109,73 +109,71 @@ identity in the DB — builder state stays minimal.
 
 ### Builder interface
 
-- [ ] `Builder::from_discovery()` is the only Config entry point that accepts a
+- [x] `Builder::from_discovery()` is the only Config entry point that accepts a
       `discovery::service::DiscoveryResult`.
-- [ ] `Builder::from_discovery()` stores the candidate boxes and repository.
+- [x] `Builder::from_discovery()` stores the candidate boxes and repository.
       Winner extraction is deferred — `build_vault()` and `build_global()`
       index `self.vault[0]` and `self.global.first()` respectively.
-- [ ] `Builder::from_discovery()` stays thin: moves candidate boxes, stores
+- [x] `Builder::from_discovery()` stays thin: moves candidate boxes, stores
       repository. No file reading, no staleness checking, no structural
       validation, no VaultId resolution.
-- [ ] `Builder::from_discovery()` consumes Discovery's validated `CandidatePath
+- [x] `Builder::from_discovery()` consumes Discovery's validated `CandidatePath
       { base: DirPath, path: FilePath }` handoff instead of re-validating plain
       `PathBuf` marker paths.
-- [ ] `Builder::from_discovery()` is infallible. It moves candidate boxes and
+- [x] `Builder::from_discovery()` is infallible. It moves candidate boxes and
       stores the repository. All discovery-side invariants (non-empty vault,
       valid paths) are enforced by `DiscoveryService` upstream. Error sources
       (VaultId resolution, DirPath→VaultRoot conversion, file I/O, staleness)
       live in `build_vault()` and `build_global()`.
-- [ ] `Builder::build()` orchestrates `build_global()` and `build_vault()`
+- [x] `Builder::build()` orchestrates `build_global()` and `build_vault()`
       based on discovered marker presence.
 
 ### Build methods
 
-- [ ] `Builder::build_vault()` reads `self.vault[0]`, derives `VaultRoot` from
+- [x] `Builder::build_vault()` reads `self.vault[0]`, derives `VaultRoot` from
       its `base()`, resolves `VaultId` via DB (create if new), reads file
       metadata, fetches the cached vault view, runs
       `ConfigFileProcessor::compare()` for staleness, and produces
       `RawVaultConfig`. Always called (vault candidate guaranteed upstream).
-- [ ] `Builder::build_global()` reads `self.global.first()`, reads file
+- [x] `Builder::build_global()` reads `self.global.first()`, reads file
       metadata, fetches the cached global view, runs
       `ConfigFileProcessor::compare()` for staleness, and produces
       `Option<RawGlobalConfig>`. Called only when a global candidate exists.
-- [ ] `Builder::build_vault()` and `Builder::build_global()` are independently
+- [x] `Builder::build_vault()` and `Builder::build_global()` are independently
       testable and contain no discovery orchestration.
-- [ ] `build_from_layers()` remains the unchanged pure config-domain merge seam.
+- [x] `build_from_layers()` remains the unchanged pure config-domain merge seam.
 
 ### Removals
 
-- [ ] `config/root.rs` is deleted; `ConfigDiscoveryResult` and
+- [x] `config/root.rs` is deleted; `ConfigDiscoveryResult` and
       `DiscoveredConfigFile` are removed.
-- [ ] `config/discovery.rs` is deleted; `ConfigDiscoveryPipeline` and its
+- [x] `config/discovery.rs` is deleted; `ConfigDiscoveryPipeline` and its
       config-owned `DiscoveryResult` type are removed. The per-candidate
       file-read + staleness + processor work is absorbed into `build_global()`
       and `build_vault()`.
-- [ ] `Builder` no longer stores `start_dir`. All callers of
+- [x] `Builder` no longer stores `start_dir`. All callers of
       `Builder::new(start_dir, ...)` are updated or removed.
-- [ ] `config/builder.rs` no longer imports `DiscoveryEngine`, `DiscoveryInput`,
+- [x] `config/builder.rs` no longer imports `DiscoveryEngine`, `DiscoveryInput`,
       `GlobalDiscoveryInput`, or discovery policy types.
-- [ ] `config/builder.rs` imports `discovery::service::DiscoveryResult` only
+- [x] `config/builder.rs` imports `discovery::service::DiscoveryResult` only
       for `Builder::from_discovery()`.
 
 ### Invariants preserved
 
-- [ ] Existing staleness behavior remains owned by
+- [x] Existing staleness behavior remains owned by
       `ConfigFileProcessor::compare()`; no `BuildMode` is introduced.
-- [ ] File-vs-directory validation remains owned by Discovery/FS path types
+- [x] File-vs-directory validation remains owned by Discovery/FS path types
       (`DirPath`, `FilePath`).
-- [ ] Config only reads file contents and queries cached DB views — no path
+- [x] Config only reads file contents and queries cached DB views — no path
       re-validation.
 
 ### Tests
 
-- [ ] Tests prove `Builder` builds correctly from vault-only and combined
+- [x] Tests prove `Builder` builds correctly from vault-only and combined
       (global+vault) discovery outputs.
-- [ ] A regression test verifies `build_from_layers()` contract is preserved
+- [x] A regression test verifies `build_from_layers()` contract is preserved
       during refactoring.
-- [ ] Test naming follows descriptive convention:
-      `from_discovery_stores_vault_root_from_candidate_base`,
-      `build_vault_produces_config_from_vault_only`, etc.
+- [x] Test naming follows descriptive convention.
 
 ## Blocked by
 
@@ -223,9 +221,11 @@ None. All 9 TDD phases implemented as specified. One divergence from the TDD pla
 
 `Builder::from_discovery()` is `pub(crate)` and annotated with `#[cfg_attr(not(test), expect(dead_code, ...))]`. The old `Builder::new(start_dir, repo)` + `Builder::load()` entry point that internally drove `DiscoveryEngine` is gone. **Nothing in production code calls `Builder::from_discovery()` yet.** The Bootstrapper (`app::Bootstrapper`) produces a `DiscoveryResult` (issue 13), and the Config builder now consumes it (issue 14), but the call-site connecting them — the CLI command handler or app service layer — has not been created. This wiring is not covered by issues 10–16 in the current plan. A new issue is needed (see "Blocks" below).
 
+**Resolution (Phase 10):** `Bootstrapper::run()` closes this gap. `Builder::from_discovery()` is now called from `run()`, which is itself `pub(crate)` and tested. The remaining gap is the CLI entry point calling `run()` — that wiring lands in a later issue.
+
 ## Blocks
 
-A follow-on issue is needed to wire `Bootstrapper::discover()` → `Builder::from_discovery()` in the app/CLI layer. Without it, `Builder` is structurally ready but unreachable from any executable path. The old `Builder::new` + `load()` path was the only production caller and is now removed.
+A follow-on issue is needed to wire `Bootstrapper::run()` into the CLI command handler. `run()` is structurally complete and tested; the gap is an executable adapter calling it with real platform inputs (XDG dirs, `std::env::current_dir()`, a `redb`-backed repository).
 
 ## TDD Plan — Phase 10: `Bootstrapper::run()` wiring
 
@@ -309,13 +309,80 @@ mod concrete_service {
 
 ### Definition of Done — Phase 10
 
-- [ ] `BootstrapError::Config(#[from] ConfigError)` variant added
-- [ ] `#[allow(dead_code)]` removed from `BootstrapError` (both variants reachable)
-- [ ] `Bootstrapper::run<R: Repository>(flags, env, anchor, repo) -> Result<(Config, DiscoveryReport), BootstrapError>` added
-- [ ] `#[cfg_attr(not(test), expect(dead_code, ...))]` removed from `Builder::from_discovery` (now called from production code in `run()`)
-- [ ] `run()` is on `impl<D: DiscoveryPort> Bootstrapper<D>`, not only on `impl Bootstrapper<DiscoveryService>`
-- [ ] All 6 new tests pass
-- [ ] `mise run verify` clean
+- [x] `BootstrapError::Config(#[from] ConfigError)` variant added
+- [x] `Bootstrapper::run<R: Repository>(flags, env, anchor, repo) -> Result<(Config, DiscoveryReport), BootstrapError>` added
+- [x] `run()` is on `impl<D: DiscoveryPort> Bootstrapper<D>`, not only on `impl Bootstrapper<DiscoveryService>`
+- [x] All 6 new tests pass (bootstrap_error, run×4, concrete_service smoke)
+- [x] `mise run verify` clean
+
+**Commit:** `060bbbea`
+
+---
+
+## Post-implementation: Adversarial Review
+
+**Commit:** `005d45f1`
+
+Performed after Phase 10. Reviewed all code and tests across the full 10-phase implementation for Rust best-practice violations.
+
+### Findings fixed
+
+**Test quality — critical (the Rebuild-plan trap):**
+
+`Builder::build()` chooses `ResolutionPlan::Rebuild` only when the vault TOML has at least one non-default field value (so `compute_field_hashes` returns a non-empty set). An empty or all-default TOML produces `NoChanges → UpdateViewOnly → UseCached`, and `load_cached_config` then fails on a fresh `InMemoryRepository` with "No active config version found". This burned a previous agent.
+
+Added explanatory comments to both affected tests:
+- `bootstrap::tests::run::builds_config_from_vault_only_discovery`
+- `builder::tests::build::builds_from_vault_only_discovery`
+
+**Test quality — error chain comment:**
+
+`propagates_config_error` uses `"not = [toml"` (unclosed array). Added comment tracing the full conversion: `TomlParse → ConfigIngestError → ConfigError::Ingestion → BootstrapError::Config`.
+
+**Missing tests (added 2):**
+
+- `run::builds_config_from_vault_and_global_discovery` — exercises the production path where `DiscoveryResult` contains both vault AND global candidates.
+- `run::propagates_discovery_error_from_invalid_anchor` — verifies `build_context()` surfaces `BootstrapError::Discovery` for a non-existent anchor _before_ the port is called.
+
+**Documentation:**
+
+- `Bootstrapper::run()`: added full `# Parameters` section documenting `anchor` semantics (working directory for ascending discovery; must exist on disk).
+- `BootstrapError::Discovery` variant: explicitly listed `InvalidAnchorDirectory` in the doc comment.
+- `Builder` struct: added "Second-call / cached-path behaviour" section explaining `UseCached` vs `Rebuild` plan selection.
+
+**`#[allow(dead_code)]` reasons (stale):**
+
+Updated reasons on `CandidatePath`, `DiscoveryResult`, `DiscoveryServiceConfig`, `DiscoveryService` from the vague "Contract slice; wired into discovery later" to accurate current-state descriptions (e.g. "Consumed by config::builder::Builder via into_parts(); CLI wiring pending").
+
+### Items reviewed — no fix needed
+
+- No `unwrap()`/`panic!` in production code.
+- `#[from]` used correctly on `BootstrapError` variants; no manual `map_err` where `#[from]` applies.
+- `#[allow(dead_code)]` (not `#[expect]`) correctly used per the constraint that `#[expect]` fires "unfulfilled" when `--all-targets` satisfies the warning via test code.
+- `Box<[CandidatePath]>` — correct choice; immutable after construction, no wasted capacity.
+- `build_context` returning `DiscoveryError` (not `BootstrapError`) — intentional; `?` in `run()` converts via `#[from]`.
+- `ConfigError::Ingestion` losing error chain — intentional design; stringified message still carries TOML error details.
+- `#[non_exhaustive]` on `BootstrapError` — not added; `pub(crate)` scope means it can only be matched inside the crate regardless.
+
+**Final state:** 1950 tests pass, clippy clean.
+
+---
+
+## Post-implementation: `BootstrapError` extraction
+
+**Commit:** `be8d731a`
+
+Extracted `BootstrapError` from `app/bootstrap.rs` into a dedicated `app/error.rs` module.
+
+### Changes
+
+- **New file:** `lithos-core/src/app/error.rs` — contains only `BootstrapError`, with direct imports of `ConfigError` and `DiscoveryError`.
+- **`app/mod.rs`:** added `pub(crate) mod error;`.
+- **`app/bootstrap.rs`:** removed the `BootstrapError` definition; added `pub(crate) use crate::app::error::BootstrapError;` so all existing references in the file (return types, test `matches!` arms) continue to resolve without further changes.
+
+### Rationale
+
+Separating the error type from the orchestration module follows the convention used throughout the codebase (`config/error.rs`, `discovery/error.rs`). It also ensures `BootstrapError` is independently importable by future callers (CLI adapter, integration tests) without pulling in the full bootstrap orchestration module.
 
 
 ## Agent Brief
@@ -540,15 +607,15 @@ mod tests {
 
 ### Definition of Done
 
-- [ ] `Builder::from_discovery()` exists, infallible, stores boxes + repo
-- [ ] `build_vault()` reads file, derives VaultRoot, resolves VaultId, queries DB, runs processor
-- [ ] `build_global()` reads file, queries DB, runs processor
-- [ ] `build()` orchestrates both build methods
-- [ ] `config/root.rs` deleted
-- [ ] `config/discovery.rs` deleted
-- [ ] Builder imports no `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, `DiscoveryPolicy`
-- [ ] Builder imports only `discovery::service::DiscoveryResult` from discovery/
-- [ ] Architecture tests updated
-- [ ] `build_from_layers()` unchanged — all 36 callers pass
-- [ ] `mise run test` passes
-- [ ] `mise run lint` passes
+- [x] `Builder::from_discovery()` exists, infallible, stores boxes + repo
+- [x] `build_vault()` reads file, derives VaultRoot, resolves VaultId, queries DB, runs processor
+- [x] `build_global()` reads file, queries DB, runs processor
+- [x] `build()` orchestrates both build methods
+- [x] `config/root.rs` deleted
+- [x] `config/discovery.rs` deleted
+- [x] Builder imports no `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, `DiscoveryPolicy`
+- [x] Builder imports only `discovery::service::DiscoveryResult` from discovery/
+- [x] Architecture tests updated
+- [x] `build_from_layers()` unchanged — all callers pass
+- [x] `mise run test` passes (1950 tests)
+- [x] `mise run lint` passes
