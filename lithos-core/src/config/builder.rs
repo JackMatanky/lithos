@@ -195,6 +195,15 @@ pub fn build_from_layers(
 ///
 /// Callers construct a `Builder` via [`Builder::from_discovery`], which
 /// consumes a [`DiscoveryResult`] produced by the Bootstrapper.
+///
+/// # Second-call / cached-path behaviour
+///
+/// Each call to [`Builder::build`] performs a full staleness check. If the
+/// on-disk files match the cached views stored in the repository (same
+/// timestamps and content hashes), the builder follows the `UseCached` plan
+/// and loads the previously-built [`Config`] from the database without
+/// re-parsing or re-merging. If any file has changed, the builder rebuilds
+/// from scratch and persists the updated views and config.
 pub struct Builder<R> {
     /// Ordered vault-local candidate paths (guaranteed non-empty by
     /// `DiscoveryService`).
@@ -1030,6 +1039,11 @@ mod tests {
 
         #[test]
         fn builds_from_vault_only_discovery() {
+            // IMPORTANT: content must contain at least one non-default field so
+            // `compute_field_hashes` returns a non-empty set and the resolver
+            // chooses `Rebuild` instead of `UseCached`.  An empty TOML would
+            // drive `UseCached` → `load_cached_config` → error on a fresh
+            // `InMemoryRepository` ("No active config version found").
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(
                 &vault_dir,
