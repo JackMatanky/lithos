@@ -2,7 +2,10 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::schema::{error::SchemaError, raw::date::RawDateProperty};
+use crate::schema::{
+    error::{DateSpecError, DateValueValidationError, SchemaError},
+    raw::date::{RawDateProperty, RawDateSpec},
+};
 
 /// Date property validation constraints.
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
@@ -34,7 +37,7 @@ impl DateSpec {
     pub fn try_new(format: &str) -> Result<Self, SchemaError> {
         if format.is_empty() {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::DateFormatRequired,
+                DateSpecError::MissingFormatString.into(),
             ));
         }
 
@@ -51,9 +54,10 @@ impl DateSpec {
             && chrono::NaiveDateTime::parse_from_str(&result, format).is_err()
         {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDateFormat {
+                DateSpecError::InvalidStrftimePattern {
                     format: format.into(),
-                },
+                }
+                .into(),
             ));
         }
 
@@ -71,10 +75,11 @@ impl DateSpec {
 
         if !is_valid {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::DateFormatMismatch {
+                DateValueValidationError::ValueDoesNotMatchFormat {
                     value: value.into(),
                     format: self.format.clone(),
-                },
+                }
+                .into(),
             ));
         }
         Ok(())
@@ -89,7 +94,7 @@ impl DateSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::date::RawDateSpec,
+        overrides: &RawDateSpec,
     ) -> Result<Self, SchemaError> {
         if let Some(format) = overrides.format.as_ref() {
             Self::try_new(format.as_ref())
@@ -121,25 +126,24 @@ impl ArchivedDateSpec {
 
         if !is_valid {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::DateFormatMismatch {
+                DateValueValidationError::ValueDoesNotMatchFormat {
                     value: value.into(),
                     format: self.format.as_ref().into(),
-                },
+                }
+                .into(),
             ));
         }
         Ok(())
     }
 }
 
-impl TryFrom<crate::schema::raw::date::RawDateSpec> for DateSpec {
+impl TryFrom<RawDateSpec> for DateSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(
-        raw: crate::schema::raw::date::RawDateSpec,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawDateSpec) -> Result<Self, Self::Error> {
         let format = raw.format.ok_or(SchemaError::PropertySpec(
-            crate::schema::error::PropertySpecError::DateFormatRequired,
+            DateSpecError::MissingFormatString.into(),
         ))?;
         Self::try_new(&format)
     }
@@ -150,7 +154,7 @@ impl TryFrom<RawDateProperty> for DateSpec {
 
     #[inline]
     fn try_from(raw: RawDateProperty) -> Result<Self, Self::Error> {
-        let raw_spec = crate::schema::raw::date::RawDateSpec {
+        let raw_spec = RawDateSpec {
             format: raw.format,
         };
         raw_spec.try_into()
@@ -181,10 +185,12 @@ mod tests {
             matches!(
                 result,
                 Err(SchemaError::PropertyValue(
-                    crate::schema::error::PropertyValueError::DateFormatMismatch { .. }
+                    crate::schema::error::PropertyValueError::Date(
+                        crate::schema::error::DateValueValidationError::ValueDoesNotMatchFormat { .. }
+                    )
                 ))
             ),
-            "Expected DateFormatMismatch error for invalid date string, got: \
+            "Expected ValueDoesNotMatchFormat error for invalid date string, got: \
              {result:?}"
         );
     }

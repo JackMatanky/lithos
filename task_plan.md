@@ -16,13 +16,13 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
     - [x] Redefine `PropertyNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
     - [x] Remove `SchemaSyntaxError` and flatten into `SchemaError`
     - [x] Update all callers of `SchemaNameError`, `PropertyNameError`, and `SchemaSyntaxError`
-- [in_progress] Phase 4: Property Specification & Value Error Refactor (REQUIRES USER CONSENT) <!-- id: 3 -->
-    - [ ] Define specialized spec errors (`StringSpecError`, `NumberSpecError`, `DateSpecError`, `FileSpecError`)
-    - [ ] Define specialized value validation errors (`StringValueValidationError`, `NumberValueValidationError`, `DateValueValidationError`, `FileValueValidationError`)
-    - [ ] Refactor `PropertySpecError` to wrap specialized spec errors using `#[error(transparent)]`
-    - [ ] Refactor `PropertyValueError` to wrap specialized value validation errors and `IncorrectPrimitiveType`
-    - [ ] Update callers in `property_spec/*.rs` and `property.rs`
-    - [ ] Verify with build and tests
+- [x] Phase 4: Property Specification & Value Error Refactor (REQUIRES USER CONSENT) <!-- id: 3 -->
+    - [x] Define specialized spec errors (`StringSpecError`, `NumberSpecError`, `DateSpecError`, `FileSpecError`)
+    - [x] Define specialized value validation errors (`StringValueValidationError`, `NumberValueValidationError`, `DateValueValidationError`, `FileValueValidationError`)
+    - [x] Refactor `PropertySpecError` to wrap specialized spec errors using `#[error(transparent)]`
+    - [x] Refactor `PropertyValueError` to wrap specialized value validation errors and `IncorrectPrimitiveType`
+    - [x] Update callers in `property_spec/*.rs` and `property.rs`
+    - [x] Verify with build and tests
 - [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
 - [ ] Phase 7: Verification <!-- id: 6 -->

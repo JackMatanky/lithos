@@ -499,10 +499,12 @@ impl Property {
     ) -> Result<(), SchemaError> {
         if self.multiplicity == Multiplicity::Many {
             let arr = value.as_array().ok_or_else(|| {
-                SchemaError::PropertyValue(PropertyValueError::InvalidType {
-                    value: value.to_string().into(),
-                    expected: "array".into(),
-                })
+                SchemaError::PropertyValue(
+                    PropertyValueError::IncorrectPrimitiveType {
+                        value: value.to_string().into(),
+                        expected: "array".into(),
+                    },
+                )
             })?;
             for item in arr {
                 self.spec.validate(item)?;

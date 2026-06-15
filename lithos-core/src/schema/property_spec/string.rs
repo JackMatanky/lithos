@@ -6,8 +6,10 @@ use rkyv::{Archive, Deserialize, Serialize};
 use tracing::warn;
 
 use crate::schema::{
-    error::SchemaError,
-    raw::string::{RawOptions, RawStringProperty, RawStringSpec},
+    error::{SchemaError, StringSpecError, StringValueValidationError},
+    raw::string::{
+        RawOptions, RawStringPattern, RawStringProperty, RawStringSpec,
+    },
 };
 
 // ============================================================================
@@ -69,7 +71,7 @@ impl StringSpec {
             && opts.is_empty()
         {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::OptionsEmpty,
+                StringSpecError::EmptyOptionsList.into(),
             ));
         }
 
@@ -83,10 +85,11 @@ impl StringSpec {
             for opt in opts {
                 if p.validate(opt.value()).is_err() {
                     return Err(SchemaError::PropertySpec(
-                        crate::schema::error::PropertySpecError::OptionPatternMismatch {
+                        StringSpecError::OptionValueViolatesPattern {
                             value: opt.value().into(),
                             pattern: p.pattern().into(),
-                        },
+                        }
+                        .into(),
                     ));
                 }
             }
@@ -121,15 +124,13 @@ impl StringSpec {
     )]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::string::RawStringSpec,
+        overrides: &RawStringSpec,
     ) -> Result<Self, SchemaError> {
         let pattern = match overrides.pattern.as_ref() {
-            Some(crate::schema::raw::string::RawStringPattern::Custom(p)) => {
+            Some(RawStringPattern::Custom(p)) => {
                 Some(StringPattern::try_custom(p.clone())?)
             }
-            Some(crate::schema::raw::string::RawStringPattern::Named(f)) => {
-                Some(StringPattern::from(*f))
-            }
+            Some(RawStringPattern::Named(f)) => Some(StringPattern::from(*f)),
             None => self.pattern,
         };
 
@@ -162,10 +163,11 @@ impl StringSpec {
             && !entries.iter().any(|e| e.value() == value)
         {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                StringValueValidationError::ValueNotInAllowedOptions {
                     value: value.into(),
                     allowed: entries.iter().map(|e| e.value().into()).collect(),
-                },
+                }
+                .into(),
             ));
         }
 
@@ -194,13 +196,14 @@ impl ArchivedStringSpec {
             && !entries.iter().any(|e| e.value.as_ref() == value)
         {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                StringValueValidationError::ValueNotInAllowedOptions {
                     value: value.into(),
                     allowed: entries
                         .iter()
                         .map(|e| (*e.value).into())
                         .collect(),
-                },
+                }
+                .into(),
             ));
         }
 
@@ -213,20 +216,16 @@ impl ArchivedStringSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::string::RawStringSpec> for StringSpec {
+impl TryFrom<RawStringSpec> for StringSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(
-        raw: crate::schema::raw::string::RawStringSpec,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawStringSpec) -> Result<Self, Self::Error> {
         let pattern = match raw.pattern {
-            Some(crate::schema::raw::string::RawStringPattern::Custom(p)) => {
+            Some(RawStringPattern::Custom(p)) => {
                 Some(StringPattern::try_custom(p)?)
             }
-            Some(crate::schema::raw::string::RawStringPattern::Named(f)) => {
-                Some(StringPattern::from(f))
-            }
+            Some(RawStringPattern::Named(f)) => Some(StringPattern::from(f)),
             None => None,
         };
 
@@ -320,10 +319,10 @@ impl StringPattern {
         let pattern = pattern.into();
         regex::Regex::new(&pattern).map_err(|e| {
             SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidRegex {
+                crate::schema::error::StringSpecError::InvalidCustomRegexPattern {
                     pattern: pattern.clone(),
                     reason: e.to_string().into(),
-                },
+                }.into(),
             )
         })?;
         Ok(Self::Custom(pattern))
@@ -402,10 +401,10 @@ impl StringPattern {
 
         if !matches {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::PatternMismatch {
+                crate::schema::error::StringValueValidationError::ValueViolatesPattern {
                     value: value.into(),
                     pattern: self.pattern().into(),
-                },
+                }.into(),
             ));
         }
         Ok(())
@@ -594,10 +593,10 @@ impl ArchivedStringPattern {
 
         if !matches {
             return Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::PatternMismatch {
+                crate::schema::error::StringValueValidationError::ValueViolatesPattern {
                     value: value.into(),
                     pattern: "archived".into(),
-                },
+                }.into(),
             ));
         }
         Ok(())
@@ -679,7 +678,7 @@ impl OptionEntries {
     pub fn try_new(entries: Vec<OptionEntry>) -> Result<Self, SchemaError> {
         if entries.is_empty() {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::OptionsEmpty,
+                crate::schema::error::StringSpecError::EmptyOptionsList.into(),
             ));
         }
         Ok(Self(entries.into_boxed_slice()))
@@ -784,7 +783,7 @@ impl OptionEntry {
         let value = value.into();
         if value.trim().is_empty() {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::OptionValueEmpty,
+                crate::schema::error::StringSpecError::EmptyOptionValue.into(),
             ));
         }
         Ok(Self {
@@ -876,7 +875,9 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(SchemaError::PropertySpec(
-                    crate::schema::error::PropertySpecError::OptionsEmpty
+                    crate::schema::error::PropertySpecError::String(
+                        crate::schema::error::StringSpecError::EmptyOptionsList
+                    )
                 ))
             ));
         }
@@ -947,10 +948,10 @@ mod tests {
             },
             "C",
             Err(SchemaError::PropertyValue(
-                crate::schema::error::PropertyValueError::InvalidEnumValue {
+                crate::schema::error::StringValueValidationError::ValueNotInAllowedOptions {
                     value: "C".into(),
                     allowed: vec!["A".into(), "B".into()]
-                }
+                }.into()
             ))
         )]
         #[case::regex_match(
@@ -987,7 +988,9 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(SchemaError::PropertySpec(
-                    crate::schema::error::PropertySpecError::OptionPatternMismatch { .. }
+                    crate::schema::error::PropertySpecError::String(
+                        crate::schema::error::StringSpecError::OptionValueViolatesPattern { .. }
+                    )
                 ))
             ));
         }

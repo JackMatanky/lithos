@@ -420,20 +420,40 @@ pub enum PropertyNameError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum PropertySpecError {
-    /// Returned when a date spec omits the required format.
-    #[error("date format is required")]
-    DateFormatRequired,
+    /// Returned when a string spec is invalid.
+    #[error(transparent)]
+    String(#[from] StringSpecError),
 
-    /// Returned when a date format is invalid.
-    #[error("invalid date format: {format}")]
-    InvalidDateFormat {
-        /// The invalid format string.
-        format: Box<str>,
+    /// Returned when a numeric spec is invalid.
+    #[error(transparent)]
+    Number(#[from] NumberSpecError),
+
+    /// Returned when a date spec is invalid.
+    #[error(transparent)]
+    Date(#[from] DateSpecError),
+
+    /// Returned when a file spec is invalid.
+    #[error(transparent)]
+    File(#[from] FileSpecError),
+
+    /// Returned when an archived spec fails to deserialize.
+    #[error("failed to deserialize {spec}: {reason}")]
+    ArchivedSpecDeserializationFailed {
+        /// Spec name.
+        spec: &'static str,
+        /// Deserialization error details.
+        reason: Box<str>,
     },
+}
 
+/// Failures that occur when defining, building, or overriding a string property
+/// specification.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StringSpecError {
     /// Returned when a regex pattern fails to compile.
     #[error("invalid regex pattern: {pattern} ({reason})")]
-    InvalidRegex {
+    InvalidCustomRegexPattern {
         /// Regex pattern string.
         pattern: Box<str>,
         /// Regex error details.
@@ -442,11 +462,11 @@ pub enum PropertySpecError {
 
     /// Returned when an options list is empty.
     #[error("options list cannot be empty")]
-    OptionsEmpty,
+    EmptyOptionsList,
 
     /// Returned when an option value does not match a pattern constraint.
     #[error("option value '{value}' does not match pattern {pattern}")]
-    OptionPatternMismatch {
+    OptionValueViolatesPattern {
         /// Option value.
         value: Box<str>,
         /// Pattern string.
@@ -455,32 +475,31 @@ pub enum PropertySpecError {
 
     /// Returned when an option value is empty or whitespace.
     #[error("option value cannot be empty")]
-    OptionValueEmpty,
+    EmptyOptionValue,
 
     /// Returned when an option order key is not a valid integer.
     #[error("option order key must be an integer: {key}")]
-    InvalidOptionsEntryOrderType {
+    OrderKeyNotAnInteger {
         /// The invalid key.
         key: Box<str>,
     },
 
     /// Returned when an option order key is less than 1.
     #[error("option order key must be >= 1: {order}")]
-    InvalidOptionsEntryOrderValue {
+    OrderKeyLessThanOne {
         /// The invalid order value.
         order: u32,
     },
+}
 
-    /// Returned when a directory path constraint is invalid.
-    #[error("invalid directory path: {path}")]
-    InvalidDirectoryPath {
-        /// The invalid directory path.
-        path: Box<str>,
-    },
-
+/// Failures that occur when defining or overriding a numeric property
+/// specification.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NumberSpecError {
     /// Returned when a numeric range is invalid.
     #[error("invalid range: min {min} cannot be greater than max {max}")]
-    InvalidRange {
+    MinGreaterThanMax {
         /// Minimum value.
         min: f64,
         /// Maximum value.
@@ -489,27 +508,48 @@ pub enum PropertySpecError {
 
     /// Returned when a numeric constraint is non-finite.
     #[error("{context} must be finite: {value}")]
-    NonFinite {
+    NonFiniteConstraintValue {
         /// Provided value.
         value: f64,
         /// Context label.
         context: Box<str>,
     },
+}
+
+/// Failures that occur when defining or overriding a date property
+/// specification.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DateSpecError {
+    /// Returned when a date spec omits the required format.
+    #[error("date format is required")]
+    MissingFormatString,
+
+    /// Returned when a date format is invalid.
+    #[error("invalid date format: {format}")]
+    InvalidStrftimePattern {
+        /// The invalid format string.
+        format: Box<str>,
+    },
+}
+
+/// Failures that occur when defining or overriding a file property
+/// specification.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FileSpecError {
+    /// Returned when a directory path constraint is invalid.
+    #[error("invalid directory path: {path}")]
+    MalformedDirectoryConstraint {
+        /// The invalid directory path.
+        path: Box<str>,
+    },
 
     /// Returned when a file class constraint is invalid.
     #[error("invalid file class: {class}")]
-    InvalidFileClass {
+    EmptyFileClassConstraint {
         /// The invalid file class.
         class: Box<str>,
-    },
-
-    /// Returned when an archived spec fails to deserialize.
-    #[error("failed to deserialize {spec}: {reason}")]
-    Deserialization {
-        /// Spec name.
-        spec: &'static str,
-        /// Deserialization error details.
-        reason: Box<str>,
     },
 }
 
@@ -519,16 +559,37 @@ pub enum PropertySpecError {
 pub enum PropertyValueError {
     /// Returned when a value has the wrong type.
     #[error("invalid type: {value} (expected: {expected})")]
-    InvalidType {
+    IncorrectPrimitiveType {
         /// Provided value representation.
         value: Box<str>,
         /// Expected type representation.
         expected: Box<str>,
     },
 
+    /// Returned when a string value fails validation.
+    #[error(transparent)]
+    String(#[from] StringValueValidationError),
+
+    /// Returned when a numeric value fails validation.
+    #[error(transparent)]
+    Number(#[from] NumberValueValidationError),
+
+    /// Returned when a date value fails validation.
+    #[error(transparent)]
+    Date(#[from] DateValueValidationError),
+
+    /// Returned when a file value fails validation.
+    #[error(transparent)]
+    File(#[from] FileValueValidationError),
+}
+
+/// Failures that occur when validating a string value.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StringValueValidationError {
     /// Returned when a value is not in the allowed options list.
     #[error("invalid enum value: {value} (allowed: {allowed:?})")]
-    InvalidEnumValue {
+    ValueNotInAllowedOptions {
         /// Provided value.
         value: Box<str>,
         /// Allowed values.
@@ -537,25 +598,21 @@ pub enum PropertyValueError {
 
     /// Returned when a value does not match a pattern constraint.
     #[error("value {value} does not match pattern {pattern}")]
-    PatternMismatch {
+    ValueViolatesPattern {
         /// Provided value.
         value: Box<str>,
         /// Pattern string.
         pattern: Box<str>,
     },
+}
 
-    /// Returned when a value does not match a date format.
-    #[error("value {value} does not match format {format}")]
-    DateFormatMismatch {
-        /// Provided value.
-        value: Box<str>,
-        /// Expected format.
-        format: Box<str>,
-    },
-
+/// Failures that occur when validating a numeric value.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NumberValueValidationError {
     /// Returned when a numeric value is out of range.
     #[error("number out of range: {value} (min: {min:?}, max: {max:?})")]
-    NumberOutOfRange {
+    ValueOutsideAllowedRange {
         /// Provided value.
         value: f64,
         /// Minimum allowed value.
@@ -566,7 +623,7 @@ pub enum PropertyValueError {
 
     /// Returned when a numeric value does not align with the step constraint.
     #[error("invalid step value: {value} (step: {step})")]
-    InvalidStepValue {
+    ValueViolatesStepIncrement {
         /// Provided value.
         value: f64,
         /// Step constraint.
@@ -575,11 +632,39 @@ pub enum PropertyValueError {
 
     /// Returned when a numeric value is non-finite.
     #[error("{context} must be finite: {value}")]
-    NonFinite {
+    NonFiniteNumber {
         /// Provided value.
         value: f64,
         /// Context label.
         context: Box<str>,
+    },
+}
+
+/// Failures that occur when validating a date value.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DateValueValidationError {
+    /// Returned when a value does not match a date format.
+    #[error("value {value} does not match format {format}")]
+    ValueDoesNotMatchFormat {
+        /// Provided value.
+        value: Box<str>,
+        /// Expected format.
+        format: Box<str>,
+    },
+}
+
+/// Failures that occur when validating a file value.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FileValueValidationError {
+    /// Returned when a file is outside the allowed directory.
+    #[error("file {path} must be inside (not at) directory {directory}")]
+    FileOutsideAllowedDirectory {
+        /// Path to the file.
+        path: Box<str>,
+        /// Allowed directory.
+        directory: Box<str>,
     },
 }
 
@@ -906,6 +991,14 @@ mod tests {
             assert_send_sync::<PropertyNameError>();
             assert_send_sync::<PropertySpecError>();
             assert_send_sync::<PropertyValueError>();
+            assert_send_sync::<StringSpecError>();
+            assert_send_sync::<StringValueValidationError>();
+            assert_send_sync::<NumberSpecError>();
+            assert_send_sync::<NumberValueValidationError>();
+            assert_send_sync::<DateSpecError>();
+            assert_send_sync::<DateValueValidationError>();
+            assert_send_sync::<FileSpecError>();
+            assert_send_sync::<FileValueValidationError>();
             assert_send_sync::<PropertyRefError>();
             assert_send_sync::<PropertyBankError>();
             assert_send_sync::<SchemaInheritanceError>();

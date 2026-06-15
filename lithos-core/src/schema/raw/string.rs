@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::schema::error::{PropertySpecError, SchemaError};
+use crate::schema::error::SchemaError;
 
 /// Raw string property definition.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -325,16 +325,18 @@ impl std::str::FromStr for RawEntryInputOrder {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let parsed: u32 = value.parse().map_err(|_e| {
             SchemaError::PropertySpec(
-                PropertySpecError::InvalidOptionsEntryOrderType {
+                crate::schema::error::StringSpecError::OrderKeyNotAnInteger {
                     key: value.into(),
-                },
+                }
+                .into(),
             )
         })?;
         if parsed == 0 {
             return Err(SchemaError::PropertySpec(
-                PropertySpecError::InvalidOptionsEntryOrderValue {
+                crate::schema::error::StringSpecError::OrderKeyLessThanOne {
                     order: 0,
-                },
+                }
+                .into(),
             ));
         }
         Ok(Self(parsed))

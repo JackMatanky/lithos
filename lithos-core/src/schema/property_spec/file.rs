@@ -5,7 +5,9 @@ use std::path::{Component, Path};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::schema::{
-    error::SchemaError, identifier::SchemaName, raw::file::RawFileProperty,
+    error::{FileSpecError, FileValueValidationError, SchemaError},
+    identifier::SchemaName,
+    raw::file::{RawFileProperty, RawFileSpec},
 };
 
 /// File property validation constraints.
@@ -55,9 +57,10 @@ impl FileSpec {
             && fc.is_empty()
         {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidFileClass {
+                FileSpecError::EmptyFileClassConstraint {
                     class: "".into(),
-                },
+                }
+                .into(),
             ));
         }
 
@@ -77,14 +80,12 @@ impl FileSpec {
 
             // File must be INSIDE directory, not AT directory level
             if !value_path.starts_with(dir_path) || value_path == dir_path {
-                return Err(SchemaError::PropertySpec(
-                    crate::schema::error::PropertySpecError::InvalidDirectoryPath {
-                        path: format!(
-                            "File {value} must be inside (not at) directory {}",
-                            dir.as_str()
-                        )
-                        .into(),
-                    },
+                return Err(SchemaError::PropertyValue(
+                    FileValueValidationError::FileOutsideAllowedDirectory {
+                        path: value.into(),
+                        directory: dir.as_str().into(),
+                    }
+                    .into(),
                 ));
             }
         }
@@ -113,7 +114,7 @@ impl FileSpec {
     #[inline]
     pub fn apply_overrides(
         self,
-        overrides: &crate::schema::raw::file::RawFileSpec,
+        overrides: &RawFileSpec,
     ) -> Result<Self, SchemaError> {
         let directory = overrides
             .directory
@@ -147,14 +148,12 @@ impl ArchivedFileSpec {
 
             // File must be INSIDE directory, not AT directory level
             if !value_path.starts_with(dir_path) || value_path == dir_path {
-                return Err(SchemaError::PropertySpec(
-                    crate::schema::error::PropertySpecError::InvalidDirectoryPath {
-                        path: format!(
-                            "File {value} must be inside (not at) directory {}",
-                            dir.0.as_ref()
-                        )
-                        .into(),
-                    },
+                return Err(SchemaError::PropertyValue(
+                    FileValueValidationError::FileOutsideAllowedDirectory {
+                        path: value.into(),
+                        directory: dir.0.as_ref().into(),
+                    }
+                    .into(),
                 ));
             }
         }
@@ -163,13 +162,11 @@ impl ArchivedFileSpec {
     }
 }
 
-impl TryFrom<crate::schema::raw::file::RawFileSpec> for FileSpec {
+impl TryFrom<RawFileSpec> for FileSpec {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(
-        raw: crate::schema::raw::file::RawFileSpec,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawFileSpec) -> Result<Self, Self::Error> {
         let file_class = raw.file_class.as_ref().map(SchemaName::as_str);
         Self::try_new(raw.directory.as_deref(), file_class)
     }
@@ -180,7 +177,7 @@ impl TryFrom<RawFileProperty> for FileSpec {
 
     #[inline]
     fn try_from(raw: RawFileProperty) -> Result<Self, Self::Error> {
-        let raw_spec = crate::schema::raw::file::RawFileSpec {
+        let raw_spec = RawFileSpec {
             directory: raw.directory,
             file_class: raw.file_class,
         };
@@ -211,9 +208,10 @@ impl VaultRelPath {
     fn validate_path(path: &str) -> Result<(), SchemaError> {
         if path.is_empty() {
             return Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDirectoryPath {
+                FileSpecError::MalformedDirectoryConstraint {
                     path: "Path cannot be empty".into(),
-                },
+                }
+                .into(),
             ));
         }
 
@@ -222,46 +220,50 @@ impl VaultRelPath {
                 Component::Normal(_) => {}
                 Component::CurDir => {
                     return Err(SchemaError::PropertySpec(
-                        crate::schema::error::PropertySpecError::InvalidDirectoryPath {
+                        FileSpecError::MalformedDirectoryConstraint {
                             path: format!(
                                 "Invalid path {path}: '.' component is not \
                                  allowed"
                             )
                             .into(),
-                        },
+                        }
+                        .into(),
                     ));
                 }
                 Component::ParentDir => {
                     return Err(SchemaError::PropertySpec(
-                        crate::schema::error::PropertySpecError::InvalidDirectoryPath {
+                        FileSpecError::MalformedDirectoryConstraint {
                             path: format!(
                                 "Invalid path {path}: '..' component is not \
                                  allowed"
                             )
                             .into(),
-                        },
+                        }
+                        .into(),
                     ));
                 }
                 Component::RootDir => {
                     return Err(SchemaError::PropertySpec(
-                        crate::schema::error::PropertySpecError::InvalidDirectoryPath {
+                        FileSpecError::MalformedDirectoryConstraint {
                             path: format!(
                                 "Invalid path {path}: absolute paths are not \
                                  allowed"
                             )
                             .into(),
-                        },
+                        }
+                        .into(),
                     ));
                 }
                 Component::Prefix(_) => {
                     return Err(SchemaError::PropertySpec(
-                        crate::schema::error::PropertySpecError::InvalidDirectoryPath {
+                        FileSpecError::MalformedDirectoryConstraint {
                             path: format!(
                                 "Invalid path {path}: path prefixes are not \
                                  allowed"
                             )
                             .into(),
-                        },
+                        }
+                        .into(),
                     ));
                 }
             }
@@ -298,10 +300,11 @@ mod tests {
     #[case::out_dir(
         "other/note.md",
         "notes/",
-        Err(SchemaError::PropertySpec(
-            crate::schema::error::PropertySpecError::InvalidDirectoryPath {
-                path: "File other/note.md must be inside (not at) directory notes/".into(),
-            },
+        Err(SchemaError::PropertyValue(
+            crate::schema::error::FileValueValidationError::FileOutsideAllowedDirectory {
+                path: "other/note.md".into(),
+                directory: "notes/".into(),
+            }.into(),
         ))
     )]
     fn file_spec_validation_matrix(
@@ -328,8 +331,10 @@ mod tests {
         let result = spec.validate_str("notes_evil/note.md");
         assert!(matches!(
             result,
-            Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDirectoryPath { .. }
+            Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::File(
+                    crate::schema::error::FileValueValidationError::FileOutsideAllowedDirectory { .. }
+                )
             ))
         ));
     }
@@ -342,7 +347,9 @@ mod tests {
         assert!(matches!(
             result,
             Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDirectoryPath { .. }
+                crate::schema::error::PropertySpecError::File(
+                    crate::schema::error::FileSpecError::MalformedDirectoryConstraint { .. }
+                )
             ))
         ));
     }
@@ -355,7 +362,9 @@ mod tests {
         assert!(matches!(
             result,
             Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDirectoryPath { .. }
+                crate::schema::error::PropertySpecError::File(
+                    crate::schema::error::FileSpecError::MalformedDirectoryConstraint { .. }
+                )
             ))
         ));
     }
@@ -367,8 +376,10 @@ mod tests {
         let result = spec.validate_str("notes/");
         assert!(matches!(
             result,
-            Err(SchemaError::PropertySpec(
-                crate::schema::error::PropertySpecError::InvalidDirectoryPath { .. }
+            Err(SchemaError::PropertyValue(
+                crate::schema::error::PropertyValueError::File(
+                    crate::schema::error::FileValueValidationError::FileOutsideAllowedDirectory { .. }
+                )
             ))
         ));
     }
@@ -386,11 +397,13 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(SchemaError::PropertySpec(
-                    crate::schema::error::PropertySpecError::InvalidDirectoryPath { .. }
+                Err(SchemaError::PropertyValue(
+                    crate::schema::error::PropertyValueError::File(
+                        crate::schema::error::FileValueValidationError::FileOutsideAllowedDirectory { .. }
+                    )
                 ))
             ),
-            "Expected InvalidDirectoryPath error for exact directory match"
+            "Expected FileOutsideAllowedDirectory error for exact directory match"
         );
     }
 
@@ -410,9 +423,13 @@ mod tests {
         let result = FileSpec::try_new(None, Some(""));
 
         // THEN: it should be invalid
-        assert!(
-            result.is_err(),
-            "Expected invalid file_class spec, got: {result:?}"
-        );
+        assert!(matches!(
+            result,
+            Err(SchemaError::PropertySpec(
+                crate::schema::error::PropertySpecError::File(
+                    crate::schema::error::FileSpecError::EmptyFileClassConstraint { .. }
+                )
+            ))
+        ));
     }
 }
