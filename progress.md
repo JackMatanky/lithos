@@ -6,4 +6,5 @@
 - Phase 3: Domain Error Redefinition (SchemaNameError, PropertyNameError) - COMPLETED
 - Phase 4: Property Specification & Value Error Refactor - COMPLETED
 - Phase 5: Reference & Map Error Refactor - COMPLETED
-- Phase 6: Pending
+- Phase 6: In progress
+    - Phase 6a: Ingestion Refactor - COMPLETED

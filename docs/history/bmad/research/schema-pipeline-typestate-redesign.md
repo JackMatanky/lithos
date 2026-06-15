@@ -218,7 +218,7 @@ The schema pipeline implements a **hybrid typestate state machine** combining pe
 - `TopologicalGraph<DiscoveryPayload>` (structural graph with discovery metadata)
 - Global context: `name_to_id`, `id_to_name`, deleted schema IDs, PropertyBank delta
 
-**Errors**: `SchemaRepositoryError`, `SchemaFileError`
+**Errors**: `SchemaRepositoryError`, `SchemaReadError`
 
 ---
 
@@ -243,7 +243,7 @@ The schema pipeline implements a **hybrid typestate state machine** combining pe
 
 **Outputs**: `ComparisonBranch::Fresh | Suspect`
 
-**Errors**: `SchemaFileError` (if file read fails)
+**Errors**: `SchemaReadError` (if file read fails)
 
 ---
 

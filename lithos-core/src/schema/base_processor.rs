@@ -771,8 +771,8 @@ impl BaseSchemaProcessor<Parsed, Missing> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::InvalidFileName {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },
@@ -813,8 +813,8 @@ impl BaseSchemaProcessor<Parsed, Stale> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::InvalidFileName {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },
@@ -859,8 +859,8 @@ impl BaseSchemaProcessor<Parsed, StaleReferences> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::InvalidFileName {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },

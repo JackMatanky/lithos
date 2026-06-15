@@ -333,7 +333,7 @@ pub(crate) fn discovery(
     // 1. Scan schema directory
     let pattern = format!("{}/**/*", self.schema_dir.display());
     let all_files = self.source.list_files(&pattern).map_err(|e| {
-        SchemaIngestionError::File(SchemaFileError::Io {
+        SchemaIngestionError::Read(SchemaReadError::Io {
             path: self.schema_dir.clone(),
             source: std::io::Error::other(e),
         })

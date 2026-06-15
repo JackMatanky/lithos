@@ -186,7 +186,7 @@ pub enum RootScopeError {
 /// This error type is now narrowed to only deserialization concerns (JSON,
 /// TOML, YAML parsing). File I/O errors are handled by `ReadError` and path
 /// errors by `PathError`.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 #[expect(
     clippy::module_name_repetitions,

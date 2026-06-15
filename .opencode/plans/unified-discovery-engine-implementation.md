@@ -447,8 +447,8 @@ impl DiscoveryEngine {
                 .copied()
                 .unwrap_or_else(SchemaId::new);
             let file_stats = stats_by_path.get(path).copied().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::Io {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::Io {
                         path: path.as_path().to_path_buf(),
                         source: std::io::Error::other("missing file stats"),
                     },
@@ -1173,8 +1173,8 @@ fn process_incremental(
     };
 
     let graph = outcome.graph.as_ref().ok_or_else(|| {
-        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-            SchemaFileError::FileSystem {
+        SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+            SchemaReadError::FileSystem {
                 reason: "incremental update requires graph".into(),
             }
         ))
@@ -1293,7 +1293,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
     ) -> Result<ComparisonBranch, SchemaLoaderError> {
         if discovered.kind != SchemaFileKind::PropertyBank {
             return Err(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::File(SchemaFileError::FileSystem {
+                SchemaIngestionError::Read(SchemaReadError::FileSystem {
                     reason: "expected property bank, got schema file".into(),
                 })
             ));
@@ -1321,7 +1321,7 @@ impl PropertyBankProcessor<Discovery, Unknown> {
             }
             Some(DiscoveredView::Schema(_)) => {
                 Err(SchemaLoaderError::Ingestion(
-                    SchemaIngestionError::File(SchemaFileError::FileSystem {
+                    SchemaIngestionError::Read(SchemaReadError::FileSystem {
                         reason: "discovered file kind/view mismatch: property-bank kind required property-bank view"
                             .into(),
                     })

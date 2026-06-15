@@ -193,8 +193,6 @@ impl DiscoveryEngine {
 
         // Use relative schema directory path for pattern matching
         let pattern = format!("{}/**/*", spec.directory_relative().as_str());
-        let schema_directory =
-            spec.schema_directory_path().map_err(SchemaIngestionError::from)?;
 
         DirScanner::new(spec.root().as_path())
             .entries(
@@ -203,12 +201,7 @@ impl DiscoveryEngine {
                     .with_extensions(&structured_extensions),
             )
             .map_err(|e| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::Io {
-                        path: schema_directory.as_path().to_path_buf(),
-                        source: std::io::Error::other(e),
-                    },
-                ))
+                SchemaLoaderError::Ingestion(SchemaIngestionError::from(e))
             })
     }
 

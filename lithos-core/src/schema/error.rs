@@ -4,7 +4,7 @@
 //! maps to the Schema lifecycle:
 //!
 //! 1. **File Access**: Physical file access, filename validation, and format
-//!    filtering ([`SchemaFileError`]).
+//!    filtering ([`SchemaReadError`]).
 //! 2. **Parsing**: Structured decoding of JSON/TOML/YAML and cached views
 //!    ([`SchemaParseError`]).
 //! 3. **Versioning**: Schema version compatibility checks
@@ -22,7 +22,7 @@
 //! ```text
 //! SchemaLoaderError (Orchestration)
 //!  ├── SchemaIngestionError (Ingestion Phase)
-//!  │    ├── SchemaFileError (I/O & Naming)
+//!  │    ├── SchemaReadError (I/O & Naming)
 //!  │    ├── SchemaParseError (Syntax & Extraction)
 //!  │    ├── SchemaVersionError (Version Gate)
 //!  │    └── SchemaError (Domain Validation)
@@ -111,27 +111,65 @@ pub enum SchemaError {
     Resolution(#[from] SchemaResolutionError),
 }
 
+/// Errors related to schema file reading and root-boundary safety.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaReadError {
+    /// Failure at the filesystem layer.
+    #[error(transparent)]
+    Read(#[from] crate::fs::error::ReadError),
+
+    /// Returned when a filename or basename is invalid.
+    #[error("invalid filename: {path} ({reason})")]
+    InvalidFileName {
+        /// Path to the file with an invalid name.
+        path: PathBuf,
+        /// Reason the filename was rejected.
+        reason: Box<str>,
+    },
+
+    /// Returned for filesystem errors not tied to a specific file.
+    #[error("filesystem error: {reason}")]
+    FileSystem {
+        /// Error details from the filesystem layer.
+        reason: Box<str>,
+    },
+}
+
+/// Errors related to structured schema parsing (JSON, TOML, YAML).
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaParseError {
+    /// Failure at the parsing layer.
+    #[error(transparent)]
+    Parse(#[from] crate::fs::error::ParseError),
+
+    /// Returned when cached view deserialization fails.
+    #[error("cached view parse error in {path}: {reason}")]
+    CachedView {
+        /// Path to the cached view file.
+        path: PathBuf,
+        /// Deserialization error details.
+        reason: Box<str>,
+    },
+
+    /// Returned when serialization of a cached view fails.
+    #[error("serialization error in {path}: {reason}")]
+    Serialization {
+        /// Path to the file being serialized.
+        path: PathBuf,
+        /// Serialization error details.
+        reason: Box<str>,
+    },
+}
+
 /// Schema ingestion error with file context.
-///
-/// This error type preserves context throughout the ingestion pipeline:
-/// - **Parse errors**: Contain line/column from serde
-/// - **Validation errors**: Contain file path from ingestor
-/// - **`FileName` errors**: Contain full path for user feedback
-///
-/// # Error Chain Example
-///
-/// ```text
-/// SchemaIngestionError::Parse {
-///     path: "schemas/note.toml",
-///     source: "invalid schema name in extends field at line 5, column 10"
-/// }
-/// ```
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
     /// Returned when filesystem access fails.
     #[error(transparent)]
-    File(#[from] SchemaFileError),
+    Read(#[from] SchemaReadError),
 
     /// Returned when structured parsing fails.
     #[error(transparent)]
@@ -216,126 +254,6 @@ impl From<SchemaInheritanceError> for SchemaLoaderError {
     fn from(value: SchemaInheritanceError) -> Self {
         Self::Resolution(SchemaError::Inheritance(value))
     }
-}
-
-/// File-system and filename errors during ingestion.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaFileError {
-    /// Returned when a schema file cannot be read.
-    #[error("failed to read {path}: {source}")]
-    Io {
-        /// Path to the file that failed to read.
-        path: PathBuf,
-        /// Underlying I/O error.
-        #[source]
-        source: std::io::Error,
-    },
-
-    /// Returned when a filename or basename is invalid.
-    #[error("invalid filename: {path} ({reason})")]
-    InvalidFileName {
-        /// Path to the file with an invalid name.
-        path: PathBuf,
-        /// Reason the filename was rejected.
-        reason: Box<str>,
-    },
-
-    /// Returned when the file format is not supported.
-    #[error("unsupported format for {path}: expected one of {supported:?}")]
-    UnsupportedFormat {
-        /// Path to the file with unsupported format.
-        path: PathBuf,
-        /// Supported formats.
-        supported: Vec<Box<str>>,
-    },
-
-    /// Returned for filesystem errors not tied to a specific file.
-    #[error("filesystem error: {reason}")]
-    FileSystem {
-        /// Error details from the filesystem layer.
-        reason: Box<str>,
-    },
-
-    /// Path was not within the expected base directory.
-    #[error("path {path} is not within base directory {base}")]
-    NotInBasePath {
-        /// The path that was outside the base.
-        path: PathBuf,
-        /// The expected base directory.
-        base: PathBuf,
-    },
-}
-
-/// Structured parse errors with file location context.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SchemaParseError {
-    /// Returned when JSON parsing fails.
-    #[error(
-        "JSON parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Json {
-        /// Path to the file being parsed.
-        path: PathBuf,
-        /// Parser error message.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// Returned when TOML parsing fails.
-    #[error(
-        "TOML parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Toml {
-        /// Path to the file being parsed.
-        path: PathBuf,
-        /// Parser error message.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// Returned when YAML parsing fails.
-    #[error(
-        "YAML parse error in {path} at line {line:?}, column {column:?}: \
-         {message}"
-    )]
-    Yaml {
-        /// Path to the file being parsed.
-        path: PathBuf,
-        /// Parser error message.
-        message: Box<str>,
-        /// Line number (if available).
-        line: Option<usize>,
-        /// Column number (if available).
-        column: Option<usize>,
-    },
-
-    /// Returned when cached view deserialization fails.
-    #[error("cached view parse error in {path}: {reason}")]
-    CachedView {
-        /// Path to the cached view file.
-        path: PathBuf,
-        /// Deserialization error details.
-        reason: Box<str>,
-    },
-
-    /// Returned when serialization of a cached view fails.
-    #[error("serialization error in {path}: {reason}")]
-    Serialization {
-        /// Path to the file being serialized.
-        path: PathBuf,
-        /// Serialization error details.
-        reason: Box<str>,
-    },
 }
 
 /// Errors raised by property builder and override operations.
@@ -848,71 +766,14 @@ pub enum SchemaResolutionError {
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::ParseError) -> Self {
-        use crate::fs::error::ParseError;
-        match err {
-            ParseError::Json {
-                path,
-                message,
-                line,
-                column,
-            } => Self::Parse(SchemaParseError::Json {
-                path,
-                message,
-                line,
-                column,
-            }),
-            ParseError::Toml {
-                path,
-                message,
-                line,
-                column,
-            } => Self::Parse(SchemaParseError::Toml {
-                path,
-                message,
-                line,
-                column,
-            }),
-            ParseError::Yaml {
-                path,
-                message,
-                line,
-                column,
-            } => Self::Parse(SchemaParseError::Yaml {
-                path,
-                message,
-                line,
-                column,
-            }),
-            ParseError::UnsupportedFormat {
-                path,
-                supported,
-            } => Self::File(SchemaFileError::UnsupportedFormat {
-                path,
-                supported: supported.iter().map(|&s| s.into()).collect(),
-            }),
-        }
+        Self::Parse(SchemaParseError::Parse(err))
     }
 }
 
 impl From<crate::fs::error::ReadError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::ReadError) -> Self {
-        use crate::fs::error::ReadError;
-        match err {
-            ReadError::Io {
-                path,
-                source,
-            } => Self::File(SchemaFileError::Io {
-                path,
-                source,
-            }),
-            ReadError::RootScope(
-                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
-                    path,
-                    root,
-                },
-            ) => Self::File(SchemaFileError::NotInBasePath { path, base: root }),
-        }
+        Self::Read(SchemaReadError::Read(err))
     }
 }
 
@@ -924,17 +785,15 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
             FsError::Read(e) => Self::from(e),
             FsError::Scan(e) => Self::from(e),
             FsError::Parse(e) => Self::from(e),
-            FsError::Path(e) => Self::from(e),
-            FsError::Validation(e) => Self::File(SchemaFileError::Io {
-                path: std::path::PathBuf::from("unknown"),
-                source: std::io::Error::other(e.to_string()),
+            FsError::Path(e) => Self::Read(SchemaReadError::FileSystem {
+                reason: e.to_string().into(),
             }),
-            FsError::RootScope(
-                crate::fs::error::RootScopeError::PathOutsideVaultRootBoundary {
-                    path,
-                    root,
-                },
-            ) => Self::File(SchemaFileError::NotInBasePath { path, base: root }),
+            FsError::Validation(e) => Self::Read(SchemaReadError::FileSystem {
+                reason: e.to_string().into(),
+            }),
+            FsError::RootScope(e) => {
+                Self::Read(SchemaReadError::Read(e.into()))
+            }
         }
     }
 }
@@ -947,24 +806,30 @@ impl From<crate::fs::error::ScanError> for SchemaIngestionError {
             ScanError::Traversal {
                 path,
                 source,
-            } => Self::File(SchemaFileError::Io {
-                path,
-                source,
-            }),
+            } => Self::Read(SchemaReadError::Read(
+                crate::fs::error::ReadError::Io {
+                    path,
+                    source,
+                },
+            )),
             ScanError::InvalidPattern {
                 pattern,
                 message,
-            } => Self::File(SchemaFileError::Io {
-                path: std::path::PathBuf::from(pattern.as_ref()),
-                source: std::io::Error::other(message.as_ref()),
+            } => Self::Read(SchemaReadError::FileSystem {
+                reason: format!("Invalid pattern {pattern}: {message}").into(),
             }),
             ScanError::UnsupportedEntryType(path) => {
-                Self::File(SchemaFileError::Io {
-                    path,
-                    source: std::io::Error::other("Unsupported entry type"),
+                Self::Read(SchemaReadError::FileSystem {
+                    reason: format!(
+                        "Unsupported entry type at {}",
+                        path.display()
+                    )
+                    .into(),
                 })
             }
-            ScanError::Path(e) => Self::from(e),
+            ScanError::Path(e) => Self::Read(SchemaReadError::FileSystem {
+                reason: e.to_string().into(),
+            }),
         }
     }
 }
@@ -972,9 +837,8 @@ impl From<crate::fs::error::ScanError> for SchemaIngestionError {
 impl From<crate::fs::error::PathError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::PathError) -> Self {
-        Self::File(SchemaFileError::Io {
-            path: std::path::PathBuf::from("unknown"),
-            source: std::io::Error::other(err.to_string()),
+        Self::Read(SchemaReadError::FileSystem {
+            reason: err.to_string().into(),
         })
     }
 }
@@ -994,7 +858,7 @@ mod tests {
             assert_send_sync::<SchemaIngestionError>();
             assert_send_sync::<SchemaRepositoryError>();
             assert_send_sync::<SchemaLoaderError>();
-            assert_send_sync::<SchemaFileError>();
+            assert_send_sync::<SchemaReadError>();
             assert_send_sync::<SchemaParseError>();
             assert_send_sync::<SchemaVersionError>();
             assert_send_sync::<SchemaNameError>();
@@ -1100,16 +964,17 @@ mod tests {
         use super::*;
 
         #[test]
-        fn schema_file_io_exposes_source() {
-            let error = SchemaFileError::Io {
-                path: PathBuf::from("schemas/bad.json"),
-                source: std::io::Error::other("disk failed"),
-            };
+        fn schema_read_io_exposes_source() {
+            let error =
+                SchemaReadError::Read(crate::fs::error::ReadError::Io {
+                    path: PathBuf::from("schemas/bad.json"),
+                    source: std::io::Error::other("disk failed"),
+                });
 
             let source = StdError::source(&error);
             assert!(
                 source.is_some(),
-                "Expected source for SchemaFileError::Io"
+                "Expected source for SchemaReadError::Read"
             );
 
             if let Some(source) = source {
@@ -1148,14 +1013,14 @@ mod tests {
         }
 
         #[test]
-        fn schema_file_filesystem_has_no_source() {
-            let error = SchemaFileError::FileSystem {
+        fn schema_read_filesystem_has_no_source() {
+            let error = SchemaReadError::FileSystem {
                 reason: "vault unavailable".into(),
             };
 
             assert!(
                 StdError::source(&error).is_none(),
-                "Expected no source for SchemaFileError::FileSystem"
+                "Expected no source for SchemaReadError::FileSystem"
             );
         }
     }
@@ -1243,42 +1108,25 @@ mod tests {
                 }
                 .into();
 
-            match error {
-                SchemaIngestionError::File(
-                    SchemaFileError::UnsupportedFormat {
-                        path,
-                        supported,
+            assert!(matches!(
+                error,
+                SchemaIngestionError::Parse(SchemaParseError::Parse(
+                    crate::fs::error::ParseError::UnsupportedFormat {
+                        path: _,
+                        supported: _,
                     },
-                ) => {
-                    assert_eq!(
-                        path,
-                        PathBuf::from("schemas/schema.xml"),
-                        "Expected unsupported format to preserve the path"
-                    );
-                    assert_eq!(
-                        supported,
-                        vec!["json".into(), "yaml".into()],
-                        "Expected supported formats to be copied"
-                    );
-                }
-                other @ (SchemaIngestionError::File(_)
-                | SchemaIngestionError::Parse(_)
-                | SchemaIngestionError::Version(_)
-                | SchemaIngestionError::Repository(_)
-                | SchemaIngestionError::Schema {
-                    ..
-                }) => {
-                    let is_expected = matches!(
-                        other,
-                        SchemaIngestionError::File(
-                            SchemaFileError::UnsupportedFormat { .. }
-                        )
-                    );
-                    assert!(
-                        is_expected,
-                        "Expected SchemaIngestionError::File::UnsupportedFormat, got: {other:?}"
-                    );
-                }
+                ))
+            ));
+
+            if let SchemaIngestionError::Parse(SchemaParseError::Parse(
+                crate::fs::error::ParseError::UnsupportedFormat {
+                    path,
+                    supported,
+                },
+            )) = error
+            {
+                assert_eq!(path, PathBuf::from("schemas/schema.xml"));
+                assert_eq!(supported, &["json", "yaml"]);
             }
         }
 

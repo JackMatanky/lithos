@@ -57,7 +57,7 @@ From `schema-pipeline-typestate-redesign.md`:
 - `Vec<DiscoveryBranch>` (one per schema)
 - Global context: `name_to_id`, `id_to_name`, deleted schema IDs, PropertyBank delta
 
-**Errors**: `SchemaRepositoryError`, `SchemaFileError`
+**Errors**: `SchemaRepositoryError`, `SchemaReadError`
 
 ## Implementation Plan
 

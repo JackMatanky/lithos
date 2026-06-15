@@ -64,7 +64,7 @@ they do not currently exist.
 ### 1) Ingestion and Parsing Errors
 Used for file I/O, filesystem enumeration, and structured parsing.
 
-- `SchemaFileError`
+- `SchemaReadError`
   - Invalid filename or basename
   - Unsupported extension
   - Missing expected file
@@ -179,9 +179,9 @@ Keep a stable public facade while enabling internal precision:
 ## Mapping Current Errors to Target Errors
 This is the required mapping activity during implementation:
 
-- `SchemaIngestionError::Io` and `FileSystem` should map to `SchemaFileError`.
+- `SchemaIngestionError::Io` and `FileSystem` should map to `SchemaReadError`.
 - `SchemaIngestionError::{Json,Toml,Yaml}` should map to `SchemaParseError`.
-- `SchemaIngestionError::UnsupportedFormat` should map to `SchemaFileError` or
+- `SchemaIngestionError::UnsupportedFormat` should map to `SchemaReadError` or
   `SchemaParseError` depending on responsibility.
 - `SchemaIngestionError::UnsupportedVersion` should map to `SchemaVersionError`.
 - `SchemaError::ValidationFailed` should be replaced by
@@ -216,7 +216,7 @@ Create new enums in `schema/error.rs` or a `schema/error/` submodule:
 
 ### Step 3: Conversion Strategy
 Define explicit conversions using `thiserror`:
-- `SchemaFileError` -> `SchemaIngestionError`
+- `SchemaReadError` -> `SchemaIngestionError`
 - `SchemaParseError` -> `SchemaIngestionError`
 - `SchemaVersionError` -> `SchemaIngestionError`
 - Raw validation errors -> `SchemaError`

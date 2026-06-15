@@ -197,7 +197,7 @@ These were identified in earlier analysis but are NOT part of this phase:
 
 1. **Unify Completed into-bank impls** — `FreshReady`, `NewReady`, `StaleReady` have near-identical `into_bank()` methods. Not actionable without a trait or macro — Rust doesn't support field access on generic `S`. Deferred until a stronger pattern emerges.
 
-2. **Duplicate error construction in builder** — `SchemaLoaderError::Ingestion(SchemaIngestionError::File(...))` appears in both `load_all` and `load_property_bank`. Will become a single remaining instance after this refactor (the `load_all` copy). Worth a private helper, but only 1 duplication remaining — borderline.
+2. **Duplicate error construction in builder** — `SchemaLoaderError::Ingestion(SchemaIngestionError::Read(...))` appears in both `load_all` and `load_property_bank`. Will become a single remaining instance after this refactor (the `load_all` copy). Worth a private helper, but only 1 duplication remaining — borderline.
 
 3. **Test struct-literal construction** — Processor tests bypass the `transition()` constructor by using struct literal syntax. This is a testing gap but not a design concern for this phase. Noted for future cleanup.
 

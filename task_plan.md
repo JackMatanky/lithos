@@ -32,10 +32,22 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
     - [x] Update all callers and fix breaking changes
     - [x] Verify with `mise run build` and `mise run test --package lithos-core`
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
+    - [x] Phase 6a: Ingestion Refactor <!-- id: 7 -->
+        - [x] Create `SchemaReadError` wrapping `crate::fs::error::ReadError`
+        - [x] Create `SchemaParseError` wrapping `crate::fs::error::ParseError`
+        - [x] Update `SchemaIngestionError` to consolidate file/parse logic
+    - [ ] Phase 6b: Resolution Refactor <!-- id: 8 -->
+        - [ ] Refine `SchemaInheritanceError` (graph cycles, missing nodes)
+        - [ ] Refine `SchemaResolutionError` (semantic conflicts, name duplicates)
+        - [ ] Ensure `Box<str>` usage and clean up redundant variants
+    - [ ] Phase 6c: Orchestration Redesign <!-- id: 9 -->
+        - [ ] Rename `SchemaLoaderError` -> `SchemaBuilderError`
+        - [ ] Implement orchestration logic as primary pipeline error
+        - [ ] Final update to `SchemaError` umbrella
 - [ ] Phase 7: Verification <!-- id: 6 -->
 
 ## Strategy
-1. **Remove Duplication**: Replace internal `SchemaFileError` and `SchemaParseError` by importing `ParseError` and `ReadError` from `crate::fs::error` and mapping them via `SchemaIngestionError`.
+1. **Remove Duplication**: Replace internal `SchemaReadError` and `SchemaParseError` by importing `ParseError` and `ReadError` from `crate::fs::error` and mapping them via `SchemaIngestionError`.
 2. **Domain Purity**: `SchemaError` remains the central umbrella for semantic failures.
 3. **Hexagonal Ports**: `SchemaRepositoryError` handles outbound persistence failures.
 4. **Service Layer**: `SchemaBuilderError` orchestrates pipeline failures.

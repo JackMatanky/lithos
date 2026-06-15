@@ -234,7 +234,7 @@ Successfully implemented typed directory scanning methods and enhanced the files
 ### Key Changes
 - **DirScanner Enhancements**: Added `paths_typed()` and `entries_typed()` to `DirScanner`. These methods return the new `FsPath` and `FsEntry` types, preserving absolute paths from the underlying `walkdir` scan.
 - **Unified Path Access**: Added `FsPath::as_path()` to provide a consistent way to access the underlying `std::path::Path` from both file and directory variants.
-- **Error Diagnostic Improvements**: Introduced `ParseError::NotInBasePath` to explicitly handle and report paths that fall outside the expected vault root. This error was propagated through the `ConfigIngestError` and `SchemaFileError` enums to ensure consistent error reporting across contexts.
+- **Error Diagnostic Improvements**: Introduced `ParseError::NotInBasePath` to explicitly handle and report paths that fall outside the expected vault root. This error was propagated through the `ConfigIngestError` and `SchemaReadError` enums to ensure consistent error reporting across contexts.
 - **Refactoring for Quality**: Extracted scanning logic into private helpers (`filter_entry`, `to_fs_path`) to manage complexity and satisfy strict `clippy` nesting limits.
 - **Testing**: Added a `typed_scanning` test module in `fs/scanner.rs` to verify the new methods correctly handle absolute paths and produce sorted results.
 

@@ -388,7 +388,7 @@ The PropertyBank pipeline branches into **four distinct paths** based on stalene
      - **If hash matches** → **FreshContent** path (timestamp update needed)
      - **If hash differs** → **STALE** path
 
-**Errors**: `SchemaRepositoryError`, `SchemaFileError`
+**Errors**: `SchemaRepositoryError`, `SchemaReadError`
 **Location**: `Ingestor::property_bank()` lines 473-510
 
 **Output**: `PropertyBankPath` enum with one of:
@@ -1499,7 +1499,7 @@ view.hashes().is_content_match(content_hash)
 
 **Pipeline Errors** (specific stages):
 
-- `SchemaFileError` - file I/O (Stage 1→2)
+- `SchemaReadError` - file I/O (Stage 1→2)
 - `SchemaParseError` - deserialization (Stage 2→3)
 - `SchemaVersionError` - version validation (Stage 3→4)
 - `SchemaSyntaxError` - syntax validation (Stage 3→4)
@@ -2281,7 +2281,7 @@ impl PropertyBankPipeline<Discovery> {
         source: &impl FileReader,
         repo: &impl Repository,
     ) -> Result<PropertyBankPath, SchemaIngestionError> {
-        // Uses SchemaFileError, SchemaParseError, SchemaStorageError
+        // Uses SchemaReadError, SchemaParseError, SchemaStorageError
     }
 }
 

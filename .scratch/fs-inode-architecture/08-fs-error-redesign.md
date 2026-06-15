@@ -726,12 +726,12 @@ fs/error.rs tests (24 new tests):
 **Current impl structure:**
 ```rust
 match err {
-    ParseError::Io { path, source } => Self::File(SchemaFileError::Io { path, source }),
+    ParseError::Io { path, source } => Self::File(SchemaReadError::Io { path, source }),
     ParseError::Json { ... } => Self::Parse(SchemaParseError::Json { ... }),
     ParseError::Toml { ... } => Self::Parse(SchemaParseError::Toml { ... }),
     ParseError::Yaml { ... } => Self::Parse(SchemaParseError::Yaml { ... }),
-    ParseError::UnsupportedFormat { ... } => Self::File(SchemaFileError::UnsupportedFormat { ... }),
-    ParseError::NotInBasePath { path, base } => Self::File(SchemaFileError::NotInBasePath { path, base }),
+    ParseError::UnsupportedFormat { ... } => Self::File(SchemaReadError::UnsupportedFormat { ... }),
+    ParseError::NotInBasePath { path, base } => Self::File(SchemaReadError::NotInBasePath { path, base }),
 }
 ```
 
@@ -744,7 +744,7 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
             ParseError::Json { ... } => Self::Parse(SchemaParseError::Json { ... }),
             ParseError::Toml { ... } => Self::Parse(SchemaParseError::Toml { ... }),
             ParseError::Yaml { ... } => Self::Parse(SchemaParseError::Yaml { ... }),
-            ParseError::UnsupportedFormat { ... } => Self::File(SchemaFileError::UnsupportedFormat { ... }),
+            ParseError::UnsupportedFormat { ... } => Self::File(SchemaReadError::UnsupportedFormat { ... }),
         }
     }
 }
@@ -753,8 +753,8 @@ impl From<crate::fs::error::ParseError> for SchemaIngestionError {
 impl From<crate::fs::error::ReadError> for SchemaIngestionError {
     fn from(err: crate::fs::error::ReadError) -> Self {
         match err {
-            ReadError::Io { path, source } => Self::File(SchemaFileError::Io { path, source }),
-            ReadError::NotInBase { path, base } => Self::File(SchemaFileError::NotInBasePath { path, base }),
+            ReadError::Io { path, source } => Self::File(SchemaReadError::Io { path, source }),
+            ReadError::NotInBase { path, base } => Self::File(SchemaReadError::NotInBasePath { path, base }),
         }
     }
 }

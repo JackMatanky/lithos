@@ -736,8 +736,8 @@ impl SchemaProcessor<Discovery, NeverSeen> {
                 .map(crate::fs::entry::FileNode::into_metadata)
                 .ok_or_else(|| {
                     SchemaLoaderError::Ingestion(
-                        super::error::SchemaIngestionError::File(
-                            super::error::SchemaFileError::FileSystem {
+                        super::error::SchemaIngestionError::Read(
+                            super::error::SchemaReadError::FileSystem {
                                 reason: "schema discovery entry must be a file"
                                     .into(),
                             },
@@ -1454,8 +1454,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             }
 
             let node = graph.graph().get(id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph")
                             .into(),
                     },
@@ -2098,8 +2098,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 continue;
             };
             let current = payload.view.current().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: "missing schema metadata in cached view".into(),
                     },
                 ))
@@ -2136,8 +2136,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     InheritanceBranch::StaleTimestamps(ref mut payload),
                 ) => {
                     let current = payload.view.current().ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                            crate::schema::error::SchemaReadError::FileSystem {
                                 reason: "missing schema metadata in cached view".into(),
                             },
                         ))
@@ -2158,8 +2158,8 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     ref mut payload,
                 )) => {
                     let current = payload.view.current().ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                            crate::schema::error::SchemaFileError::FileSystem {
+                        SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                            crate::schema::error::SchemaReadError::FileSystem {
                                 reason: "missing schema metadata in cached view".into(),
                             },
                         ))
@@ -2332,8 +2332,8 @@ impl SchemaProcessor<Construction, Analyzed> {
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph")
                             .into(),
                     },
@@ -2345,8 +2345,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                 || stale_timestamp_ids.contains(&schema_id)
             {
                 fetched_by_id.remove(&schema_id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                        crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "schema {id} not found in refresh cache"
                             )
@@ -2373,8 +2373,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                     .map_err(SchemaLoaderError::Repository)?
                     .ok_or_else(|| {
                         SchemaLoaderError::Ingestion(
-                            SchemaIngestionError::File(
-                                crate::schema::error::SchemaFileError::FileSystem {
+                            SchemaIngestionError::Read(
+                                crate::schema::error::SchemaReadError::FileSystem {
                                     reason: format!(
                                         "schema {id} not found in repository"
                                     )
@@ -2433,8 +2433,8 @@ impl SchemaProcessor<Construction, Analyzed> {
             PipelinePayload::Analysis(AnalysisBranch::Refresh(_))
         ) {
             return Err(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: "unexpected refresh node in rebuild path"
                             .into(),
                     },
@@ -2442,8 +2442,8 @@ impl SchemaProcessor<Construction, Analyzed> {
             ));
         } else if matches!(payload, PipelinePayload::Deleted(_)) {
             return Err(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: "unexpected deleted node in rebuild path"
                             .into(),
                     },
@@ -2466,8 +2466,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                     .or_else(|| constructed_cache.get(&id).map(|s| (**s).clone()))
                     .ok_or_else(|| {
                         SchemaLoaderError::Ingestion(
-                            SchemaIngestionError::File(
-                                crate::schema::error::SchemaFileError::FileSystem {
+                            SchemaIngestionError::Read(
+                                crate::schema::error::SchemaReadError::FileSystem {
                                     reason: format!(
                                         "schema {id} not found for update"
                                     )
@@ -2478,8 +2478,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                     })?;
 
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                        crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             )
@@ -2515,8 +2515,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                 _,
             ) => {
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                        crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             )
@@ -2555,8 +2555,8 @@ impl SchemaProcessor<Construction, Analyzed> {
 
             (ExtendsChangeKind::ChildToRoot, _) => {
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                        crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             )
@@ -2586,8 +2586,8 @@ impl SchemaProcessor<Construction, Analyzed> {
                 }
 
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                        crate::schema::error::SchemaFileError::FileSystem {
+                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                        crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             )
@@ -2683,8 +2683,8 @@ impl SchemaProcessor<Construction, NewBuild> {
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph")
                             .into(),
                     },
@@ -2870,8 +2870,8 @@ fn stage_variant_error(
     expected: &'static str,
     actual: &'static str,
 ) -> SchemaLoaderError {
-    SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-        crate::schema::error::SchemaFileError::FileSystem {
+    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+        crate::schema::error::SchemaReadError::FileSystem {
             reason: format!(
                 "stage {stage}: schema {id} expected {expected} payload, got \
                  {actual}"

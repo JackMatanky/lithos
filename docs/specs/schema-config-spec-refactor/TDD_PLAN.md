@@ -193,8 +193,8 @@ impl DiscoveryEngine {
         let vault_root = spec.directory().as_path()
             .parent()
             .ok_or_else(|| SchemaLoaderError::Ingestion(
-                SchemaIngestionError::File(
-                    crate::schema::error::SchemaFileError::FileSystem {
+                SchemaIngestionError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
                         reason: "schema directory has no parent".into(),
                     }
                 )

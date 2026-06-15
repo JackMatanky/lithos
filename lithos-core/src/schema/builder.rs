@@ -57,8 +57,8 @@ where
             // md): Introduce a dedicated cross-context projection
             // error instead of stringifying config-spec
             // construction failures into FileSystem.
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::FileSystem {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                crate::schema::error::SchemaReadError::FileSystem {
                     reason: format!(
                         "failed to build schema config spec: {error}"
                     )
@@ -142,8 +142,8 @@ where
         let file = bank_discovery.entry().clone();
 
         let schema_spec = self.config.to_schema_spec().map_err(|error| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::File(
-                crate::schema::error::SchemaFileError::FileSystem {
+            SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                crate::schema::error::SchemaReadError::FileSystem {
                     reason: format!(
                         "failed to build schema config spec: {error}"
                     )

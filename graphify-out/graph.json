@@ -20907,7 +20907,7 @@
       "norm_label": ".from()"
     },
     {
-      "label": "SchemaFileError",
+      "label": "SchemaReadError",
       "file_type": "code",
       "source_file": "src/schema/error.rs",
       "source_location": "L220",

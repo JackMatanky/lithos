@@ -165,7 +165,7 @@ pub enum FileValueValidationError {
 
 ```
 9. **Orchestration**: Rename `SchemaLoaderError` -> `SchemaBuilderError`.
-10. **File Validation**: `SchemaFileError` consolidated.
+10. **File Validation**: `SchemaReadError` consolidated.
 11. **Clean-up**: Remove duplicate variants in `SchemaResolutionError` and `SchemaInheritanceError`.
 
 ### Proposed Revised Hierarchy
