@@ -251,6 +251,128 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 
+## Changlog
+
+### 2026-06-15 — Session 4: Adversarial review — hexagonal boundary enforcement
+
+**Commits**: (pending)
+
+Fixed 7 architectural violations identified during adversarial review against
+`docs/refs/rust/guides/hexagonal_architecture.md`:
+
+1. **Port defined inside adapter module**: Moved `ScannerPort`, `ScanResult`,
+   `SkippedEntry`, `SkipReason` from `scanner/` into new `indexer/port.rs`.
+   ScannerError went to `indexer/error.rs` alongside other error types.
+   `scanner/mod.rs` now purely declares the adapter submodule.
+
+2. **Walkdir dependency not encapsulated**: `mod walkdir` made private (was
+   `pub(crate)`). `pub mod scanner` changed to `pub(crate) mod scanner`.
+   `WalkdirAdapter` no longer re-exported from `indexer/mod.rs`. No walkdir
+   types visible outside the adapter.
+
+3. **`ScannerError::Unknown(String)` removed**: dead code — all traversal
+   errors have a concrete `Traversal { path, source }` path.
+
+4. **`SkipReason::Unknown(String)` removed**: dead code — all skipped entries
+   are `PermissionDenied` or `UnsupportedEntryType`.
+
+5. **`#[allow(clippy::excessive_nesting)]` removed**: extracted
+   `WalkdirAdapter::handle_entry` to flatten the walkdir loop body.
+
+6. **`ScanFilters` type mismatch**: changed `Vec<String>` to `Vec<Box<str>>`
+   on both `included_extensions` and `excluded_names` fields, matching the
+   issue spec.
+
+7. **Module doc comments**: added `//!` doc to `repository.rs`, `port.rs`,
+   `report.rs`; updated `scanner/mod.rs` and `walkdir.rs` docs.
+
+Structural changes:
+- `report.rs` created: `IndexReport`, `IndexNodeFailure`, `SkippedEntry`,
+  `SkipReason` — report/skipped types from `summary.rs` + `port.rs`
+- `port.rs` shrinks to just `ScannerPort` + `ScanResult` (the pure port contract)
+- `summary.rs` trimmed to `IndexResult`, `IndexedNodes`, `DeletedNodes`
+
+### 2026-06-15 — Session 3: Serialization before write transaction (perf)
+
+**Commits**: `ea4646bd`
+
+Moved `rkyv::to_bytes` out of the redb write lock on all save paths. Serialization
+is CPU-bound allocation; holding it inside `store.write()` blocks concurrent readers.
+
+- `save_file_in_tx` / `save_dir_in_tx` accept pre-serialized `&[u8]` instead of
+  calling `rkyv::to_bytes` internally.
+- `save_file` / `save_dir` serialize before `store.write()`, then pass bytes in.
+- `save_many_records` serializes all files+dirs upfront into `Vec<AlignedVec>`,
+  then batch-writes in one transaction.
+- Deserialization (load-delete-context for upsert cleanup) stays inside the
+  transaction — rkyv `from_bytes` is zero-copy pointer validation, negligible cost.
+
+**Key decisions**:
+- `_in_tx` helpers still receive the `&FileRecord` / `&DirRecord` reference for
+  secondary index field access (path, name, format, parent_id). Only the primary
+  table insert uses pre-serialized bytes.
+- Clippy lint: `.map(|f| to_bytes(f))` → `.map(to_bytes)` (redundant closure).
+- No new tests needed — behavior is identical, existing 1933 test suite passes.
+
+### 2026-06-15 — Session 2: Remove `impl_rkyv_redb_value!` macro (refactor)
+
+**Commits**: `847640f4`
+
+Removed the `impl_rkyv_redb_value!` macro and switched from entity-typed tables
+to raw `&[u8]` storage, matching all 5 other contexts (vault, template, schema,
+config, note).
+
+- `tables.rs`: Removed `impl_rkyv_redb_value!` macro and its `FileRecord`/`DirRecord`
+  invocations. Changed `FILES`/`DIRS` from `UuidTable<FsRecordId, FileRecord>` to
+  `UuidTable<FsRecordId, &[u8]>`.
+- `read.rs`: Updated all 8 read methods to deserialize via `rkyv::from_bytes` with
+  `DbError::Deserialization`. Added `deserialize_file`/`deserialize_dir` helpers.
+  Updated 12 test insert sites.
+- `write.rs`: Updated load/delete/save helpers to serialize via `rkyv::to_bytes`
+  with `DbError::Serialization`.
+- `ArchivedEntity` trait not used — raw `rkyv::from_bytes::<T, rkyv::rancor::Error>`
+  and `rkyv::to_bytes::<rkyv::rancor::Error>` called directly at each read/write site.
+- Helper functions return `Result<_, DbError>` (not panic) so the `store.read()`
+  closure can use `?` to propagate errors.
+- Zero-copy via `rkyv::access` deferred — available locally in hot paths but not
+  wired into read methods since `ReadRepository` trait contract returns owned values.
+- `impl_redb_uuid!(FsRecordId)` kept unchanged — still needed for table keys.
+
+### 2026-06-09 — Session 1: Ports and adapters refinement
+
+**Commits**: `fb34fe7c`
+
+Replaced raw table definitions with typed wrappers (`UuidTable`, `PathUuidTable`,
+`UuidMultimap`), removed `PathKey` TODO, added `DIR_IDS_BY_PARENT` multimap.
+
+---
+
+## Status
+
+**Label**: `ready-for-agent` (awaiting issue 04 — scanner and adapters
+complete).
+
+**Completed**:
+- [x] `ScannerPort` trait and `ScanResult`/`SkippedEntry`/`SkipReason` types
+- [x] `WalkdirAdapter` implementing `ScannerPort`
+- [x] `ScanFilters` with extension inclusion and name exclusion (`Vec<Box<str>>`)
+- [x] `IndexReport::skipped` field
+- [x] `ReadRepository`, `WriteRepository`, `Repository` traits defined
+- [x] `RedbRepository` implements all three traits
+- [x] All 7 tables defined with typed wrappers
+- [x] `save_many_records` / `delete_many_records` atomic batch operations
+- [x] Single-record `save_file`/`save_dir`/`delete_file`/`delete_dir`
+- [x] Upsert cleanup (load old → remove stale indexes → insert new)
+- [x] Index consistency after all write operations (path, parent, basename, format)
+- [x] In-memory test double (`InMemoryRepository`)
+- [x] `IndexerError`, `ScannerError`, `IndexerRepositoryError` defined
+- [x] Raw `&[u8]` storage via `rkyv::to_bytes`/`rkyv::from_bytes`
+- [x] Serialization outside write transaction (perf)
+- [x] Hexagonal boundary enforcement (port in `port.rs`, adapter in `scanner/`,
+      walkdir encapsulated, Unknown variants removed, nesting flattened)
+
+---
+
 ## Blocked by
 
 - 02-domain-model.md
@@ -533,7 +655,7 @@ refactors only after green.
 - GREEN: wire `scanner`, `repository`, and `storage` in `indexer/mod.rs` with
   `pub(crate)` exports only.
 
-### Cycle 23 — Refactor after green
+### Cycle 23 — Refactor after green [DONE]
 
 - Extract private storage helpers only after tests pass:
   `save_file_in_tx`, `remove_file_graph`, `load_file_delete_context`,
@@ -542,7 +664,17 @@ refactors only after green.
   sets differ.
 - Run tests after each refactor step.
 
-### Cycle 24 — Verification gates
+### Cycle 24 — Serialization before write transaction [DONE]
+
+Moved `rkyv::to_bytes` outside `store.write()` on all save paths. CPU-bound
+encoding no longer holds the redb write lock that blocks concurrent readers.
+
+- `save_file_in_tx` / `save_dir_in_tx` accept `&[u8]` param type.
+- `save_many_records` serializes all records upfront into `Vec<AlignedVec>`.
+- The `record` ref is still passed for secondary-index field access.
+- Deserialization stays inside transactions (zero-copy, negligible).
+
+### Cycle 25 — Verification gates
 
 - Run targeted module tests during each cycle.
 - Before completion: `mise run fmt`, `mise run test`, and `mise run lint`.

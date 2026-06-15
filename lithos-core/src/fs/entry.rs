@@ -15,7 +15,7 @@ use super::{
 ///
 /// Provides type-safe access to nodes with variants for files and
 /// directories.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub enum FsNode {
@@ -154,7 +154,7 @@ impl TryFrom<walkdir::DirEntry> for FsNode {
 /// A file node with path and metadata.
 ///
 /// Represents a concrete file on the filesystem with its associated metadata.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct FileNode {
     /// Path to the file.
@@ -200,7 +200,7 @@ impl FileNode {
 ///
 /// Represents a concrete directory on the filesystem with its associated
 /// metadata.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct DirNode {
     /// Path to the directory.

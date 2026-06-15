@@ -1,11 +1,12 @@
 //! Index result and summary types.
 //!
-//! Captures the outcome of an indexing run: new/fresh/stale entries,
-//! deleted nodes, and any failures encountered during the scan.
+//! Captures the outcome of an indexing run: the top-level `IndexResult`
+//! along with its `IndexedNodes` and `DeletedNodes` aggregates. Scan-level
+//! failures and skipped-entry records live in the report submodule.
 
 use super::{
     entry::{DirIndexEntry, FileIndexEntry},
-    model::{FsRecordId, FsRecordType},
+    model::FsRecordId,
 };
 
 /// The aggregate result of a single indexing run.
@@ -40,86 +41,6 @@ impl IndexResult {
     #[must_use]
     pub(crate) fn deleted(&self) -> &DeletedNodes {
         &self.deleted
-    }
-}
-
-/// A summary report containing metrics and failures from an indexer run.
-#[derive(Debug, Clone)]
-pub(crate) struct IndexReport {
-    scanned: usize,
-    new: usize,
-    fresh: usize,
-    stale: usize,
-    deleted: usize,
-    failures: Box<[IndexNodeFailure]>,
-}
-
-impl IndexReport {
-    /// Creates a new index report.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Domain report encapsulates all summary counters"
-    )]
-    #[inline]
-    #[must_use]
-    pub(crate) fn new(
-        scanned: usize,
-        new: usize,
-        fresh: usize,
-        stale: usize,
-        deleted: usize,
-        failures: Box<[IndexNodeFailure]>,
-    ) -> Self {
-        Self {
-            scanned,
-            new,
-            fresh,
-            stale,
-            deleted,
-            failures,
-        }
-    }
-
-    /// Returns the total number of nodes scanned.
-    #[inline]
-    #[must_use]
-    pub(crate) fn scanned(&self) -> usize {
-        self.scanned
-    }
-
-    /// Returns the count of new nodes.
-    #[inline]
-    #[must_use]
-    pub(crate) fn new_count(&self) -> usize {
-        self.new
-    }
-
-    /// Returns the count of fresh nodes.
-    #[inline]
-    #[must_use]
-    pub(crate) fn fresh_count(&self) -> usize {
-        self.fresh
-    }
-
-    /// Returns the count of stale nodes.
-    #[inline]
-    #[must_use]
-    pub(crate) fn stale_count(&self) -> usize {
-        self.stale
-    }
-
-    /// Returns the count of deleted nodes.
-    #[inline]
-    #[must_use]
-    pub(crate) fn deleted_count(&self) -> usize {
-        self.deleted
-    }
-
-    /// Returns the failures encountered during the scan.
-    #[inline]
-    #[must_use]
-    pub(crate) fn failures(&self) -> &[IndexNodeFailure] {
-        &self.failures
     }
 }
 
@@ -200,52 +121,6 @@ impl DeletedNodes {
     #[must_use]
     pub(crate) fn count(&self) -> usize {
         self.files.len().saturating_add(self.dirs.len())
-    }
-}
-
-/// A failure record for a single filesystem node that could not be indexed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IndexNodeFailure {
-    id: FsRecordId,
-    kind: FsRecordType,
-    error: Box<str>,
-}
-
-impl IndexNodeFailure {
-    /// Creates a new failure record.
-    #[inline]
-    #[must_use]
-    pub(crate) fn new(
-        id: FsRecordId,
-        kind: FsRecordType,
-        error: Box<str>,
-    ) -> Self {
-        Self {
-            id,
-            kind,
-            error,
-        }
-    }
-
-    /// Returns the node identifier.
-    #[inline]
-    #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
-        self.id
-    }
-
-    /// Returns the node type (file or directory).
-    #[inline]
-    #[must_use]
-    pub(crate) fn kind(&self) -> FsRecordType {
-        self.kind
-    }
-
-    /// Returns the error message for this failure.
-    #[inline]
-    #[must_use]
-    pub(crate) fn error(&self) -> &str {
-        &self.error
     }
 }
 
@@ -359,45 +234,6 @@ mod tests {
             fn default_is_empty() {
                 let deleted = DeletedNodes::default();
                 assert_eq!(deleted.count(), 0);
-            }
-        }
-    }
-
-    mod failure {
-        mod constructor {
-            use crate::indexer::{
-                model::{FsRecordId, FsRecordType},
-                summary::IndexNodeFailure,
-            };
-
-            #[test]
-            fn stores_id_kind_and_error() {
-                let id = FsRecordId::new();
-                let failure = IndexNodeFailure::new(
-                    id,
-                    FsRecordType::File,
-                    "permission denied".into(),
-                );
-                assert_eq!(failure.id(), id);
-                assert_eq!(failure.kind(), FsRecordType::File);
-                assert_eq!(failure.error(), "permission denied");
-            }
-        }
-    }
-
-    mod report {
-        mod constructor {
-            use crate::indexer::summary::IndexReport;
-
-            #[test]
-            fn stores_counts_and_failures() {
-                let report = IndexReport::new(10, 2, 5, 3, 1, Box::new([]));
-                assert_eq!(report.scanned(), 10);
-                assert_eq!(report.new_count(), 2);
-                assert_eq!(report.fresh_count(), 5);
-                assert_eq!(report.stale_count(), 3);
-                assert_eq!(report.deleted_count(), 1);
-                assert_eq!(report.failures().len(), 0);
             }
         }
     }

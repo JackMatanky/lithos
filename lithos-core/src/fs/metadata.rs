@@ -15,7 +15,7 @@ use rkyv::{
 /// Provides type-safe access to metadata with variants for files and
 /// directories. Use the helper methods to determine the variant and access
 /// the underlying metadata.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub enum FsMetadata {
@@ -211,7 +211,7 @@ impl From<&std::fs::Metadata> for FileMetadata {
 /// Contains directory-specific information. Unlike `FileMetadata`, this does
 /// not include size because directory size is not a meaningful or portable
 /// concept across filesystems.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct DirMetadata {
     /// Directory timestamps.
