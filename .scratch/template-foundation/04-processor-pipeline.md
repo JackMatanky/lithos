@@ -268,7 +268,7 @@ Tests:
 
 ### Phase 7 — Typestate compile-time intent
 
-Doc tests on stage-specific methods confirm that only legal transitions are callable at each phase. `From` impls cover infallible pure-payload transitions; fallible/IO/branching transitions are explicit `Result`-returning methods.
+Doc tests on stage-specific methods confirm that only legal transitions are callable at each phase. All transitions go through `self.transition(NextStage, next_status)`; branching outcomes use branch enums.
 
 Examples to verify at compile time (via doc tests or `compile_fail` tests where appropriate):
 - `TemplateProcessor<Discovery, Discovered>` exposes `compare` but not `parse` or `construct`
