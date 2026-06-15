@@ -649,7 +649,7 @@ pub enum PropertyRefError {
     },
 }
 
-/// Errors related to schema inheritance resolution.
+/// Errors related to schema inheritance graph structure.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaInheritanceError {
@@ -661,7 +661,7 @@ pub enum SchemaInheritanceError {
     },
 
     /// Returned when a cycle is detected in the inheritance graph.
-    #[error("cycle detected in schema inheritance graph")]
+    #[error("cycle detected in schema inheritance graph: {nodes:?}")]
     CycleDetected {
         /// Nodes involved in the cycle.
         nodes: Vec<crate::schema::identifier::SchemaId>,
@@ -670,20 +670,6 @@ pub enum SchemaInheritanceError {
     /// Returned when the inheritance graph is not directed.
     #[error("inheritance graph is not directed")]
     NotDirected,
-
-    /// Returned when a declared parent schema is missing.
-    #[error("parent not found: {name}")]
-    ParentNotFound {
-        /// Parent schema name.
-        name: Box<str>,
-    },
-
-    /// Returned when inheritance cycles are detected.
-    #[error("circular schema inheritance detected: {name}")]
-    CircularInheritance {
-        /// Schema name involved in the cycle.
-        name: Box<str>,
-    },
 
     /// Returned when inheritance depth exceeds the maximum.
     #[error("inheritance depth exceeded: {depth} (max: {max})")]
@@ -695,36 +681,30 @@ pub enum SchemaInheritanceError {
     },
 }
 
-impl TryFrom<crate::graph::GraphError<crate::schema::identifier::SchemaId>>
-    for SchemaError
+impl From<crate::graph::GraphError<crate::schema::identifier::SchemaId>>
+    for SchemaInheritanceError
 {
-    type Error = SchemaError;
-
     #[inline]
-    fn try_from(
+    fn from(
         err: crate::graph::GraphError<crate::schema::identifier::SchemaId>,
-    ) -> Result<Self, Self::Error> {
-        let inheritance = match err {
+    ) -> Self {
+        match err {
             crate::graph::GraphError::CycleDetected {
                 nodes,
-            } => SchemaInheritanceError::CycleDetected {
+            } => Self::CycleDetected {
                 nodes,
             },
-            crate::graph::GraphError::NotDirected => {
-                SchemaInheritanceError::NotDirected
-            }
+            crate::graph::GraphError::NotDirected => Self::NotDirected,
             crate::graph::GraphError::MissingNode {
                 id,
-            } => SchemaInheritanceError::MissingNode {
+            } => Self::MissingNode {
                 id,
             },
-        };
-
-        Ok(SchemaError::Inheritance(inheritance))
+        }
     }
 }
 
-/// Resolution errors not covered by other categories.
+/// Errors related to final entity resolution and conflict detection.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaResolutionError {
@@ -733,13 +713,6 @@ pub enum SchemaResolutionError {
     DuplicateSchemaName {
         /// Schema name.
         name: Box<str>,
-    },
-
-    /// Returned when a schema node is missing during merge.
-    #[error("schema node missing for id {id}")]
-    MissingNode {
-        /// Schema ID.
-        id: crate::schema::identifier::SchemaId,
     },
 
     /// Returned when a parent schema is not found.
@@ -757,10 +730,6 @@ pub enum SchemaResolutionError {
         /// Schemas involved in the cycle.
         schemas: Vec<crate::schema::identifier::SchemaName>,
     },
-
-    /// Returned when the graph is not directed.
-    #[error("graph is not directed")]
-    NotDirected,
 }
 
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {
@@ -908,11 +877,12 @@ mod tests {
             }),
             "cannot change property type via override"
         )]
-        #[case::inheritance_parent_missing(
-            SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound {
-                name: "parent".into(),
+        #[case::resolution_parent_missing(
+            SchemaError::Resolution(SchemaResolutionError::ParentNotFound {
+                child: crate::schema::identifier::SchemaName::try_new("child").unwrap(),
+                parent: crate::schema::identifier::SchemaName::try_new("parent").unwrap(),
             }),
-            "parent not found"
+            "parent schema 'parent' not found"
         )]
         fn schema_error_display_contains_message(
             #[case] error: SchemaError,
