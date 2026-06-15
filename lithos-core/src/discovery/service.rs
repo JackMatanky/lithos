@@ -61,11 +61,9 @@ impl CandidatePath {
     }
 }
 
-/// Owned, frozen list of candidates produced by discovery.
-///
-/// `Box<[T]>` signals that the list is immutable after construction and
-/// avoids carrying unused `Vec` capacity across the boundary.
-type CandidateSlice = Box<[CandidatePath]>;
+/// Owned vault and global candidate slices returned by
+/// [`DiscoveryResult::into_parts`].
+type DiscoveryResultParts = (Box<[CandidatePath]>, Box<[CandidatePath]>);
 
 /// Pure discovery output consumed by downstream configuration loading.
 ///
@@ -77,9 +75,9 @@ type CandidateSlice = Box<[CandidatePath]>;
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub(crate) struct DiscoveryResult {
     /// Ordered vault-local candidates.
-    vault: CandidateSlice,
+    vault: Box<[CandidatePath]>,
     /// Ordered global candidates.
-    global: CandidateSlice,
+    global: Box<[CandidatePath]>,
 }
 
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
@@ -88,8 +86,8 @@ impl DiscoveryResult {
     #[inline]
     #[must_use]
     pub(crate) fn new(
-        vault: impl Into<CandidateSlice>,
-        global: impl Into<CandidateSlice>,
+        vault: impl Into<Box<[CandidatePath]>>,
+        global: impl Into<Box<[CandidatePath]>>,
     ) -> Self {
         Self {
             vault: vault.into(),
@@ -114,7 +112,7 @@ impl DiscoveryResult {
     /// Consumes the result into owned boxed candidate slices.
     #[inline]
     #[must_use]
-    pub(crate) fn into_parts(self) -> (CandidateSlice, CandidateSlice) {
+    pub(crate) fn into_parts(self) -> DiscoveryResultParts {
         (self.vault, self.global)
     }
 }
