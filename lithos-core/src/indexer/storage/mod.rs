@@ -1,3 +1,22 @@
+//! Storage layer for the indexer context.
+//!
+//! Provides a [`RedbRepository`] backed by redb tables that implements both
+//! [`ReadRepository`] and [`WriteRepository`] traits. Records are stored as
+//! rkyv-archived bytes (`&[u8]`) and deserialized on read, following the same
+//! pattern used by all other contexts.
+//!
+//! ## Submodules
+//!
+//! | Module | Purpose |
+//! |--------|---------|
+//! | [`tables`] | Database table definitions (constants + type wrappers) |
+//! | [`read`]   | Read-only query implementation |
+//! | [`write`]  | Write (create/update/delete) implementation |
+//! | [`testing`] | In-memory repository for tests (cfg test only) |
+//!
+//! [`ReadRepository`]: crate::indexer::repository::ReadRepository
+//! [`WriteRepository`]: crate::indexer::repository::WriteRepository
+
 use std::sync::Arc;
 
 use crate::{
@@ -12,11 +31,26 @@ use crate::{
     },
 };
 
+/// Redb-backed repository implementing [`ReadRepository`] and
+/// [`WriteRepository`] for the indexer context.
+///
+/// Wraps a shared [`Store`] reference and opens all required tables
+/// at construction.
+///
+/// [`ReadRepository`]: crate::indexer::repository::ReadRepository
+/// [`WriteRepository`]: crate::indexer::repository::WriteRepository
+/// [`Store`]: crate::db::Store
 pub(crate) struct RedbRepository {
     pub(crate) store: Arc<crate::db::Store>,
 }
 
 impl RedbRepository {
+    /// Opens all indexer tables and returns a ready-to-use repository.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexerRepositoryError`] if any table cannot be created
+    /// or opened.
     pub(crate) fn try_new(
         store: Arc<crate::db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {

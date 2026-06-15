@@ -1,3 +1,14 @@
+//! Redb-backed write repository implementation.
+//!
+//! Implements [`WriteRepository`] for [`RedbRepository`] with save and delete
+//! operations that maintain primary tables and secondary indexes within
+//! single-transaction boundaries.
+//!
+//! Updates follow a load → remove stale indexes → insert new data pattern
+//! to keep all indexes consistent.
+//!
+//! [`WriteRepository`]: crate::indexer::repository::WriteRepository
+
 use redb::{ReadableMultimapTable, ReadableTable, WriteTransaction};
 
 use crate::{
