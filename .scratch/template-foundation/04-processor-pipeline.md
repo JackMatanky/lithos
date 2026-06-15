@@ -140,19 +140,21 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 
 ## TDD Plan
 
-### Pre-step: Add `find_template_by_path` to `ReadRepository`
+### Pre-step: Add `find_template_id_by_path` and `find_template_by_path` to `ReadRepository`
 
-The current `ReadRepository` trait (`lithos-core/src/template/repository.rs`) does not expose a path-to-template lookup. The `Construction` stage requires this to resolve an existing `TemplateId` without scanning all templates. This method must be added before implementing the processor.
+The current `ReadRepository` trait (`lithos-core/src/template/repository.rs`) does not expose a path lookup. The `Construction` stage requires an efficient `find_template_id_by_path` to resolve an existing `TemplateId` without scanning all templates or deserializing full aggregates. A convenience `find_template_by_path` (which delegates to the ID lookup) should also be added.
 
 Files to change:
-- `lithos-core/src/template/repository.rs` — add `find_template_by_path(&self, path: &PathKey) -> Result<Option<Template>, TemplateRepositoryError>` to `ReadRepository`
-- `lithos-core/src/template/storage/testing.rs` — implement on `InMemoryRepository`
+- `lithos-core/src/template/storage/tables.rs` — add `pub(crate) const TEMPLATE_ID_BY_PATH: PathUuidTable<TemplateId> = PathUuidTable::new("template_id_by_path");`
+- `lithos-core/src/template/repository.rs` — add `find_template_id_by_path(&self, path: &PathKey) -> Result<Option<TemplateId>, TemplateRepositoryError>` and `find_template_by_path(&self, path: &PathKey) -> Result<Option<Template>, TemplateRepositoryError>` to `ReadRepository`
+- `lithos-core/src/template/storage/testing.rs` — implement on `InMemoryRepository` (will require adding a `HashMap<PathKey, TemplateId>` index internally, updated during `save_template`/`delete_template`)
 - `lithos-core/src/template/storage/read.rs` — implement on `RedbRepository` (redb adapter implementation deferred per out-of-scope rules; stub or `todo!()` acceptable if adapter is not yet wired)
 
 Tests (in `testing.rs`):
-- `find_template_by_path_returns_none_when_repository_is_empty`
-- `find_template_by_path_returns_some_after_saving_template`
+- `find_template_id_by_path_returns_none_when_repository_is_empty`
+- `find_template_id_by_path_returns_some_id_after_saving_template`
 - `find_template_by_path_returns_none_for_unknown_path_after_saving_different_template`
+- `find_template_by_path_returns_template_after_saving`
 
 ### Error types
 
@@ -239,7 +241,7 @@ Tests:
 
 ### Phase 4 — Stale content path (`Suspect` → content hash mismatch → `Parsed<Stale>` → `Construction` → `Completed`)
 
-When timestamps differ and the content hash also differs, the file is fully stale. The processor re-reads content (already read in `Comparison` to compute the hash), looks up the existing `TemplateId` via `find_template_by_path`, reconstructs the `Template` aggregate, and persists both `Template` and a new `RawTemplateView`.
+When timestamps differ and the content hash also differs, the file is fully stale. The processor re-reads content (already read in `Comparison` to compute the hash), looks up the existing `TemplateId` via `find_template_id_by_path`, reconstructs the `Template` aggregate, and persists both `Template` and a new `RawTemplateView`.
 
 Tests:
 - `stale_content_detects_hash_mismatch_after_timestamp_mismatch`
