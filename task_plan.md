@@ -1,49 +1,24 @@
-# Task Plan: Discovery Context Contract Slice
+# Task: Redesign Schema Error Module
+
+Redesign `lithos-core/src/schema/error.rs` to align with Hexagonal Architecture and remove duplication with `fs` context errors.
+
+## !!! CRITICAL: NO IMPLEMENTATION YET !!!
+**Your primary directive is to finalize the planning documentation. Do NOT start implementation until the planning phase is verified and explicitly approved by the user.**
 
 ## Goal
-Implement the first vertical slice of the discovery module redesign from `.scratch/root-config-discovery/10-bootstrap-context-discovery-contracts.md`: Discovery-owned input/output/report/error/policy contracts plus a minimal app-owned Bootstrapper context acquisition seam.
-
-## Current Phase
-Complete
+A pure domain error core (`SchemaError`) surrounded by port-specific and orchestration errors, utilizing existing `fs` error types where appropriate.
 
 ## Phases
+- [x] Phase 1: Initialize Planning <!-- id: 0 -->
+- [ ] Phase 2: Finalize Planning & Verify Enums (STRICT: NO CODE) <!-- id: 1 -->
+- [ ] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
+- [ ] Phase 4: Property Specification & Value Error Refactor <!-- id: 3 -->
+- [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
+- [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
+- [ ] Phase 7: Verification <!-- id: 6 -->
 
-### Phase 1: Orient and Bound Scope
-- [x] Read issue, ADR/domain docs, graph/report context, and current discovery/bootstrapper code.
-- [x] Identify public interfaces and target symbols for impact analysis.
-- **Status:** complete
-
-### Phase 2: Discovery Contracts via TDD
-- [x] Add one failing behavior test for `DiscoveryContext`, `DiscoveryFlags`, and `DiscoveryEnv` construction.
-- [x] Implement minimal contract types.
-- [x] Add one failing behavior test for `CandidatePath` and `DiscoveryResult`.
-- [x] Implement minimal output contract types.
-- [x] Add one failing behavior test for `DiscoveryReport` metadata.
-- [x] Implement report-only metadata types.
-- [x] Add one failing behavior test for fatal discovery error taxonomy and policy names.
-- [x] Implement minimal error and policy contracts.
-- **Status:** complete
-
-### Phase 3: Bootstrapper Context Seam via TDD
-- [x] Add one failing behavior test proving app-owned sources build a `DiscoveryContext` without invoking DiscoveryService or Config.
-- [x] Implement the minimal Bootstrapper seam and test source injection.
-- **Status:** complete
-
-### Phase 4: Verification
-- [x] Run formatting.
-- [x] Run targeted/unit tests for the touched crate.
-- [x] Run lint if feasible.
-- [x] Run full project tests.
-- [x] Run GitNexus `detect_changes` before completion.
-- **Status:** complete
-
-## Decisions Made
-| Decision | Rationale |
-|----------|-----------|
-| Use TDD vertical slices | Required by task and keeps the new boundary behavior-driven rather than shape-only. |
-| Keep discovery execution out of scope | Issue explicitly limits this slice to contracts and context acquisition. |
-| Add new contract modules alongside legacy engine/probe | Keeps this first slice minimal while preserving existing discovery behavior. |
-
-## Errors Encountered
-| Error | Attempt | Resolution |
-|-------|---------|------------|
+## Strategy
+1. **Remove Duplication**: Import `ParseError` and `ReadError` from `crate::fs::error` instead of redefining them.
+2. **Domain Purity**: `SchemaError` remains the central umbrella for semantic failures.
+3. **Hexagonal Ports**: `SchemaRepositoryError` handles outbound persistence failures.
+4. **Service Layer**: `SchemaLoaderError` orchestrates pipeline failures.
