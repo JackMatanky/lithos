@@ -11,12 +11,18 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
 ## Phases
 - [x] Phase 1: Initialize Planning <!-- id: 0 -->
 - [x] Phase 2: Finalize Planning & Verify Enums (STRICT: NO CODE) <!-- id: 1 -->
-- [in_progress] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
-    - [ ] Redefine `SchemaNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
-    - [ ] Redefine `PropertyNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
-    - [ ] Remove `SchemaSyntaxError` and flatten into `SchemaError`
-    - [ ] Update all callers of `SchemaNameError`, `PropertyNameError`, and `SchemaSyntaxError`
-- [ ] Phase 4: Property Specification & Value Error Refactor (REQUIRES USER CONSENT) <!-- id: 3 -->
+- [x] Phase 3: Domain Error Redefinition (`SchemaNameError`, `PropertyNameError`) <!-- id: 2 -->
+    - [x] Redefine `SchemaNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
+    - [x] Redefine `PropertyNameError` with `NameIsEmpty`, `NameExceedsMaxLength`, `ContainsInvalidCharacters`, `RegexCompilationFailed`
+    - [x] Remove `SchemaSyntaxError` and flatten into `SchemaError`
+    - [x] Update all callers of `SchemaNameError`, `PropertyNameError`, and `SchemaSyntaxError`
+- [in_progress] Phase 4: Property Specification & Value Error Refactor (REQUIRES USER CONSENT) <!-- id: 3 -->
+    - [ ] Define specialized spec errors (`StringSpecError`, `NumberSpecError`, `DateSpecError`, `FileSpecError`)
+    - [ ] Define specialized value validation errors (`StringValueValidationError`, `NumberValueValidationError`, `DateValueValidationError`, `FileValueValidationError`)
+    - [ ] Refactor `PropertySpecError` to wrap specialized spec errors using `#[error(transparent)]`
+    - [ ] Refactor `PropertyValueError` to wrap specialized value validation errors and `IncorrectPrimitiveType`
+    - [ ] Update callers in `property_spec/*.rs` and `property.rs`
+    - [ ] Verify with build and tests
 - [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
 - [ ] Phase 7: Verification <!-- id: 6 -->

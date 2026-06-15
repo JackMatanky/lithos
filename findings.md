@@ -76,13 +76,13 @@ pub enum PropertyValueError {
     IncorrectPrimitiveType { value: Box<str>, expected: Box<str> },
 
     #[error(transparent)]
-    String(#[from] StringValueError),
+    String(#[from] StringValueValidationError),
     #[error(transparent)]
-    Number(#[from] NumberValueError),
+    Number(#[from] NumberValueValidationError),
     #[error(transparent)]
-    Date(#[from] DateValueError),
+    Date(#[from] DateValueValidationError),
     #[error(transparent)]
-    File(#[from] FileValueError),
+    File(#[from] FileValueValidationError),
 }
 
 // --- String Spec Errors (schema/property_spec/string.rs) ---
@@ -104,7 +104,7 @@ pub enum StringSpecError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
-pub enum StringValueError {
+pub enum StringValueValidationError {
     #[error("invalid enum value: {value} (allowed: {allowed:?})")]
     ValueNotInAllowedOptions { value: Box<str>, allowed: Vec<Box<str>> },
     #[error("value {value} does not match pattern {pattern}")]
@@ -122,7 +122,7 @@ pub enum NumberSpecError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
-pub enum NumberValueError {
+pub enum NumberValueValidationError {
     #[error("number out of range: {value} (min: {min:?}, max: {max:?})")]
     ValueOutsideAllowedRange { value: f64, min: Option<f64>, max: Option<f64> },
     #[error("invalid step value: {value} (step: {step})")]
@@ -142,7 +142,7 @@ pub enum DateSpecError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
-pub enum DateValueError {
+pub enum DateValueValidationError {
     #[error("value {value} does not match format {format}")]
     ValueDoesNotMatchFormat { value: Box<str>, format: Box<str> },
 }
@@ -158,7 +158,7 @@ pub enum FileSpecError {
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
-pub enum FileValueError {
+pub enum FileValueValidationError {
     #[error("file {path} must be inside (not at) directory {directory}")]
     FileOutsideAllowedDirectory { path: Box<str>, directory: Box<str> },
 }
