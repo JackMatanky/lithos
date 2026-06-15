@@ -101,6 +101,72 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
+    fn find_template_id_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<
+        Option<TemplateId>,
+        crate::template::error::TemplateRepositoryError,
+    > {
+        self.store
+            .read(|tx| {
+                let Some(path_table) = tx.try_open_table(
+                    crate::template::storage::tables::TEMPLATE_ID_BY_PATH
+                        .definition(),
+                )?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(id_guard) = path_table.get(path)? else {
+                    return Ok(None);
+                };
+
+                let id = id_guard.value();
+                Ok(Some(id))
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
+    fn find_template_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<Template>, crate::template::error::TemplateRepositoryError>
+    {
+        self.store
+            .read(|tx| {
+                let Some(path_table) = tx.try_open_table(
+                    crate::template::storage::tables::TEMPLATE_ID_BY_PATH
+                        .definition(),
+                )?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(id_guard) = path_table.get(path)? else {
+                    return Ok(None);
+                };
+
+                let id = id_guard.value();
+
+                let Some(template_table) =
+                    tx.try_open_table(TEMPLATES.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(template_guard) = template_table.get(id)? else {
+                    return Ok(None);
+                };
+
+                let template = Template::from_bytes(template_guard.value())?;
+                Ok(Some(template))
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
     fn list_templates(
         &self,
     ) -> Result<Vec<Template>, crate::template::error::TemplateRepositoryError>

@@ -58,6 +58,30 @@ pub trait ReadRepository {
         name: &TemplateName,
     ) -> Result<Option<Template>, TemplateRepositoryError>;
 
+    /// Find a template ID by its vault-relative path.
+    ///
+    /// Returns `None` if no template exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn find_template_id_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<TemplateId>, TemplateRepositoryError>;
+
+    /// Find a template by its vault-relative path.
+    ///
+    /// Returns `None` if no template exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn find_template_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<Template>, TemplateRepositoryError>;
+
     /// List all persisted template aggregates.
     ///
     /// # Errors
