@@ -1,7 +1,7 @@
 ---
 title: 14-config-builder-discovery-decoupling
 category: enhancement
-label: ready-for-agent
+label: ready-for-human
 status: completed
 date_created: 2026-06-12
 date_completed: 2026-06-15
@@ -14,7 +14,7 @@ AFK
 ## Labels
 
 - root-config-discovery
-- ready-for-agent
+- ready-for-human
 
 ## Parent
 
