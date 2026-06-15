@@ -18,7 +18,7 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
 - [ ] Phase 7: Verification <!-- id: 6 -->
 
 ## Strategy
-1. **Remove Duplication**: Import `ParseError` and `ReadError` from `crate::fs::error` instead of redefining them.
+1. **Remove Duplication**: Replace internal `SchemaFileError` and `SchemaParseError` by importing `ParseError` and `ReadError` from `crate::fs::error` and mapping them via `SchemaIngestionError`.
 2. **Domain Purity**: `SchemaError` remains the central umbrella for semantic failures.
 3. **Hexagonal Ports**: `SchemaRepositoryError` handles outbound persistence failures.
-4. **Service Layer**: `SchemaLoaderError` orchestrates pipeline failures.
+4. **Service Layer**: `SchemaBuilderError` orchestrates pipeline failures.

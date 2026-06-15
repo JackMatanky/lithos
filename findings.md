@@ -164,5 +164,28 @@ pub enum FileValueError {
 }
 
 ```
-9. **Orchestration**: Remove `SchemaIngestionError`.
-10. **Clean-up**: Remove duplicate variants in `SchemaResolutionError` and `SchemaInheritanceError`.
+9. **Orchestration**: Rename `SchemaLoaderError` -> `SchemaBuilderError`.
+10. **File Validation**: `SchemaFileError` consolidated.
+11. **Clean-up**: Remove duplicate variants in `SchemaResolutionError` and `SchemaInheritanceError`.
+
+### Proposed Revised Hierarchy
+
+```text
+SchemaError (The Central Umbrella)
+ ├── SchemaBuilderError
+ │    ├── SchemaReadError (Wraps fs::error::ReadError)
+ │    ├── SchemaParseError (Wraps fs::error::ParseError)
+ │    ├── SchemaVersionError
+ │    ├── PropertyBuilderError
+ │    ├── SchemaInheritanceError (Graph structural constraints)
+ │    └── SchemaResolutionError (Final semantic consolidation)
+ ├── PropertyMapError (Duplicate Property ID/Name constraints)
+ ├── PropertySpecError (Structural invalidity of Spec definitions)
+ ├── PropertyRefError (Invalid $ref references)
+ ├── PropertyValueError (Data fails to adhere to Spec validation rules)
+ └── SchemaRepositoryError (Persistence Phase)
+```
+
+### Revised Domain Responsibilities:
+- **SchemaInheritanceError**: Solely responsible for graph-related constraints (cycles, missing nodes, depth limits, directed-graph violations).
+- **SchemaResolutionError**: Solely responsible for final entity resolution and conflict detection (duplicate names, missing parent-child link resolution failures, merge conflicts).
