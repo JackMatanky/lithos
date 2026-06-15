@@ -93,7 +93,7 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 
 **Rust implementation constraints:**
 - Use `PhantomData` or equivalent zero-cost markers for both phase and status so invalid transitions fail to compile rather than relying on runtime flags.
-- Use `impl From<TemplateProcessor<A, SomeStatus>> for TemplateProcessor<B, NextStatus>` for infallible, pure transitions where the full payload is preserved and no I/O or branching occurs. Do not use `From` for transitions that: can fail, read files, write repositories, or branch into multiple next-states. Those remain explicit methods returning `Result` or branch enums.
+- All transitions go through a private `transition(self, _stage: NP, status: NS) -> TemplateProcessor<NP, NS>` method on `impl<P, S> TemplateProcessor<P, S>`, mirroring `BaseSchemaProcessor` and `PropertyBankProcessor`. A private `transition_from_parts` static helper is used where parts have already been destructured. `impl From` is not used for transitions.
 - Prefer borrowing over cloning when carrying discovered paths, views, and raw content through stages; clone only when ownership transfer or persistence boundaries require it.
 - Keep filesystem path types, display/config path types, and storage-key types distinct according to the path taxonomy.
 - Keep MiniJinja/compiler checks out of this pipeline. Template Engine behavior may consume persisted templates later, but engine compilation is not an ingestion state.
@@ -106,7 +106,7 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 - [ ] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
 - [ ] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
 - [ ] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
-- [ ] Infallible pure-payload transitions use `impl From` rather than explicit methods; I/O, fallible, and branching transitions remain explicit methods returning `Result` or branch enums
+- [ ] All transitions use the private `transition()` / `transition_from_parts()` helpers on `TemplateProcessor<P, S>`, mirroring the existing processor pattern; `impl From` is not used for stage transitions
 - [ ] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
 - [ ] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
 - [ ] No `Compiled` or `Validated` stage exists anywhere in the processor
@@ -214,7 +214,7 @@ Status branches produced by comparison:
 - `Suspect` — timestamps differ; content has been read for hash comparison
 - `Deleted` — view exists in repository but path not discovered on disk
 
-`Fresh` transitions infallibly via `From` to `Construction<Fresh>`. All other branches are explicit methods.
+All branch transitions use `self.transition(NextStage, next_status)`. Branching outcomes are expressed as branch enums (e.g. `ComparisonBranch`) returning the correctly-typed processor variant for each arm.
 
 Tests:
 - `comparison_classifies_entry_as_fresh_when_timestamps_match`
@@ -274,8 +274,7 @@ Examples to verify at compile time (via doc tests or `compile_fail` tests where 
 - `TemplateProcessor<Discovery, Discovered>` exposes `compare` but not `parse` or `construct`
 - `TemplateProcessor<Construction, Fresh>` exposes `fetch` but not `create`
 - `TemplateProcessor<Construction, New>` exposes `create` but not `fetch`
-- `From<TemplateProcessor<Comparison, Fresh>>` for `TemplateProcessor<Construction, Fresh>` compiles
-- `From<TemplateProcessor<Refresh, StaleTimestamps>>` for `TemplateProcessor<Construction, Fresh>` compiles
+- `transition()` called inside stage-specific `impl` blocks produces the correct next typestate
 
 ### Test coverage matrix
 

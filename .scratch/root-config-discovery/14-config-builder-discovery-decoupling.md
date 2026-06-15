@@ -65,13 +65,14 @@ DiscoveryResult { vault: Vec<CandidatePath>, global: Vec<CandidatePath> }
        │
        ▼
 Builder::from_discovery(result, repo)
-  └─ thin: vault root from winning CandidatePath::base, VaultId lookup/create, store paths
-  └─ fallible only on VaultId (DB) / base→VaultRoot conversion errors
+  └─ stores candidate boxes, returns Builder
+  └─ infallible (structural invariants enforced upstream by DiscoveryService)
        │
        ▼
 Builder::build()
-  ├─ build_vault(&CandidatePath, VaultId, &R) → RawVaultConfig       [always]
-  ├─ build_global(&CandidatePath, &R) → Option<RawGlobalConfig>      [if global present]
+  ├─ build_vault(&R) → RawVaultConfig                                [always]
+  │   └─ derives VaultRoot from vault[0].base(), resolves VaultId via DB
+  ├─ build_global(&R) → Option<RawGlobalConfig>                      [if global present]
   └─ build_from_layers(global, vault) → Config                       [unchanged merge]
 ```
 
@@ -85,38 +86,58 @@ Builder::build()
 No `ConfigDiscoveryPipeline` type exists — the work is split between the two
 build methods, which are independently testable.
 
+### Builder representation
+
+`Builder<R>` stores the candidate vectors directly (owned) to avoid a lifetime
+parameter:
+
+```rust
+pub(crate) struct Builder<R> {
+    vault: Box<[CandidatePath]>,
+    global: Box<[CandidatePath]>,
+    repository: R,
+}
+```
+
+`from_discovery()` moves the `Box<[CandidatePath]>` slices out of the incoming
+`DiscoveryResult`. `VaultRoot` and `VaultId` are derived inside
+`build_vault()` from `self.vault[0].base()` and checked against stored vault
+identity in the DB — builder state stays minimal.
+
 ## Acceptance criteria
 
 ### Builder interface
 
 - [ ] `Builder::from_discovery()` is the only Config entry point that accepts a
       `discovery::service::DiscoveryResult`.
-- [ ] `Builder::from_discovery()` derives the vault root from the winning vault
-      `CandidatePath::base()`, validates it into `VaultRoot`, gets or creates
-      `VaultId`, and stores winning global/vault candidate state internally.
-- [ ] `Builder::from_discovery()` stays thin: type conversion, `VaultId`
-      lookup/creation, winner marker extraction, and internal builder state
-      only. No file reading, no staleness checking, no structural validation.
+- [ ] `Builder::from_discovery()` stores the candidate boxes and repository.
+      Winner extraction is deferred — `build_vault()` and `build_global()`
+      index `self.vault[0]` and `self.global.first()` respectively.
+- [ ] `Builder::from_discovery()` stays thin: moves candidate boxes, stores
+      repository. No file reading, no staleness checking, no structural
+      validation, no VaultId resolution.
 - [ ] `Builder::from_discovery()` consumes Discovery's validated `CandidatePath
       { base: DirPath, path: FilePath }` handoff instead of re-validating plain
       `PathBuf` marker paths.
-- [ ] `Builder::from_discovery()` does not validate Discovery-side invariants
-      (e.g., non-empty vault, valid paths). The `DiscoveryService` guarantees
-      those before producing `DiscoveryResult`. Only genuine operation errors
-      (VaultId DB lookup failure, DirPath→VaultRoot conversion) produce `Err`.
+- [ ] `Builder::from_discovery()` is infallible. It moves candidate boxes and
+      stores the repository. All discovery-side invariants (non-empty vault,
+      valid paths) are enforced by `DiscoveryService` upstream. Error sources
+      (VaultId resolution, DirPath→VaultRoot conversion, file I/O, staleness)
+      live in `build_vault()` and `build_global()`.
 - [ ] `Builder::build()` orchestrates `build_global()` and `build_vault()`
       based on discovered marker presence.
 
 ### Build methods
 
-- [ ] `Builder::build_vault()` accepts `&CandidatePath`, reads file metadata,
-      fetches the cached vault view, runs `ConfigFileProcessor::compare()` for
-      staleness, and produces `RawVaultConfig`. Always called (vault candidate
-      guaranteed upstream).
-- [ ] `Builder::build_global()` accepts `&CandidatePath`, reads file metadata,
-      fetches the cached global view, runs `ConfigFileProcessor::compare()` for
-      staleness, and produces `Option<RawGlobalConfig>`. Called only when a
-      global candidate exists.
+- [ ] `Builder::build_vault()` reads `self.vault[0]`, derives `VaultRoot` from
+      its `base()`, resolves `VaultId` via DB (create if new), reads file
+      metadata, fetches the cached vault view, runs
+      `ConfigFileProcessor::compare()` for staleness, and produces
+      `RawVaultConfig`. Always called (vault candidate guaranteed upstream).
+- [ ] `Builder::build_global()` reads `self.global.first()`, reads file
+      metadata, fetches the cached global view, runs
+      `ConfigFileProcessor::compare()` for staleness, and produces
+      `Option<RawGlobalConfig>`. Called only when a global candidate exists.
 - [ ] `Builder::build_vault()` and `Builder::build_global()` are independently
       testable and contain no discovery orchestration.
 - [ ] `build_from_layers()` remains the unchanged pure config-domain merge seam.
@@ -193,12 +214,12 @@ enforced by `DiscoveryService` before `DiscoveryResult` reaches Config.
 stores.
 
 **Key interfaces:**
-- `Builder::from_discovery(DiscoveryResult, R)` — thin adapter, fallible only
-  on VaultId/conversion errors.
-- `Builder::build_vault(&CandidatePath, VaultId, &R)` → `RawVaultConfig` —
-  full pipeline from path to raw config, always called.
-- `Builder::build_global(&CandidatePath, &R)` → `Option<RawGlobalConfig>` —
-  same, called conditionally.
+- `Builder::from_discovery(DiscoveryResult, R)` — moves candidate boxes,
+  stores repository. Infallible.
+- `Builder::build_vault(&R)` → `RawVaultConfig` — derives VaultRoot, resolves
+  VaultId, reads file, checks staleness, processes. Always called.
+- `Builder::build_global(&R)` → `Option<RawGlobalConfig>` — same, called
+  conditionally from `build()`.
 - `Builder::build()` — orchestrates build methods and merge seam.
 - `build_from_layers()` — unchanged merge seam.
 - `ConfigFileProcessor::compare()` — unchanged staleness owner.
@@ -208,10 +229,12 @@ stores.
 - `config/discovery.rs` — pipeline removed.
 
 **Acceptance criteria:**
-- [ ] `from_discovery()` stores winner paths, derives `VaultRoot`, resolves
-      `VaultId` — no file I/O, no staleness, no structural validation.
-- [ ] `build_vault()` and `build_global()` each own file read, view fetch,
-      staleness check, and processor pipeline from `CandidatePath`.
+- [ ] `from_discovery()` moves candidate boxes and stores repository — no file
+      I/O, no staleness, no VaultRoot/VaultId derivation, no structural
+      validation. Infallible.
+- [ ] `build_vault()` indexes `self.vault[0]`, derives `VaultRoot` and resolves
+      `VaultId`, reads file, fetches view, checks staleness, processes.
+      `build_global()` indexes `self.global.first()` for the same pipeline.
 - [ ] No `ConfigDiscoveryPipeline` — `config/discovery.rs` deleted.
 - [ ] No `config/root.rs` — bridge types deleted.
 - [ ] Builder imports no discovery engine/input/policy types.
