@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use super::{
     bank::PropertyBank,
-    error::SchemaError,
+    error::{PropertyBuilderError, PropertyRefError, SchemaError},
     property::{
         Multiplicity, Optionality, Property, PropertyMap, PropertyName,
     },
@@ -94,9 +94,11 @@ impl<'bank> RefExpander<'bank> {
     ) -> Result<Property, SchemaError> {
         let bank_name = entry.ref_path.target_name();
         let base = self.bank.get(bank_name).ok_or_else(|| {
-            SchemaError::PropertyRef(super::error::PropertyRefError::NotFound {
-                reference: entry.ref_path.as_str().into(),
-            })
+            SchemaError::PropertyRef(
+                PropertyRefError::TargetPropertyNotFoundInBank {
+                    reference: entry.ref_path.as_str().into(),
+                },
+            )
         })?;
 
         let optionality = Self::optionality(base.optionality(), entry.required);
@@ -239,10 +241,12 @@ impl<'bank> RefExpander<'bank> {
 
 #[inline]
 fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
-    SchemaError::PropertyRef(super::error::PropertyRefError::TypeMismatch {
-        expected: expected.into(),
-        actual: actual.into(),
-    })
+    SchemaError::PropertyBuilder(
+        PropertyBuilderError::OverridePropertyRefSpecTypeMismatch {
+            expected: expected.into(),
+            actual: actual.into(),
+        },
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,11 +379,11 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(SchemaError::PropertyRef(
-                        crate::schema::error::PropertyRefError::TypeMismatch { .. }
+                    Err(SchemaError::PropertyBuilder(
+                        crate::schema::error::PropertyBuilderError::OverridePropertyRefSpecTypeMismatch { .. }
                     ))
                 ),
-                "Expected PropertyRef::TypeMismatch, got: {result:?}"
+                "Expected PropertyBuilder::OverridePropertyRefSpecTypeMismatch, got: {result:?}"
             );
         }
 
@@ -396,10 +400,10 @@ mod tests {
                 matches!(
                     result,
                     Err(SchemaError::PropertyRef(
-                        crate::schema::error::PropertyRefError::NotFound { .. }
+                        crate::schema::error::PropertyRefError::TargetPropertyNotFoundInBank { .. }
                     ))
                 ),
-                "Expected PropertyRef::NotFound, got: {result:?}"
+                "Expected PropertyRef::TargetPropertyNotFoundInBank, got: {result:?}"
             );
         }
     }

@@ -28,7 +28,8 @@
 //!  │    └── SchemaError (Domain Validation)
 //!  ├── SchemaError (Domain Umbrella)
 //!  │    ├── PropertySpecError, PropertyValueError
-//!  │    ├── PropertyRefError, PropertyBankError
+//!  │    ├── PropertyRefError, PropertyMapError
+//!  │    ├── PropertyBuilderError
 //!  │    └── SchemaInheritanceError, SchemaResolutionError
 //!  └── SchemaRepositoryError (Persistence Phase)
 //!       └── DbError
@@ -93,9 +94,13 @@ pub enum SchemaError {
     #[error(transparent)]
     PropertyRef(#[from] PropertyRefError),
 
-    /// Returned when property bank constraints are violated.
+    /// Returned when property map constraints are violated.
     #[error(transparent)]
-    PropertyBank(#[from] PropertyBankError),
+    PropertyMap(#[from] PropertyMapError),
+
+    /// Returned when property building or overriding fails.
+    #[error(transparent)]
+    PropertyBuilder(#[from] PropertyBuilderError),
 
     /// Returned when inheritance resolution fails.
     #[error(transparent)]
@@ -674,27 +679,32 @@ pub enum FileValueValidationError {
 pub enum PropertyRefError {
     /// Returned when a `$ref` string is not in the expected format.
     #[error(
-        "invalid property reference: '{reference}' (expected format: \
+        "invalid property reference target: '{reference}' (expected format: \
          #property_bank/<name>)"
     )]
-    InvalidFormat {
+    MalformedBankReferencePath {
         /// The invalid reference string.
         reference: Box<str>,
     },
 
-    /// Returned when the referenced property does not exist.
+    /// Returned when the referenced property does not exist in the bank.
     #[error("property reference not found: {reference}")]
-    NotFound {
+    TargetPropertyNotFoundInBank {
         /// The reference string.
         reference: Box<str>,
     },
+}
 
+/// Errors raised by property builder and override operations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PropertyBuilderError {
     /// Returned when a `$ref` override changes the property type.
     #[error(
-        "cannot change property type via $ref override: expected {expected}, \
-         got {actual}"
+        "cannot change property type via override: expected {expected}, got \
+         {actual}"
     )]
-    TypeMismatch {
+    OverridePropertyRefSpecTypeMismatch {
         /// Expected type.
         expected: Box<str>,
         /// Actual override type.
@@ -702,10 +712,10 @@ pub enum PropertyRefError {
     },
 }
 
-/// Errors raised by property bank operations.
+/// Errors raised by property map constraints.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum PropertyBankError {
+pub enum PropertyMapError {
     /// Returned when a property name is defined more than once.
     #[error("duplicate property name: {name}")]
     DuplicatePropertyName {
@@ -1000,7 +1010,8 @@ mod tests {
             assert_send_sync::<FileSpecError>();
             assert_send_sync::<FileValueValidationError>();
             assert_send_sync::<PropertyRefError>();
-            assert_send_sync::<PropertyBankError>();
+            assert_send_sync::<PropertyBuilderError>();
+            assert_send_sync::<PropertyMapError>();
             assert_send_sync::<SchemaInheritanceError>();
             assert_send_sync::<SchemaResolutionError>();
         }
@@ -1021,10 +1032,17 @@ mod tests {
             "property name cannot be empty"
         )]
         #[case::property_ref_invalid(
-            SchemaError::PropertyRef(PropertyRefError::InvalidFormat {
+            SchemaError::PropertyRef(PropertyRefError::MalformedBankReferencePath {
                 reference: "#property_bank/title".into(),
             }),
-            "invalid property reference"
+            "invalid property reference target"
+        )]
+        #[case::property_builder_type_mismatch(
+            SchemaError::PropertyBuilder(PropertyBuilderError::OverridePropertyRefSpecTypeMismatch {
+                expected: "string".into(),
+                actual: "number".into(),
+            }),
+            "cannot change property type via override"
         )]
         #[case::inheritance_parent_missing(
             SchemaError::Inheritance(SchemaInheritanceError::ParentNotFound {
@@ -1107,9 +1125,11 @@ mod tests {
         fn ingestion_schema_exposes_source() {
             let error = SchemaIngestionError::Schema {
                 path: PathBuf::from("schemas/bad.json"),
-                source: SchemaError::PropertyRef(PropertyRefError::NotFound {
-                    reference: "#property_bank/title".into(),
-                }),
+                source: SchemaError::PropertyRef(
+                    PropertyRefError::TargetPropertyNotFoundInBank {
+                        reference: "#property_bank/title".into(),
+                    },
+                ),
             };
 
             let source = StdError::source(&error);
@@ -1145,12 +1165,16 @@ mod tests {
 
         #[test]
         fn schema_error_equality_compares_variants() {
-            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "#property_bank/title".into(),
-            });
-            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "#property_bank/title".into(),
-            });
+            let left = SchemaError::PropertyRef(
+                PropertyRefError::TargetPropertyNotFoundInBank {
+                    reference: "#property_bank/title".into(),
+                },
+            );
+            let right = SchemaError::PropertyRef(
+                PropertyRefError::TargetPropertyNotFoundInBank {
+                    reference: "#property_bank/title".into(),
+                },
+            );
 
             assert_eq!(
                 left, right,
@@ -1160,12 +1184,16 @@ mod tests {
 
         #[test]
         fn schema_error_equality_distinguishes_variants() {
-            let left = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "#property_bank/title".into(),
-            });
-            let right = SchemaError::PropertyRef(PropertyRefError::NotFound {
-                reference: "#property_bank/status".into(),
-            });
+            let left = SchemaError::PropertyRef(
+                PropertyRefError::TargetPropertyNotFoundInBank {
+                    reference: "#property_bank/title".into(),
+                },
+            );
+            let right = SchemaError::PropertyRef(
+                PropertyRefError::TargetPropertyNotFoundInBank {
+                    reference: "#property_bank/status".into(),
+                },
+            );
 
             assert!(
                 left != right,

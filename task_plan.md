@@ -23,7 +23,14 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
     - [x] Refactor `PropertyValueError` to wrap specialized value validation errors and `IncorrectPrimitiveType`
     - [x] Update callers in `property_spec/*.rs` and `property.rs`
     - [x] Verify with build and tests
-- [ ] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
+- [x] Phase 5: Reference & Map Error Refactor <!-- id: 4 -->
+    - [x] Perform impact analysis on `PropertyRefError` and `PropertyBankError`
+    - [x] Refactor `PropertyRefError` variants in `error.rs`
+    - [x] Implement `PropertyBuilderError` in `error.rs`
+    - [x] Rename `PropertyBankError` to `PropertyMapError` and update variants
+    - [x] Update `SchemaError` umbrella and mapping logic
+    - [x] Update all callers and fix breaking changes
+    - [x] Verify with `mise run build` and `mise run test --package lithos-core`
 - [ ] Phase 6: Cleanup & Orchestration Redesign <!-- id: 5 -->
 - [ ] Phase 7: Verification <!-- id: 6 -->
 
