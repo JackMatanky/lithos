@@ -248,3 +248,171 @@ stores.
 - Bootstrapper implementation beyond consuming the result shape from issue `13`.
 - CLI discovery subcommands.
 - Replacing existing staleness comparison with a new build mode.
+
+## TDD Plan
+
+### Phase 1: New Builder State & Constructor
+
+#### 1.1 `from_discovery::stores_vault_candidates_as_boxed_slice`
+
+- **Module**: `config/builder.rs` → `mod builder` → `mod from_discovery`
+- **Behavior**: `Builder::from_discovery(result, repo)` stores `vault` and `global` `Box<[CandidatePath]>` from `DiscoveryResult::into_parts()`.
+- **Test**: Create `DiscoveryResult` with one vault candidate, verify `builder.vault.len() == 1`.
+- **Implementation**: Replace `start_dir: PathBuf` field with `vault: Box<[CandidatePath]>`, `global: Box<[CandidatePath]>`. Add `from_discovery()` calling `into_parts()`.
+
+#### 1.2 `from_discovery::stores_global_candidates_as_boxed_slice`
+
+- Mirror of above for `global` field.
+
+#### 1.3 `from_discovery::is_infallible`
+
+- **Behavior**: `from_discovery()` returns `Self`, not `Result`.
+- **Test**: Call with empty `DiscoveryResult::new(vec![], vec![])`.
+
+#### 1.4 `from_discovery::stores_repository`
+
+- **Behavior**: Repository handle is stored and accessible by build methods.
+
+### Phase 2: Build Methods — Vault Pipeline
+
+#### 2.1 `build_vault::derives_vault_root_from_candidate_base`
+
+- **Module**: `mod build_vault`
+- **Behavior**: `build_vault()` derives `VaultRoot` from `self.vault[0].base()`.
+- **Implementation**: `VaultRoot::from_dir_path(self.vault[0].base().clone())`
+
+#### 2.2 `build_vault::resolves_vault_id_from_database`
+
+- **Behavior**: Calls `repository.find_vault_id_by_path(vault_root)`, creates new `VaultId` if absent.
+- **Implementation**: Reuse `get_or_create_vault_id()` helper moved to work on stored state.
+
+#### 2.3 `build_vault::reads_file_metadata_from_candidate`
+
+- **Behavior**: Reads `FileMetadata` from the path at `self.vault[0].path()`.
+- **Implementation**: `FsMetadata::from_path(candidate.path().as_path())`
+
+#### 2.4 `build_vault::queries_database_for_vault_view`
+
+- **Behavior**: Fetches `RawVaultConfigView` from repository via `VaultId`.
+
+#### 2.5 `build_vault::parses_raw_config_from_candidate_file`
+
+- **Behavior**: Reads and parses the config file at the candidate path.
+- **Implementation**: `FileReader::from_system_root().parse_structured::<RawVaultConfig>(candidate.path().as_path())`
+
+#### 2.6 `build_vault::runs_config_file_processor`
+
+- **Behavior**: Feeds raw config + view through `ConfigFileProcessor::compare()` pipeline. Returns processor outcome (same pattern as current `load()` lines 374-396).
+
+#### 2.7 `build_vault::returns_raw_vault_config`
+
+- **Behavior**: Returns `RawVaultConfig` with metadata attached.
+
+### Phase 3: Build Methods — Global Pipeline
+
+#### 3.1 `build_global::returns_none_when_no_global_candidate`
+
+- **Module**: `mod build_global`
+- **Behavior**: Returns `None` when `self.global` is empty.
+
+#### 3.2 `build_global::reads_file_and_returns_raw_global_config`
+
+- **Behavior**: Same pipeline as `build_vault()` minus `VaultRoot`/`VaultId` steps.
+
+#### 3.3 `build_global::queries_database_for_global_view`
+
+- **Behavior**: Fetches `RawGlobalConfigView` from repository.
+
+### Phase 4: Build Orchestration
+
+#### 4.1 `build::orchestrates_vault_and_global`
+
+- **Module**: `mod build`
+- **Behavior**: `build()` calls `build_vault()` (always) and `build_global()` (conditionally), feeds results into `ConfigResolver::resolve()` and `execute_plan()` (refactored).
+
+### Phase 5: Refactor Internal Methods
+
+#### 5.1 Refactor `execute_plan` and `rebuild_with_configs`
+
+- **Behavior**: Read paths from `self.vault[0]` / `self.global.first()` instead of `config::discovery::DiscoveryResult`.
+- **Implementation**: Replace `discovery.global().entry().map(...)` with `self.global.first().map(|c| c.path().as_path().to_string_lossy())`.
+
+### Phase 6: Delete Removed Files
+
+#### 6.1 Delete `config/root.rs`
+
+- `DiscoveredConfigFile`, `ConfigDiscoveryResult` removed. Remove `pub(crate) mod root;` from `config/mod.rs`.
+
+#### 6.2 Delete `config/discovery.rs`
+
+- `GlobalDiscovery`, `VaultDiscovery`, config-owned `DiscoveryResult`, `ConfigDiscoveryPipeline` removed. Remove `pub(crate) mod discovery;` from `config/mod.rs`.
+
+### Phase 7: Update Architecture Tests
+
+#### 7.1 `builder_must_not_use_known_vault_root_discovery_shortcut`
+
+- Remove `find_vault` check (builder no longer owns discovery). Keep `find_known_vault` prohibition.
+
+#### 7.2 Add import discipline test
+
+- Verify `config/builder.rs` imports only `discovery::service::DiscoveryResult` from `discovery/`.
+
+### Phase 8: Cleanup Builder Imports
+
+- Remove `use crate::discovery::{engine::*, policy::*}` from `builder.rs`.
+- Remove `use crate::config::{discovery::*, root::*}` from `builder.rs`.
+- Add `use crate::discovery::service::DiscoveryResult`.
+
+### Phase 9: Regression — `build_from_layers` Contract
+
+#### 9.1 `build_from_layers::preserves_existing_merge_behavior`
+
+- Pure regression: encapsulate existing `aggregate.rs` test cases to confirm identical output before/after refactor.
+
+### Test Suite Structure
+
+```
+#[cfg(test)]
+mod tests {
+    mod builder {
+        mod from_discovery {
+            #[test] fn stores_vault_candidates_as_boxed_slice() {}
+            #[test] fn stores_global_candidates_as_boxed_slice() {}
+            #[test] fn is_infallible() {}
+            #[test] fn stores_repository() {}
+        }
+        mod build_vault {
+            #[test] fn derives_vault_root_from_candidate_base() {}
+            #[test] fn resolves_vault_id_from_database() {}
+            #[test] fn reads_file_metadata_from_candidate() {}
+            #[test] fn queries_database_for_vault_view() {}
+            #[test] fn parses_raw_config_from_candidate_file() {}
+            #[test] fn runs_config_file_processor() {}
+            #[test] fn returns_raw_vault_config() {}
+        }
+        mod build_global {
+            #[test] fn returns_none_when_no_global_candidate() {}
+            #[test] fn reads_file_and_returns_raw_global_config() {}
+            #[test] fn queries_database_for_global_view() {}
+        }
+        mod build {
+            #[test] fn orchestrates_vault_and_global() {}
+        }
+    }
+}
+```
+
+### Definition of Done
+
+- [ ] `Builder::from_discovery()` exists, infallible, stores boxes + repo
+- [ ] `build_vault()` reads file, derives VaultRoot, resolves VaultId, queries DB, runs processor
+- [ ] `build_global()` reads file, queries DB, runs processor
+- [ ] `build()` orchestrates both build methods
+- [ ] `config/root.rs` deleted
+- [ ] `config/discovery.rs` deleted
+- [ ] Builder imports no `DiscoveryEngine`, `DiscoveryInput`, `GlobalDiscoveryInput`, `DiscoveryPolicy`
+- [ ] Builder imports only `discovery::service::DiscoveryResult` from discovery/
+- [ ] Architecture tests updated
+- [ ] `build_from_layers()` unchanged — all 36 callers pass
+- [ ] `mise run test` passes
+- [ ] `mise run lint` passes
