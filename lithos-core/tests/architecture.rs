@@ -180,12 +180,47 @@ mod tests {
 
         assert!(
             !content.contains("find_known_vault"),
-            "Builder must get the vault root through Discovery, not through a \
-             known-root shortcut"
+            "Builder must not use a known-root shortcut that bypasses \
+             DiscoveryService's structural invariants"
+        );
+    }
+
+    #[test]
+    fn builder_imports_only_discovery_service_result_from_discovery() {
+        let content = fs::read_to_string("src/config/builder.rs")
+            .expect("read config builder");
+
+        assert!(
+            !content.contains("discovery::engine"),
+            "config/builder.rs must not import from discovery::engine"
         );
         assert!(
-            content.contains("find_vault"),
-            "Builder should call Discovery vault discovery"
+            !content.contains("discovery::policy"),
+            "config/builder.rs must not import from discovery::policy"
+        );
+        assert!(
+            !content.contains("DiscoveryEngine"),
+            "config/builder.rs must not use DiscoveryEngine"
+        );
+        assert!(
+            !content.contains("DiscoveryInput"),
+            "config/builder.rs must not use DiscoveryInput"
+        );
+        assert!(
+            !content.contains("GlobalDiscoveryInput"),
+            "config/builder.rs must not use GlobalDiscoveryInput"
+        );
+        assert!(
+            !content.contains("DiscoveryPolicy"),
+            "config/builder.rs must not use DiscoveryPolicy"
+        );
+        assert!(
+            content.contains("discovery::service::DiscoveryResult")
+                || content.contains(
+                    "discovery::service::{CandidatePath, DiscoveryResult}"
+                ),
+            "config/builder.rs must import DiscoveryResult from \
+             discovery::service only"
         );
     }
 
