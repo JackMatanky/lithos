@@ -9,8 +9,9 @@ use crate::{
         storage::{
             RedbRepository,
             tables::{
-                DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-                FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+                DIR_ID_BY_PATH, DIR_IDS_BY_PARENT, DIRS, FILE_ID_BY_PATH,
+                FILE_IDS_BY_BASENAME, FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT,
+                FILES,
             },
         },
     },
@@ -21,7 +22,7 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         id: FsRecordId,
     ) -> Result<Option<FileRecord>, DbError> {
-        let table = tx.inner.open_table(FILES)?;
+        let table = tx.inner.open_table(FILES.definition())?;
         Ok(table.get(id)?.map(|guard| guard.value()))
     }
 
@@ -29,7 +30,7 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         id: FsRecordId,
     ) -> Result<Option<DirRecord>, DbError> {
-        let table = tx.inner.open_table(DIRS)?;
+        let table = tx.inner.open_table(DIRS.definition())?;
         Ok(table.get(id)?.map(|guard| guard.value()))
     }
 
@@ -37,22 +38,23 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         record: &FileRecord,
     ) -> Result<(), DbError> {
-        let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
-        path_table.remove(record.path().as_str())?;
+        let mut path_table =
+            tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+        path_table.remove(record.path())?;
 
         let mut basename_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
         basename_table.remove(record.name().as_str(), record.id())?;
 
         let mut parent_table =
-            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
         parent_table.remove(record.parent_id(), record.id())?;
 
         let mut format_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
         format_table.remove(record.format().as_str(), record.id())?;
 
-        let mut files_table = tx.inner.open_table(FILES)?;
+        let mut files_table = tx.inner.open_table(FILES.definition())?;
         files_table.remove(record.id())?;
 
         Ok(())
@@ -62,10 +64,17 @@ impl RedbRepository {
         tx: &crate::db::WriteTx,
         record: &DirRecord,
     ) -> Result<(), DbError> {
-        let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-        path_table.remove(record.path().as_str())?;
+        let mut path_table =
+            tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
+        path_table.remove(record.path())?;
 
-        let mut dirs_table = tx.inner.open_table(DIRS)?;
+        if let Some(parent_id) = record.parent_id() {
+            let mut parent_table =
+                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+            parent_table.remove(parent_id, record.id())?;
+        }
+
+        let mut dirs_table = tx.inner.open_table(DIRS.definition())?;
         dirs_table.remove(record.id())?;
 
         Ok(())
@@ -81,19 +90,20 @@ impl RedbRepository {
         }
 
         // Primary table
-        let mut files_table = tx.inner.open_table(FILES)?;
+        let mut files_table = tx.inner.open_table(FILES.definition())?;
         files_table.insert(record.id(), record.clone())?;
 
         // Secondary indexes
-        let mut path_table = tx.inner.open_table(FILE_ID_BY_PATH)?;
-        path_table.insert(record.path().as_str(), record.id())?;
+        let mut path_table =
+            tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+        path_table.insert(record.path(), record.id())?;
 
         let mut basename_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
         basename_table.insert(record.name().as_str(), record.id())?;
 
         let mut parent_table =
-            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
         parent_table.insert(record.parent_id(), record.id())?;
 
         let mut format_table =
@@ -113,12 +123,19 @@ impl RedbRepository {
         }
 
         // Primary table
-        let mut dirs_table = tx.inner.open_table(DIRS)?;
+        let mut dirs_table = tx.inner.open_table(DIRS.definition())?;
         dirs_table.insert(record.id(), record.clone())?;
 
-        // Secondary index
-        let mut path_table = tx.inner.open_table(DIR_ID_BY_PATH)?;
-        path_table.insert(record.path().as_str(), record.id())?;
+        // Secondary indexes
+        let mut path_table =
+            tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
+        path_table.insert(record.path(), record.id())?;
+
+        if let Some(parent_id) = record.parent_id() {
+            let mut parent_table =
+                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+            parent_table.insert(parent_id, record.id())?;
+        }
 
         Ok(())
     }

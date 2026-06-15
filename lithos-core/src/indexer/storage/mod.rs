@@ -5,8 +5,9 @@ use crate::{
     indexer::{
         IndexerRepositoryError,
         storage::tables::{
-            DIR_ID_BY_PATH, DIRS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
-            FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
+            DIR_ID_BY_PATH, DIR_IDS_BY_PARENT, DIRS, FILE_ID_BY_PATH,
+            FILE_IDS_BY_BASENAME, FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT,
+            FILES,
         },
     },
 };
@@ -21,12 +22,13 @@ impl RedbRepository {
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
         store.write(|tx| {
-            tx.inner.open_table(FILES)?;
-            tx.inner.open_table(DIRS)?;
-            tx.inner.open_table(FILE_ID_BY_PATH)?;
-            tx.inner.open_table(DIR_ID_BY_PATH)?;
+            tx.inner.open_table(FILES.definition())?;
+            tx.inner.open_table(DIRS.definition())?;
+            tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+            tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
             tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+            tx.inner.open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
+            tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
             tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
             Ok(())
         })?;

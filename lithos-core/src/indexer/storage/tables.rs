@@ -1,15 +1,35 @@
-use redb::{MultimapTableDefinition, TableDefinition, TypeName, Value};
-use rkyv::{Archive, Deserialize, Serialize};
+use redb::{MultimapTableDefinition, TypeName, Value};
 
 use crate::{
-    fs::path::PathKey,
+    db::{PathUuidTable, UuidMultimap, UuidTable},
     impl_redb_uuid,
     indexer::model::{DirRecord, FileRecord, FsRecordId},
 };
 
 impl_redb_uuid!(FsRecordId);
 
-// Implement redb::Value for FileRecord and DirRecord using rkyv
+/// Implements [`redb::Value`] for entity types using rkyv serialization.
+///
+/// ## Design
+///
+/// This macro produces owned deserialization (`from_bytes` → full struct). The
+/// [`crate::db::ArchivedEntity`] trait also provides `with_archived` for
+/// zero-copy access to the archived form, but that path requires storing raw
+/// bytes in the DB table (e.g., `TableDefinition<K, &[u8]>`) and manually
+/// managing alignment — the pattern used by the vault context.
+///
+/// The indexer always returns owned values via the [`ReadRepository`] trait, so
+/// full owned deserialization is the correct tradeoff. The zero-copy path would
+/// add complexity without eliminating the final materialization step.
+///
+/// ## Validation
+///
+/// Uses `rkyv::from_bytes` with [`rkyv::rancor::Error`], which invokes
+/// bytecheck validation on every read. Stale/corrupt pages are caught at
+/// deserialization time with a panic (required by the [`redb::Value`] trait
+/// signature — no `Result` return type).
+///
+/// [`ReadRepository`]: crate::indexer::repository::ReadRepository
 macro_rules! impl_rkyv_redb_value {
     ($type:ty) => {
         impl Value for $type {
@@ -46,25 +66,23 @@ macro_rules! impl_rkyv_redb_value {
 impl_rkyv_redb_value!(FileRecord);
 impl_rkyv_redb_value!(DirRecord);
 
-pub(crate) const FILES: TableDefinition<FsRecordId, FileRecord> =
-    TableDefinition::new("files");
-pub(crate) const DIRS: TableDefinition<FsRecordId, DirRecord> =
-    TableDefinition::new("dirs");
+pub(crate) const FILES: UuidTable<FsRecordId, FileRecord> =
+    UuidTable::new("files");
+pub(crate) const DIRS: UuidTable<FsRecordId, DirRecord> =
+    UuidTable::new("dirs");
 
-// TODO: PathKey needs to implement Value
-// For now, let's use String as key for path-based lookups.
-pub(crate) const FILE_ID_BY_PATH: TableDefinition<&str, FsRecordId> =
-    TableDefinition::new("file_id_by_path");
-pub(crate) const DIR_ID_BY_PATH: TableDefinition<&str, FsRecordId> =
-    TableDefinition::new("dir_id_by_path");
+pub(crate) const FILE_ID_BY_PATH: PathUuidTable<FsRecordId> =
+    PathUuidTable::new("file_id_by_path");
+pub(crate) const DIR_ID_BY_PATH: PathUuidTable<FsRecordId> =
+    PathUuidTable::new("dir_id_by_path");
 pub(crate) const FILE_IDS_BY_BASENAME: MultimapTableDefinition<
     &str,
     FsRecordId,
 > = MultimapTableDefinition::new("file_ids_by_basename");
-pub(crate) const FILE_IDS_BY_PARENT: MultimapTableDefinition<
-    FsRecordId,
-    FsRecordId,
-> = MultimapTableDefinition::new("file_ids_by_parent");
+pub(crate) const FILE_IDS_BY_PARENT: UuidMultimap<FsRecordId, FsRecordId> =
+    UuidMultimap::new("file_ids_by_parent");
+pub(crate) const DIR_IDS_BY_PARENT: UuidMultimap<FsRecordId, FsRecordId> =
+    UuidMultimap::new("dir_ids_by_parent");
 pub(crate) const FILE_IDS_BY_FORMAT: MultimapTableDefinition<&str, FsRecordId> =
     MultimapTableDefinition::new("file_ids_by_format");
 
@@ -79,12 +97,14 @@ mod tests {
 
         store
             .write(|tx| {
-                tx.inner.open_table(FILES)?;
-                tx.inner.open_table(DIRS)?;
-                tx.inner.open_table(FILE_ID_BY_PATH)?;
-                tx.inner.open_table(DIR_ID_BY_PATH)?;
+                tx.inner.open_table(FILES.definition())?;
+                tx.inner.open_table(DIRS.definition())?;
+                tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+                tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
                 tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
-                tx.inner.open_multimap_table(FILE_IDS_BY_PARENT)?;
+                tx.inner
+                    .open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
+                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
                 tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
                 Ok(())
             })
