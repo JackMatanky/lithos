@@ -14,7 +14,7 @@ pub struct RawFileProperty {
     #[serde(default)]
     pub multi: bool,
     /// Optional directory restriction (vault-relative path).
-    pub directory: Option<Box<str>>,
+    pub directory: Option<String>,
     /// Optional file class restriction (schema name).
     pub file_class: Option<SchemaName>,
 }
@@ -36,7 +36,7 @@ pub struct RawFileProperty {
 #[non_exhaustive]
 pub struct RawFileSpec {
     /// Optional directory restriction (vault-relative path).
-    pub directory: Option<Box<str>>,
+    pub directory: Option<String>,
     /// Optional file class restriction (schema name).
     pub file_class: Option<SchemaName>,
 }

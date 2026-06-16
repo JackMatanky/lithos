@@ -60,7 +60,7 @@ pub enum RawStringPattern {
     /// Predefined named format.
     Named(RawStringFormat),
     /// Custom regex pattern.
-    Custom(Box<str>),
+    Custom(String),
 }
 
 // ============================================================================
@@ -120,7 +120,7 @@ pub enum RawStringFormat {
 #[non_exhaustive]
 pub enum RawOptions {
     /// Plain array of string values.
-    Plain(Vec<Box<str>>),
+    Plain(Vec<String>),
     /// Integer-keyed ordered object.
     #[serde(
         deserialize_with = "deserialize_ordered_map",
@@ -229,7 +229,7 @@ where
             let mut seen = BTreeSet::new();
             let mut entries = Vec::new();
             while let Some((order, value)) =
-                map.next_entry::<RawEntryInputOrder, Box<str>>()?
+                map.next_entry::<RawEntryInputOrder, String>()?
             {
                 if !seen.insert(order) {
                     return Err(serde::de::Error::custom(format!(
@@ -284,9 +284,9 @@ where
 #[non_exhaustive]
 pub struct RawEntryValue {
     /// The option value.
-    pub value: Box<str>,
+    pub value: String,
     /// Optional display label.
-    pub label: Option<Box<str>>,
+    pub label: Option<String>,
     /// Optional input order for sorting (lower = earlier).
     pub order: Option<RawEntryInputOrder>,
 }
@@ -431,9 +431,9 @@ mod tests {
         match options {
             RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
-                assert_eq!(items[0].as_ref(), "open");
-                assert_eq!(items[1].as_ref(), "closed");
-                assert_eq!(items[2].as_ref(), "archived");
+                assert_eq!(items[0].as_str(), "open");
+                assert_eq!(items[1].as_str(), "closed");
+                assert_eq!(items[2].as_str(), "archived");
             }
             _ => panic!("Expected Plain variant"),
         }
@@ -459,11 +459,11 @@ mod tests {
             RawOptions::Ordered(entries) => {
                 assert_eq!(entries.len(), 3);
                 assert_eq!(entries[0].order.unwrap().value(), 1);
-                assert_eq!(entries[0].value.as_ref(), "todo");
+                assert_eq!(entries[0].value.as_str(), "todo");
                 assert_eq!(entries[1].order.unwrap().value(), 2);
-                assert_eq!(entries[1].value.as_ref(), "done");
+                assert_eq!(entries[1].value.as_str(), "done");
                 assert_eq!(entries[2].order.unwrap().value(), 3);
-                assert_eq!(entries[2].value.as_ref(), "archived");
+                assert_eq!(entries[2].value.as_str(), "archived");
             }
             _ => panic!("Expected Ordered variant"),
         }
@@ -479,10 +479,10 @@ mod tests {
         match options {
             RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 2);
-                assert_eq!(entries[0].value.as_ref(), "open");
+                assert_eq!(entries[0].value.as_str(), "open");
                 assert_eq!(entries[0].label.as_deref(), Some("Open"));
                 assert_eq!(entries[0].order, Some(RawEntryInputOrder(1)));
-                assert_eq!(entries[1].value.as_ref(), "closed");
+                assert_eq!(entries[1].value.as_str(), "closed");
                 assert_eq!(entries[1].label.as_deref(), Some("Closed"));
                 assert_eq!(entries[1].order, Some(RawEntryInputOrder(2)));
             }
@@ -497,7 +497,7 @@ mod tests {
         match options {
             RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 1);
-                assert_eq!(entries[0].value.as_ref(), "open");
+                assert_eq!(entries[0].value.as_str(), "open");
                 assert_eq!(entries[0].label, None);
                 assert_eq!(entries[0].order, None);
             }
@@ -512,7 +512,7 @@ mod tests {
         match options {
             RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
-                assert_eq!(items[0].as_ref(), "open");
+                assert_eq!(items[0].as_str(), "open");
             }
             _ => panic!("Expected Plain variant"),
         }
@@ -529,8 +529,8 @@ mod tests {
         match wrapper.options {
             RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 2);
-                assert_eq!(items[0].as_ref(), "open");
-                assert_eq!(items[1].as_ref(), "closed");
+                assert_eq!(items[0].as_str(), "open");
+                assert_eq!(items[1].as_str(), "closed");
             }
             _ => panic!("Expected Plain variant"),
         }
@@ -559,9 +559,9 @@ mod tests {
             RawOptions::Plain(vec!["a".into(), "b".into(), "c".into()]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].value.as_ref(), "a");
-        assert_eq!(entries[1].value.as_ref(), "b");
-        assert_eq!(entries[2].value.as_ref(), "c");
+        assert_eq!(entries[0].value.as_str(), "a");
+        assert_eq!(entries[1].value.as_str(), "b");
+        assert_eq!(entries[2].value.as_str(), "c");
         assert!(entries.iter().all(|e| e.label.is_none()));
     }
 
@@ -586,9 +586,9 @@ mod tests {
         ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].value.as_ref(), "first");
-        assert_eq!(entries[1].value.as_ref(), "second");
-        assert_eq!(entries[2].value.as_ref(), "third");
+        assert_eq!(entries[0].value.as_str(), "first");
+        assert_eq!(entries[1].value.as_str(), "second");
+        assert_eq!(entries[2].value.as_str(), "third");
     }
 
     #[test]
@@ -612,10 +612,10 @@ mod tests {
         ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].value.as_ref(), "a");
+        assert_eq!(entries[0].value.as_str(), "a");
         assert_eq!(entries[0].label.as_deref(), Some("First"));
-        assert_eq!(entries[1].value.as_ref(), "b");
-        assert_eq!(entries[2].value.as_ref(), "c");
+        assert_eq!(entries[1].value.as_str(), "b");
+        assert_eq!(entries[2].value.as_str(), "c");
     }
 
     #[test]
@@ -634,8 +634,8 @@ mod tests {
         ]);
         let entries = options.into_entries();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].value.as_ref(), "first");
-        assert_eq!(entries[1].value.as_ref(), "second");
+        assert_eq!(entries[0].value.as_str(), "first");
+        assert_eq!(entries[1].value.as_str(), "second");
     }
 
     // --- Edge Case Tests for E-04 (Deserialization Disambiguation) ---
@@ -647,7 +647,7 @@ mod tests {
         match options {
             RawOptions::Labeled(entries) => {
                 assert_eq!(entries.len(), 2);
-                assert_eq!(entries[0].value.as_ref(), "a");
+                assert_eq!(entries[0].value.as_str(), "a");
                 assert_eq!(entries[0].label, None);
             }
             _ => panic!("Expected Labeled variant for array of objects"),
@@ -661,9 +661,9 @@ mod tests {
         match options {
             RawOptions::Plain(items) => {
                 assert_eq!(items.len(), 3);
-                assert_eq!(items[0].as_ref(), "value");
-                assert_eq!(items[1].as_ref(), "label");
-                assert_eq!(items[2].as_ref(), "order");
+                assert_eq!(items[0].as_str(), "value");
+                assert_eq!(items[1].as_str(), "label");
+                assert_eq!(items[2].as_str(), "order");
             }
             _ => panic!("Expected Plain variant for string array"),
         }

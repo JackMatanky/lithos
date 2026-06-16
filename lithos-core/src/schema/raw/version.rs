@@ -11,7 +11,7 @@
 /// parsing, following the "parse, don't validate" principle.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(try_from = "String")]
-pub struct RawSchemaVersion(Box<str>);
+pub struct RawSchemaVersion(String);
 
 impl RawSchemaVersion {
     /// Current supported schema version.
@@ -47,7 +47,7 @@ impl TryFrom<String> for RawSchemaVersion {
                 Self::SUPPORTED
             ));
         }
-        Ok(Self(s.into()))
+        Ok(Self(s))
     }
 }
 
@@ -64,15 +64,6 @@ impl TryFrom<&str> for RawSchemaVersion {
     #[inline]
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         Self::try_from(s.to_owned())
-    }
-}
-
-impl TryFrom<Box<str>> for RawSchemaVersion {
-    type Error = String;
-
-    #[inline]
-    fn try_from(s: Box<str>) -> Result<Self, Self::Error> {
-        Self::try_from(s.into_string())
     }
 }
 

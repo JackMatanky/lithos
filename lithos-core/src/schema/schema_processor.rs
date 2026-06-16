@@ -91,9 +91,9 @@ use crate::{
 
 fn schema_stem_from_path(
     path: &std::path::Path,
-) -> Result<Box<str>, SchemaLoaderError> {
+) -> Result<String, SchemaLoaderError> {
     crate::fs::BaseName::try_from(path)
-        .map(|basename| basename.as_str().to_owned().into_boxed_str())
+        .map(|basename| basename.as_str().to_owned())
         .map_err(crate::fs::FsError::from)
         .map_err(SchemaIngestionError::from)
         .map_err(SchemaLoaderError::Ingestion)
@@ -286,7 +286,7 @@ pub(crate) struct FreshPayload {
 pub(crate) struct SuspectPayload {
     path: PathKey,
     metadata: FileMetadata,
-    content_str: Box<str>,
+    content_str: String,
     view: RawSchemaView,
 }
 
@@ -294,7 +294,7 @@ pub(crate) struct SuspectPayload {
 pub(crate) struct StalePayload {
     path: PathKey,
     metadata: FileMetadata,
-    content_str: Box<str>,
+    content_str: String,
     content_hash: Blake3Hash,
     view: RawSchemaView,
 }
@@ -586,7 +586,7 @@ impl<T> IntoIterator for NewBatch<T> {
 pub(crate) struct InitialRead {
     path: PathKey,
     metadata: FileMetadata,
-    content_str: Box<str>,
+    content_str: String,
     content_hash: Blake3Hash,
 }
 
@@ -785,7 +785,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
             missing.insert(id, InitialRead {
                 path,
                 metadata,
-                content_str: content.into_boxed_str(),
+                content_str: content,
                 content_hash,
             });
         }
@@ -905,7 +905,7 @@ impl SchemaProcessor<Discovery, Review> {
                     path: path.clone(),
                     metadata,
                     content_hash,
-                    content_str: content.into_boxed_str(),
+                    content_str: content,
                 });
             }
         }
@@ -1026,7 +1026,7 @@ impl SchemaProcessor<Comparison, Present> {
                                             StalePayload {
                                                 path: matched_payload.path,
                                                 metadata: matched_payload.metadata,
-                                                content_str: content_str.into(),
+                                                content_str,
                                                 content_hash,
                                                 view: matched_payload.view,
                                             },
@@ -1143,7 +1143,7 @@ impl SchemaProcessor<Comparison, Present> {
             Ok(TimestampBranch::Mismatch(SuspectPayload {
                 path: payload.path,
                 metadata: payload.metadata,
-                content_str: content_str.into(),
+                content_str,
                 view: payload.view,
             }))
         }
@@ -1483,8 +1483,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             let node = graph.graph().get(id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::FileSystem {
-                        reason: format!("schema {id} missing from graph")
-                            .into(),
+                        reason: format!("schema {id} missing from graph"),
                     },
                 ))
             })?;
@@ -2382,8 +2381,7 @@ impl SchemaProcessor<Construction, Analyzed> {
             let node = graph.graph().get(*id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::FileSystem {
-                        reason: format!("schema {id} missing from graph")
-                            .into(),
+                        reason: format!("schema {id} missing from graph"),
                     },
                 ))
             })?;
@@ -2397,8 +2395,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                         crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "schema {id} not found in refresh cache"
-                            )
-                            .into(),
+                            ),
                         },
                     ))
                 })?
@@ -2425,8 +2422,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                                 crate::schema::error::SchemaReadError::FileSystem {
                                     reason: format!(
                                         "schema {id} not found in repository"
-                                    )
-                                    .into(),
+                                    ),
                                 },
                             ),
                         )
@@ -2518,8 +2514,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                                 crate::schema::error::SchemaReadError::FileSystem {
                                     reason: format!(
                                         "schema {id} not found for update"
-                                    )
-                                    .into(),
+                                    ),
                                 },
                             ),
                         )
@@ -2530,8 +2525,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                         crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
-                            )
-                            .into(),
+                            ),
                         },
                     ))
                 })?;
@@ -2567,8 +2561,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                         crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
-                            )
-                            .into(),
+                            ),
                         },
                     ))
                 })?;
@@ -2607,8 +2600,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                         crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
-                            )
-                            .into(),
+                            ),
                         },
                     ))
                 })?;
@@ -2638,8 +2630,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                         crate::schema::error::SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
-                            )
-                            .into(),
+                            ),
                         },
                     ))
                 })?;
@@ -2733,8 +2724,7 @@ impl SchemaProcessor<Construction, NewBuild> {
             let node = graph.graph().get(*id).ok_or_else(|| {
                 SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::FileSystem {
-                        reason: format!("schema {id} missing from graph")
-                            .into(),
+                        reason: format!("schema {id} missing from graph"),
                     },
                 ))
             })?;
@@ -2923,8 +2913,7 @@ fn stage_variant_error(
             reason: format!(
                 "stage {stage}: schema {id} expected {expected} payload, got \
                  {actual}"
-            )
-            .into(),
+            ),
         },
     ))
 }

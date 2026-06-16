@@ -327,6 +327,13 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 ///     _ => {}
 /// }
 /// ```
+#[expect(
+    clippy::large_enum_variant,
+    reason = "RawProperty variant size difference is known; boxing Ref would \
+              require significant refactoring of deserialization logic and \
+              internal matching. TODO: Consider boxing in a future \
+              optimization pass."
+)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -367,9 +374,9 @@ pub struct RawPropertyRef {
     /// Optional step override.
     pub step: Option<f64>,
     /// Date-type overrides (format).
-    pub format: Option<Box<str>>,
+    pub format: Option<String>,
     /// File-type overrides (directory, `file_class`).
-    pub directory: Option<Box<str>>,
+    pub directory: Option<String>,
     /// Optional file class override (schema name).
     pub file_class: Option<SchemaName>,
 }
@@ -419,7 +426,7 @@ pub struct RawPropertyBankEntry(pub RawPropertyInline);
 #[non_exhaustive]
 pub struct RawPropertyRefPath {
     /// Full reference path (e.g., "`#property_bank/archived`").
-    full_path: Box<str>,
+    full_path: String,
     /// Pre-extracted target property name (e.g., "archived").
     target_name: PropertyName,
 }
@@ -442,7 +449,7 @@ impl TryFrom<String> for RawPropertyRefPath {
         // Validate prefix
         let target = path.strip_prefix("#property_bank/").ok_or_else(|| {
             PropertyRefError::MalformedBankReferencePath {
-                reference: path.clone().into(),
+                reference: path.clone(),
             }
         })?;
 
@@ -450,7 +457,7 @@ impl TryFrom<String> for RawPropertyRefPath {
         let target_name = PropertyName::try_new(target)?;
 
         Ok(RawPropertyRefPath {
-            full_path: path.into_boxed_str(),
+            full_path: path,
             target_name,
         })
     }

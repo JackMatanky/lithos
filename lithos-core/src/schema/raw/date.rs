@@ -12,7 +12,7 @@ pub struct RawDateProperty {
     #[serde(default)]
     pub multi: bool,
     /// Optional date format string.
-    pub format: Option<Box<str>>,
+    pub format: Option<String>,
 }
 
 /// Date property override bundle.
@@ -32,7 +32,7 @@ pub struct RawDateProperty {
 #[non_exhaustive]
 pub struct RawDateSpec {
     /// Date format string (using chrono format tokens).
-    pub format: Option<Box<str>>,
+    pub format: Option<String>,
 }
 
 #[cfg(test)]

@@ -197,7 +197,7 @@ impl SchemaName {
 
         let re = RE.as_ref().map_err(|error| {
             SchemaNameError::RegexCompilationFailed {
-                reason: error.to_string().into(),
+                reason: error.to_string(),
             }
         })?;
 
@@ -274,16 +274,6 @@ impl TryFrom<String> for SchemaName {
     }
 }
 
-impl TryFrom<Box<str>> for SchemaName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
-        Self::validate(&value)?;
-        Ok(Self(Arc::from(value)))
-    }
-}
-
 impl TryFrom<Arc<str>> for SchemaName {
     type Error = SchemaError;
 
@@ -329,12 +319,12 @@ impl TryFrom<&PathKey> for SchemaName {
     fn try_from(path: &PathKey) -> Result<Self, Self::Error> {
         let filename = path.as_str().rsplit('/').next().ok_or_else(|| {
             SchemaNameError::ContainsInvalidCharacters {
-                name: format!("Path has no filename: {}", path.as_str()).into(),
+                name: format!("Path has no filename: {}", path.as_str()),
             }
         })?;
         let basename = BaseName::try_from(std::path::Path::new(filename))
             .map_err(|_| SchemaNameError::ContainsInvalidCharacters {
-                name: format!("Path has no basename: {}", path.as_str()).into(),
+                name: format!("Path has no basename: {}", path.as_str()),
             })?;
 
         Self::try_new(basename.as_str())

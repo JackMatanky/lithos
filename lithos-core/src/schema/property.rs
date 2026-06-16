@@ -501,7 +501,7 @@ impl Property {
             let arr = value.as_array().ok_or_else(|| {
                 SchemaError::PropertyValue(
                     PropertyValueError::IncorrectPrimitiveType {
-                        value: value.to_string().into(),
+                        value: value.to_string(),
                         expected: "array".into(),
                     },
                 )
@@ -634,7 +634,7 @@ impl Display for PropertyId {
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[non_exhaustive]
-pub struct PropertyName(Box<str>);
+pub struct PropertyName(String);
 
 impl PropertyName {
     const MAX_LEN: usize = 64;
@@ -696,7 +696,7 @@ impl PropertyName {
 
         let re = RE.as_ref().map_err(|error| {
             PropertyNameError::RegexCompilationFailed {
-                reason: error.to_string().into(),
+                reason: error.to_string(),
             }
         })?;
 
@@ -734,7 +734,7 @@ impl Display for PropertyName {
 impl From<PropertyName> for String {
     #[inline]
     fn from(val: PropertyName) -> Self {
-        val.0.into()
+        val.0
     }
 }
 
@@ -752,17 +752,7 @@ impl TryFrom<String> for PropertyName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_from(value.into_boxed_str())
-    }
-}
-
-impl TryFrom<Box<str>> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
-        Self::validate(&value)?;
-        Ok(Self(value))
+        Self::try_new(&value)
     }
 }
 
@@ -776,7 +766,7 @@ impl<'de> serde::Deserialize<'de> for PropertyName {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = Box::<str>::deserialize(deserializer)?;
+        let s = String::deserialize(deserializer)?;
         Self::try_from(s).map_err(serde::de::Error::custom)
     }
 }

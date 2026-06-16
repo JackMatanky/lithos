@@ -61,7 +61,7 @@ pub struct RawSchema {
     /// based on the filename (without extension). The file format does not
     /// include a `name` field.
     #[serde(skip)]
-    pub name: Box<str>,
+    pub name: String,
 
     /// Parent schema names for inheritance.
     ///
@@ -141,7 +141,7 @@ impl RawSchema {
     /// The name is derived from the filename, not the file content.
     #[inline]
     #[must_use]
-    pub fn with_name(self, name: Box<str>) -> Self {
+    pub fn with_name(self, name: String) -> Self {
         Self {
             name,
             ..self

@@ -304,7 +304,7 @@ pub enum StringPattern {
     /// US ZIP code validation (5 or 9 digits).
     ZipCode,
     /// User-defined custom regex pattern.
-    Custom(Box<str>),
+    Custom(String),
 }
 
 impl StringPattern {
@@ -313,7 +313,7 @@ impl StringPattern {
     /// # Errors
     /// Returns `SchemaError::PropertySpec` if the pattern is invalid.
     #[inline]
-    pub fn try_custom<S: Into<Box<str>>>(
+    pub fn try_custom<S: Into<String>>(
         pattern: S,
     ) -> Result<Self, SchemaError> {
         let pattern = pattern.into();
@@ -321,7 +321,7 @@ impl StringPattern {
             SchemaError::PropertySpec(
                 crate::schema::error::StringSpecError::InvalidCustomRegexPattern {
                     pattern: pattern.clone(),
-                    reason: e.to_string().into(),
+                    reason: e.to_string(),
                 }.into(),
             )
         })?;
@@ -422,7 +422,7 @@ impl StringPattern {
             sync::{OnceLock, RwLock},
         };
 
-        type CacheMap = HashMap<Box<str>, Arc<regex::Regex>>;
+        type CacheMap = HashMap<String, Arc<regex::Regex>>;
         static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CacheMap>> =
             OnceLock::new();
 
@@ -656,9 +656,9 @@ pub type StringFormat = StringPattern;
 #[non_exhaustive]
 pub struct OptionEntry {
     /// The option value used in validation.
-    value: Box<str>,
+    value: String,
     /// Optional display label for UI consumers.
-    label: Option<Box<str>>,
+    label: Option<String>,
 }
 
 /// A wrapper for ordered option entries with helper sorting APIs.
@@ -733,11 +733,11 @@ fn has_duplicate_option_values(options: &RawOptions) -> bool {
     let mut seen = std::collections::HashSet::new();
     match options {
         RawOptions::Plain(items) => {
-            items.iter().map(AsRef::as_ref).any(|value| !seen.insert(value))
+            items.iter().map(String::as_str).any(|value| !seen.insert(value))
         }
         RawOptions::Ordered(entries) | RawOptions::Labeled(entries) => entries
             .iter()
-            .map(|entry| entry.value.as_ref())
+            .map(|entry| entry.value.as_str())
             .any(|value| !seen.insert(value)),
     }
 }
@@ -776,9 +776,9 @@ impl OptionEntry {
     /// # Errors
     /// Returns `SchemaError` if the value is empty or only whitespace.
     #[inline]
-    pub fn try_new<V: Into<Box<str>>>(
+    pub fn try_new<V: Into<String>>(
         value: V,
-        label: Option<Box<str>>,
+        label: Option<String>,
     ) -> Result<Self, SchemaError> {
         let value = value.into();
         if value.trim().is_empty() {

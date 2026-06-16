@@ -12,7 +12,7 @@ use crate::schema::{
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct DateSpec {
-    format: Box<str>,
+    format: String,
 }
 
 impl DateSpec {

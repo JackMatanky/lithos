@@ -417,7 +417,7 @@ pub enum SchemaEvent {
         /// Path to the discovered schema file.
         path: PathBuf,
         /// Schema name derived from filename.
-        name: Box<str>,
+        name: String,
     },
 
     /// Schema directory scan completed.
@@ -430,13 +430,13 @@ pub enum SchemaEvent {
     /// Schema file is fresh (no changes since last load).
     SchemaFresh {
         /// Schema name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Schema file is stale (changed since last load or new).
     SchemaStale {
         /// Schema name.
-        name: Box<str>,
+        name: String,
         /// Reason for staleness.
         reason: StalenessReason,
     },
@@ -445,13 +445,13 @@ pub enum SchemaEvent {
     /// Schema resolution started.
     SchemaResolutionStarted {
         /// Schema name being resolved.
-        name: Box<str>,
+        name: String,
     },
 
     /// Schema resolved successfully.
     SchemaResolved {
         /// Schema name.
-        name: Box<str>,
+        name: String,
         /// Schema ID after resolution.
         id: SchemaId,
     },
@@ -466,13 +466,13 @@ pub enum SchemaEvent {
     /// Raw schema file cached to database.
     RawFileCached {
         /// Schema name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Resolved schema persisted to database.
     SchemaPersisted {
         /// Schema name.
-        name: Box<str>,
+        name: String,
         /// Schema ID.
         id: SchemaId,
     },
@@ -483,13 +483,13 @@ pub enum SchemaEvent {
         /// Path to the file that failed to parse.
         path: PathBuf,
         /// Error details.
-        error: Box<str>,
+        error: String,
     },
 
     /// Validation error during schema ingestion.
     ValidationError {
         /// Schema name that failed validation.
-        name: Box<str>,
+        name: String,
         /// Validation error details.
         error: SchemaError,
     },
@@ -497,7 +497,7 @@ pub enum SchemaEvent {
     /// Resolution error during schema processing.
     ResolutionError {
         /// Schema name that failed resolution.
-        name: Box<str>,
+        name: String,
         /// Resolution error details.
         error: SchemaError,
     },

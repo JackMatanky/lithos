@@ -61,8 +61,7 @@ where
                 crate::schema::error::SchemaReadError::FileSystem {
                     reason: format!(
                         "failed to build schema config spec: {error}"
-                    )
-                    .into(),
+                    ),
                 },
             ))
         })?;
@@ -146,8 +145,7 @@ where
                 crate::schema::error::SchemaReadError::FileSystem {
                     reason: format!(
                         "failed to build schema config spec: {error}"
-                    )
-                    .into(),
+                    ),
                 },
             ))
         })?;

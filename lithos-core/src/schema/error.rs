@@ -39,8 +39,8 @@
 //!
 //! - **Context Preservation**: Each layer wraps the previous one using
 //!   `#[error(transparent)]` to preserve the `source()` chain.
-//! - **Performance**: Dynamic error data uses `Box<str>` instead of `String` to
-//!   reduce heap allocations.
+//! - **Ergonomics**: Dynamic error data uses `String` to prioritize ergonomics
+//!   and compatibility with standard error patterns.
 //! - **Phase Orientation**: Errors are categorized by pipeline stage, avoiding
 //!   the “everything is ingestion” anti-pattern.
 //!
@@ -125,14 +125,14 @@ pub enum SchemaReadError {
         /// Path to the file with an invalid name.
         path: PathBuf,
         /// Reason the filename was rejected.
-        reason: Box<str>,
+        reason: String,
     },
 
     /// Returned for filesystem errors not tied to a specific file.
     #[error("filesystem error: {reason}")]
     FileSystem {
         /// Error details from the filesystem layer.
-        reason: Box<str>,
+        reason: String,
     },
 }
 
@@ -150,7 +150,7 @@ pub enum SchemaParseError {
         /// Path to the cached view file.
         path: PathBuf,
         /// Deserialization error details.
-        reason: Box<str>,
+        reason: String,
     },
 
     /// Returned when serialization of a cached view fails.
@@ -159,7 +159,7 @@ pub enum SchemaParseError {
         /// Path to the file being serialized.
         path: PathBuf,
         /// Serialization error details.
-        reason: Box<str>,
+        reason: String,
     },
 }
 
@@ -267,9 +267,9 @@ pub enum PropertyBuilderError {
     )]
     OverridePropertyRefSpecTypeMismatch {
         /// Expected type.
-        expected: Box<str>,
+        expected: String,
         /// Actual override type.
-        actual: Box<str>,
+        actual: String,
     },
 }
 
@@ -286,9 +286,9 @@ pub enum SchemaVersionError {
         /// Path to the file with an unsupported version.
         path: PathBuf,
         /// Version found in the file.
-        found: Box<str>,
+        found: String,
         /// Expected version value.
-        expected: Box<str>,
+        expected: String,
     },
 }
 
@@ -313,14 +313,14 @@ pub enum SchemaNameError {
     #[error("invalid schema name: {name}")]
     ContainsInvalidCharacters {
         /// The invalid name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Returned when the schema name regex fails to compile.
     #[error("invalid schema name regex: {reason}")]
     RegexCompilationFailed {
         /// Regex error details.
-        reason: Box<str>,
+        reason: String,
     },
 }
 
@@ -345,14 +345,14 @@ pub enum PropertyNameError {
     #[error("invalid property name: {name}")]
     ContainsInvalidCharacters {
         /// The invalid name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Returned when the property name regex fails to compile.
     #[error("invalid property name regex: {reason}")]
     RegexCompilationFailed {
         /// Regex error details.
-        reason: Box<str>,
+        reason: String,
     },
 }
 
@@ -364,14 +364,14 @@ pub enum PropertyMapError {
     #[error("duplicate property name: {name}")]
     DuplicatePropertyName {
         /// Property name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Returned when a property ID is reused for a different name.
     #[error("duplicate property id: {id}")]
     DuplicatePropertyId {
         /// Property id.
-        id: Box<str>,
+        id: String,
     },
 }
 
@@ -401,7 +401,7 @@ pub enum PropertySpecError {
         /// Spec name.
         spec: &'static str,
         /// Deserialization error details.
-        reason: Box<str>,
+        reason: String,
     },
 }
 
@@ -414,9 +414,9 @@ pub enum StringSpecError {
     #[error("invalid regex pattern: {pattern} ({reason})")]
     InvalidCustomRegexPattern {
         /// Regex pattern string.
-        pattern: Box<str>,
+        pattern: String,
         /// Regex error details.
-        reason: Box<str>,
+        reason: String,
     },
 
     /// Returned when an options list is empty.
@@ -427,9 +427,9 @@ pub enum StringSpecError {
     #[error("option value '{value}' does not match pattern {pattern}")]
     OptionValueViolatesPattern {
         /// Option value.
-        value: Box<str>,
+        value: String,
         /// Pattern string.
-        pattern: Box<str>,
+        pattern: String,
     },
 
     /// Returned when an option value is empty or whitespace.
@@ -440,7 +440,7 @@ pub enum StringSpecError {
     #[error("option order key must be an integer: {key}")]
     OrderKeyNotAnInteger {
         /// The invalid key.
-        key: Box<str>,
+        key: String,
     },
 
     /// Returned when an option order key is less than 1.
@@ -471,7 +471,7 @@ pub enum NumberSpecError {
         /// Provided value.
         value: f64,
         /// Context label.
-        context: Box<str>,
+        context: String,
     },
 }
 
@@ -488,7 +488,7 @@ pub enum DateSpecError {
     #[error("invalid date format: {format}")]
     InvalidStrftimePattern {
         /// The invalid format string.
-        format: Box<str>,
+        format: String,
     },
 }
 
@@ -501,14 +501,14 @@ pub enum FileSpecError {
     #[error("invalid directory path: {path}")]
     MalformedDirectoryConstraint {
         /// The invalid directory path.
-        path: Box<str>,
+        path: String,
     },
 
     /// Returned when a file class constraint is invalid.
     #[error("invalid file class: {class}")]
     EmptyFileClassConstraint {
         /// The invalid file class.
-        class: Box<str>,
+        class: String,
     },
 }
 
@@ -520,9 +520,9 @@ pub enum PropertyValueError {
     #[error("invalid type: {value} (expected: {expected})")]
     IncorrectPrimitiveType {
         /// Provided value representation.
-        value: Box<str>,
+        value: String,
         /// Expected type representation.
-        expected: Box<str>,
+        expected: String,
     },
 
     /// Returned when a string value fails validation.
@@ -550,18 +550,18 @@ pub enum StringValueValidationError {
     #[error("invalid enum value: {value} (allowed: {allowed:?})")]
     ValueNotInAllowedOptions {
         /// Provided value.
-        value: Box<str>,
+        value: String,
         /// Allowed values.
-        allowed: Vec<Box<str>>,
+        allowed: Vec<String>,
     },
 
     /// Returned when a value does not match a pattern constraint.
     #[error("value {value} does not match pattern {pattern}")]
     ValueViolatesPattern {
         /// Provided value.
-        value: Box<str>,
+        value: String,
         /// Pattern string.
-        pattern: Box<str>,
+        pattern: String,
     },
 }
 
@@ -595,7 +595,7 @@ pub enum NumberValueValidationError {
         /// Provided value.
         value: f64,
         /// Context label.
-        context: Box<str>,
+        context: String,
     },
 }
 
@@ -607,9 +607,9 @@ pub enum DateValueValidationError {
     #[error("value {value} does not match format {format}")]
     ValueDoesNotMatchFormat {
         /// Provided value.
-        value: Box<str>,
+        value: String,
         /// Expected format.
-        format: Box<str>,
+        format: String,
     },
 }
 
@@ -621,9 +621,9 @@ pub enum FileValueValidationError {
     #[error("file {path} must be inside (not at) directory {directory}")]
     FileOutsideAllowedDirectory {
         /// Path to the file.
-        path: Box<str>,
+        path: String,
         /// Allowed directory.
-        directory: Box<str>,
+        directory: String,
     },
 }
 
@@ -638,14 +638,14 @@ pub enum PropertyRefError {
     )]
     MalformedBankReferencePath {
         /// The invalid reference string.
-        reference: Box<str>,
+        reference: String,
     },
 
     /// Returned when the referenced property does not exist in the bank.
     #[error("property reference not found: {reference}")]
     TargetPropertyNotFoundInBank {
         /// The reference string.
-        reference: Box<str>,
+        reference: String,
     },
 }
 
@@ -712,7 +712,7 @@ pub enum SchemaResolutionError {
     #[error("duplicate schema name: {name}")]
     DuplicateSchemaName {
         /// Schema name.
-        name: Box<str>,
+        name: String,
     },
 
     /// Returned when a parent schema is not found.
@@ -755,10 +755,10 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
             FsError::Scan(e) => Self::from(e),
             FsError::Parse(e) => Self::from(e),
             FsError::Path(e) => Self::Read(SchemaReadError::FileSystem {
-                reason: e.to_string().into(),
+                reason: e.to_string(),
             }),
             FsError::Validation(e) => Self::Read(SchemaReadError::FileSystem {
-                reason: e.to_string().into(),
+                reason: e.to_string(),
             }),
             FsError::RootScope(e) => {
                 Self::Read(SchemaReadError::Read(e.into()))
@@ -785,19 +785,18 @@ impl From<crate::fs::error::ScanError> for SchemaIngestionError {
                 pattern,
                 message,
             } => Self::Read(SchemaReadError::FileSystem {
-                reason: format!("Invalid pattern {pattern}: {message}").into(),
+                reason: format!("Invalid pattern {pattern}: {message}"),
             }),
             ScanError::UnsupportedEntryType(path) => {
                 Self::Read(SchemaReadError::FileSystem {
                     reason: format!(
                         "Unsupported entry type at {}",
                         path.display()
-                    )
-                    .into(),
+                    ),
                 })
             }
             ScanError::Path(e) => Self::Read(SchemaReadError::FileSystem {
-                reason: e.to_string().into(),
+                reason: e.to_string(),
             }),
         }
     }
@@ -807,7 +806,7 @@ impl From<crate::fs::error::PathError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::PathError) -> Self {
         Self::Read(SchemaReadError::FileSystem {
-            reason: err.to_string().into(),
+            reason: err.to_string(),
         })
     }
 }

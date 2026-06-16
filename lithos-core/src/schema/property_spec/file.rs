@@ -25,7 +25,7 @@ use crate::schema::{
 #[non_exhaustive]
 pub struct FileSpec {
     directory: Option<VaultRelPath>,
-    file_class: Option<Box<str>>,
+    file_class: Option<String>,
 }
 
 impl FileSpec {
@@ -58,7 +58,7 @@ impl FileSpec {
         {
             return Err(SchemaError::PropertySpec(
                 FileSpecError::EmptyFileClassConstraint {
-                    class: "".into(),
+                    class: String::new(),
                 }
                 .into(),
             ));
@@ -190,7 +190,7 @@ impl TryFrom<RawFileProperty> for FileSpec {
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-struct VaultRelPath(Box<str>);
+struct VaultRelPath(String);
 
 impl VaultRelPath {
     #[inline]
@@ -224,8 +224,7 @@ impl VaultRelPath {
                             path: format!(
                                 "Invalid path {path}: '.' component is not \
                                  allowed"
-                            )
-                            .into(),
+                            ),
                         }
                         .into(),
                     ));
@@ -236,8 +235,7 @@ impl VaultRelPath {
                             path: format!(
                                 "Invalid path {path}: '..' component is not \
                                  allowed"
-                            )
-                            .into(),
+                            ),
                         }
                         .into(),
                     ));
@@ -248,8 +246,7 @@ impl VaultRelPath {
                             path: format!(
                                 "Invalid path {path}: absolute paths are not \
                                  allowed"
-                            )
-                            .into(),
+                            ),
                         }
                         .into(),
                     ));
@@ -260,8 +257,7 @@ impl VaultRelPath {
                             path: format!(
                                 "Invalid path {path}: path prefixes are not \
                                  allowed"
-                            )
-                            .into(),
+                            ),
                         }
                         .into(),
                     ));
@@ -273,11 +269,11 @@ impl VaultRelPath {
     }
 }
 
-impl TryFrom<Box<str>> for VaultRelPath {
+impl TryFrom<String> for VaultRelPath {
     type Error = SchemaError;
 
     #[inline]
-    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::validate_path(&value)?;
         Ok(Self(value))
     }

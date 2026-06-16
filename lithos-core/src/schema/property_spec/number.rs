@@ -227,7 +227,7 @@ impl ArchivedNumberSpec {
                     SchemaError::PropertySpec(
                         PropertySpecError::ArchivedSpecDeserializationFailed {
                             spec: "NumberSpec",
-                            reason: e.to_string().into(),
+                            reason: e.to_string(),
                         },
                     )
                 })?;

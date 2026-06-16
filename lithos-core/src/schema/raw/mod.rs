@@ -49,7 +49,7 @@
 //!
 //! The schema `name` field is **not deserialized** from the file - it's derived
 //! from the filename by the `Ingestor`. Therefore, it:
-//! - Remains as `Box<str>` (not `SchemaName`)
+//! - Remains as `String` (not `SchemaName`)
 //! - Is validated in `validated()` with full file path context
 //! - Provides better error messages: "schemas/invalid-name!.toml has invalid
 //!   filename"

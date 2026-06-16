@@ -55,9 +55,9 @@ pub struct SchemaVersion {
 
     /// Schema format version as simple string (e.g., `"1.0"`).
     ///
-    /// Stored as `Box<str>` instead of `RawSchemaVersion` to avoid requiring
+    /// Stored as `String` instead of `RawSchemaVersion` to avoid requiring
     /// rkyv derives on Raw* types.
-    version: Box<str>,
+    version: String,
 
     /// Parent schema names from the `extends` field.
     ///
@@ -335,7 +335,7 @@ pub struct PropertyBankVersion {
     hashes: HashRecord,
 
     /// Property bank format version as simple string (e.g., `"1.0"`).
-    version: Box<str>,
+    version: String,
 
     /// When this version was recorded in storage.
     #[rkyv(with = rkyv::with::AsUnixTime)]

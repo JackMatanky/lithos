@@ -126,7 +126,7 @@ impl PropertySpec {
     ) -> SchemaError {
         SchemaError::PropertyValue(
             super::error::PropertyValueError::IncorrectPrimitiveType {
-                value: value.to_string().into(),
+                value: value.to_string(),
                 expected: expected.into(),
             },
         )
