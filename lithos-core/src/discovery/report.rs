@@ -10,30 +10,29 @@ use std::path::PathBuf;
 /// constructing a fresh processor.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) struct DiscoveryReport {
+pub struct DiscoveryReport {
     /// Ceiling path segments ignored during traversal setup.
-    pub(crate) skipped_ceilings: Vec<SkippedCeiling>,
+    pub skipped_ceilings: Vec<SkippedCeiling>,
     /// Why local traversal stopped or did not run.
-    pub(crate) local_traversal_stop_reason: LocalTraversalStopReason,
+    pub local_traversal_stop_reason: LocalTraversalStopReason,
     /// Why global resolution was skipped, if it was skipped explicitly.
-    pub(crate) global_resolution_skip_reason:
-        Option<GlobalResolutionSkipReason>,
+    pub global_resolution_skip_reason: Option<GlobalResolutionSkipReason>,
 }
 
 /// A ceiling segment that could not be used for traversal bounds.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) struct SkippedCeiling {
+pub struct SkippedCeiling {
     /// Raw segment after path-list splitting.
-    pub(crate) segment: PathBuf,
+    pub segment: PathBuf,
     /// Why the segment was ignored.
-    pub(crate) reason: SkippedCeilingReason,
+    pub reason: SkippedCeilingReason,
 }
 
 /// Reasons a ceiling path-list segment is ignored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) enum SkippedCeilingReason {
+pub enum SkippedCeilingReason {
     /// Segment was empty after trimming.
     EmptySegment,
     /// Segment did not resolve to an existing directory.
@@ -47,7 +46,7 @@ pub(crate) enum SkippedCeilingReason {
 /// set.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) enum LocalTraversalStopReason {
+pub enum LocalTraversalStopReason {
     /// Traversal did not run because an explicit config file was supplied.
     ExplicitConfigFile,
     /// Traversal reached the filesystem root.
@@ -68,7 +67,7 @@ pub(crate) enum LocalTraversalStopReason {
 /// Reasons global resolution was intentionally skipped.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) enum GlobalResolutionSkipReason {
+pub enum GlobalResolutionSkipReason {
     /// Invocation used `--no-global-config`.
     SuppressedByFlag,
 }

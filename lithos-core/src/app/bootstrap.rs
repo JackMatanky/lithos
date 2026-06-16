@@ -2,7 +2,7 @@
 
 use std::{env, path::PathBuf};
 
-pub(crate) use crate::app::error::BootstrapError;
+pub use crate::app::error::BootstrapError;
 use crate::{
     config::{aggregate::Config, builder::Builder, repository::Repository},
     discovery::{
@@ -21,23 +21,14 @@ use crate::{
 /// implementation can be swapped out in tests without touching the
 /// orchestration logic.
 #[derive(Debug, Default)]
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; exercised via tests until CLI layer wires \
-              run()"
-)]
-pub(crate) struct Bootstrapper<D: DiscoveryPort> {
+pub struct Bootstrapper<D: DiscoveryPort> {
     port: D,
 }
 
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; all methods exercised via tests until CLI \
-              layer wires run()"
-)]
 impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Creates a bootstrapper backed by the given discovery port.
-    pub(crate) fn new(port: D) -> Self {
+    #[inline]
+    pub fn new(port: D) -> Self {
         Self {
             port,
         }
@@ -54,7 +45,8 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
     /// resolve to an existing directory, or a flag/env validation error if the
     /// provided paths are invalid.
-    pub(crate) fn build_context<'a>(
+    #[inline]
+    pub fn build_context<'a>(
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'a>>,
         anchor: &std::path::Path,
@@ -74,7 +66,8 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// # Errors
     ///
     /// Propagates any [`DiscoveryError`] returned by the port implementation.
-    pub(crate) fn discover(
+    #[inline]
+    pub fn discover(
         &self,
         context: &DiscoveryContext<'_>,
     ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
@@ -100,7 +93,8 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///
     /// - [`BootstrapError::Discovery`] if `anchor` does not exist, or if
     ///   discovery setup or execution fails.
-    pub(crate) fn run_discovery_only(
+    #[inline]
+    pub fn run_discovery_only(
         &self,
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'_>>,
@@ -135,7 +129,8 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///   discovery setup or execution fails.
     /// - [`BootstrapError::Config`] if configuration ingestion, validation, or
     ///   database operations fail.
-    pub(crate) fn run<R: Repository>(
+    #[inline]
+    pub fn run<R: Repository>(
         &self,
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'_>>,
@@ -149,11 +144,6 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; concrete service methods exercised via \
-              tests until CLI layer wires run()"
-)]
 impl Bootstrapper<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
@@ -161,7 +151,8 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// Returns [`BootstrapError`] if the concrete discovery service rejects
     /// its stable configuration.
-    pub(crate) fn from_platform() -> Result<Self, BootstrapError> {
+    #[inline]
+    pub fn from_platform() -> Result<Self, BootstrapError> {
         Self::with_global_directories(platform_global_directories())
     }
 
@@ -174,7 +165,8 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// Returns [`BootstrapError`] if the concrete discovery service rejects
     /// its stable configuration.
-    pub(crate) fn with_global_directories(
+    #[inline]
+    pub fn with_global_directories(
         global_directories: Vec<DirPath>,
     ) -> Result<Self, BootstrapError> {
         let config = DiscoveryServiceConfig {

@@ -18,7 +18,7 @@ use crate::{
 /// filesystem-valid.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) struct DiscoveryContext<'a> {
+pub struct DiscoveryContext<'a> {
     /// Active path anchor supplied by the Bootstrapper.
     anchor: DirPath,
     /// CLI-derived invocation values.
@@ -43,7 +43,7 @@ impl<'a> DiscoveryContext<'a> {
     /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
     /// resolve to an existing directory.
     #[inline]
-    pub(crate) fn new(anchor: &Path) -> Result<Self, DiscoveryError> {
+    pub fn new(anchor: &Path) -> Result<Self, DiscoveryError> {
         let anchor_buf = anchor.to_path_buf();
         let anchor_dir =
             DirPath::try_new(anchor_buf.clone()).map_err(|source| {
@@ -63,7 +63,7 @@ impl<'a> DiscoveryContext<'a> {
     /// Attaches CLI-derived invocation flags to the context.
     #[inline]
     #[must_use]
-    pub(crate) fn with_flags(mut self, flags: DiscoveryFlags) -> Self {
+    pub fn with_flags(mut self, flags: DiscoveryFlags) -> Self {
         self.flags = flags;
         self
     }
@@ -71,7 +71,7 @@ impl<'a> DiscoveryContext<'a> {
     /// Attaches environment-derived invocation values to the context.
     #[inline]
     #[must_use]
-    pub(crate) fn with_env(mut self, env: DiscoveryEnv<'a>) -> Self {
+    pub fn with_env(mut self, env: DiscoveryEnv<'a>) -> Self {
         self.env = env;
         self
     }
@@ -79,21 +79,21 @@ impl<'a> DiscoveryContext<'a> {
     /// Returns CLI-derived invocation values.
     #[inline]
     #[must_use]
-    pub(crate) fn flags(&self) -> &DiscoveryFlags {
+    pub fn flags(&self) -> &DiscoveryFlags {
         &self.flags
     }
 
     /// Returns environment-derived invocation values.
     #[inline]
     #[must_use]
-    pub(crate) fn env(&self) -> &DiscoveryEnv<'a> {
+    pub fn env(&self) -> &DiscoveryEnv<'a> {
         &self.env
     }
 
     /// Returns the active context anchor path.
     #[inline]
     #[must_use]
-    pub(crate) fn anchor(&self) -> &DirPath {
+    pub fn anchor(&self) -> &DirPath {
         &self.anchor
     }
 }
@@ -106,7 +106,7 @@ impl<'a> DiscoveryContext<'a> {
 /// suppress global config lookup.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) struct DiscoveryFlags {
+pub struct DiscoveryFlags {
     /// Config file path supplied by CLI.
     config_file: Option<FilePath>,
     /// Vault directory path supplied by CLI.
@@ -129,7 +129,7 @@ impl DiscoveryFlags {
     ///   ([`FlagOverrideError::VaultPathNotFound`]), or exists but is not a
     ///   directory ([`FlagOverrideError::VaultPathNotDirectory`]).
     #[inline]
-    pub(crate) fn new(
+    pub fn new(
         config_file: Option<&Path>,
         vault_dir: Option<&Path>,
         suppress_global: bool,
@@ -188,21 +188,21 @@ impl DiscoveryFlags {
     /// Returns the CLI config file override, if present.
     #[inline]
     #[must_use]
-    pub(crate) fn config_file(&self) -> Option<&FilePath> {
+    pub fn config_file(&self) -> Option<&FilePath> {
         self.config_file.as_ref()
     }
 
     /// Returns the CLI vault directory override, if present.
     #[inline]
     #[must_use]
-    pub(crate) fn vault_dir(&self) -> Option<&DirPath> {
+    pub fn vault_dir(&self) -> Option<&DirPath> {
         self.vault_dir.as_ref()
     }
 
     /// Returns whether global config lookup is disabled for this invocation.
     #[inline]
     #[must_use]
-    pub(crate) fn suppress_global(&self) -> bool {
+    pub fn suppress_global(&self) -> bool {
         self.suppress_global
     }
 }
@@ -215,7 +215,7 @@ impl DiscoveryFlags {
 /// default value has no overrides and no ceiling data.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[allow(dead_code, reason = "Contract slice; wired into discovery later")]
-pub(crate) struct DiscoveryEnv<'a> {
+pub struct DiscoveryEnv<'a> {
     /// Config file path supplied by environment.
     config_file: Option<FilePath>,
     /// Vault directory path supplied by environment.
@@ -240,7 +240,7 @@ impl<'a> DiscoveryEnv<'a> {
     ///   ([`EnvironmentOverrideError::VaultPathNotFound`]), or exists but is
     ///   not a directory ([`EnvironmentOverrideError::VaultPathNotDirectory`]).
     #[inline]
-    pub(crate) fn new(
+    pub fn new(
         config_file: Option<&Path>,
         vault_dir: Option<&Path>,
         ceiling_dirs_raw: Option<&'a OsStr>,
@@ -301,21 +301,21 @@ impl<'a> DiscoveryEnv<'a> {
     /// Returns the environment config file override, if present.
     #[inline]
     #[must_use]
-    pub(crate) fn config_file(&self) -> Option<&FilePath> {
+    pub fn config_file(&self) -> Option<&FilePath> {
         self.config_file.as_ref()
     }
 
     /// Returns the environment vault directory override, if present.
     #[inline]
     #[must_use]
-    pub(crate) fn vault_dir(&self) -> Option<&DirPath> {
+    pub fn vault_dir(&self) -> Option<&DirPath> {
         self.vault_dir.as_ref()
     }
 
     /// Returns raw platform-specific ceiling directory data.
     #[inline]
     #[must_use]
-    pub(crate) fn ceiling_dirs_raw(&self) -> Option<&'a OsStr> {
+    pub fn ceiling_dirs_raw(&self) -> Option<&'a OsStr> {
         self.ceiling_dirs_raw
     }
 }
