@@ -179,11 +179,7 @@ where
                 builder.add_parent(*child_id, parent_id);
             }
         }
-        builder.build().try_into_dag().map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
-                nodes: Vec::new(),
-            }
-        })
+        builder.build().try_into_dag()
     }
 }
 
@@ -195,11 +191,7 @@ where
 
     #[inline]
     fn try_from(graph: ProcessingGraph<T>) -> Result<Self, Self::Error> {
-        let dag = graph.try_into_dag().map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
-                nodes: Vec::new(),
-            }
-        })?;
+        let dag = graph.try_into_dag()?;
 
         // Extract topology before consuming graph
         let topo_order = dag.topo_order().to_vec();
@@ -309,11 +301,7 @@ where
     {
         topological_sort_with_nodes(self.inner.parents(), self.inner.node_ids())
             .map(|(order, _roots)| order)
-            .map_err(|_e| {
-                crate::schema::error::SchemaInheritanceError::CycleDetected {
-                    nodes: Vec::new(),
-                }
-            })
+            .map_err(Into::into)
     }
 
     /// Returns a shared reference to the underlying schema graph.
@@ -344,11 +332,7 @@ where
         DagGraph<SchemaId, T>,
         crate::schema::error::SchemaInheritanceError,
     > {
-        DagGraph::try_from(self.inner).map_err(|_e| {
-            crate::schema::error::SchemaInheritanceError::CycleDetected {
-                nodes: Vec::new(),
-            }
-        })
+        DagGraph::try_from(self.inner).map_err(Into::into)
     }
 
     /// Returns node IDs sorted deterministically by UUID.
