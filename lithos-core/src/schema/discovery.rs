@@ -13,7 +13,7 @@ use crate::{
         StructuredFileFormat,
     },
     schema::{
-        error::{SchemaIngestionError, SchemaLoaderError},
+        error::{SchemaBuilderError, SchemaError, SchemaReadError},
         identifier::SchemaId,
         inheritance::InheritanceGraph,
         repository::ReadRepository,
@@ -140,16 +140,17 @@ impl DiscoveryEngine {
     ///
     /// # Errors
     ///
-    /// Returns `SchemaLoaderError` if I/O or repository operations fail.
+    /// Returns `SchemaError` if I/O or repository operations fail.
     pub(crate) fn run<R>(
         spec: &SchemaConfigSpec,
         repo: &R,
-    ) -> Result<DiscoveryResult, SchemaLoaderError>
+    ) -> Result<DiscoveryResult, SchemaError>
     where
         R: ReadRepository,
     {
         // Step 1: Scan filesystem
-        let entries = Self::scan_filesystem(spec)?;
+        let entries =
+            Self::scan_filesystem(spec).map_err(SchemaBuilderError::from)?;
 
         // Step 2: Separate property bank from schemas (O(n) single pass)
         let (property_bank_entry, schema_entries) =
@@ -185,7 +186,7 @@ impl DiscoveryEngine {
     /// Returns error if filesystem scanning fails.
     fn scan_filesystem(
         spec: &SchemaConfigSpec,
-    ) -> Result<Vec<FsNode>, SchemaLoaderError> {
+    ) -> Result<Vec<FsNode>, SchemaReadError> {
         let structured_extensions: Vec<&str> = StructuredFileFormat::PRECEDENCE
             .iter()
             .map(|format| format.extension())
@@ -200,9 +201,7 @@ impl DiscoveryEngine {
                     .with_pattern(&pattern)
                     .with_extensions(&structured_extensions),
             )
-            .map_err(|e| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::from(e))
-            })
+            .map_err(SchemaReadError::from)
     }
 
     /// Separates property bank from schema files (O(n) single pass).
@@ -271,12 +270,14 @@ impl DiscoveryEngine {
         property_bank_entry: Option<&FileNode>,
         schema_entries: &[(PathKey, FsNode)],
         spec: &SchemaConfigSpec,
-    ) -> Result<CachedState, SchemaLoaderError>
+    ) -> Result<CachedState, SchemaError>
     where
         R: ReadRepository,
     {
-        let property_bank_path =
-            spec.property_bank_key().map_err(SchemaIngestionError::from)?;
+        let property_bank_path = spec
+            .property_bank_key()
+            .map_err(SchemaReadError::from)
+            .map_err(SchemaBuilderError::from)?;
         #[expect(
             clippy::pattern_type_mismatch,
             reason = "iter over &[(PathKey, FsNode)] yields &&(PathKey, \
@@ -285,23 +286,18 @@ impl DiscoveryEngine {
         let schema_keys: Vec<_> =
             schema_entries.iter().map(|(path, _)| path).cloned().collect();
 
-        let graph = repo
-            .get_topological_graph()
-            .map_err(SchemaLoaderError::Repository)?;
+        let graph = repo.get_topological_graph()?;
 
         let property_bank_view = match property_bank_entry {
-            Some(_) => repo
-                .get_raw_property_bank_view(&property_bank_path)
-                .map_err(SchemaLoaderError::Repository)?,
+            Some(_) => repo.get_raw_property_bank_view(&property_bank_path)?,
             None => None,
         };
 
         let (schema_views, schema_ids) = if schema_keys.is_empty() {
             (HashMap::new(), HashMap::new())
         } else {
-            let schema_views = repo
-                .find_raw_schema_views_by_paths(&schema_keys)
-                .map_err(SchemaLoaderError::Repository)?;
+            let schema_views =
+                repo.find_raw_schema_views_by_paths(&schema_keys)?;
             let schema_views = schema_keys
                 .iter()
                 .cloned()
@@ -309,9 +305,7 @@ impl DiscoveryEngine {
                 .filter_map(|(path, view)| view.map(|v| (path, v)))
                 .collect();
 
-            let schema_ids = repo
-                .find_schema_ids_by_paths(&schema_keys)
-                .map_err(SchemaLoaderError::Repository)?;
+            let schema_ids = repo.find_schema_ids_by_paths(&schema_keys)?;
             let schema_ids = schema_keys
                 .iter()
                 .cloned()
@@ -624,7 +618,7 @@ mod tests {
     fn accepts_read_repository_only<R: ReadRepository>(
         spec: &SchemaConfigSpec,
         repo: &R,
-    ) -> Result<DiscoveryResult, SchemaLoaderError> {
+    ) -> Result<DiscoveryResult, SchemaError> {
         DiscoveryEngine::run(spec, repo)
     }
 

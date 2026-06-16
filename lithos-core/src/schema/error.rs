@@ -70,6 +70,43 @@ use std::path::PathBuf;
 
 use crate::db::DbError;
 
+impl From<crate::fs::error::ScanError> for SchemaReadError {
+    #[inline]
+    fn from(err: crate::fs::error::ScanError) -> Self {
+        use crate::fs::error::ScanError;
+        match err {
+            ScanError::Traversal {
+                path,
+                source,
+            } => Self::Read(crate::fs::error::ReadError::Io {
+                path,
+                source,
+            }),
+            ScanError::InvalidPattern {
+                pattern,
+                message,
+            } => Self::FileSystem {
+                reason: format!("Invalid pattern {pattern}: {message}"),
+            },
+            ScanError::UnsupportedEntryType(path) => Self::FileSystem {
+                reason: format!("Unsupported entry type at {}", path.display()),
+            },
+            ScanError::Path(e) => Self::FileSystem {
+                reason: e.to_string(),
+            },
+        }
+    }
+}
+
+impl From<crate::fs::error::PathError> for SchemaReadError {
+    #[inline]
+    fn from(err: crate::fs::error::PathError) -> Self {
+        Self::FileSystem {
+            reason: err.to_string(),
+        }
+    }
+}
+
 /// Domain-level errors for in-memory schema validation and resolution.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -957,9 +994,7 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
             FsError::Read(e) => Self::from(e),
             FsError::Scan(e) => Self::from(e),
             FsError::Parse(e) => Self::from(e),
-            FsError::Path(e) => Self::Read(SchemaReadError::FileSystem {
-                reason: e.to_string(),
-            }),
+            FsError::Path(e) => Self::Read(SchemaReadError::from(e)),
             FsError::Validation(e) => Self::Read(SchemaReadError::FileSystem {
                 reason: e.to_string(),
             }),
@@ -973,44 +1008,14 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
 impl From<crate::fs::error::ScanError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::ScanError) -> Self {
-        use crate::fs::error::ScanError;
-        match err {
-            ScanError::Traversal {
-                path,
-                source,
-            } => Self::Read(SchemaReadError::Read(
-                crate::fs::error::ReadError::Io {
-                    path,
-                    source,
-                },
-            )),
-            ScanError::InvalidPattern {
-                pattern,
-                message,
-            } => Self::Read(SchemaReadError::FileSystem {
-                reason: format!("Invalid pattern {pattern}: {message}"),
-            }),
-            ScanError::UnsupportedEntryType(path) => {
-                Self::Read(SchemaReadError::FileSystem {
-                    reason: format!(
-                        "Unsupported entry type at {}",
-                        path.display()
-                    ),
-                })
-            }
-            ScanError::Path(e) => Self::Read(SchemaReadError::FileSystem {
-                reason: e.to_string(),
-            }),
-        }
+        Self::Read(SchemaReadError::from(err))
     }
 }
 
 impl From<crate::fs::error::PathError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::PathError) -> Self {
-        Self::Read(SchemaReadError::FileSystem {
-            reason: err.to_string(),
-        })
+        Self::Read(SchemaReadError::from(err))
     }
 }
 

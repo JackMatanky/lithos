@@ -16,7 +16,7 @@ use std::{
 
 use crate::{
     schema::{
-        error::{SchemaIngestionError, SchemaLoaderError},
+        error::{SchemaBuilderError, SchemaError},
         expander::RefExpander,
         identifier::SchemaName,
         property::{PropertyMap, PropertyName},
@@ -355,14 +355,14 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
+    /// Returns [`SchemaError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
     pub fn diff_schema(
         &self,
         expander: &RefExpander,
         forced_refs: &[PropertyName],
-    ) -> Result<PropertyDelta, SchemaLoaderError> {
+    ) -> Result<PropertyDelta, SchemaError> {
         let (mut raw_upserts, removals, _current_hashes) =
             self.compute_change_set();
 
@@ -390,17 +390,14 @@ impl<'data> PropertyDeltaEngine<'data, RawProperty> {
                     inline_map.insert(name.clone(), inline);
                 }
                 RawProperty::Ref(r#ref) => {
-                    let property = expander
-                        .expand_property(&r#ref)
-                        .map_err(SchemaLoaderError::Resolution)?;
+                    let property = expander.expand_property(&r#ref)?;
                     resolved_upserts.insert(name, property);
                 }
             }
         }
 
         if !inline_map.is_empty() {
-            let converted = PropertyMap::try_from(inline_map)
-                .map_err(SchemaLoaderError::Resolution)?;
+            let converted = PropertyMap::try_from(inline_map)?;
             for (name, property) in converted {
                 resolved_upserts.insert(name, property);
             }
@@ -425,20 +422,20 @@ impl<'data> PropertyDeltaEngine<'data, RawPropertyBankEntry> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] when changed entries cannot be converted
+    /// Returns [`SchemaError`] when changed entries cannot be converted
     /// into a validated [`PropertyMap`].
     #[inline]
     pub fn diff_property_bank(
         &self,
-    ) -> Result<(PropertyDelta, RawPropertyHashIndex), SchemaLoaderError> {
+    ) -> Result<(PropertyDelta, RawPropertyHashIndex), SchemaError> {
         let (raw_upserts, removals, property_hashes) =
             self.compute_change_set();
 
         let upserts = PropertyMap::try_from(raw_upserts).map_err(|error| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+            SchemaBuilderError::Validation {
                 path: PathBuf::from("property_bank"),
-                source: error,
-            })
+                source: Box::new(error),
+            }
         })?;
 
         Ok((PropertyDelta::new(upserts, removals), property_hashes))

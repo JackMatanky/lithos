@@ -65,7 +65,8 @@ where
                 },
             ))
         })?;
-        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)?;
+        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)
+            .map_err(SchemaLoaderError::Resolution)?;
 
         // 2. Load property bank if present
         let property_bank =
@@ -248,6 +249,7 @@ description = "Test schema"
                 || matches!(
                     result.unwrap_err(),
                     SchemaLoaderError::Ingestion(_)
+                        | SchemaLoaderError::Resolution(_)
                 )
         );
     }
