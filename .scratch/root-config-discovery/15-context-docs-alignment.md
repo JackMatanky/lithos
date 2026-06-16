@@ -22,59 +22,78 @@ AFK
 
 ## What to build
 
-Align context documentation with the implemented Discovery, Config, and Bootstrapper architecture.
+Fix `lithos-core/src/discovery/CONTEXT.md` and `lithos-core/src/config/CONTEXT.md` so they conform to the CONTEXT.md format defined in `.agents/skills/grill-with-docs/CONTEXT-FORMAT.md`.
 
-This slice should remove stale terminology from context docs after the redesign lands, ensuring future agents see the actual boundaries and module names.
+A CONTEXT.md is a **domain language document**: terms, definitions, and what to avoid. It is not an API reference, module inventory, or architecture doc. Those belong in ADRs and code documentation.
+
+The current `discovery/CONTEXT.md` has drifted: it contains a `## Module Architecture` section that lists implementation types and module files. Those belong in ADRs and code-level docs, not in the context document.
+
+This slice also removes stale terminology introduced before the redesign, so future agents read the actual domain language, not obsolete concepts.
 
 ## Acceptance criteria
 
-- [ ] `lithos-core/src/discovery/CONTEXT.md` reflects `DiscoveryContext`, `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `CandidatePath`, `DiscoveryResult`, and `DiscoveryReport`.
-- [ ] `lithos-core/src/discovery/CONTEXT.md` documents the FS handoff: raw paths at input boundaries, `DirPath` for validated directories, and `FilePath`/`FileNode` plus metadata for discovered marker files.
-- [ ] `lithos-core/src/discovery/CONTEXT.md` no longer documents `DiscoveryEngine`, `VaultDiscoveryResult`, `GlobalDiscoveryResult`, or `diagnostics.rs` as current architecture.
-- [ ] `lithos-core/src/config/CONTEXT.md` reflects `Builder::from_discovery()`, `build()`, `build_global()`, and `build_vault()`.
-- [ ] `lithos-core/src/config/CONTEXT.md` documents that Config consumes Discovery's FS-validated marker handoff and does not re-prove file/directory identity.
-- [ ] `lithos-core/src/config/CONTEXT.md` no longer references `config/root.rs`, `ConfigDiscoveryResult`, or Config-owned discovery orchestration.
-- [ ] `lithos-core/src/app` module docs mention `Bootstrapper`, `BootstrapResult`, and ADR 024.
-- [ ] Context docs describe trusted-path second-pass discovery as deferred/future work, not as current architecture.
-- [ ] ADR references are added where useful: ADR 024, `docs/adr/discovery/0001-*`, and `docs/adr/config/0001-*`.
-- [ ] `.scratch/root-config-discovery/discovery-redesign-decisions.md` remains as the historical design reference.
+### `lithos-core/src/discovery/CONTEXT.md`
+
+- [ ] Conforms to the CONTEXT.md format (Language section with terms, definitions, and _Avoid_ lists; optional example dialogue).
+- [ ] Has no `## Module Architecture` section — that content belongs in ADRs and Rust doc comments.
+- [ ] Has no `## Resolution Precedence`, `## Invariants`, or `## Not Owned Here` sections — those are implementation/boundary concerns, not domain language.
+- [ ] Language section removes stale terms that no longer reflect the domain (e.g. `Discovered Config Path` if the redesign replaced it with a different concept).
+- [ ] Language section adds domain terms introduced by the redesign where they represent ubiquitous language — not API types:
+  - **Discovery Result**: the domain output of a discovery run — the located Vault Root and ranked marker candidates — before any config parsing begins.
+  - **Discovery Report**: process metadata from a discovery run (skipped overrides, skipped ceilings, traversal stop reason) consumed by the Bootstrapper for diagnostics; not passed to downstream contexts.
+  - **Candidate Marker**: a config file found during traversal or global resolution, ranked by source precedence but not yet selected as the definitive config input.
+  - Review the redesign decisions doc and add any other domain-level terms that belong.
+- [ ] Each term definition is one or two sentences max.
+- [ ] Includes an example dialogue that shows how the terms interact naturally.
+
+### `lithos-core/src/config/CONTEXT.md`
+
+- [ ] Conforms to the CONTEXT.md format.
+- [ ] Any sections that describe implementation mechanics (builder phases, method names, module files) are removed — those belong in the ADR (`docs/adr/config/0001-config-builder-decoupling.md`).
+- [ ] Stale terms (`ConfigDiscoveryResult`, `config/root.rs`, config-owned discovery orchestration) are absent.
+- [ ] Existing domain terms are reviewed for accuracy against the implemented architecture and updated if their meaning has shifted.
+- [ ] Includes an example dialogue if one does not already exist.
+
+### General
+
+- [ ] Neither CONTEXT.md lists specific Rust type names, method signatures, module file paths, or ADR numbers — those are implementation references, not domain language.
+- [ ] `.scratch/root-config-discovery/discovery-redesign-decisions.md` remains intact (historical record).
 
 ## Blocked by
 
 - `.scratch/root-config-discovery/14-config-builder-discovery-decoupling.md`
 
-
 ## Agent Brief
 
 > *This was generated by AI during triage.*
 
-**Category:** enhancement
+**Category:** documentation
 
-**Summary:** Align context documentation with the implemented Discovery, Config, and Bootstrapper architecture.
+**Summary:** Align discovery and config CONTEXT.md files with the domain-language format. Remove implementation details that crept in. Update language for the redesigned architecture.
 
 **Current behavior:**
-Context documentation may still describe older discovery engine, bridge, or config-owned orchestration terminology after the redesign issues land.
+`discovery/CONTEXT.md` contains a `## Module Architecture` section listing specific Rust modules, types, and traits. It also has `## Resolution Precedence`, `## Invariants`, and `## Not Owned Here` sections that describe implementation contracts rather than domain language. The Language section may reference stale pre-redesign concepts.
 
 **Desired behavior:**
-Future agents should read the context docs and see the implemented architecture: Discovery owns root/marker discovery, Config consumes validated discovery output through a narrow adapter, and app Bootstrapper is the composition root that wires both contexts.
+Both CONTEXT.md files contain only domain language: terms, tight definitions (≤2 sentences), aliases to avoid, and an example dialogue. All implementation references (module names, type names, method signatures, ADR numbers) live in ADRs and Rust doc comments — not in the context document.
 
-**Key interfaces:**
-- Discovery context documentation — documents `DiscoveryContext`, `DiscoveryService`, `DiscoveryMachine`, `FolderProbe`, `CandidatePath`, `DiscoveryResult`, `DiscoveryReport`, and FS handoff rules.
-- Config context documentation — documents `Builder::from_discovery()`, `build()`, `build_global()`, `build_vault()`, and the no-revalidation boundary.
-- App module docs — mention `Bootstrapper`, `BootstrapResult`, and ADR 024.
-- Deferred discovery note — trusted-path second-pass discovery is documented only as future/out-of-scope for the MVP.
-- ADR references — point future agents to the discovery, config, and bootstrapper decisions.
+**Format reference:**
+See `.agents/skills/grill-with-docs/CONTEXT-FORMAT.md` for the required structure and rules.
 
-**Acceptance criteria:**
-- [ ] Discovery docs reflect the new service, pipeline, output, report, and FS handoff language.
-- [ ] Discovery docs remove stale current-architecture references to old engine/result/diagnostics concepts.
-- [ ] Config docs reflect the builder adapter/build method split and remove config-owned discovery orchestration language.
-- [ ] App docs name Bootstrapper and BootstrapResult and reference ADR 024.
-- [ ] Docs do not present trusted-path second-pass discovery as implemented current behavior.
-- [ ] ADR references are present where useful.
-- [ ] The historical redesign decision file remains intact.
+**What belongs in CONTEXT.md:**
+- Domain concept names (what the team calls things)
+- One or two sentence definitions (what the concept IS, not what it does)
+- Avoidances (alternative names that should not be used)
+- Example dialogue demonstrating natural term interaction
+
+**What does NOT belong in CONTEXT.md:**
+- Rust type names, struct fields, method signatures
+- Module file names (`engine.rs`, `service.rs`, etc.)
+- Precedence rules, invariants, and boundary contracts
+- ADR references or cross-links
 
 **Out of scope:**
 - Changing implementation behavior.
 - Revising accepted ADR decisions.
 - Removing the historical redesign decision file.
+- Updating ADRs themselves.
