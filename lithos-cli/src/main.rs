@@ -29,6 +29,8 @@
 //! encounters issues, or template processing errors occur. Errors are reported
 //! via `miette` with contextual information.
 
+mod error;
+
 /// The main entry point for the Lithos application.
 ///
 /// Initializes the CLI, parses arguments, and runs the application logic.

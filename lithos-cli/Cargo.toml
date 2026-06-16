@@ -19,6 +19,7 @@ bench = false
 lithos-core.workspace = true
 clap.workspace = true
 miette.workspace = true
+thiserror.workspace = true
 # anyhow.workspace = true  # COMMENTED: Completely unused - codebase uses thiserror exclusively
 tracing.workspace = true
 

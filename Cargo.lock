@@ -700,6 +700,7 @@ dependencies = [
  "clap",
  "lithos-core",
  "miette",
+ "thiserror",
  "tracing",
 ]
 
