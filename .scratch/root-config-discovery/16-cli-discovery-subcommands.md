@@ -176,3 +176,342 @@ Top-level flags (`--vault`, `--config`, `--no-global-config`, `--format`, `--ver
 ## Blocked by
 
 - `.scratch/root-config-discovery/15-context-docs-alignment.md`
+
+---
+
+## TDD Plan
+
+### Architecture notes
+
+This plan follows hexagonal architecture. The CLI is an inbound adapter; it never imports from `discovery/` or `config/` directly. All bootstrap access goes through `Bootstrapper` in `lithos-core::app`. Exit code mapping and error presentation live entirely in `lithos-cli` (`CliError`), keeping `BootstrapError` clean of adapter concerns.
+
+CLI command handlers accept injectable `impl Write` for stdout and stderr so output shape can be verified in unit tests without capturing process streams.
+
+### Preconditions
+
+- Issue 15 (`15-context-docs-alignment.md`) must be resolved or explicitly deferred before this work begins.
+- `clap` `derive` feature must be added to workspace dependencies.
+
+### Required dependency changes
+
+**`Cargo.toml` (workspace):**
+```toml
+clap = { version = "4.6", features = ["env", "derive"] }
+```
+
+**`lithos-cli/Cargo.toml` `[dev-dependencies]`:**
+```toml
+mockall = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+```
+
+### Visibility changes
+
+All symbols listed below are currently `pub(crate)`. They must become `pub`.
+
+**`lithos-core/src/app/bootstrap.rs`:**
+- `Bootstrapper<D>` struct
+- `Bootstrapper::new()`
+- `Bootstrapper::build_context()`
+- `Bootstrapper::run()`
+- `Bootstrapper::run_discovery_only()` (new — `pub` from creation)
+- `Bootstrapper::from_platform()`
+- `Bootstrapper::with_global_directories()`
+
+**`lithos-core/src/app/error.rs`:**
+- `BootstrapError` enum
+
+**`lithos-core/src/discovery/mod.rs` — add `pub use` re-exports:**
+
+```rust
+pub use context::{DiscoveryEnv, DiscoveryFlags};
+pub use report::{
+    DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
+    SkippedCeiling, SkippedCeilingReason,
+};
+pub use service::{CandidatePath, DiscoveryResult};
+```
+
+The underlying types in `context.rs`, `report.rs`, and `service.rs` also need their structs, enums, and public methods changed from `pub(crate)` to `pub` so the re-exports compile. The `discovery` module in `lib.rs` stays `pub(crate)` — the CLI accesses these types via `lithos_core::discovery::*` only through `lithos-core::app`'s dependency chain; the re-exports are for crate-internal use and to support the `Bootstrapper` public API.
+
+> **Note:** If `lib.rs` keeps `pub(crate) mod discovery`, the `pub use` re-exports in `discovery/mod.rs` will still be `pub(crate)` from the crate boundary. Whether `discovery` itself needs to become `pub` in `lib.rs` depends on whether the CLI needs to name `lithos_core::discovery::DiscoveryFlags` explicitly. If `Bootstrapper`'s public API uses `DiscoveryFlags` as a parameter type, Rust requires the type to be reachable. Either change `pub(crate) mod discovery` → `pub mod discovery` in `lib.rs`, or re-export the required types from `lithos_core::app` directly.
+
+### Slice 1 — `Bootstrapper::run_discovery_only()`
+
+**File:** `lithos-core/src/app/bootstrap.rs`
+
+Add a new `pub` method to `Bootstrapper<D: DiscoveryPort>`:
+
+```rust
+pub fn run_discovery_only(
+    &self,
+    flags: Option<DiscoveryFlags>,
+    env: Option<DiscoveryEnv<'_>>,
+    anchor: &std::path::Path,
+) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError>
+```
+
+This calls `build_context` + `discover()` only. It must not call `Builder`. The "does not trigger config parsing" behavior is verified by a test that feeds invalid TOML to the mock — `run()` would return `BootstrapError::Config`, but `run_discovery_only()` must succeed.
+
+**Tests — `mod run_discovery_only` in `lithos-core/src/app/bootstrap.rs`:**
+
+```
+returns_discovery_result_when_port_succeeds()
+returns_report_when_port_succeeds()
+propagates_discovery_error_when_port_fails()
+propagates_discovery_error_from_invalid_anchor()
+does_not_return_config_error_when_discovery_result_contains_invalid_toml()
+```
+
+### Slice 2 — Visibility + `pub use` re-exports
+
+**Files:** `lithos-core/src/app/bootstrap.rs`, `lithos-core/src/app/error.rs`, `lithos-core/src/discovery/mod.rs`, and all affected `context.rs` / `report.rs` / `service.rs` type/method declarations.
+
+No new logic. Changes are visibility only. Verified by: the CLI crate compiles after each new import is added.
+
+Remove the `#[allow(dead_code, ...)]` attributes on types that are now wired to a live caller.
+
+### Slice 3 — `CliError` in `lithos-cli`
+
+**New file:** `lithos-cli/src/error.rs`
+
+```rust
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub(crate) enum CliError {
+    #[error(transparent)]
+    Bootstrap(#[from] BootstrapError),
+}
+```
+
+`CliError` owns exit code derivation. It must not call `std::process::exit` (forbidden by lint). The pattern: `main()` returns `miette::Result<()>`; on error, `miette` renders the diagnostic and the process exits 1. For commands requiring exit codes 2 and 3, a custom `Termination` impl or a wrapping runner is required — this detail must be resolved before Slice 5.
+
+**Tests — `lithos-cli/src/error.rs`:**
+
+```
+mod conversions {
+    converts_bootstrap_error_to_cli_error()
+}
+mod exit_code {
+    returns_1_when_vault_not_found()
+    returns_2_when_explicit_path_is_invalid()
+    returns_3_when_permission_denied()
+}
+```
+
+Exit code mapping rules (in `CliError`, not `BootstrapError`):
+- `BootstrapError::Discovery(DiscoveryError::InvalidAnchorDirectory { .. })` → 1
+- `BootstrapError::Discovery(DiscoveryError::Flag(_) | DiscoveryError::Env(_))` → 2
+- `BootstrapError::Discovery(DiscoveryError::ReadDirectory { .. })` → 3
+- `BootstrapError::Discovery(DiscoveryError::CanonicalizePath { source, .. })` where `source.kind() == PermissionDenied` → 3
+- All others → 2
+
+### Slice 4 — CLI argument structure
+
+**Files:** `lithos-cli/src/main.rs` (replaced) and new `lithos-cli/src/cli.rs`
+
+Use `clap` derive API throughout. Top-level struct:
+
+```rust
+#[derive(Parser)]
+struct Cli {
+    #[arg(long, global = true)]
+    vault: Option<PathBuf>,
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+    #[arg(long, global = true)]
+    no_global_config: bool,
+    #[arg(long, global = true, default_value = "human")]
+    format: OutputFormat,
+    #[arg(short, long, global = true, action = ArgAction::Count)]
+    verbose: u8,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    Config(ConfigArgs),
+    Doctor,
+}
+
+#[derive(Args)]
+struct ConfigArgs {
+    #[command(subcommand)]
+    subcommand: Option<ConfigSubcommand>,
+}
+
+#[derive(Subcommand)]
+enum ConfigSubcommand {
+    Files,
+}
+
+#[derive(Clone, ValueEnum)]
+enum OutputFormat {
+    Human,
+    Json,
+}
+```
+
+**Tests — `mod arg_parsing` in `lithos-cli/src/cli.rs`:**
+
+```
+returns_vault_flag_value_when_provided()
+returns_config_flag_value_when_provided()
+returns_no_global_config_when_flag_present()
+returns_format_human_by_default()
+returns_format_json_when_explicitly_set()
+rejects_unknown_format_value()
+returns_verbose_count_zero_by_default()
+returns_verbose_count_incremented_per_flag()
+routes_config_subcommand()
+routes_config_files_subcommand()
+routes_doctor_subcommand()
+vault_flag_is_available_to_config_files_subcommand()
+vault_flag_is_available_to_doctor_subcommand()
+```
+
+Tests use `Cli::try_parse_from(["lithos", ...])` — no process I/O required.
+
+### Slice 5 — `lithos config` handler
+
+**New file:** `lithos-cli/src/commands/config.rs`
+
+Handler signature:
+
+```rust
+pub(crate) fn run_config(
+    bootstrapper: &Bootstrapper<DiscoveryService>,
+    flags: Option<DiscoveryFlags>,
+    anchor: &Path,
+    format: OutputFormat,
+    verbose: u8,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> Result<(), CliError>
+```
+
+Handler calls `Bootstrapper::run()`. Structured output → `out`. Verbose diagnostics (skipped ceilings, stop reason) → `err`.
+
+**Tests — `mod config_handler` in `lithos-cli/src/commands/config.rs`:**
+
+```
+mod fixtures { /* mock bootstrapper helpers */ }
+
+mod config_handler {
+    returns_resolved_vault_root_in_human_format()
+    returns_resolved_vault_root_in_json_format()
+    includes_global_config_suppression_status_when_no_global_config_set()
+    writes_skipped_ceiling_warning_to_stderr_when_verbose()
+    writes_structured_output_to_stdout_writer()
+    writes_verbose_diagnostics_to_stderr_writer()
+    honours_vault_flag_override()
+    honours_config_flag_override()
+    returns_err_when_vault_not_found()
+    returns_err_when_explicit_vault_path_invalid()
+    returns_err_when_permission_denied()
+}
+```
+
+Handler tests use `MockDiscoveryPort` (same pattern as `bootstrap.rs` tests). Output shape is asserted on captured `Vec<u8>` writers.
+
+### Slice 6 — `lithos config files` handler
+
+**New file:** `lithos-cli/src/commands/config_files.rs`
+
+Handler signature:
+
+```rust
+pub(crate) fn run_config_files(
+    bootstrapper: &Bootstrapper<DiscoveryService>,
+    flags: Option<DiscoveryFlags>,
+    anchor: &Path,
+    format: OutputFormat,
+    out: &mut impl Write,
+) -> Result<(), CliError>
+```
+
+Handler calls `Bootstrapper::run_discovery_only()`. Always returns `Ok(())` — errors are written to `out` as empty/warning output, not propagated. Output lists `vault` candidates then `global` candidates in that order.
+
+**Tests — `mod config_files_handler` in `lithos-cli/src/commands/config_files.rs`:**
+
+```
+returns_vault_candidates_in_precedence_order()
+returns_global_candidates_after_vault_candidates()
+returns_empty_output_when_no_candidates_found()
+always_returns_ok_when_no_vault_found()
+always_returns_ok_when_discovery_error_occurs()
+calls_run_discovery_only_not_run()
+returns_candidates_in_json_format_when_format_json()
+honours_vault_flag_override()
+```
+
+The `calls_run_discovery_only_not_run()` test is enforced structurally: the handler does not have access to `run()` by design (it only receives a reference that exposes `run_discovery_only`), or is verified by injecting a mock that panics if `run()` is called.
+
+### Slice 7 — `lithos doctor` handler
+
+**New file:** `lithos-cli/src/commands/doctor.rs`
+
+Handler signature:
+
+```rust
+pub(crate) fn run_doctor(
+    bootstrapper: &Bootstrapper<DiscoveryService>,
+    flags: Option<DiscoveryFlags>,
+    anchor: &Path,
+    format: OutputFormat,
+    verbose: u8,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> Result<(), CliError>
+```
+
+Handler calls `Bootstrapper::run()`. Reports a bootstrap/config section summarising vault root, config files, and any warnings. `doctor` is registered as a top-level subcommand, not under `config`.
+
+**Tests — `mod doctor_handler` in `lithos-cli/src/commands/doctor.rs`:**
+
+```
+reports_healthy_when_bootstrap_succeeds()
+reports_vault_not_found_section_when_no_vault_root()
+writes_bootstrap_section_to_output()
+returns_err_when_bootstrap_fails_vault_not_found()
+returns_err_when_bootstrap_fails_invalid_explicit_path()
+returns_err_when_bootstrap_fails_permission_denied()
+is_registered_as_top_level_subcommand_not_under_config()
+```
+
+### Slice 8 — Wire `main()`
+
+**File:** `lithos-cli/src/main.rs`
+
+`main()` parses `Cli`, constructs `Bootstrapper::from_platform()`, reads CWD, builds `DiscoveryFlags` from parsed top-level args, then dispatches to the appropriate handler. Errors are returned as `miette::Result` for diagnostic rendering.
+
+`main()` itself is kept minimal — all logic lives in handler functions. The testing dead zone is bounded to construction and dispatch only.
+
+### Test coverage matrix
+
+| Acceptance criterion | Slice |
+| --- | --- |
+| Top-level flags wired (`--vault`, `--config`, `--no-global-config`, `--format`, `--verbose`) | 4 |
+| `--format` not `--output` | 4 |
+| `lithos config` reports resolved state | 5 |
+| `lithos config files` reports candidates in order | 6 |
+| `lithos config files` always exits 0 | 6 |
+| `lithos config files` no unchecked paths | 6 |
+| `lithos config files` calls discovery-only leg | 1 + 6 |
+| `lithos doctor` is top-level, not under `config` | 4 + 7 |
+| Structured output → stdout; verbose → stderr | 5 + 7 |
+| Handlers don't import `Discovery` or `Config` directly | Compile-time |
+| No config content parsing as side effect | 1 + 6 |
+| Exit codes 0 / 1 / 2 / 3 | 3 |
+| Output shape verifiable | 5 + 6 + 7 |
+
+### Definition of done
+
+- [ ] All slices implemented in RED → GREEN order (no horizontal slicing).
+- [ ] `mise run test` passes.
+- [ ] `mise run lint` passes with no `#[allow]` without `reason`.
+- [ ] `mise run fmt` passes.
+- [ ] All public APIs have doc comments with `# Errors` sections.
+- [ ] No `unwrap()`/`expect()` outside test `Arrange` phases.
+- [ ] `#[allow(dead_code, ...)]` removed from all newly-wired types.
