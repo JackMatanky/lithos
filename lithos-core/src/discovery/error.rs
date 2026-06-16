@@ -22,7 +22,6 @@ use crate::fs::PathError;
 ///
 /// These errors typically indicate a configuration error (e.g., pointing to a
 /// missing directory) or a system-level issue (e.g., permission denied).
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
 pub enum DiscoveryError {
     /// Fatal error while validating explicit CLI flag overrides.
@@ -75,16 +74,6 @@ pub enum DiscoveryError {
 /// execution begins.
 ///
 /// [`DiscoveryServiceConfig`]: crate::discovery::service::DiscoveryServiceConfig
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
-#[allow(
-    clippy::enum_variant_names,
-    reason = "Variants are intentionally explicit — the error type describes \
-              WHAT is empty (vault patterns, global patterns, boundary \
-              markers)"
-)]
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceConfigError {
     /// Vault marker pattern list is empty.
@@ -99,10 +88,6 @@ pub enum ServiceConfigError {
 }
 
 /// Fatal errors produced by explicit CLI flag override validation.
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
 #[derive(Debug, thiserror::Error)]
 pub enum FlagOverrideError {
     /// Explicit config file override path does not exist on the filesystem.
@@ -139,10 +124,6 @@ pub enum FlagOverrideError {
 }
 
 /// Fatal errors produced by environment variable override validation.
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
 #[derive(Debug, thiserror::Error)]
 pub enum EnvironmentOverrideError {
     /// Config file path from environment does not exist on the filesystem.
