@@ -36,11 +36,11 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
         - [x] Create `SchemaReadError` wrapping `crate::fs::error::ReadError`
         - [x] Create `SchemaParseError` wrapping `crate::fs::error::ParseError`
         - [x] Update `SchemaIngestionError` to consolidate file/parse logic
-    - [ ] Phase 6b: Resolution Refactor <!-- id: 8 -->
+    - [x] Phase 6b: Resolution Refactor <!-- id: 8 -->
         - [x] Refine `SchemaInheritanceError` (graph cycles, missing nodes)
         - [x] Refine `SchemaResolutionError` (semantic conflicts, name duplicates)
-        - [ ] Ensure `Box<str>` usage and clean up redundant variants in callers
-        - [ ] Update all callers of inheritance/resolution errors
+        - [x] Ensure `Box<str>` usage and clean up redundant variants in callers
+        - [x] Update all callers of inheritance/resolution errors
     - [ ] Phase 6c: Orchestration Redesign <!-- id: 9 -->
         - [ ] Rename `SchemaLoaderError` -> `SchemaBuilderError`
         - [ ] Implement orchestration logic as primary pipeline error

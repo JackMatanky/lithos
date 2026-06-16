@@ -69,7 +69,10 @@ use crate::{
         bank::PropertyBank,
         delta::PropertyDeltaEngine,
         discovery::DiscoveryResult,
-        error::{SchemaError, SchemaIngestionError, SchemaLoaderError},
+        error::{
+            SchemaError, SchemaIngestionError, SchemaLoaderError,
+            SchemaResolutionError,
+        },
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
         index::{NameIdPairs, SchemaIndex},
@@ -625,6 +628,30 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
             view.current()
                 .is_some_and(|v| !v.changed_bank_references(delta).is_empty())
         })
+    }
+
+    fn resolve_extends(
+        raw: &RawSchema,
+        index: &SchemaIndex,
+    ) -> Result<Vec<SchemaId>, SchemaLoaderError> {
+        let mut parents = Vec::with_capacity(raw.extends().len());
+        for extends_name in raw.extends() {
+            if let Some(parent_id) = index.get_id_by_name(extends_name) {
+                parents.push(parent_id);
+            } else {
+                let child_name = SchemaName::try_new(raw.name())
+                    .map_err(SchemaLoaderError::Resolution)?;
+                return Err(SchemaLoaderError::Resolution(
+                    SchemaError::Resolution(
+                        SchemaResolutionError::ParentNotFound {
+                            child: child_name,
+                            parent: extends_name.clone(),
+                        },
+                    ),
+                ));
+            }
+        }
+        Ok(parents)
     }
 }
 
@@ -1489,12 +1516,9 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             };
 
             let new_parents: Vec<SchemaId> = match file_parsed {
-                FileParsedBranch::StaleParsed(stale) => stale
-                    .raw
-                    .extends()
-                    .iter()
-                    .filter_map(|name| index.get_id_by_name(name))
-                    .collect(),
+                FileParsedBranch::StaleParsed(stale) => {
+                    Self::resolve_extends(&stale.raw, &index)?
+                }
                 FileParsedBranch::Fresh(_)
                 | FileParsedBranch::StaleTimestamps(_) => {
                     old_parents.get(&id).cloned().unwrap_or_default()
@@ -1536,12 +1560,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 continue;
             };
 
-            let new_parents: Vec<SchemaId> = new
-                .raw
-                .extends()
-                .iter()
-                .filter_map(|name| index.get_id_by_name(name))
-                .collect();
+            let new_parents = Self::resolve_extends(&new.raw, &index)?;
 
             builder.add_node(
                 *id,
@@ -1587,6 +1606,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         let mut pairs = NameIdPairs::with_capacity(
             graph.graph().node_count().saturating_add(new_schemas.len()),
         );
+        let mut seen_names = HashMap::new();
 
         for (id, node) in graph.graph().iter() {
             if deleted_ids.contains(&id) {
@@ -1618,12 +1638,34 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             };
             let name = SchemaName::try_new(name)
                 .map_err(SchemaLoaderError::Resolution)?;
+
+            if seen_names.get(&name).is_some_and(|&eid| eid != id) {
+                return Err(SchemaLoaderError::Resolution(
+                    SchemaError::Resolution(
+                        SchemaResolutionError::DuplicateSchemaName {
+                            name: name.as_str().into(),
+                        },
+                    ),
+                ));
+            }
+            seen_names.insert(name.clone(), id);
             pairs.push((name, id));
         }
 
         for (id, new) in new_schemas.iter() {
             let name = SchemaName::try_new(new.raw.name())
                 .map_err(SchemaLoaderError::Resolution)?;
+
+            if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
+                return Err(SchemaLoaderError::Resolution(
+                    SchemaError::Resolution(
+                        SchemaResolutionError::DuplicateSchemaName {
+                            name: name.as_str().into(),
+                        },
+                    ),
+                ));
+            }
+            seen_names.insert(name.clone(), *id);
             pairs.push((name, *id));
         }
 
@@ -1651,16 +1693,26 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             new_schemas,
         } = self.status;
 
-        let index = SchemaIndex::from_name_id_pairs_only(
-            new_schemas
-                .iter()
-                .map(|(id, parsed)| {
-                    let name = SchemaName::try_new(parsed.raw.name())
-                        .map_err(SchemaLoaderError::Resolution)?;
-                    Ok((name, *id))
-                })
-                .collect::<Result<NameIdPairs, SchemaLoaderError>>()?,
-        );
+        let mut pairs = NameIdPairs::with_capacity(new_schemas.len());
+        let mut seen_names = HashMap::with_capacity(new_schemas.len());
+
+        for (id, parsed) in new_schemas.iter() {
+            let name = SchemaName::try_new(parsed.raw.name())
+                .map_err(SchemaLoaderError::Resolution)?;
+
+            if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
+                return Err(SchemaLoaderError::Resolution(
+                    SchemaError::Resolution(
+                        SchemaResolutionError::DuplicateSchemaName {
+                            name: name.as_str().into(),
+                        },
+                    ),
+                ));
+            }
+            seen_names.insert(name.clone(), *id);
+            pairs.push((name, *id));
+        }
+        let index = SchemaIndex::from_name_id_pairs_only(pairs);
 
         let mut builder = SchemaGraphBuilder::new();
 
@@ -1690,12 +1742,8 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
             reason = "Order not relevant for edge construction"
         )]
         for (id, payload) in &node_data {
-            for parent_id in payload
-                .raw
-                .extends()
-                .iter()
-                .filter_map(|extends| index.get_id_by_name(extends))
-            {
+            let new_parents = Self::resolve_extends(&payload.raw, &index)?;
+            for parent_id in new_parents {
                 builder.add_parent(*id, parent_id);
             }
         }

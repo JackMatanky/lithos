@@ -191,3 +191,8 @@ SchemaError (The Central Umbrella)
 ### Revised Domain Responsibilities:
 - **SchemaInheritanceError**: Solely responsible for graph-related constraints (cycles, missing nodes, depth limits, directed-graph violations).
 - **SchemaResolutionError**: Solely responsible for final entity resolution and conflict detection (duplicate names, missing parent-child link resolution failures, merge conflicts).
+
+## Phase 6b implementation notes
+- Updated `inheritance.rs` to propagate `GraphError` correctly via `Into::into()`.
+- Updated `schema_processor.rs` to return `SchemaResolutionError::ParentNotFound` when a parent is missing in `analyze_graph` and `build_new_graph`.
+- Updated `schema_processor.rs` to return `SchemaResolutionError::DuplicateSchemaName` in `build_resolution_index` and `build_new_graph`.
