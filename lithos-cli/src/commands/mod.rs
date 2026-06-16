@@ -5,3 +5,4 @@
 
 pub(crate) mod config;
 pub(crate) mod config_files;
+pub(crate) mod doctor;
