@@ -972,6 +972,40 @@ pub enum SchemaResolutionError {
     },
 }
 
+impl From<SchemaIngestionError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaIngestionError) -> Self {
+        match err {
+            SchemaIngestionError::Read(e) => {
+                Self::Builder(Box::new(SchemaBuilderError::Read(e)))
+            }
+            SchemaIngestionError::Parse(e) => {
+                Self::Builder(Box::new(SchemaBuilderError::Parse(e)))
+            }
+            SchemaIngestionError::Version(e) => {
+                Self::Builder(Box::new(SchemaBuilderError::Version(e)))
+            }
+            SchemaIngestionError::Repository(e) => {
+                Self::Repository(Box::new(e))
+            }
+            SchemaIngestionError::Schema {
+                path,
+                source,
+            } => Self::Builder(Box::new(SchemaBuilderError::Validation {
+                path,
+                source: Box::new(source),
+            })),
+        }
+    }
+}
+
+impl From<crate::fs::error::FsError> for SchemaError {
+    #[inline]
+    fn from(err: crate::fs::error::FsError) -> Self {
+        Self::from(SchemaIngestionError::from(err))
+    }
+}
+
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {
     #[inline]
     fn from(err: crate::fs::error::ParseError) -> Self {

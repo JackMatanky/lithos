@@ -78,7 +78,8 @@ use crate::{
             ExcludesDelta, ExtendsDelta, PropertyDelta, PropertyDeltaEngine,
         },
         error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
+            SchemaBuilderError, SchemaError, SchemaIngestionError,
+            SchemaRepositoryError,
         },
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
@@ -288,7 +289,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         source: &FileReader,
         repository: &R,
         bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+    ) -> Result<BaseSchemaResolution, SchemaError> {
         let empty_bank;
         let bank = if let Some(r) = bank_resolution {
             r.bank()
@@ -313,7 +314,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         source: &FileReader,
         repository: &R,
         bank: &PropertyBank,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+    ) -> Result<BaseSchemaResolution, SchemaError> {
         let (init_file, init_key, _) = processor.into_parts();
         let parsed = Self::transition_from_parts::<Parsed, Missing>(
             init_file, init_key, Missing,
@@ -343,7 +344,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         source: &FileReader,
         repository: &R,
         bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+    ) -> Result<BaseSchemaResolution, SchemaError> {
         let bank = if let Some(r) = bank_resolution {
             r.bank()
         } else {
@@ -353,13 +354,13 @@ impl BaseSchemaProcessor<Init, Unknown> {
 
         let schema_id = repository
             .find_schema_id_by_path(processor.status.view.path())
-            .map_err(SchemaLoaderError::Repository)?
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?
             .ok_or_else(|| {
-                SchemaLoaderError::Repository(
+                SchemaError::Repository(Box::new(
                     SchemaRepositoryError::NotFoundByPath(
                         processor.status.view.path().clone(),
                     ),
-                )
+                ))
             })?;
 
         match processor.check_timestamps(source, schema_id, bank_resolution)? {
@@ -390,7 +391,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
         repository: &R,
         bank: &PropertyBank,
         bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+    ) -> Result<BaseSchemaResolution, SchemaError> {
         match processor.check_content(bank_resolution) {
             ContentBranch::Match(stale_timestamps) => {
                 let fresh = stale_timestamps.sync_metadata(repository)?;
@@ -417,7 +418,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
     fn run_analysis<R: Repository>(
         branch: AnalysisBranch,
         repository: &R,
-    ) -> Result<BaseSchemaResolution, SchemaLoaderError> {
+    ) -> Result<BaseSchemaResolution, SchemaError> {
         match branch {
             AnalysisBranch::Empty(stale_content) => {
                 let fresh = stale_content.sync_metadata(repository)?;
@@ -571,7 +572,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
         source: &FileReader,
         id: SchemaId,
         bank_resolution: Option<&PropertyBankResolution>,
-    ) -> Result<TimestampBranch, SchemaLoaderError> {
+    ) -> Result<TimestampBranch, SchemaError> {
         let (file, path_key, status) = self.into_parts();
         let timestamps_match = status.view.is_timestamp_match(
             file.metadata().times().created_at(),
@@ -592,7 +593,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
             } else {
                 let content = source
                     .read_to_string(file.path().as_path())
-                    .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                    .map_err(SchemaError::from)?;
                 let content_hash = Blake3Hash::compute(content.as_bytes());
 
                 Ok(TimestampBranch::StaleRefs(Self::transition_from_parts(
@@ -610,7 +611,7 @@ impl BaseSchemaProcessor<Comparison, Present> {
         } else {
             let content = source
                 .read_to_string(file.path().as_path())
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                .map_err(SchemaError::from)?;
             Ok(TimestampBranch::Mismatch(Self::transition_from_parts(
                 file,
                 path_key,
@@ -762,29 +763,33 @@ impl BaseSchemaProcessor<Parsed, Missing> {
     fn parse(
         self,
         source: &FileReader,
-    ) -> Result<BaseSchemaProcessor<Parsed, ParsedMissing>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Parsed, ParsedMissing>, SchemaError> {
         let (file, path_key, _) = self.into_parts();
         let content = source
             .read_to_string(file.path().as_path())
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+            .map_err(SchemaError::from)?;
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                SchemaError::from(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },
                 ))
             })?)
-            .map_err(SchemaLoaderError::Resolution)?;
+            .map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
 
         let raw: RawSchema = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &content,
         )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        .map_err(SchemaError::from)?;
 
         let raw = raw
             .with_name(schema_name.as_str().into())
@@ -807,26 +812,30 @@ impl BaseSchemaProcessor<Parsed, Stale> {
     )]
     fn parse(
         self,
-    ) -> Result<BaseSchemaProcessor<Analysis, ParsedStale>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Analysis, ParsedStale>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                SchemaError::from(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },
                 ))
             })?)
-            .map_err(SchemaLoaderError::Resolution)?;
+            .map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
 
         let raw: RawSchema = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &status.content_str,
         )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        .map_err(SchemaError::from)?;
 
         let raw = raw
             .with_name(schema_name.as_str().into())
@@ -851,28 +860,31 @@ impl BaseSchemaProcessor<Parsed, StaleReferences> {
     )]
     fn parse(
         self,
-    ) -> Result<
-        BaseSchemaProcessor<Analysis, ParsedStaleReferences>,
-        SchemaLoaderError,
-    > {
+    ) -> Result<BaseSchemaProcessor<Analysis, ParsedStaleReferences>, SchemaError>
+    {
         let (file, path_key, status) = self.into_parts();
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
+                SchemaError::from(SchemaIngestionError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
                     },
                 ))
             })?)
-            .map_err(SchemaLoaderError::Resolution)?;
+            .map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
 
         let raw: RawSchema = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &status.content_str,
         )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        .map_err(SchemaError::from)?;
 
         let raw = raw
             .with_name(schema_name.as_str().into())
@@ -924,7 +936,7 @@ impl BaseSchemaProcessor<Analysis, ParsedStale> {
     fn analyze(
         self,
         bank: &PropertyBank,
-    ) -> Result<AnalysisBranch, SchemaLoaderError> {
+    ) -> Result<AnalysisBranch, SchemaError> {
         let (file, path_key, status) = self.into_parts();
 
         let Some(version) = status.view.current() else {
@@ -1028,7 +1040,7 @@ impl BaseSchemaProcessor<Analysis, ParsedStaleReferences> {
     fn analyze(
         self,
         bank: &PropertyBank,
-    ) -> Result<AnalysisBranch, SchemaLoaderError> {
+    ) -> Result<AnalysisBranch, SchemaError> {
         let (file, path_key, status) = self.into_parts();
 
         let Some(version) = status.view.current() else {
@@ -1146,13 +1158,12 @@ impl BaseSchemaProcessor<Refresh, StaleTimestamps> {
     fn sync_metadata<R: WriteRepository>(
         self,
         repository: &R,
-    ) -> Result<BaseSchemaProcessor<Construction, Fresh>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Construction, Fresh>, SchemaError> {
         let (file, path_key, mut status) = self.into_parts();
         status.view.update_metadata(file.metadata().clone());
         repository
             .save_raw_schema_view(status.id, &status.view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
             id: status.id,
@@ -1170,16 +1181,15 @@ impl BaseSchemaProcessor<Refresh, StaleContent> {
     fn sync_metadata<R: Repository>(
         self,
         repository: &R,
-    ) -> Result<BaseSchemaProcessor<Construction, Fresh>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Construction, Fresh>, SchemaError> {
         let (file, path_key, mut status) = self.into_parts();
         let version = {
             let current = status.view.current().ok_or_else(|| {
-                SchemaLoaderError::Repository(
+                SchemaError::Repository(Box::new(
                     SchemaRepositoryError::EmptyVersionHistory(
                         path_key.clone(),
                     ),
-                )
+                ))
             })?;
             let hashes = HashRecord::new(
                 status.content_hash,
@@ -1190,7 +1200,7 @@ impl BaseSchemaProcessor<Refresh, StaleContent> {
         status.view.add_version(version);
         repository
             .save_raw_schema_view(status.id, &status.view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, Fresh {
             id: status.id,
@@ -1262,24 +1272,39 @@ impl BaseSchemaProcessor<Construction, New> {
         self,
         repository: &R,
         bank: &PropertyBank,
-    ) -> Result<BaseSchemaProcessor<Completed, NewReady>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Completed, NewReady>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
 
         let expander = RefExpander::new(bank);
         let mut properties = expander
             .expand_properties(&status.raw.properties().ref_entries())
-            .map_err(SchemaLoaderError::Resolution)?;
+            .map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
         let inline_entries = status.raw.properties().inline_entries();
         if !inline_entries.is_empty() {
-            properties.extend(
-                PropertyMap::try_from(inline_entries)
-                    .map_err(SchemaLoaderError::Resolution)?,
-            );
+            properties.extend(PropertyMap::try_from(inline_entries).map_err(
+                |source| {
+                    SchemaError::Builder(Box::new(
+                        SchemaBuilderError::Validation {
+                            path: file.path().as_path().to_path_buf(),
+                            source: Box::new(source),
+                        },
+                    ))
+                },
+            )?);
         }
 
-        let schema_name = SchemaName::try_new(status.raw.name())
-            .map_err(SchemaLoaderError::Resolution)?;
+        let schema_name =
+            SchemaName::try_new(status.raw.name()).map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
 
         let base = BaseSchema::new(
             status.id,
@@ -1297,14 +1322,14 @@ impl BaseSchemaProcessor<Construction, New> {
             path_key.clone(),
             hashes,
         )
-        .map_err(SchemaLoaderError::Ingestion)?;
+        .map_err(SchemaError::from)?;
 
         repository
             .save_base_schema(&base)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
         repository
             .save_raw_schema_view(status.id, &view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
             id: status.id,
@@ -1326,14 +1351,15 @@ impl BaseSchemaProcessor<Construction, Fresh> {
     fn fetch<R: ReadRepository>(
         self,
         repository: &R,
-    ) -> Result<BaseSchemaProcessor<Completed, FreshReady>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Completed, FreshReady>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
-        let base =
-            repository.find_base_schema_by_id(status.id)?.ok_or_else(|| {
-                SchemaLoaderError::Repository(
+        let base = repository
+            .find_base_schema_by_id(status.id)
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?
+            .ok_or_else(|| {
+                SchemaError::Repository(Box::new(
                     SchemaRepositoryError::NotFoundById(status.id),
-                )
+                ))
             })?;
 
         Ok(Self::transition_from_parts(file, path_key, FreshReady {
@@ -1351,7 +1377,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if construction or repository access
+    /// Returns [`SchemaError`] if construction or repository access
     /// fails.
     #[cfg_attr(
         not(test),
@@ -1360,8 +1386,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
     fn update<R: Repository>(
         self,
         repository: &R,
-    ) -> Result<BaseSchemaProcessor<Completed, StaleReady>, SchemaLoaderError>
-    {
+    ) -> Result<BaseSchemaProcessor<Completed, StaleReady>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
         let schema_id = status.id;
 
@@ -1370,7 +1395,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
             HashRecord::new(status.content_hash, property_hashes.into());
         let version =
             SchemaVersion::new(file.metadata().clone(), hashes, &status.raw)
-                .map_err(SchemaLoaderError::Ingestion)?;
+                .map_err(SchemaError::from)?;
         let mut updated_view = status.view;
         updated_view.add_version(version);
 
@@ -1378,11 +1403,13 @@ impl BaseSchemaProcessor<Construction, Changed> {
         // not needed here: all ref-expansion and missing-bank handling happened
         // in analyze(). The property_delta already contains all required
         // upserts and removals.
-        let existing_base =
-            repository.find_base_schema_by_id(schema_id)?.ok_or_else(|| {
-                SchemaLoaderError::Repository(
+        let existing_base = repository
+            .find_base_schema_by_id(schema_id)
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?
+            .ok_or_else(|| {
+                SchemaError::Repository(Box::new(
                     SchemaRepositoryError::NotFoundById(schema_id),
-                )
+                ))
             })?;
 
         // Apply upserts with ID preservation, then apply removals.
@@ -1405,8 +1432,13 @@ impl BaseSchemaProcessor<Construction, Changed> {
             properties.remove(name);
         }
 
-        let schema_name = SchemaName::try_new(status.raw.name())
-            .map_err(SchemaLoaderError::Resolution)?;
+        let schema_name =
+            SchemaName::try_new(status.raw.name()).map_err(|err| {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
+                    path: file.path().as_path().to_path_buf(),
+                    source: Box::new(err),
+                }))
+            })?;
         let updated_base = BaseSchema::new(
             schema_id,
             schema_name,
@@ -1417,10 +1449,10 @@ impl BaseSchemaProcessor<Construction, Changed> {
 
         repository
             .save_base_schema(&updated_base)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
         repository
             .save_raw_schema_view(schema_id, &updated_view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, StaleReady {
             id: schema_id,

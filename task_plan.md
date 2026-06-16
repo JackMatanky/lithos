@@ -51,7 +51,7 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
         - [ ] Task 6c.3: Orchestration Layer Redesign (Incremental Migration)
             - [x] 6c.3.1: Define `SchemaBuilderError` and update `SchemaError` umbrella
             - [x] 6c.3.2: Migrate `SchemaDiscovery` & `SchemaDelta` (Low complexity)
-            - [ ] 6c.3.3: Migrate `PropertyBankProcessor` & `BaseSchemaProcessor` (Medium complexity)
+            - [x] 6c.3.3: Migrate `PropertyBankProcessor` & `BaseSchemaProcessor` (Medium complexity)
             - [ ] 6c.3.4: Migrate `SchemaProcessor` (High complexity - migration chunking)
         - [ ] Task 6c.4: Legacy Cleanup & Final Verification
             - [ ] 6c.4.1: Remove `SchemaIngestionError` & `SchemaLoaderError`

@@ -112,9 +112,7 @@ use crate::{
     schema::{
         bank::PropertyBank,
         delta::{PropertyDelta, PropertyDeltaEngine},
-        error::{
-            SchemaIngestionError, SchemaLoaderError, SchemaRepositoryError,
-        },
+        error::{SchemaBuilderError, SchemaError, SchemaRepositoryError},
         property::PropertyName,
         raw::RawPropertyBank,
         repository::{ReadRepository, Repository, WriteRepository},
@@ -261,7 +259,7 @@ impl PropertyBankProcessor<Init, Unknown> {
         view: Option<&RawPropertyBankView>,
         source: &FileReader,
         repository: &R,
-    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
+    ) -> Result<PropertyBankResolution, SchemaError> {
         if let Some(view) = view {
             let present =
                 self.transition(Comparison, Present::new(view.clone()));
@@ -278,7 +276,7 @@ impl PropertyBankProcessor<Init, Unknown> {
         processor: PropertyBankProcessor<Comparison, Present>,
         source: &FileReader,
         repository: &R,
-    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
+    ) -> Result<PropertyBankResolution, SchemaError> {
         match processor.check_timestamps(source)? {
             TimestampBranch::Match(fresh) => {
                 let completed = fresh.fetch(repository)?;
@@ -294,7 +292,7 @@ impl PropertyBankProcessor<Init, Unknown> {
     fn run_content_mismatch<R: Repository>(
         processor: PropertyBankProcessor<Comparison, Suspect>,
         repository: &R,
-    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
+    ) -> Result<PropertyBankResolution, SchemaError> {
         match processor.check_content() {
             ContentBranch::Match(stale_ts) => {
                 let fresh = stale_ts.sync_metadata(repository)?;
@@ -312,7 +310,7 @@ impl PropertyBankProcessor<Init, Unknown> {
     fn run_analysis<R: Repository>(
         branch: AnalysisBranch,
         repository: &R,
-    ) -> Result<PropertyBankResolution, SchemaLoaderError> {
+    ) -> Result<PropertyBankResolution, SchemaError> {
         match branch {
             AnalysisBranch::Empty(stale_content) => {
                 let fresh = stale_content.sync_metadata(repository)?;
@@ -396,13 +394,13 @@ impl PropertyBankProcessor<Comparison, Present> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the file cannot be read.
+    /// Returns [`SchemaError`] if the file cannot be read.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn check_timestamps(
         self,
         source: &FileReader,
-    ) -> Result<TimestampBranch, SchemaLoaderError> {
+    ) -> Result<TimestampBranch, SchemaError> {
         let (file, path_key, status) = self.into_parts();
         let timestamps_match = status.view.is_timestamp_match(
             file.metadata().times().created_at(),
@@ -416,7 +414,7 @@ impl PropertyBankProcessor<Comparison, Present> {
         } else {
             let content = source
                 .read_to_string(file.path().as_path())
-                .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+                .map_err(SchemaError::from)?;
 
             Ok(TimestampBranch::Mismatch(Self::transition_from_parts(
                 file,
@@ -506,24 +504,23 @@ impl PropertyBankProcessor<Parsed, Missing> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the file cannot be parsed.
+    /// Returns [`SchemaError`] if the file cannot be parsed.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn parse(
         self,
         source: &FileReader,
-    ) -> Result<PropertyBankProcessor<Construction, New>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Construction, New>, SchemaError> {
         let (file, path_key, _status) = self.into_parts();
         let content = source
             .read_to_string(file.path().as_path())
-            .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+            .map_err(SchemaError::from)?;
 
         let raw: RawPropertyBank = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &content,
         )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        .map_err(SchemaError::from)?;
 
         let raw = raw.with_metadata(file.metadata().clone());
         let content_hash = Blake3Hash::compute(content.as_bytes());
@@ -544,19 +541,18 @@ impl PropertyBankProcessor<Parsed, Stale> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if parsing fails.
+    /// Returns [`SchemaError`] if parsing fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn parse(
         self,
-    ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Analysis, ParsedStale>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
         let raw: RawPropertyBank = FileReader::parse_structured_from_str(
             file.path().as_path(),
             &status.content,
         )
-        .map_err(|e| SchemaLoaderError::Ingestion(e.into()))?;
+        .map_err(SchemaError::from)?;
 
         let raw = raw.with_metadata(file.metadata().clone());
 
@@ -682,19 +678,18 @@ impl PropertyBankProcessor<Refresh, StaleTimestamps> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails.
+    /// Returns [`SchemaError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaError> {
         self.status.view.update_metadata(self.file.metadata().clone());
 
         repository
             .save_raw_property_bank_view(&self.path_key, &self.status.view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(self.transition(Construction, Fresh))
     }
@@ -706,23 +701,22 @@ impl PropertyBankProcessor<Refresh, StaleContent> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails.
+    /// Returns [`SchemaError`] if the repository access fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn sync_metadata<R: WriteRepository>(
         mut self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Construction, Fresh>, SchemaError> {
         self.status.view.update_metadata(self.file.metadata().clone());
         self.status
             .view
             .update_content_hash(self.status.content_hash)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         repository
             .save_raw_property_bank_view(&self.path_key, &self.status.view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(self.transition(Construction, Fresh))
     }
@@ -764,15 +758,14 @@ impl PropertyBankProcessor<Construction, New> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if construction or repository access
+    /// Returns [`SchemaError`] if construction or repository access
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn create<R: WriteRepository>(
         self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Completed, NewReady>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
 
         let property_hashes = status.raw.properties().compute_hashes();
@@ -783,22 +776,22 @@ impl PropertyBankProcessor<Construction, New> {
             path_key.clone(),
             raw_hash,
         )
-        .map_err(SchemaLoaderError::Ingestion)?;
+        .map_err(SchemaError::from)?;
 
-        let bank = PropertyBank::try_from(status.raw).map_err(|source| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::Schema {
+        let bank = PropertyBank::try_from(status.raw).map_err(|err| {
+            SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
                 path: std::path::PathBuf::from("property_bank"),
-                source,
-            })
+                source: Box::new(err),
+            }))
         })?;
 
         repository
             .save_property_bank(&bank)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         repository
             .save_raw_property_bank_view(&path_key, &view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, NewReady {
             bank,
@@ -814,27 +807,26 @@ impl PropertyBankProcessor<Construction, Changed> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if construction or repository access
+    /// Returns [`SchemaError`] if construction or repository access
     /// fails.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn update<R: Repository>(
         self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Completed, StaleReady>, SchemaError> {
         let (file, path_key, status) = self.into_parts();
         let (raw, delta, content_hash) =
             (status.raw, status.delta, status.content_hash);
 
         let mut bank = repository
             .get_property_bank()
-            .map_err(SchemaLoaderError::Repository)?
-            .ok_or(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::Repository(
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?
+            .ok_or_else(|| {
+                SchemaError::Repository(Box::new(
                     SchemaRepositoryError::PropertyBankNotFound,
-                ),
-            ))?;
+                ))
+            })?;
 
         if !delta.is_empty() {
             let existing = bank.set_properties();
@@ -859,15 +851,15 @@ impl PropertyBankProcessor<Construction, Changed> {
             path_key.clone(),
             raw_hash,
         )
-        .map_err(SchemaLoaderError::Ingestion)?;
+        .map_err(SchemaError::from)?;
 
         repository
             .save_property_bank(&bank)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         repository
             .save_raw_property_bank_view(&path_key, &view)
-            .map_err(SchemaLoaderError::Repository)?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?;
 
         Ok(Self::transition_from_parts(file, path_key, StaleReady {
             bank,
@@ -884,21 +876,22 @@ impl PropertyBankProcessor<Construction, Fresh> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaLoaderError`] if the repository access fails or the bank
+    /// Returns [`SchemaError`] if the repository access fails or the bank
     /// is missing.
     #[inline]
     #[must_use = "state transitions must be used to continue the pipeline"]
     fn fetch<R: ReadRepository>(
         self,
         repository: &R,
-    ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaLoaderError>
-    {
+    ) -> Result<PropertyBankProcessor<Completed, FreshReady>, SchemaError> {
         let bank = repository
             .get_property_bank()
-            .map_err(SchemaLoaderError::Repository)?
-            .ok_or(SchemaIngestionError::Repository(
-                SchemaRepositoryError::PropertyBankNotFound,
-            ))?;
+            .map_err(|e| SchemaError::Repository(Box::new(e)))?
+            .ok_or_else(|| {
+                SchemaError::Repository(Box::new(
+                    SchemaRepositoryError::PropertyBankNotFound,
+                ))
+            })?;
 
         Ok(self.transition(Completed, FreshReady {
             bank,
