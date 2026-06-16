@@ -29,12 +29,14 @@
 //! encounters issues, or template processing errors occur. Errors are reported
 //! via `miette` with contextual information.
 
+mod cli;
 mod error;
+
+use clap::Parser as _;
 
 /// The main entry point for the Lithos application.
 ///
 /// Initializes the CLI, parses arguments, and runs the application logic.
-/// Currently prints a greeting and exits successfully.
 ///
 /// # Errors
 ///
@@ -47,20 +49,11 @@ mod error;
 /// use `tokio::task::spawn_blocking` to keep async at the edges.
 #[expect(
     clippy::unnecessary_wraps,
-    reason = "Result type reserved for future error handling"
+    reason = "Result return type reserved for future error propagation from \
+              command handlers"
 )]
 fn main() -> miette::Result<()> {
-    #[expect(
-        clippy::let_underscore_untyped,
-        reason = "Command line matches are ignored for now as we only use \
-                  this to trigger --help/--version"
-    )]
-    let _ = clap::Command::new("lithos")
-        .version("0.1.0")
-        .about("A CLI-first templating and schema system for Obsidian vaults")
-        .ignore_errors(true) // Ignore test flags when running as a unit test
-        .get_matches();
-
+    let _cli = cli::Cli::parse();
     tracing::info!("Hello, Lithos!");
     Ok(())
 }
@@ -72,11 +65,13 @@ fn main() -> miette::Result<()> {
               intent clear."
 )]
 mod tests {
-    use super::main;
+    use clap::Parser as _;
+
+    use crate::cli::Cli;
 
     #[test]
-    fn main_runs_successfully() {
-        let result = main();
+    fn main_parses_doctor_subcommand_successfully() {
+        let result = Cli::try_parse_from(["lithos", "doctor"]);
         assert!(result.is_ok());
     }
 }
