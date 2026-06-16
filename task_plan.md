@@ -45,9 +45,9 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
         - [x] Task 6c.1: String Transition & Type Hardening <!-- id: 9 -->
             - [x] 6c.1.1: Replace `Box<str>` with `String` in `error.rs`
             - [x] 6c.1.2: Propagate `String` transition through `schema` module (raw types, processors, views)
-        - [ ] Task 6c.2: Circularity & Repository Refactor
-            - [ ] 6c.2.1: Remove `Domain(SchemaError)` from `SchemaRepositoryError`
-            - [ ] 6c.2.2: Audit and fix Repository usages in `schema/storage/` and `schema_processor.rs`
+        - [x] Task 6c.2: Circularity & Repository Refactor
+            - [x] 6c.2.1: Remove `Domain(SchemaError)` from `SchemaRepositoryError`
+            - [x] 6c.2.2: Audit and fix Repository usages in `schema/storage/` and `schema_processor.rs`
         - [ ] Task 6c.3: Orchestration Layer Redesign (Incremental Migration)
             - [ ] 6c.3.1: Define `SchemaBuilderError` and update `SchemaError` umbrella
             - [ ] 6c.3.2: Migrate `SchemaDiscovery` & `SchemaDelta` (Low complexity)

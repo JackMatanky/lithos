@@ -202,10 +202,6 @@ pub enum SchemaRepositoryError {
     #[error(transparent)]
     Storage(#[from] DbError),
 
-    /// Returned when domain validation fails while saving or loading.
-    #[error(transparent)]
-    Domain(#[from] SchemaError),
-
     /// Returned when an expected entity is missing by ID.
     #[error("schema not found: {0}")]
     NotFoundById(crate::schema::identifier::SchemaId),
