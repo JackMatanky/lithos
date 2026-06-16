@@ -9,3 +9,5 @@
 - Phase 6: In progress
     - Phase 6a: Ingestion Refactor - COMPLETED
     - Phase 6b: Resolution Refactor - COMPLETED
+- Phase 6c: Orchestration Redesign - PENDING
+- Phase 7: Verification - PENDING
