@@ -49,7 +49,7 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
             - [x] 6c.2.1: Remove `Domain(SchemaError)` from `SchemaRepositoryError`
             - [x] 6c.2.2: Audit and fix Repository usages in `schema/storage/` and `schema_processor.rs`
         - [ ] Task 6c.3: Orchestration Layer Redesign (Incremental Migration)
-            - [ ] 6c.3.1: Define `SchemaBuilderError` and update `SchemaError` umbrella
+            - [x] 6c.3.1: Define `SchemaBuilderError` and update `SchemaError` umbrella
             - [ ] 6c.3.2: Migrate `SchemaDiscovery` & `SchemaDelta` (Low complexity)
             - [ ] 6c.3.3: Migrate `PropertyBankProcessor` & `BaseSchemaProcessor` (Medium complexity)
             - [ ] 6c.3.4: Migrate `SchemaProcessor` (High complexity - migration chunking)

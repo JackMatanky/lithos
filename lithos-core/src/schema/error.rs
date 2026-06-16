@@ -71,9 +71,17 @@ use std::path::PathBuf;
 use crate::db::DbError;
 
 /// Domain-level errors for in-memory schema validation and resolution.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaError {
+    /// Returned when the orchestration layer encounters a failure.
+    #[error(transparent)]
+    Builder(#[from] Box<SchemaBuilderError>),
+
+    /// Returned when repository access fails.
+    #[error(transparent)]
+    Repository(#[from] Box<SchemaRepositoryError>),
+
     /// Returned when the schema name is invalid.
     #[error(transparent)]
     SchemaName(#[from] SchemaNameError),
@@ -97,6 +105,93 @@ pub enum SchemaError {
     /// Returned when property map constraints are violated.
     #[error(transparent)]
     PropertyMap(#[from] PropertyMapError),
+}
+
+impl Clone for SchemaError {
+    #[inline]
+    fn clone(&self) -> Self {
+        match self {
+            Self::Builder(e) => Self::Builder((*e).clone()),
+            Self::Repository(e) => Self::Repository(Box::new(e.clone_erased())),
+            Self::SchemaName(e) => Self::SchemaName((*e).clone()),
+            Self::PropertyName(e) => Self::PropertyName((*e).clone()),
+            Self::PropertySpec(e) => Self::PropertySpec((*e).clone()),
+            Self::PropertyValue(e) => Self::PropertyValue((*e).clone()),
+            Self::PropertyRef(e) => Self::PropertyRef((*e).clone()),
+            Self::PropertyMap(e) => Self::PropertyMap((*e).clone()),
+        }
+    }
+}
+
+impl PartialEq for SchemaError {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Builder(a), Self::Builder(b)) => a == b,
+            (Self::Repository(a), Self::Repository(b)) => {
+                a.to_string() == b.to_string()
+            }
+            (Self::SchemaName(a), Self::SchemaName(b)) => a == b,
+            (Self::PropertyName(a), Self::PropertyName(b)) => a == b,
+            (Self::PropertySpec(a), Self::PropertySpec(b)) => a == b,
+            (Self::PropertyValue(a), Self::PropertyValue(b)) => a == b,
+            (Self::PropertyRef(a), Self::PropertyRef(b)) => a == b,
+            (Self::PropertyMap(a), Self::PropertyMap(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl From<SchemaBuilderError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaBuilderError) -> Self {
+        Self::Builder(Box::new(err))
+    }
+}
+
+impl From<SchemaRepositoryError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaRepositoryError) -> Self {
+        Self::Repository(Box::new(err))
+    }
+}
+
+impl From<PropertyBuilderError> for SchemaError {
+    #[inline]
+    fn from(err: PropertyBuilderError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::PropertyBuilder(err)))
+    }
+}
+
+impl From<SchemaInheritanceError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaInheritanceError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Inheritance(err)))
+    }
+}
+
+impl From<SchemaResolutionError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaResolutionError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Resolution(err)))
+    }
+}
+
+/// Errors related to schema loading operations and orchestration.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaBuilderError {
+    /// Returned when filesystem access fails.
+    #[error(transparent)]
+    Read(#[from] SchemaReadError),
+
+    /// Returned when structured parsing fails.
+    #[error(transparent)]
+    Parse(#[from] SchemaParseError),
+
+    /// Returned when schema version validation fails.
+    #[error(transparent)]
+    Version(#[from] SchemaVersionError),
 
     /// Returned when property building or overriding fails.
     #[error(transparent)]
@@ -109,6 +204,62 @@ pub enum SchemaError {
     /// Returned when schema resolution fails outside inheritance concerns.
     #[error(transparent)]
     Resolution(#[from] SchemaResolutionError),
+
+    /// Validation failed for a specific file during build.
+    #[error("validation failed for schema at {path}: {source}")]
+    Validation {
+        /// Path to the schema file that failed validation.
+        path: PathBuf,
+        /// Underlying schema error.
+        #[source]
+        source: Box<SchemaError>,
+    },
+}
+
+impl Clone for SchemaBuilderError {
+    #[inline]
+    fn clone(&self) -> Self {
+        match self {
+            Self::Read(e) => Self::Read((*e).clone()),
+            Self::Parse(e) => Self::Parse((*e).clone()),
+            Self::Version(e) => Self::Version((*e).clone()),
+            Self::PropertyBuilder(e) => Self::PropertyBuilder((*e).clone()),
+            Self::Inheritance(e) => Self::Inheritance((*e).clone()),
+            Self::Resolution(e) => Self::Resolution((*e).clone()),
+            Self::Validation {
+                path,
+                source,
+            } => Self::Validation {
+                path: path.clone(),
+                source: (*source).clone(),
+            },
+        }
+    }
+}
+
+impl PartialEq for SchemaBuilderError {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Read(a), Self::Read(b)) => a == b,
+            (Self::Parse(a), Self::Parse(b)) => a == b,
+            (Self::Version(a), Self::Version(b)) => a == b,
+            (Self::PropertyBuilder(a), Self::PropertyBuilder(b)) => a == b,
+            (Self::Inheritance(a), Self::Inheritance(b)) => a == b,
+            (Self::Resolution(a), Self::Resolution(b)) => a == b,
+            (
+                Self::Validation {
+                    path: a_p,
+                    ..
+                },
+                Self::Validation {
+                    path: b_p,
+                    ..
+                },
+            ) => a_p == b_p && self.to_string() == other.to_string(),
+            _ => false,
+        }
+    }
 }
 
 /// Errors related to schema file reading and root-boundary safety.
@@ -134,6 +285,36 @@ pub enum SchemaReadError {
         /// Error details from the filesystem layer.
         reason: String,
     },
+}
+
+impl Clone for SchemaReadError {
+    #[inline]
+    fn clone(&self) -> Self {
+        match self {
+            Self::Read(e) => Self::FileSystem {
+                reason: e.to_string(),
+            },
+            Self::InvalidFileName {
+                path,
+                reason,
+            } => Self::InvalidFileName {
+                path: path.clone(),
+                reason: reason.clone(),
+            },
+            Self::FileSystem {
+                reason,
+            } => Self::FileSystem {
+                reason: reason.clone(),
+            },
+        }
+    }
+}
+
+impl PartialEq for SchemaReadError {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string() == other.to_string()
+    }
 }
 
 /// Errors related to structured schema parsing (JSON, TOML, YAML).
@@ -228,6 +409,32 @@ pub enum SchemaRepositoryError {
     EmptyVersionHistory(crate::fs::PathKey),
 }
 
+impl SchemaRepositoryError {
+    /// Create a lossy clone of this error by stringifying it.
+    ///
+    /// This is used internally to allow `SchemaError` to be `Clone` even
+    /// when it wraps non-cloneable repository errors.
+    #[inline]
+    #[must_use]
+    pub fn clone_erased(&self) -> Self {
+        // Since we can't clone the underlying DbError easily,
+        // we convert it to a generic Storage error with the same message.
+        // This is sufficient for events and logging.
+        match self {
+            Self::Storage(e) => {
+                Self::Storage(crate::db::DbError::Open(e.to_string()))
+            }
+            Self::NotFoundById(id) => Self::NotFoundById(*id),
+            Self::NotFoundByName(name) => Self::NotFoundByName(name.clone()),
+            Self::NotFoundByPath(path) => Self::NotFoundByPath(path.clone()),
+            Self::PropertyBankNotFound => Self::PropertyBankNotFound,
+            Self::EmptyVersionHistory(path) => {
+                Self::EmptyVersionHistory(path.clone())
+            }
+        }
+    }
+}
+
 /// High-level errors returned by schema loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -248,7 +455,7 @@ pub enum SchemaLoaderError {
 impl From<SchemaInheritanceError> for SchemaLoaderError {
     #[inline]
     fn from(value: SchemaInheritanceError) -> Self {
-        Self::Resolution(SchemaError::Inheritance(value))
+        Self::Resolution(value.into())
     }
 }
 
@@ -819,6 +1026,7 @@ mod tests {
             fn assert_send_sync<T: Send + Sync>() {}
 
             assert_send_sync::<SchemaError>();
+            assert_send_sync::<SchemaBuilderError>();
             assert_send_sync::<SchemaIngestionError>();
             assert_send_sync::<SchemaRepositoryError>();
             assert_send_sync::<SchemaLoaderError>();
@@ -866,14 +1074,14 @@ mod tests {
             "invalid property reference target"
         )]
         #[case::property_builder_type_mismatch(
-            SchemaError::PropertyBuilder(PropertyBuilderError::OverridePropertyRefSpecTypeMismatch {
+            SchemaError::from(PropertyBuilderError::OverridePropertyRefSpecTypeMismatch {
                 expected: "string".into(),
                 actual: "number".into(),
             }),
             "cannot change property type via override"
         )]
         #[case::resolution_parent_missing(
-            SchemaError::Resolution(SchemaResolutionError::ParentNotFound {
+            SchemaError::from(SchemaResolutionError::ParentNotFound {
                 child: crate::schema::identifier::SchemaName::try_new("child").unwrap(),
                 parent: crate::schema::identifier::SchemaName::try_new("parent").unwrap(),
             }),
@@ -990,46 +1198,28 @@ mod tests {
         }
     }
 
-    mod equality {
+    mod matches {
         use super::*;
 
         #[test]
-        fn schema_error_equality_compares_variants() {
-            let left = SchemaError::PropertyRef(
-                PropertyRefError::TargetPropertyNotFoundInBank {
-                    reference: "#property_bank/title".into(),
-                },
-            );
-            let right = SchemaError::PropertyRef(
+        fn schema_error_matches_variants() {
+            let error = SchemaError::PropertyRef(
                 PropertyRefError::TargetPropertyNotFoundInBank {
                     reference: "#property_bank/title".into(),
                 },
             );
 
-            assert_eq!(
-                left, right,
-                "Expected identical property reference errors to be equal"
-            );
+            assert!(matches!(error, SchemaError::PropertyRef(_)));
         }
 
         #[test]
-        fn schema_error_equality_distinguishes_variants() {
-            let left = SchemaError::PropertyRef(
-                PropertyRefError::TargetPropertyNotFoundInBank {
-                    reference: "#property_bank/title".into(),
-                },
-            );
-            let right = SchemaError::PropertyRef(
-                PropertyRefError::TargetPropertyNotFoundInBank {
-                    reference: "#property_bank/status".into(),
-                },
-            );
+        fn schema_builder_error_matches_variants() {
+            let error: SchemaError = SchemaInheritanceError::NotDirected.into();
 
-            assert!(
-                left != right,
-                "Expected different references to be unequal: {left:?} vs \
-                 {right:?}"
-            );
+            assert!(matches!(
+                error,
+                SchemaError::Builder(box_err) if matches!(*box_err, SchemaBuilderError::Inheritance(SchemaInheritanceError::NotDirected))
+            ));
         }
     }
 

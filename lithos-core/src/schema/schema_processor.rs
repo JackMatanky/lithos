@@ -641,14 +641,12 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
             } else {
                 let child_name = SchemaName::try_new(raw.name())
                     .map_err(SchemaLoaderError::Resolution)?;
-                return Err(SchemaLoaderError::Resolution(
-                    SchemaError::Resolution(
-                        SchemaResolutionError::ParentNotFound {
-                            child: child_name,
-                            parent: extends_name.clone(),
-                        },
-                    ),
-                ));
+                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                    SchemaResolutionError::ParentNotFound {
+                        child: child_name,
+                        parent: extends_name.clone(),
+                    },
+                )));
             }
         }
         Ok(parents)
@@ -1639,13 +1637,11 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 .map_err(SchemaLoaderError::Resolution)?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != id) {
-                return Err(SchemaLoaderError::Resolution(
-                    SchemaError::Resolution(
-                        SchemaResolutionError::DuplicateSchemaName {
-                            name: name.as_str().into(),
-                        },
-                    ),
-                ));
+                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                    SchemaResolutionError::DuplicateSchemaName {
+                        name: name.as_str().into(),
+                    },
+                )));
             }
             seen_names.insert(name.clone(), id);
             pairs.push((name, id));
@@ -1656,13 +1652,11 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                 .map_err(SchemaLoaderError::Resolution)?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
-                return Err(SchemaLoaderError::Resolution(
-                    SchemaError::Resolution(
-                        SchemaResolutionError::DuplicateSchemaName {
-                            name: name.as_str().into(),
-                        },
-                    ),
-                ));
+                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                    SchemaResolutionError::DuplicateSchemaName {
+                        name: name.as_str().into(),
+                    },
+                )));
             }
             seen_names.insert(name.clone(), *id);
             pairs.push((name, *id));
@@ -1700,13 +1694,11 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
                 .map_err(SchemaLoaderError::Resolution)?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
-                return Err(SchemaLoaderError::Resolution(
-                    SchemaError::Resolution(
-                        SchemaResolutionError::DuplicateSchemaName {
-                            name: name.as_str().into(),
-                        },
-                    ),
-                ));
+                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                    SchemaResolutionError::DuplicateSchemaName {
+                        name: name.as_str().into(),
+                    },
+                )));
             }
             seen_names.insert(name.clone(), *id);
             pairs.push((name, *id));
@@ -2070,9 +2062,9 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             },
         )?;
 
-        let topo_order = next_graph.topo_order().map_err(|e| {
-            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-        })?;
+        let topo_order = next_graph
+            .topo_order()
+            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
 
         for id in topo_order {
             if affected.contains(&id) && !rebuild_ids.contains(&id) {
@@ -2373,9 +2365,9 @@ impl SchemaProcessor<Construction, Analyzed> {
         let mut constructed_cache: HashMap<SchemaId, Arc<Schema>> =
             HashMap::new();
 
-        let topo_order = graph.topo_order().map_err(|e| {
-            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-        })?;
+        let topo_order = graph
+            .topo_order()
+            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
@@ -2716,9 +2708,9 @@ impl SchemaProcessor<Construction, NewBuild> {
         let expander = RefExpander::new(property_bank);
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        let topo_order = graph.topo_order().map_err(|e| {
-            SchemaLoaderError::Resolution(SchemaError::Inheritance(e))
-        })?;
+        let topo_order = graph
+            .topo_order()
+            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
@@ -2819,9 +2811,8 @@ impl SchemaProcessor<Construction, NewBuild> {
         }
 
         let inheritance_graph =
-            InheritanceGraph::try_from(persist_builder.build()).map_err(
-                |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
-            )?;
+            InheritanceGraph::try_from(persist_builder.build())
+                .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
         repository
             .save_topological_graph(&inheritance_graph)
             .map_err(SchemaLoaderError::Repository)?;
@@ -2875,9 +2866,8 @@ impl SchemaProcessor<Construction, Constructed> {
         }
 
         let inheritance_graph =
-            InheritanceGraph::try_from(persist_builder.build()).map_err(
-                |e| SchemaLoaderError::Resolution(SchemaError::Inheritance(e)),
-            )?;
+            InheritanceGraph::try_from(persist_builder.build())
+                .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
 
         repository
             .save_topological_graph(&inheritance_graph)

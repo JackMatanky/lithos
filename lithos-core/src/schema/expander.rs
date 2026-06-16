@@ -241,7 +241,7 @@ impl<'bank> RefExpander<'bank> {
 
 #[inline]
 fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
-    SchemaError::PropertyBuilder(
+    SchemaError::from(
         PropertyBuilderError::OverridePropertyRefSpecTypeMismatch {
             expected: expected.into(),
             actual: actual.into(),
@@ -379,7 +379,7 @@ mod tests {
             assert!(
                 matches!(
                     result,
-                    Err(SchemaError::PropertyBuilder(
+                    Err(SchemaError::Builder(ref box_err)) if matches!(**box_err, crate::schema::error::SchemaBuilderError::PropertyBuilder(
                         crate::schema::error::PropertyBuilderError::OverridePropertyRefSpecTypeMismatch { .. }
                     ))
                 ),

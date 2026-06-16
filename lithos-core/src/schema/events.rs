@@ -41,7 +41,6 @@ use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 use tracing::{debug, error, info, warn};
 
 use super::{
-    error::SchemaError,
     identifier::{SchemaId, SchemaName},
     property::{PropertyId, PropertyName},
 };
@@ -491,7 +490,7 @@ pub enum SchemaEvent {
         /// Schema name that failed validation.
         name: String,
         /// Validation error details.
-        error: SchemaError,
+        error: String,
     },
 
     /// Resolution error during schema processing.
@@ -499,7 +498,7 @@ pub enum SchemaEvent {
         /// Schema name that failed resolution.
         name: String,
         /// Resolution error details.
-        error: SchemaError,
+        error: String,
     },
 }
 
@@ -1213,13 +1212,15 @@ mod handler_tests {
             name: "bad".into(),
             error: crate::schema::error::SchemaError::SchemaName(
                 crate::schema::error::SchemaNameError::NameIsEmpty,
-            ),
+            )
+            .to_string(),
         });
         handler.handle_schema(&SchemaEvent::ResolutionError {
             name: "bad".into(),
             error: crate::schema::error::SchemaError::SchemaName(
                 crate::schema::error::SchemaNameError::NameIsEmpty,
-            ),
+            )
+            .to_string(),
         });
     }
 
