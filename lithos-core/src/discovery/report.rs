@@ -9,7 +9,6 @@ use std::path::PathBuf;
 /// suppressed. Use [`DiscoveryReport::default`] as the zero-value when
 /// constructing a fresh processor.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub struct DiscoveryReport {
     /// Ceiling path segments ignored during traversal setup.
     pub skipped_ceilings: Vec<SkippedCeiling>,
@@ -21,7 +20,6 @@ pub struct DiscoveryReport {
 
 /// A ceiling segment that could not be used for traversal bounds.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub struct SkippedCeiling {
     /// Raw segment after path-list splitting.
     pub segment: PathBuf,
@@ -31,7 +29,6 @@ pub struct SkippedCeiling {
 
 /// Reasons a ceiling path-list segment is ignored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub enum SkippedCeilingReason {
     /// Segment was empty after trimming.
     EmptySegment,
@@ -45,7 +42,6 @@ pub enum SkippedCeilingReason {
 /// represents the normal termination condition when no other stop reason is
 /// set.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub enum LocalTraversalStopReason {
     /// Traversal did not run because an explicit config file was supplied.
     ExplicitConfigFile,
@@ -66,7 +62,6 @@ pub enum LocalTraversalStopReason {
 
 /// Reasons global resolution was intentionally skipped.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub enum GlobalResolutionSkipReason {
     /// Invocation used `--no-global-config`.
     SuppressedByFlag,

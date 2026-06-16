@@ -17,7 +17,6 @@ use crate::{
 /// this type guarantees the anchor, flag paths, and environment paths are
 /// filesystem-valid.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub struct DiscoveryContext<'a> {
     /// Active path anchor supplied by the Bootstrapper.
     anchor: DirPath,
@@ -27,7 +26,6 @@ pub struct DiscoveryContext<'a> {
     env: DiscoveryEnv<'a>,
 }
 
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl<'a> DiscoveryContext<'a> {
     /// Creates a discovery invocation context from the filesystem anchor.
     ///
@@ -105,7 +103,6 @@ impl<'a> DiscoveryContext<'a> {
 /// filesystem validity. The default value has no overrides and does not
 /// suppress global config lookup.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub struct DiscoveryFlags {
     /// Config file path supplied by CLI.
     config_file: Option<FilePath>,
@@ -115,7 +112,6 @@ pub struct DiscoveryFlags {
     suppress_global: bool,
 }
 
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl DiscoveryFlags {
     /// Creates CLI-derived discovery invocation fields.
     ///
@@ -214,7 +210,6 @@ impl DiscoveryFlags {
 /// because it is split and validated later during traversal setup. The
 /// default value has no overrides and no ceiling data.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 pub struct DiscoveryEnv<'a> {
     /// Config file path supplied by environment.
     config_file: Option<FilePath>,
@@ -224,7 +219,6 @@ pub struct DiscoveryEnv<'a> {
     ceiling_dirs_raw: Option<&'a OsStr>,
 }
 
-#[allow(dead_code, reason = "Contract slice; wired into discovery later")]
 impl<'a> DiscoveryEnv<'a> {
     /// Creates environment-derived discovery invocation fields.
     ///

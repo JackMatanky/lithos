@@ -26,10 +26,6 @@ use crate::{
 /// The `base` directory is the starting point used to resolve `path`
 /// during a traversal or global probe pass.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder; CLI wiring pending"
-)]
 pub struct CandidatePath {
     /// Base directory used to resolve the candidate.
     base: DirPath,
@@ -37,10 +33,6 @@ pub struct CandidatePath {
     path: FilePath,
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder; CLI wiring pending"
-)]
 impl CandidatePath {
     /// Creates a validated discovery candidate path.
     #[inline]
@@ -78,11 +70,6 @@ type DiscoveryResultParts = (Box<[CandidatePath]>, Box<[CandidatePath]>);
 /// point, so `Box<[T]>` communicates immutability and avoids carrying
 /// unused `Vec` capacity into downstream callers.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder via into_parts(); CLI \
-              wiring pending"
-)]
 pub struct DiscoveryResult {
     /// Ordered vault-local candidates.
     vault: Box<[CandidatePath]>,
@@ -90,11 +77,6 @@ pub struct DiscoveryResult {
     global: Box<[CandidatePath]>,
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder via into_parts(); CLI \
-              wiring pending"
-)]
 impl DiscoveryResult {
     /// Creates discovery output from ordered vault and global candidates.
     #[inline]
@@ -139,10 +121,6 @@ impl DiscoveryResult {
 /// and traversal policy. Per-invocation state like `suppress_global`,
 /// explicit paths, and anchor directory belong in
 /// [`DiscoveryContext`](crate::discovery::context::DiscoveryContext).
-#[allow(
-    dead_code,
-    reason = "Consumed by DiscoveryService::new(); CLI wiring pending"
-)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DiscoveryServiceConfig {
     /// Ordered marker patterns for vault/local config candidates.
@@ -169,10 +147,6 @@ impl Default for DiscoveryServiceConfig {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by DiscoveryService::new(); CLI wiring pending"
-)]
 impl DiscoveryServiceConfig {
     /// Validates internal consistency of the configuration.
     ///
@@ -200,20 +174,12 @@ impl DiscoveryServiceConfig {
 /// consistent. No discovery execution happens at construction time.
 ///
 /// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
-#[allow(
-    dead_code,
-    reason = "Wired into Bootstrapper<DiscoveryService>; CLI wiring pending"
-)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DiscoveryService {
     /// Stable service configuration.
     config: DiscoveryServiceConfig,
 }
 
-#[allow(
-    dead_code,
-    reason = "Wired into Bootstrapper<DiscoveryService>; CLI wiring pending"
-)]
 impl DiscoveryService {
     /// Constructs a validated discovery service from the given config.
     ///
