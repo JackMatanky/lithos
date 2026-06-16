@@ -4,3 +4,4 @@
 //! the handler function, local port traits for testability, and unit tests.
 
 pub(crate) mod config;
+pub(crate) mod config_files;
