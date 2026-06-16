@@ -713,6 +713,7 @@ dependencies = [
  "clap",
  "lithos-core",
  "miette",
+ "tempfile",
  "thiserror",
  "tracing",
 ]

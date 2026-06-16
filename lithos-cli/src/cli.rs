@@ -66,7 +66,7 @@ pub(crate) enum ConfigSubcommand {
 }
 
 /// Output format requested by the caller.
-#[derive(Clone, Debug, Default, PartialEq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, ValueEnum)]
 pub(crate) enum OutputFormat {
     /// Human-readable, coloured terminal output.
     #[default]

@@ -30,6 +30,7 @@
 //! via `miette` with contextual information.
 
 mod cli;
+mod commands;
 mod error;
 
 use clap::Parser as _;

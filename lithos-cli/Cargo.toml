@@ -27,5 +27,8 @@ tracing.workspace = true
 # If async is needed later for parallel operations, add it back and use
 # tokio::task::spawn_blocking to keep async at edges only
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
