@@ -30,7 +30,7 @@ not_found_auto_install = true
 fetch_remote_versions_cache = "1h"
 fetch_remote_versions_timeout = "10s"
 use_versions_host = true
-trusted_config_paths = ["{{config_root}}"]
+# trusted_config_paths = ["{{config_root}}"]
 
 # ------------------------------------------------------------- #
 #                       ENVIRONMENT                             #
