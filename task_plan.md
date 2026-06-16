@@ -42,13 +42,25 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
         - [x] Ensure `Box<str>` usage and clean up redundant variants in callers
         - [x] Update all callers of inheritance/resolution errors
     - [ ] Phase 6c: Orchestration Redesign <!-- id: 9 -->
-        - [ ] Rename `SchemaLoaderError` -> `SchemaBuilderError`
-        - [ ] Implement orchestration logic as primary pipeline error
-        - [ ] Final update to `SchemaError` umbrella
-- [ ] Phase 7: Verification <!-- id: 6 -->
+        - [ ] Task 6c.1: String Transition & Type Hardening
+            - [ ] 6c.1.1: Replace `Box<str>` with `String` in `error.rs`
+            - [ ] 6c.1.2: Propagate `String` transition through `schema` module (raw types, processors, views)
+        - [ ] Task 6c.2: Circularity & Repository Refactor
+            - [ ] 6c.2.1: Remove `Domain(SchemaError)` from `SchemaRepositoryError`
+            - [ ] 6c.2.2: Audit and fix Repository usages in `schema/storage/` and `schema_processor.rs`
+        - [ ] Task 6c.3: Orchestration Layer Redesign (Incremental Migration)
+            - [ ] 6c.3.1: Define `SchemaBuilderError` and update `SchemaError` umbrella
+            - [ ] 6c.3.2: Migrate `SchemaDiscovery` & `SchemaDelta` (Low complexity)
+            - [ ] 6c.3.3: Migrate `PropertyBankProcessor` & `BaseSchemaProcessor` (Medium complexity)
+            - [ ] 6c.3.4: Migrate `SchemaProcessor` (High complexity - migration chunking)
+        - [ ] Task 6c.4: Legacy Cleanup & Final Verification
+            - [ ] 6c.4.1: Remove `SchemaIngestionError` & `SchemaLoaderError`
+            - [ ] 6c.4.2: Final Audit of Error Mapping & Documentation
+    - [ ] Phase 7: Verification <!-- id: 6 -->
 
 ## Strategy
 1. **Remove Duplication**: Replace internal `SchemaReadError` and `SchemaParseError` by importing `ParseError` and `ReadError` from `crate::fs::error` and mapping them via `SchemaIngestionError`.
 2. **Domain Purity**: `SchemaError` remains the central umbrella for semantic failures.
 3. **Hexagonal Ports**: `SchemaRepositoryError` handles outbound persistence failures.
 4. **Service Layer**: `SchemaBuilderError` orchestrates pipeline failures.
+5. **Commit Strategy**: Stage and commit changes frequently (after every task or logical sub-step) using the `/caveman-commit` skill to ensure a clean, incremental history.

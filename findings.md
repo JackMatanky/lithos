@@ -192,7 +192,97 @@ SchemaError (The Central Umbrella)
 - **SchemaInheritanceError**: Solely responsible for graph-related constraints (cycles, missing nodes, depth limits, directed-graph violations).
 - **SchemaResolutionError**: Solely responsible for final entity resolution and conflict detection (duplicate names, missing parent-child link resolution failures, merge conflicts).
 
-## Phase 6b implementation notes
+### Phase 6c.1 Implementation Design: String Transition
+We are replacing `Box<str>` with `String` throughout the `schema` module.
+- `error.rs`: All variant fields.
+- `identifier.rs`, `property.rs`: Newtype wrappers for names.
+- `raw/*.rs`: All raw schema input types.
+- `processors/*.rs`: All processor state and logic.
+
+### Phase 6c.2 Implementation Design: Circularity & Repository
+- **Circularity**: `SchemaRepositoryError` currently wraps `SchemaError`. Since the new `SchemaError` will be the top-level umbrella wrapping `SchemaRepositoryError`, we must remove `Domain(SchemaError)` from `SchemaRepositoryError`.
+- **Audit**: Grep shows no explicit usages of `SchemaRepositoryError::Domain` in the `schema` module. It was likely added for future-proofing or is used implicitly via `#[from]`. We will verify this during Task 6c.2.2.
+
+### Phase 6c.3 Implementation Design: Orchestration Layer
+
+#### Mapping Logic
+The migration will follow this mapping from the legacy `SchemaLoaderError` / `SchemaIngestionError` to the new `SchemaError` umbrella:
+
+| Legacy Construction | New Construction |
+| :--- | :--- |
+| `SchemaLoaderError::Ingestion(SchemaIngestionError::Read(e))` | `SchemaError::Builder(SchemaBuilderError::Read(e))` |
+| `SchemaLoaderError::Ingestion(SchemaIngestionError::Parse(e))` | `SchemaError::Builder(SchemaBuilderError::Parse(e))` |
+| `SchemaLoaderError::Ingestion(SchemaIngestionError::Version(e))` | `SchemaError::Builder(SchemaBuilderError::Version(e))` |
+| `SchemaLoaderError::Ingestion(SchemaIngestionError::Schema { path, source })` | `SchemaError::Builder(SchemaBuilderError::Validation { path, source })` |
+| `SchemaLoaderError::Repository(e)` | `SchemaError::Repository(e)` |
+| `SchemaLoaderError::Resolution(e)` | `SchemaError::Builder(SchemaBuilderError::Resolution(e))` |
+| `SchemaIngestionError::Repository(e)` | `SchemaError::Repository(e)` |
+
+#### `SchemaBuilderError` Structure
+```rust
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaBuilderError {
+    #[error(transparent)]
+    Read(#[from] SchemaReadError),
+
+    #[error(transparent)]
+    Parse(#[from] SchemaParseError),
+
+    #[error(transparent)]
+    Version(#[from] SchemaVersionError),
+
+    #[error(transparent)]
+    PropertyBuilder(#[from] PropertyBuilderError),
+
+    #[error(transparent)]
+    Inheritance(#[from] SchemaInheritanceError),
+
+    #[error(transparent)]
+    Resolution(#[from] SchemaResolutionError),
+
+    /// Validation failed for a specific file during build.
+    #[error("validation failed for schema at {path}: {source}")]
+    Validation {
+        path: PathBuf,
+        #[source]
+        source: Box<SchemaError>, // Boxed to break recursion
+    },
+}
+```
+
+#### `SchemaError` Umbrella Structure
+```rust
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaError {
+    #[error(transparent)]
+    Builder(#[from] Box<SchemaBuilderError>), // Boxed for recursion safety
+
+    #[error(transparent)]
+    Repository(#[from] Box<SchemaRepositoryError>),
+
+    #[error(transparent)]
+    SchemaName(#[from] SchemaNameError),
+
+    #[error(transparent)]
+    PropertyName(#[from] PropertyNameError),
+
+    #[error(transparent)]
+    PropertySpec(#[from] PropertySpecError),
+
+    #[error(transparent)]
+    PropertyValue(#[from] PropertyValueError),
+
+    #[error(transparent)]
+    PropertyRef(#[from] PropertyRefError),
+
+    #[error(transparent)]
+    PropertyMap(#[from] PropertyMapError),
+}
+```
+
+## Phase 6c.1 implementation notes
 - Updated `inheritance.rs` to propagate `GraphError` correctly via `Into::into()`.
 - Updated `schema_processor.rs` to return `SchemaResolutionError::ParentNotFound` when a parent is missing in `analyze_graph` and `build_new_graph`.
 - Updated `schema_processor.rs` to return `SchemaResolutionError::DuplicateSchemaName` in `build_resolution_index` and `build_new_graph`.

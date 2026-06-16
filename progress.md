@@ -9,5 +9,9 @@
 - Phase 6: In progress
     - Phase 6a: Ingestion Refactor - COMPLETED
     - Phase 6b: Resolution Refactor - COMPLETED
-- Phase 6c: Orchestration Redesign - PENDING
+- Phase 6c: Orchestration Redesign - IN_PROGRESS
+    - Task 6c.1: String Transition & Type Hardening - IN_PROGRESS
+    - Task 6c.2: Circularity & Repository Refactor - PENDING
+    - Task 6c.3: Orchestration Layer Redesign - PENDING
+    - Task 6c.4: Legacy Cleanup & Final Verification - PENDING
 - Phase 7: Verification - PENDING
