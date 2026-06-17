@@ -8,18 +8,7 @@
 //! On failure, a "failed" section is still written to `out`, and the error is
 //! returned so that the CLI exit code can be set appropriately.
 
-// Private helper functions and public-facing items in this module are wired
-// to the CLI dispatch layer in a later slice. Until then they appear unused
-// in non-test builds.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "doctor handler helpers are wired to main() in the dispatch \
-                  slice; marked forward-declared per the incremental slice \
-                  plan"
-    )
-)]
+// This module is wired to the CLI dispatch layer in main.rs.
 
 use std::{
     io::Write,
@@ -56,10 +45,6 @@ use crate::{
     reason = "handler signature matches the CLI dispatch protocol: runner, \
               discovery flags, anchor, output format, verbosity, stdout, \
               stderr"
-)]
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
 )]
 pub(crate) fn run_doctor(
     runner: &impl BootstrapRunner,

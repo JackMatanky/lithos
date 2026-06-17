@@ -7,18 +7,7 @@
 //! Structured output is written to `out`; verbose diagnostics (skipped
 //! ceilings, stop reason) are written to `err`.
 
-// Private helper functions and public-facing items in this module are wired
-// to the CLI dispatch layer in a later slice. Until then they appear unused
-// in non-test builds.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "config handler helpers are wired to main() in the dispatch \
-                  slice; marked forward-declared per the incremental slice \
-                  plan"
-    )
-)]
+// This module is wired to the CLI dispatch layer in main.rs.
 
 use std::{
     io::Write,
@@ -45,10 +34,6 @@ use crate::{cli::OutputFormat, error::CliError};
 /// Bundles the resolved [`Config`], the [`DiscoveryReport`], and the
 /// discovered config file paths so that the handler can format output
 /// without knowing how discovery or config loading works internally.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
-)]
 pub(crate) struct BootstrapOutcome {
     /// The fully-resolved configuration.
     pub(crate) config: Config,
@@ -65,10 +50,6 @@ pub(crate) struct BootstrapOutcome {
 /// Implement this trait on a concrete runner (e.g. a wrapper around
 /// [`lithos_core::app::bootstrap::Bootstrapper`]) and pass it to
 /// [`run_config`].  In tests, provide a [`MockBootstrapRunner`] instead.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
-)]
 pub(crate) trait BootstrapRunner {
     /// Runs the full bootstrap pipeline (discovery → config build).
     ///
@@ -101,10 +82,6 @@ pub(crate) trait BootstrapRunner {
     reason = "handler signature matches the CLI dispatch protocol: runner, \
               discovery flags, anchor, output format, verbosity, stdout, \
               stderr"
-)]
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
 )]
 pub(crate) fn run_config(
     runner: &impl BootstrapRunner,

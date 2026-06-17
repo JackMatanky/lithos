@@ -10,18 +10,7 @@
 //! that should never block shell completion scripts or other tooling that
 //! pipes its output.
 
-// Private helper functions and public-facing items in this module are wired
-// to the CLI dispatch layer in a later slice. Until then they appear unused
-// in non-test builds.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "config files handler helpers are wired to main() in the \
-                  dispatch slice; marked forward-declared per the incremental \
-                  slice plan"
-    )
-)]
+// This module is wired to the CLI dispatch layer in main.rs.
 
 use std::{
     io::Write,
@@ -51,10 +40,6 @@ use crate::{cli::OutputFormat, error::CliError};
 /// The handler only holds a `DiscoveryRunner` reference, not a
 /// `BootstrapRunner`, which structurally prevents it from calling the full
 /// bootstrap `run()` method.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
-)]
 pub(crate) trait DiscoveryRunner {
     /// Runs discovery only (without config loading) and returns the raw result
     /// and report.
@@ -85,10 +70,6 @@ pub(crate) trait DiscoveryRunner {
 /// of propagating them.  The `lithos config files` command is designed to
 /// always exit 0 so that shell completion scripts and other tooling that
 /// pipes its output are never blocked.
-#[cfg_attr(
-    not(test),
-    allow(dead_code, reason = "wired to main() in the dispatch slice")
-)]
 pub(crate) fn run_config_files(
     runner: &impl DiscoveryRunner,
     flags: Option<DiscoveryFlags>,

@@ -51,14 +51,6 @@ impl CliError {
     ///   PermissionDenied` → 3
     /// - [`BootstrapError::Config`] → 2
     /// - All other variants → 2
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "exit_code() is wired to main() in Slice 8; \
-                      forward-declared here per the incremental slice plan"
-        )
-    )]
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
             Self::Bootstrap(BootstrapError::Discovery(discovery_err)) => {

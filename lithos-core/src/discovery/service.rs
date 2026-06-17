@@ -173,9 +173,15 @@ impl DiscoveryServiceConfig {
 /// Construction validates that the provided configuration is internally
 /// consistent. No discovery execution happens at construction time.
 ///
+/// This type is `pub` so that external crates can name the concrete
+/// bootstrapper type returned by [`Bootstrapper::from_platform`].
+/// Construction is still restricted to crate-internal code via the
+/// `pub(crate)` [`DiscoveryService::new`] constructor.
+///
 /// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
+/// [`Bootstrapper::from_platform`]: crate::app::bootstrap::Bootstrapper::from_platform
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct DiscoveryService {
+pub struct DiscoveryService {
     /// Stable service configuration.
     config: DiscoveryServiceConfig,
 }
@@ -197,6 +203,7 @@ impl DiscoveryService {
 }
 
 impl DiscoveryPort for DiscoveryService {
+    #[inline]
     fn discover(
         &self,
         context: &DiscoveryContext<'_>,

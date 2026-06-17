@@ -69,7 +69,7 @@ pub use report::{
     DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
     SkippedCeiling, SkippedCeilingReason,
 };
-pub use service::{CandidatePath, DiscoveryResult};
+pub use service::{CandidatePath, DiscoveryResult, DiscoveryService};
 
 /// Diagnostics and warnings during discovery.
 pub(super) mod diagnostics;
