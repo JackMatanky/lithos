@@ -1,6 +1,8 @@
 # `walkdir` Crate: Struct `DirEntry`
 
-[Source](https://docs.rs/walkdir/2.5.0/walkdir/struct.DirEntry.html)
+Source: <https://docs.rs/walkdir/2.5.0/walkdir/struct.DirEntry.html>
+
+---
 
 ```rust
 pub struct DirEntry { /* private fields */ }
@@ -22,19 +24,27 @@ This type mostly mirrors the type by the same name in [`std::fs`](https://doc.ru
 
 ### `impl DirEntry`
 
+#### `pub fn path(&self) -> &Path`
+
 The full path that this entry represents.
 
 The full path is created by joining the parents of this entry up to the root initially given to [`WalkDir::new`](https://docs.rs/walkdir/2.5.0/walkdir/struct.WalkDir.html#method.new) with the file name of this entry.
 
 Note that this _always_ returns the path reported by the underlying directory entry, even when symbolic links are followed. To get the target path, use [`path_is_symlink`](https://docs.rs/walkdir/2.5.0/walkdir/struct.DirEntry.html#method.path_is_symlink) to (cheaply) check if this entry corresponds to a symbolic link, and [`std::fs::read_link`](https://doc.rust-lang.org/stable/std/fs/fn.read_link.html) to resolve the target.
 
+#### `pub fn into_path(self) -> PathBuf`
+
 The full path that this entry represents.
 
 Analogous to [`path`](https://docs.rs/walkdir/2.5.0/walkdir/struct.DirEntry.html#method.path), but moves ownership of the path.
 
+#### `pub fn path_is_symlink(&self) -> bool`
+
 Returns `true` if and only if this entry was created from a symbolic link. This is unaffected by the [`follow_links`](https://docs.rs/walkdir/2.5.0/walkdir/struct.WalkDir.html#method.follow_links) setting.
 
 When `true`, the value returned by the [`path`](https://docs.rs/walkdir/2.5.0/walkdir/struct.DirEntry.html#method.path) method is a symbolic link name. To get the full target path, you must call [`std::fs::read_link(entry.path())`](https://doc.rust-lang.org/stable/std/fs/fn.read_link.html).
+
+#### `pub fn metadata(&self) -> Result<Metadata>`
 
 Return the metadata for the file that this entry points to.
 
@@ -50,15 +60,21 @@ If this entry is a symbolic link and [`follow_links`](https://docs.rs/walkdir/2.
 
 Similar to [`std::fs::metadata`](https://doc.rust-lang.org/std/fs/fn.metadata.html), returns errors for path values that the program does not have permissions to access or if the path does not exist.
 
+#### `pub fn file_type(&self) -> FileType`
+
 Return the file type for the file that this entry points to.
 
 If this is a symbolic link and [`follow_links`](https://docs.rs/walkdir/2.5.0/walkdir/struct.WalkDir.html#method.follow_links) is `true`, then this returns the type of the target.
 
 This never makes any system calls.
 
+#### `pub fn file_name(&self) -> &OsStr`
+
 Return the file name of this entry.
 
 If this entry has no file name (e.g., `/`), then the full path is returned.
+
+#### `pub fn depth(&self) -> usize`
 
 Returns the depth at which this entry was created relative to the root.
 
@@ -66,102 +82,166 @@ The smallest depth is `0` and always corresponds to the path given to the `new` 
 
 ## Trait Implementations
 
-### impl Clone for DirEntry
+### `impl Clone for DirEntry`
+
+#### `fn clone(&self) -> DirEntry`
 
 Returns a duplicate of the value. [Read more](https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#tymethod.clone)
 
-#### fn clone_from(&mut self, source: &Self)
+#### `fn clone_from(&mut self, source: &Self)`
 
 Performs copy-assignment from `source`. [Read more](https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html#method.clone_from)
 
-### impl Debug for DirEntry
+### `impl Debug for DirEntry`
+
+#### `fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result`
 
 Formats the value using the given formatter. [Read more](https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html#tymethod.fmt)
 
-### impl DirEntryExt for DirEntry
+### `impl DirEntryExt for DirEntry`
 
 Available on **Unix** only.
+
+#### `fn ino(&self) -> u64`
 
 Returns the underlying `d_ino` field in the contained `dirent` structure.
 
 ## Auto Trait Implementations
 
+### `impl Freeze for DirEntry`
+
+### `impl RefUnwindSafe for DirEntry`
+
+### `impl Send for DirEntry`
+
+### `impl Sync for DirEntry`
+
+### `impl Unpin for DirEntry`
+
+### `impl UnsafeUnpin for DirEntry`
+
+### `impl UnwindSafe for DirEntry`
+
 ## Blanket Implementations
 
-[Source](https://doc.rust-lang.org/nightly/src/core/any.rs.html#138)
+### `impl<T> Any for T`
 
-### impl<T> Any for Twhere T: 'static +?Sized,
+```rust
+impl<T> Any for T
+where
+    T: 'static + ?Sized,
+```
+
+#### `fn type_id(&self) -> TypeId`
 
 Gets the `TypeId` of `self`. [Read more](https://doc.rust-lang.org/nightly/core/any/trait.Any.html#tymethod.type_id)
 
-[Source](https://doc.rust-lang.org/nightly/src/core/borrow.rs.html#212)
+### `impl<T> Borrow<T> for T`
 
-### impl<T> Borrow<T> for Twhere T:?Sized,
+```rust
+impl<T> Borrow<T> for T
+where
+    T: ?Sized,
+```
+
+#### `fn borrow(&self) -> &T`
 
 Immutably borrows from an owned value. [Read more](https://doc.rust-lang.org/nightly/core/borrow/trait.Borrow.html#tymethod.borrow)
 
-[Source](https://doc.rust-lang.org/nightly/src/core/borrow.rs.html#221)
+### `impl<T> BorrowMut<T> for T`
 
-### impl<T> BorrowMut<T> for Twhere T:?Sized,
+```rust
+impl<T> BorrowMut<T> for T
+where
+    T: ?Sized,
+```
 
-[Source](https://doc.rust-lang.org/nightly/src/core/borrow.rs.html#222)
-
-#### fn borrow_mut(&mut self) -> &mut T
+#### `fn borrow_mut(&mut self) -> &mut T`
 
 Mutably borrows from an owned value. [Read more](https://doc.rust-lang.org/nightly/core/borrow/trait.BorrowMut.html#tymethod.borrow_mut)
 
-[Source](https://doc.rust-lang.org/nightly/src/core/clone.rs.html#515)
+### `impl<T> CloneToUninit for T`
 
-### impl<T> CloneToUninit for Twhere T: Clone,
+```rust
+impl<T> CloneToUninit for T
+where
+    T: Clone,
+```
+
+#### `unsafe fn clone_to_uninit(&self, dest: *mut u8)`
 
 🔬This is a nightly-only experimental API. (`clone_to_uninit`)
 
 Performs copy-assignment from `self` to `dest`. [Read more](https://doc.rust-lang.org/nightly/core/clone/trait.CloneToUninit.html#tymethod.clone_to_uninit)
 
-[Source](https://doc.rust-lang.org/nightly/src/core/convert/mod.rs.html#785)
+### `impl<T> From<T> for T`
 
-### impl<T> From<T> for T
-
-[Source](https://doc.rust-lang.org/nightly/src/core/convert/mod.rs.html#788)
-
-#### fn from(t: T) -> T
+#### `fn from(t: T) -> T`
 
 Returns the argument unchanged.
 
-### impl<T, U> Into<U> for Twhere U: From<T>,
+### `impl<T, U> Into<U> for T`
 
-[Source](https://doc.rust-lang.org/nightly/src/core/convert/mod.rs.html#777)
+```rust
+impl<T, U> Into<U> for T
+where
+    U: From<T>,
+```
 
-#### fn into(self) -> U
+#### `fn into(self) -> U`
 
 Calls `U::from(self)`.
 
 That is, this conversion is whatever the implementation of `From<T> for U` chooses to do.
 
-### impl<T> ToOwned for Twhere T: Clone,
+### `impl<T> ToOwned for T`
 
-[Source](https://doc.rust-lang.org/nightly/src/alloc/borrow.rs.html#89)
+```rust
+impl<T> ToOwned for T
+where
+    T: Clone,
+```
 
-#### type Owned = T
+#### `type Owned = T`
 
 The resulting type after obtaining ownership.
 
-[Source](https://doc.rust-lang.org/nightly/src/alloc/borrow.rs.html#90)
-
-#### fn to_owned(&self) -> T
+#### `fn to_owned(&self) -> T`
 
 Creates owned data from borrowed data, usually by cloning. [Read more](https://doc.rust-lang.org/nightly/alloc/borrow/trait.ToOwned.html#tymethod.to_owned)
 
+#### `fn clone_into(&self, target: &mut T)`
+
 Uses borrowed data to replace owned data, usually by cloning. [Read more](https://doc.rust-lang.org/nightly/alloc/borrow/trait.ToOwned.html#method.clone_into)
 
-### impl<T, U> TryFrom<U> for Twhere U: Into<T>,
+### `impl<T, U> TryFrom<U> for T`
+
+```rust
+impl<T, U> TryFrom<U> for T
+where
+    U: Into<T>,
+```
+
+#### `type Error = Infallible`
 
 The type returned in the event of a conversion error.
+
+#### `fn try_from(value: U) -> Result<T, <T as TryFrom<U>>::Error>`
 
 Performs the conversion.
 
-### impl<T, U> TryInto<U> for Twhere U: TryFrom<T>,
+### `impl<T, U> TryInto<U> for T`
+
+```rust
+impl<T, U> TryInto<U> for T
+where
+    U: TryFrom<T>,
+```
+
+#### `type Error = <U as TryFrom<T>>::Error`
 
 The type returned in the event of a conversion error.
+
+#### `fn try_into(self) -> Result<U, <U as TryFrom<T>>::Error>`
 
 Performs the conversion.
