@@ -366,10 +366,11 @@ pub(crate) struct Fresh {
 
 impl TemplateProcessor<Construction, New> {
     #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
-    pub(crate) fn create(
+    pub(crate) fn create<R: WriteRepository>(
         self,
+        repository: &R,
         template_root: &std::path::Path,
-    ) -> Result<(Template, RawTemplateView), TemplateError> {
+    ) -> Result<Template, TemplateError> {
         let name =
             TemplateName::try_new(self.file.path().as_ref(), template_root)?;
         let template = Template::new(
@@ -386,57 +387,45 @@ impl TemplateProcessor<Construction, New> {
             self.file.metadata().clone(),
             std::time::SystemTime::now(),
         );
-        Ok((template, view))
-    }
 
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
-    pub(crate) fn persist<R: WriteRepository>(
-        repository: &R,
-        template: &Template,
-        view: &RawTemplateView,
-    ) -> Result<(), TemplateError> {
         repository
-            .save_template(template)
+            .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(view)
+            .save_raw_template_view(&view)
             .map_err(TemplateError::Repository)?;
-        Ok(())
+
+        Ok(template)
     }
 }
 
 impl TemplateProcessor<Construction, Changed> {
     #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
-    pub(crate) fn update(
+    pub(crate) fn update<R: WriteRepository>(
         self,
+        repository: &R,
         id: TemplateId,
         template_root: &std::path::Path,
     ) -> Result<Template, TemplateError> {
         let name =
             TemplateName::try_new(self.file.path().as_ref(), template_root)?;
-        Ok(Template::new(
+        let template = Template::new(
             id,
             self.path_key,
             name,
             crate::template::aggregate::TemplateBody::try_new(
                 self.status.raw.into_inner(),
             )?,
-        ))
-    }
+        );
 
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
-    pub(crate) fn persist<R: WriteRepository>(
-        repository: &R,
-        template: &Template,
-        view: &RawTemplateView,
-    ) -> Result<(), TemplateError> {
         repository
-            .save_template(template)
+            .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(view)
+            .save_raw_template_view(&self.status.view)
             .map_err(TemplateError::Repository)?;
-        Ok(())
+
+        Ok(template)
     }
 }
 
@@ -967,7 +956,8 @@ mod tests {
             let reader = FileReader::new(parent);
             let parsed = processor.parse(&reader).expect("parse content");
 
-            let result = parsed.create(std::path::Path::new("/"));
+            let repo = InMemoryRepository::new();
+            let result = parsed.create(&repo, std::path::Path::new("/"));
             assert!(
                 result.is_err(),
                 "Expected error when creating template from empty content"
@@ -999,16 +989,11 @@ mod tests {
                 _phase: PhantomData,
             };
 
-            let (template, view) = processor
-                .create(std::path::Path::new("/"))
+            let repo = InMemoryRepository::new();
+            let template = processor
+                .create(&repo, std::path::Path::new("/"))
                 .expect("create template");
             assert_eq!(*template.id(), id);
-
-            let repo = InMemoryRepository::new();
-            TemplateProcessor::<Construction, New>::persist(
-                &repo, &template, &view,
-            )
-            .expect("persist successful");
 
             assert_eq!(
                 *repo.find_template_by_path(&path_key).unwrap().unwrap().id(),
@@ -1018,7 +1003,7 @@ mod tests {
         }
 
         #[test]
-        fn persist_propagates_repository_error_during_template_storage() {
+        fn create_propagates_repository_error_during_template_storage() {
             let (file, path_key, _temp) =
                 fixtures::valid_file_node("test.md", "content");
             let processor = TemplateProcessor::<Construction, New> {
@@ -1034,17 +1019,11 @@ mod tests {
                 _phase: PhantomData,
             };
 
-            let (template, view) =
-                processor.create(std::path::Path::new("/")).unwrap();
-
             let repo_with_fail = InMemoryRepository::new()
                 .with_failure_injector(Box::new(fixtures::FailOnWrite));
 
-            let result = TemplateProcessor::<Construction, New>::persist(
-                &repo_with_fail,
-                &template,
-                &view,
-            );
+            let result =
+                processor.create(&repo_with_fail, std::path::Path::new("/"));
             assert!(
                 result.is_err(),
                 "Expected repository error to be propagated"
@@ -1066,8 +1045,10 @@ mod tests {
                 _phase: PhantomData,
             };
 
+            let repo = InMemoryRepository::new();
             // Root is sibling to file path, so file is not under root
-            let result = processor.create(std::path::Path::new("/other-root"));
+            let result =
+                processor.create(&repo, std::path::Path::new("/other-root"));
             assert!(result.is_err());
             assert!(matches!(result.unwrap_err(), TemplateError::Name(_)));
         }
@@ -1104,15 +1085,10 @@ mod tests {
                 _phase: PhantomData,
             };
 
-            let template = processor
-                .update(id, std::path::Path::new("/"))
-                .expect("update template");
             let repo = InMemoryRepository::new();
-
-            TemplateProcessor::<Construction, Changed>::persist(
-                &repo, &template, &view,
-            )
-            .expect("persist successful");
+            let _template = processor
+                .update(&repo, id, std::path::Path::new("/"))
+                .expect("update template");
 
             assert_eq!(
                 *repo.find_template_by_path(&path_key).unwrap().unwrap().id(),
