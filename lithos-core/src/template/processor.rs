@@ -2,6 +2,8 @@
 //!
 //! Implements a dual-typestate processor for discovering, comparing, and
 //! constructing template aggregates from filesystem entries.
+#![allow(dead_code, reason = "Unused during feature development")]
+#![allow(unused_imports, reason = "Unused during feature development")]
 
 use std::marker::PhantomData;
 
@@ -21,61 +23,61 @@ use crate::{
 // Typestate Markers (Visibility: private)
 // ============================================================================
 
-#[allow(dead_code)]
-struct Discovery;
-#[allow(dead_code)]
-struct Comparison;
-#[allow(dead_code)]
-struct Parsed;
-#[allow(dead_code)]
-struct Refresh;
-#[allow(dead_code)]
-struct Construction;
-#[allow(dead_code)]
-struct StaleMetadata {
-    view: RawTemplateView,
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Discovery;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Comparison;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Parsed;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Refresh;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Construction;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct StaleMetadata {
+    pub(crate) view: RawTemplateView,
 }
-#[allow(dead_code)]
-struct New {
-    content_hash: Blake3Hash,
-    raw: RawTemplate,
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct New {
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) raw: RawTemplate,
 }
-#[allow(dead_code)]
-struct Changed {
-    content_hash: Blake3Hash,
-    raw: RawTemplate,
-    view: RawTemplateView,
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Changed {
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) raw: RawTemplate,
+    pub(crate) view: RawTemplateView,
 }
-#[allow(dead_code)]
-struct Stale {
-    content_str: String,
-    content_hash: Blake3Hash,
-    view: RawTemplateView,
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Stale {
+    pub(crate) content_str: String,
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) view: RawTemplateView,
 }
-#[allow(dead_code)]
-struct Completed;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Completed;
 
-#[allow(dead_code)]
-struct Discovered;
+#[allow(dead_code, reason = "Used in typestate pattern")]
+pub(crate) struct Discovered;
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-struct Missing;
+pub(crate) struct Missing;
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-struct Present {
-    view: RawTemplateView,
+pub(crate) struct Present {
+    pub(crate) view: RawTemplateView,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-struct Fresh;
+pub(crate) struct Fresh;
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-struct Suspect {
-    view: RawTemplateView,
+pub(crate) struct Suspect {
+    pub(crate) view: RawTemplateView,
 }
 
 // ============================================================================
@@ -180,7 +182,7 @@ impl TemplateProcessor<Comparison, Present> {
 
 enum ContentBranch {
     Match(TemplateProcessor<Construction, Completed>),
-    Mismatch(TemplateProcessor<Parsed, Stale>),
+    Mismatch(Box<TemplateProcessor<Parsed, Stale>>),
 }
 
 impl TemplateProcessor<Comparison, Suspect> {
@@ -201,11 +203,14 @@ impl TemplateProcessor<Comparison, Suspect> {
             Ok(ContentBranch::Match(self.transition(Construction, Completed)))
         } else {
             let view = self.status.view.clone();
-            Ok(ContentBranch::Mismatch(self.transition(Parsed, Stale {
-                content_str: content,
-                content_hash: hash,
-                view,
-            })))
+            Ok(ContentBranch::Mismatch(Box::new(self.transition(
+                Parsed,
+                Stale {
+                    content_str: content,
+                    content_hash: hash,
+                    view,
+                },
+            ))))
         }
     }
 }
@@ -231,11 +236,8 @@ impl TemplateProcessor<Parsed, Missing> {
 }
 
 impl TemplateProcessor<Parsed, Stale> {
-    fn parse(
-        self,
-    ) -> Result<TemplateProcessor<Construction, Changed>, TemplateReadError>
-    {
-        Ok(TemplateProcessor {
+    fn parse(self) -> TemplateProcessor<Construction, Changed> {
+        TemplateProcessor {
             file: self.file,
             path_key: self.path_key,
             status: Changed {
@@ -244,7 +246,7 @@ impl TemplateProcessor<Parsed, Stale> {
                 view: self.status.view,
             },
             _phase: PhantomData,
-        })
+        }
     }
 }
 
@@ -329,7 +331,7 @@ impl TemplateProcessor<Construction, Fresh> {
     ) -> Result<Template, TemplateError> {
         repository
             .find_template_by_path(&self.path_key)
-            .map_err(|e| TemplateError::Repository(e))?
+            .map_err(TemplateError::Repository)?
             .ok_or_else(|| {
                 TemplateError::Repository(
                     TemplateRepositoryError::NotFoundByPath(
@@ -371,14 +373,17 @@ mod tests {
             let path_key = PathKey::try_new(path_str).unwrap();
             let times =
                 FsTimes::new(Some(SystemTime::now()), Some(SystemTime::now()));
-            let metadata =
-                FileMetadata::new(times, content.len() as u64, false);
+            let metadata = FileMetadata::new(
+                times,
+                content.len().try_into().expect("length fits in u64"),
+                false,
+            );
             (FileNode::new(path, metadata), path_key, temp_file)
         }
     }
 
     mod state {
-        use super::{fixtures::*, *};
+        use super::{fixtures, *};
 
         #[test]
         fn returns_present_branch_when_template_found() {
@@ -474,7 +479,7 @@ mod tests {
                 file,
                 path_key,
                 status: Stale {
-                    content_str: "new-content".to_string(),
+                    content_str: "new-content".to_owned(),
                     content_hash:
                         crate::support::content_hash::Blake3Hash::from_bytes(
                             b"new-hash",
@@ -484,7 +489,7 @@ mod tests {
                 _phase: PhantomData,
             };
 
-            let result = processor.parse().unwrap();
+            let result = processor.parse();
 
             assert!(matches!(result.status, Changed { .. }));
         }
@@ -504,17 +509,17 @@ mod tests {
                 path_key: path_key.clone(),
                 status: New {
                     content_hash: Blake3Hash::from_bytes(b"hash"),
-                    raw: RawTemplate::new("content".to_string()),
+                    raw: RawTemplate::new("content".to_owned()),
                 },
                 _phase: PhantomData,
             };
 
-            let processor_for_persist = TemplateProcessor::<Construction, New> {
+            let _processor_for_persist = TemplateProcessor::<Construction, New> {
                 file: file.clone(),
                 path_key: path_key.clone(),
                 status: New {
                     content_hash: Blake3Hash::from_bytes(b"hash"),
-                    raw: RawTemplate::new("content".to_string()),
+                    raw: RawTemplate::new("content".to_owned()),
                 },
                 _phase: PhantomData,
             };
@@ -563,7 +568,7 @@ mod tests {
                 )
                 .unwrap(),
                 crate::template::aggregate::TemplateBody::try_new(
-                    "content".to_string(),
+                    "content".to_owned(),
                 )
                 .unwrap(),
             );

@@ -15,6 +15,7 @@
 
 pub(crate) mod aggregate;
 pub(crate) mod error;
+pub(crate) mod processor;
 pub(crate) mod raw;
 pub(crate) mod repository;
 pub(crate) mod storage;

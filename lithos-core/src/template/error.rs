@@ -9,7 +9,13 @@
 
 use thiserror::Error;
 
-use crate::{db::DbError, fs::PathKey};
+use crate::{
+    db::DbError,
+    fs::{
+        PathKey,
+        error::{PathError, ScanError},
+    },
+};
 
 // ============================================================================
 // TemplateError
@@ -34,6 +40,12 @@ pub enum TemplateError {
     /// A template repository persistence error.
     #[error(transparent)]
     Repository(#[from] TemplateRepositoryError),
+    /// A path validation error.
+    #[error(transparent)]
+    Path(#[from] PathError),
+    /// A filesystem scanning error.
+    #[error(transparent)]
+    Scan(#[from] ScanError),
 }
 
 // ============================================================================
