@@ -70,7 +70,7 @@ use crate::{
         delta::PropertyDeltaEngine,
         discovery::DiscoveryResult,
         error::{
-            SchemaError, SchemaIngestionError, SchemaLoaderError,
+            SchemaBuilderError, SchemaError, SchemaReadError,
             SchemaResolutionError,
         },
         expander::RefExpander,
@@ -91,12 +91,10 @@ use crate::{
 
 fn schema_stem_from_path(
     path: &std::path::Path,
-) -> Result<String, SchemaLoaderError> {
+) -> Result<String, SchemaError> {
     crate::fs::BaseName::try_from(path)
         .map(|basename| basename.as_str().to_owned())
-        .map_err(crate::fs::FsError::from)
-        .map_err(SchemaIngestionError::from)
-        .map_err(SchemaLoaderError::Ingestion)
+        .map_err(SchemaError::from)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -633,20 +631,19 @@ impl<Stage, Status> SchemaProcessor<Stage, Status> {
     fn resolve_extends(
         raw: &RawSchema,
         index: &SchemaIndex,
-    ) -> Result<Vec<SchemaId>, SchemaLoaderError> {
+    ) -> Result<Vec<SchemaId>, SchemaError> {
         let mut parents = Vec::with_capacity(raw.extends().len());
         for extends_name in raw.extends() {
             if let Some(parent_id) = index.get_id_by_name(extends_name) {
                 parents.push(parent_id);
             } else {
-                let child_name = SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?;
-                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                let child_name = SchemaName::try_new(raw.name())?;
+                return Err(SchemaError::from(
                     SchemaResolutionError::ParentNotFound {
                         child: child_name,
                         parent: extends_name.clone(),
                     },
-                )));
+                ));
             }
         }
         Ok(parents)
@@ -751,7 +748,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
     pub(crate) fn from_discovery_result(
         discovery: DiscoveryResult,
         source: &FileReader,
-    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
+    ) -> Result<DiscoveryBranch, SchemaError> {
         let mut missing = NewBatch::new();
 
         for (path, schema_discovery) in discovery.schemas {
@@ -760,14 +757,12 @@ impl SchemaProcessor<Discovery, NeverSeen> {
                 .into_file()
                 .map(crate::fs::entry::FileNode::into_metadata)
                 .ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(
-                        super::error::SchemaIngestionError::Read(
-                            super::error::SchemaReadError::FileSystem {
-                                reason: "schema discovery entry must be a file"
-                                    .into(),
-                            },
-                        ),
-                    )
+                    SchemaError::from(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
+                            reason: "schema discovery entry must be a file"
+                                .into(),
+                        },
+                    ))
                 })?;
             let id = schema_discovery
                 .cached
@@ -776,8 +771,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
 
             let content = source
                 .read_to_string(std::path::Path::new(path.as_str()))
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
+                .map_err(SchemaError::from)?;
             let content_hash = Blake3Hash::compute(content.as_bytes());
 
             missing.insert(id, InitialRead {
@@ -808,7 +802,7 @@ impl SchemaProcessor<Discovery, Review> {
         discovery: DiscoveryResult,
         graph: &InheritanceGraph<()>,
         source: &FileReader,
-    ) -> Result<DiscoveryBranch, SchemaLoaderError> {
+    ) -> Result<DiscoveryBranch, SchemaError> {
         let mut views_by_path: HashMap<PathKey, RawSchemaView> = HashMap::new();
         let mut ids_by_path: HashMap<PathKey, SchemaId> = HashMap::new();
         let mut metadata_by_path: HashMap<PathKey, FileMetadata> =
@@ -873,7 +867,7 @@ impl SchemaProcessor<Discovery, Review> {
         graph: Option<&InheritanceGraph<()>>,
         metadata_by_path: &HashMap<PathKey, FileMetadata>,
         source: &FileReader,
-    ) -> Result<FileState, SchemaLoaderError> {
+    ) -> Result<FileState, SchemaError> {
         let mut missing = NewBatch::new();
         let mut found: HashMap<SchemaId, FoundPayload> = HashMap::new();
 
@@ -895,8 +889,7 @@ impl SchemaProcessor<Discovery, Review> {
                 let id = SchemaId::new();
                 let content = source
                     .read_to_string(std::path::Path::new(path.as_str()))
-                    .map_err(SchemaIngestionError::from)
-                    .map_err(SchemaLoaderError::Ingestion)?;
+                    .map_err(SchemaError::from)?;
                 let content_hash = Blake3Hash::compute(content.as_bytes());
 
                 missing.insert(id, InitialRead {
@@ -987,7 +980,7 @@ impl SchemaProcessor<Comparison, Present> {
         self,
         source: &FileReader,
         property_bank_delta: Option<&HashSet<PropertyName>>,
-    ) -> Result<SchemaProcessor<FileParsed, Compared>, SchemaLoaderError> {
+    ) -> Result<SchemaProcessor<FileParsed, Compared>, SchemaError> {
         let Present {
             graph,
             new_schemas,
@@ -1000,78 +993,87 @@ impl SchemaProcessor<Comparison, Present> {
         let mut stale_ids = Vec::new();
 
         let next_graph = graph.map_payload(
-            |id,
-             node|
-             -> Result<ProcessorNode<PipelinePayload>, SchemaLoaderError> {
+            |id, node| -> Result<ProcessorNode<PipelinePayload>, SchemaError> {
                 let relation = node.relation();
                 match node.payload {
                     PipelinePayload::Present(PresentPayload::Found(
                         found_payload,
                     )) => {
-                        let is_bank_affected =
-                            Self::bank_changed(&found_payload.view, property_bank_delta);
-                        let comparison_payload =
-                            match Self::check_timestamps(found_payload, source)? {
-                                TimestampBranch::Match(matched_payload) => {
-                                    if is_bank_affected {
-                                        let content_str = source
-                                            .read_to_string(std::path::Path::new(matched_payload.path.as_str()))
-                                            .map_err(SchemaIngestionError::from)
-                                            .map_err(SchemaLoaderError::Ingestion)?;
-                                        let content_hash =
-                                            Blake3Hash::compute(content_str.as_bytes());
-                                        ComparedPayload::StaleBankReferences(
-                                            StalePayload {
-                                                path: matched_payload.path,
-                                                metadata: matched_payload.metadata,
-                                                content_str,
-                                                content_hash,
-                                                view: matched_payload.view,
-                                            },
-                                        )
-                                    } else {
-                                        ComparedPayload::Fresh(FreshPayload {
+                        let is_bank_affected = Self::bank_changed(
+                            &found_payload.view,
+                            property_bank_delta,
+                        );
+                        let comparison_payload = match Self::check_timestamps(
+                            found_payload,
+                            source,
+                        )? {
+                            TimestampBranch::Match(matched_payload) => {
+                                if is_bank_affected {
+                                    let content_str = source
+                                        .read_to_string(std::path::Path::new(
+                                            matched_payload.path.as_str(),
+                                        ))
+                                        .map_err(SchemaError::from)?;
+                                    let content_hash = Blake3Hash::compute(
+                                        content_str.as_bytes(),
+                                    );
+                                    ComparedPayload::StaleBankReferences(
+                                        StalePayload {
                                             path: matched_payload.path,
                                             metadata: matched_payload.metadata,
+                                            content_str,
+                                            content_hash,
                                             view: matched_payload.view,
-                                        })
+                                        },
+                                    )
+                                } else {
+                                    ComparedPayload::Fresh(FreshPayload {
+                                        path: matched_payload.path,
+                                        metadata: matched_payload.metadata,
+                                        view: matched_payload.view,
+                                    })
+                                }
+                            }
+                            TimestampBranch::Mismatch(suspect_payload) => {
+                                let content_branch =
+                                    Self::check_content(suspect_payload);
+                                match content_branch {
+                                    ContentBranch::Match(content_payload)
+                                        if is_bank_affected =>
+                                    {
+                                        let content_hash = Blake3Hash::compute(
+                                            content_payload
+                                                .content_str
+                                                .as_bytes(),
+                                        );
+                                        ComparedPayload::StaleBankReferences(
+                                            StalePayload {
+                                                path: content_payload.path,
+                                                metadata: content_payload
+                                                    .metadata,
+                                                content_str: content_payload
+                                                    .content_str,
+                                                content_hash,
+                                                view: content_payload.view,
+                                            },
+                                        )
+                                    }
+                                    ContentBranch::Match(content_payload) => {
+                                        ComparedPayload::StaleTimestamps(
+                                            FoundPayload {
+                                                path: content_payload.path,
+                                                metadata: content_payload
+                                                    .metadata,
+                                                view: content_payload.view,
+                                            },
+                                        )
+                                    }
+                                    ContentBranch::Mismatch(stale_payload) => {
+                                        ComparedPayload::Stale(stale_payload)
                                     }
                                 }
-                                TimestampBranch::Mismatch(suspect_payload) => {
-                                    let content_branch =
-                                        Self::check_content(suspect_payload);
-                                    match content_branch {
-                                        ContentBranch::Match(content_payload)
-                                            if is_bank_affected =>
-                                        {
-                                            let content_hash =
-                                                Blake3Hash::compute(content_payload.content_str.as_bytes());
-                                            ComparedPayload::StaleBankReferences(
-                                                StalePayload {
-                                                    path: content_payload.path,
-                                                    metadata: content_payload.metadata,
-                                                    content_str: content_payload
-                                                        .content_str,
-                                                    content_hash,
-                                                    view: content_payload.view,
-                                                },
-                                            )
-                                        }
-                                        ContentBranch::Match(content_payload) => {
-                                            ComparedPayload::StaleTimestamps(
-                                                FoundPayload {
-                                                    path: content_payload.path,
-                                                    metadata: content_payload.metadata,
-                                                    view: content_payload.view,
-                                                },
-                                            )
-                                        }
-                                        ContentBranch::Mismatch(stale_payload) => {
-                                            ComparedPayload::Stale(stale_payload)
-                                        }
-                                    }
-                                }
-                            };
+                            }
+                        };
 
                         #[expect(
                             clippy::pattern_type_mismatch,
@@ -1096,11 +1098,13 @@ impl SchemaProcessor<Comparison, Present> {
                             PipelinePayload::Compared(comparison_payload),
                         ))
                     }
-                    PipelinePayload::Deleted(payload) => Ok(ProcessorNode::new(
-                        NodeStatus::Deleted,
-                        relation,
-                        PipelinePayload::Deleted(payload),
-                    )),
+                    PipelinePayload::Deleted(payload) => {
+                        Ok(ProcessorNode::new(
+                            NodeStatus::Deleted,
+                            relation,
+                            PipelinePayload::Deleted(payload),
+                        ))
+                    }
                     unexpected => Err(stage_variant_error(
                         "compare",
                         id,
@@ -1125,7 +1129,7 @@ impl SchemaProcessor<Comparison, Present> {
     fn check_timestamps(
         payload: FoundPayload,
         source: &FileReader,
-    ) -> Result<TimestampBranch, SchemaLoaderError> {
+    ) -> Result<TimestampBranch, SchemaError> {
         let timestamps_match = payload.view.is_timestamp_match(
             payload.metadata.times().created_at(),
             payload.metadata.times().modified_at(),
@@ -1136,8 +1140,7 @@ impl SchemaProcessor<Comparison, Present> {
         } else {
             let content_str = source
                 .read_to_string(std::path::Path::new(payload.path.as_str()))
-                .map_err(SchemaIngestionError::from)
-                .map_err(SchemaLoaderError::Ingestion)?;
+                .map_err(SchemaError::from)?;
             Ok(TimestampBranch::Mismatch(SuspectPayload {
                 path: payload.path,
                 metadata: payload.metadata,
@@ -1196,7 +1199,7 @@ impl SchemaProcessor<Comparison, Present> {
 impl SchemaProcessor<FileParsed, AllMissing> {
     pub(crate) fn parse(
         self,
-    ) -> Result<SchemaProcessor<InheritanceGraphed, NewParsed>, SchemaLoaderError>
+    ) -> Result<SchemaProcessor<InheritanceGraphed, NewParsed>, SchemaError>
     {
         let AllMissing {
             new_schemas,
@@ -1218,8 +1221,7 @@ impl SchemaProcessor<FileParsed, AllMissing> {
                 std::path::Path::new(path.as_str()),
                 &content_str,
             )
-            .map_err(SchemaIngestionError::from)
-            .map_err(SchemaLoaderError::Ingestion)?
+            .map_err(SchemaError::from)?
             .with_metadata(metadata_for_raw)
             .with_name(schema_name);
 
@@ -1248,8 +1250,7 @@ impl SchemaProcessor<FileParsed, Compared> {
     )]
     pub(crate) fn parse(
         self,
-    ) -> Result<SchemaProcessor<InheritanceGraphed, Parsed>, SchemaLoaderError>
-    {
+    ) -> Result<SchemaProcessor<InheritanceGraphed, Parsed>, SchemaError> {
         let Compared {
             graph,
             new_schemas,
@@ -1259,123 +1260,111 @@ impl SchemaProcessor<FileParsed, Compared> {
 
         let parsed_new = Self::parse_new(new_schemas)?;
 
-        let next_graph =
-            graph.map_payload(
-                |id,
-                 node|
-                 -> Result<
-                    ProcessorNode<PipelinePayload>,
-                    SchemaLoaderError,
-                > {
-                    let relation = node.relation();
-                    let next = match node.payload {
-                        PipelinePayload::Compared(ComparedPayload::Stale(
-                            payload,
-                        )) => {
-                            let schema_name = schema_stem_from_path(
-                                std::path::Path::new(payload.path.as_str()),
-                            )?;
-                            let metadata_for_raw = payload.metadata.clone();
-                            let raw = FileReader::parse_structured_from_str::<
-                                RawSchema,
-                            >(
+        let next_graph = graph.map_payload(
+            |id, node| -> Result<ProcessorNode<PipelinePayload>, SchemaError> {
+                let relation = node.relation();
+                let next = match node.payload {
+                    PipelinePayload::Compared(ComparedPayload::Stale(
+                        payload,
+                    )) => {
+                        let schema_name = schema_stem_from_path(
+                            std::path::Path::new(payload.path.as_str()),
+                        )?;
+                        let metadata_for_raw = payload.metadata.clone();
+                        let raw =
+                            FileReader::parse_structured_from_str::<RawSchema>(
                                 std::path::Path::new(payload.path.as_str()),
                                 &payload.content_str,
                             )
-                            .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?
+                            .map_err(SchemaError::from)?
                             .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
 
-                            ProcessorNode::new(
-                                NodeStatus::StaleParsed,
-                                relation,
-                                PipelinePayload::FileParsed(
-                                    FileParsedBranch::StaleParsed(
-                                        StaleParsedPayload {
-                                            path: payload.path,
-                                            metadata: payload.metadata,
-                                            content_hash: payload.content_hash,
-                                            raw,
-                                            view: payload.view,
-                                        },
-                                    ),
+                        ProcessorNode::new(
+                            NodeStatus::StaleParsed,
+                            relation,
+                            PipelinePayload::FileParsed(
+                                FileParsedBranch::StaleParsed(
+                                    StaleParsedPayload {
+                                        path: payload.path,
+                                        metadata: payload.metadata,
+                                        content_hash: payload.content_hash,
+                                        raw,
+                                        view: payload.view,
+                                    },
                                 ),
-                            )
-                        }
-                        PipelinePayload::Compared(
-                            ComparedPayload::StaleBankReferences(payload),
-                        ) => {
-                            let schema_name = schema_stem_from_path(
-                                std::path::Path::new(payload.path.as_str()),
-                            )?;
-                            let metadata_for_raw = payload.metadata.clone();
-                            let raw = FileReader::parse_structured_from_str::<
-                                RawSchema,
-                            >(
+                            ),
+                        )
+                    }
+                    PipelinePayload::Compared(
+                        ComparedPayload::StaleBankReferences(payload),
+                    ) => {
+                        let schema_name = schema_stem_from_path(
+                            std::path::Path::new(payload.path.as_str()),
+                        )?;
+                        let metadata_for_raw = payload.metadata.clone();
+                        let raw =
+                            FileReader::parse_structured_from_str::<RawSchema>(
                                 std::path::Path::new(payload.path.as_str()),
                                 &payload.content_str,
                             )
-                            .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?
+                            .map_err(SchemaError::from)?
                             .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
-                            let content_hash = payload.content_hash;
+                        let content_hash = payload.content_hash;
 
-                            ProcessorNode::new(
-                                NodeStatus::StaleBankReferences,
-                                relation,
-                                PipelinePayload::FileParsed(
-                                    FileParsedBranch::StaleParsed(
-                                        StaleParsedPayload {
-                                            path: payload.path,
-                                            metadata: payload.metadata,
-                                            content_hash,
-                                            raw,
-                                            view: payload.view,
-                                        },
-                                    ),
+                        ProcessorNode::new(
+                            NodeStatus::StaleBankReferences,
+                            relation,
+                            PipelinePayload::FileParsed(
+                                FileParsedBranch::StaleParsed(
+                                    StaleParsedPayload {
+                                        path: payload.path,
+                                        metadata: payload.metadata,
+                                        content_hash,
+                                        raw,
+                                        view: payload.view,
+                                    },
                                 ),
-                            )
-                        }
-                        PipelinePayload::Compared(ComparedPayload::Fresh(
+                            ),
+                        )
+                    }
+                    PipelinePayload::Compared(ComparedPayload::Fresh(
+                        payload,
+                    )) => ProcessorNode::new(
+                        NodeStatus::Fresh,
+                        relation,
+                        PipelinePayload::FileParsed(FileParsedBranch::Fresh(
                             payload,
-                        )) => ProcessorNode::new(
-                            NodeStatus::Fresh,
-                            relation,
-                            PipelinePayload::FileParsed(
-                                FileParsedBranch::Fresh(payload),
-                            ),
+                        )),
+                    ),
+                    PipelinePayload::Compared(
+                        ComparedPayload::StaleTimestamps(payload),
+                    ) => ProcessorNode::new(
+                        NodeStatus::StaleTimestamps,
+                        relation,
+                        PipelinePayload::FileParsed(
+                            FileParsedBranch::StaleTimestamps(payload),
                         ),
-                        PipelinePayload::Compared(
-                            ComparedPayload::StaleTimestamps(payload),
-                        ) => ProcessorNode::new(
-                            NodeStatus::StaleTimestamps,
-                            relation,
-                            PipelinePayload::FileParsed(
-                                FileParsedBranch::StaleTimestamps(payload),
-                            ),
-                        ),
-                        PipelinePayload::Deleted(payload) => {
-                            ProcessorNode::new(
-                                NodeStatus::Deleted,
-                                relation,
-                                PipelinePayload::Deleted(payload),
-                            )
-                        }
-                        unexpected => {
-                            return Err(stage_variant_error(
-                                "parse",
-                                id,
-                                "Compared or Deleted",
-                                unexpected.variant_name(),
-                            ));
-                        }
-                    };
+                    ),
+                    PipelinePayload::Deleted(payload) => ProcessorNode::new(
+                        NodeStatus::Deleted,
+                        relation,
+                        PipelinePayload::Deleted(payload),
+                    ),
+                    unexpected => {
+                        return Err(stage_variant_error(
+                            "parse",
+                            id,
+                            "Compared or Deleted",
+                            unexpected.variant_name(),
+                        ));
+                    }
+                };
 
-                    Ok(next)
-                },
-            )?;
+                Ok(next)
+            },
+        )?;
 
         Ok(Self::transition(InheritanceGraphed, Parsed {
             graph: next_graph,
@@ -1386,7 +1375,7 @@ impl SchemaProcessor<FileParsed, Compared> {
 
     fn parse_new(
         new_schemas: NewBatch<InitialRead>,
-    ) -> Result<NewBatch<InitialParsed>, SchemaLoaderError> {
+    ) -> Result<NewBatch<InitialParsed>, SchemaError> {
         let mut parsed_new = NewBatch::new();
 
         for (id, read) in new_schemas.into_sorted_iter() {
@@ -1398,8 +1387,7 @@ impl SchemaProcessor<FileParsed, Compared> {
                 std::path::Path::new(read.path.as_str()),
                 &read.content_str,
             )
-            .map_err(SchemaIngestionError::from)
-            .map_err(SchemaLoaderError::Ingestion)?
+            .map_err(SchemaError::from)?
             .with_metadata(metadata_for_raw)
             .with_name(schema_name);
 
@@ -1450,8 +1438,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
     )]
     pub(crate) fn build_graph(
         self,
-    ) -> Result<SchemaProcessor<PropertyAnalysis, Graphed>, SchemaLoaderError>
-    {
+    ) -> Result<SchemaProcessor<PropertyAnalysis, Graphed>, SchemaError> {
         let Parsed {
             graph,
             new_schemas,
@@ -1479,8 +1466,8 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
             }
 
             let node = graph.graph().get(id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
+                SchemaError::from(SchemaBuilderError::Read(
+                    SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph"),
                     },
                 ))
@@ -1599,7 +1586,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
         graph: &ProcessingGraph<ProcessorNode<PipelinePayload>>,
         new_schemas: &NewBatch<InitialParsed>,
         deleted_ids: &[SchemaId],
-    ) -> Result<SchemaIndex, SchemaLoaderError> {
+    ) -> Result<SchemaIndex, SchemaError> {
         let mut pairs = NameIdPairs::with_capacity(
             graph.graph().node_count().saturating_add(new_schemas.len()),
         );
@@ -1633,30 +1620,28 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
                     ));
                 }
             };
-            let name = SchemaName::try_new(name)
-                .map_err(SchemaLoaderError::Resolution)?;
+            let name = SchemaName::try_new(name)?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != id) {
-                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                return Err(SchemaError::from(
                     SchemaResolutionError::DuplicateSchemaName {
                         name: name.as_str().into(),
                     },
-                )));
+                ));
             }
             seen_names.insert(name.clone(), id);
             pairs.push((name, id));
         }
 
         for (id, new) in new_schemas.iter() {
-            let name = SchemaName::try_new(new.raw.name())
-                .map_err(SchemaLoaderError::Resolution)?;
+            let name = SchemaName::try_new(new.raw.name())?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
-                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                return Err(SchemaError::from(
                     SchemaResolutionError::DuplicateSchemaName {
                         name: name.as_str().into(),
                     },
-                )));
+                ));
             }
             seen_names.insert(name.clone(), *id);
             pairs.push((name, *id));
@@ -1680,8 +1665,7 @@ impl SchemaProcessor<InheritanceGraphed, Parsed> {
 impl SchemaProcessor<InheritanceGraphed, NewParsed> {
     pub(crate) fn build_new_graph(
         self,
-    ) -> Result<SchemaProcessor<Construction, NewBuild>, SchemaLoaderError>
-    {
+    ) -> Result<SchemaProcessor<Construction, NewBuild>, SchemaError> {
         let NewParsed {
             new_schemas,
         } = self.status;
@@ -1690,15 +1674,14 @@ impl SchemaProcessor<InheritanceGraphed, NewParsed> {
         let mut seen_names = HashMap::with_capacity(new_schemas.len());
 
         for (id, parsed) in new_schemas.iter() {
-            let name = SchemaName::try_new(parsed.raw.name())
-                .map_err(SchemaLoaderError::Resolution)?;
+            let name = SchemaName::try_new(parsed.raw.name())?;
 
             if seen_names.get(&name).is_some_and(|&eid| eid != *id) {
-                return Err(SchemaLoaderError::Resolution(SchemaError::from(
+                return Err(SchemaError::from(
                     SchemaResolutionError::DuplicateSchemaName {
                         name: name.as_str().into(),
                     },
-                )));
+                ));
             }
             seen_names.insert(name.clone(), *id);
             pairs.push((name, *id));
@@ -1772,7 +1755,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         source: &FileReader,
         property_bank: &PropertyBank,
         property_bank_delta: Option<&HashSet<PropertyName>>,
-    ) -> Result<SchemaProcessor<Refresh, Analyzed>, SchemaLoaderError> {
+    ) -> Result<SchemaProcessor<Refresh, Analyzed>, SchemaError> {
         let Graphed {
             graph,
             deleted_ids,
@@ -1798,7 +1781,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
         let mut rebuild_ids = Vec::new();
 
         let next_graph = graph.map_payload(
-            |id, node| -> Result<ProcessorNode<PipelinePayload>, SchemaLoaderError> {
+            |id, node| -> Result<ProcessorNode<PipelinePayload>, SchemaError> {
                 let relation = node.relation();
                 let node_status = node.status();
                 let (status, payload) = match node.payload {
@@ -1812,8 +1795,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             let metadata_for_raw = payload.metadata.clone();
                             let content = source
                                 .read_to_string(std::path::Path::new(payload.path.as_str()))
-                                .map_err(SchemaIngestionError::from)
-                                .map_err(SchemaLoaderError::Ingestion)?;
+                                .map_err(SchemaError::from)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 schema_stem_from_path(
@@ -1825,8 +1807,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 std::path::Path::new(payload.path.as_str()),
                                 &content,
                             )
-                            .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?
+                            .map_err(SchemaError::from)?
                             .with_metadata(metadata_for_raw.clone())
                             .with_name(schema_name);
 
@@ -1868,8 +1849,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                         if bank_changed {
                             let content = source
                                 .read_to_string(std::path::Path::new(payload.path.as_str()))
-                                .map_err(SchemaIngestionError::from)
-                                .map_err(SchemaLoaderError::Ingestion)?;
+                                .map_err(SchemaError::from)?;
                             let content_hash = Blake3Hash::compute(content.as_bytes());
                             let schema_name =
                                 schema_stem_from_path(
@@ -1881,8 +1861,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                                 std::path::Path::new(payload.path.as_str()),
                                 &content,
                             )
-                            .map_err(SchemaIngestionError::from)
-                            .map_err(SchemaLoaderError::Ingestion)?
+                            .map_err(SchemaError::from)?
                             .with_metadata(metadata_for_raw)
                             .with_name(schema_name);
 
@@ -1931,7 +1910,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             hashes,
                             &payload.raw,
                         )
-                        .map_err(SchemaLoaderError::Ingestion)?;
+                        .map_err(SchemaError::from)?;
                         let view = RawSchemaView::new(path, version);
                         let rebuild = RebuildNodePayload {
                             path: payload.path,
@@ -2062,9 +2041,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             },
         )?;
 
-        let topo_order = next_graph
-            .topo_order()
-            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
+        let topo_order = next_graph.topo_order()?;
 
         for id in topo_order {
             if affected.contains(&id) && !rebuild_ids.contains(&id) {
@@ -2084,7 +2061,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
     fn build_version(
         raw: &RawSchema,
         content_hash: Blake3Hash,
-    ) -> Result<crate::schema::views::SchemaVersion, SchemaLoaderError> {
+    ) -> Result<crate::schema::views::SchemaVersion, SchemaError> {
         let property_hashes = raw.properties().compute_hashes();
         let file_info = raw.metadata().clone();
         let hashes = crate::schema::views::HashRecord::new(
@@ -2092,7 +2069,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             property_hashes.into(),
         );
         crate::schema::views::SchemaVersion::new(file_info, hashes, raw)
-            .map_err(SchemaLoaderError::Ingestion)
+            .map_err(SchemaError::from)
     }
 }
 
@@ -2104,7 +2081,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
     pub(crate) fn refresh_metadata<R>(
         mut self,
         repository: &R,
-    ) -> Result<SchemaProcessor<Construction, Analyzed>, SchemaLoaderError>
+    ) -> Result<SchemaProcessor<Construction, Analyzed>, SchemaError>
     where
         R: WriteRepository,
     {
@@ -2119,7 +2096,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
     fn refresh_cached_views<R>(
         status: &mut Analyzed,
         repository: &R,
-    ) -> Result<(), SchemaLoaderError>
+    ) -> Result<(), SchemaError>
     where
         R: WriteRepository,
     {
@@ -2137,11 +2114,11 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 continue;
             };
             let current = payload.view.current().ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
-                        reason: "missing schema metadata in cached view".into(),
+                SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                    SchemaReadError::FileSystem {
+                        reason: format!("schema {id} missing from graph"),
                     },
-                ))
+                )))
             })?;
             let file_info = payload.metadata.clone();
             let hashes = HashRecord::new(
@@ -2149,9 +2126,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                 current.hashes().properties().clone(),
             );
             payload.view.add_version(current.with_metadata(file_info, hashes));
-            repository
-                .save_raw_schema_view(*id, &payload.view)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.save_raw_schema_view(*id, &payload.view)?;
         }
         Ok(())
     }
@@ -2159,7 +2134,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
     fn refresh_stale_timestamp_views<R>(
         status: &mut Analyzed,
         repository: &R,
-    ) -> Result<(), SchemaLoaderError>
+    ) -> Result<(), SchemaError>
     where
         R: WriteRepository,
     {
@@ -2175,10 +2150,14 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     InheritanceBranch::StaleTimestamps(ref mut payload),
                 ) => {
                     let current = payload.view.current().ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                            crate::schema::error::SchemaReadError::FileSystem {
-                                reason: "missing schema metadata in cached view".into(),
-                            },
+                        SchemaError::Builder(Box::new(
+                            SchemaBuilderError::Read(
+                                SchemaReadError::FileSystem {
+                                    reason: "missing schema metadata in \
+                                             cached view"
+                                        .into(),
+                                },
+                            ),
                         ))
                     })?;
                     let file_info = payload.metadata.clone();
@@ -2189,18 +2168,20 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     payload
                         .view
                         .add_version(current.with_metadata(file_info, hashes));
-                    repository
-                        .save_raw_schema_view(*id, &payload.view)
-                        .map_err(SchemaLoaderError::Repository)?;
+                    repository.save_raw_schema_view(*id, &payload.view)?;
                 }
                 PipelinePayload::Analysis(AnalysisBranch::Refresh(
                     ref mut payload,
                 )) => {
                     let current = payload.view.current().ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                            crate::schema::error::SchemaReadError::FileSystem {
-                                reason: "missing schema metadata in cached view".into(),
-                            },
+                        SchemaError::Builder(Box::new(
+                            SchemaBuilderError::Read(
+                                SchemaReadError::FileSystem {
+                                    reason: "missing schema metadata in \
+                                             cached view"
+                                        .into(),
+                                },
+                            ),
                         ))
                     })?;
                     let file_info = payload.metadata.clone();
@@ -2211,9 +2192,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
                     payload
                         .view
                         .add_version(current.with_metadata(file_info, hashes));
-                    repository
-                        .save_raw_schema_view(*id, &payload.view)
-                        .map_err(SchemaLoaderError::Repository)?;
+                    repository.save_raw_schema_view(*id, &payload.view)?;
                 }
                 PipelinePayload::Present(_)
                 | PipelinePayload::Compared(_)
@@ -2230,7 +2209,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
     fn refresh_rebuild_views<R>(
         status: &mut Analyzed,
         repository: &R,
-    ) -> Result<(), SchemaLoaderError>
+    ) -> Result<(), SchemaError>
     where
         R: WriteRepository,
     {
@@ -2245,9 +2224,7 @@ impl SchemaProcessor<Refresh, Analyzed> {
             else {
                 continue;
             };
-            repository
-                .save_raw_schema_view(*id, &payload.view)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.save_raw_schema_view(*id, &payload.view)?;
         }
         Ok(())
     }
@@ -2266,8 +2243,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         self,
         repository: &impl Repository,
         property_bank: &PropertyBank,
-    ) -> Result<SchemaProcessor<Construction, Constructed>, SchemaLoaderError>
-    {
+    ) -> Result<SchemaProcessor<Construction, Constructed>, SchemaError> {
         use crate::schema::expander::RefExpander;
 
         let Analyzed {
@@ -2314,9 +2290,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         }
         let mut fetched_by_id: HashMap<SchemaId, Schema> = HashMap::new();
         if !fetch_ids.is_empty() {
-            let fetched = repository
-                .find_schemas_by_ids(&fetch_ids)
-                .map_err(SchemaLoaderError::Repository)?;
+            let fetched = repository.find_schemas_by_ids(&fetch_ids)?;
             fetched_by_id = fetched.into_iter().map(|s| (*s.id(), s)).collect();
         }
 
@@ -2345,14 +2319,11 @@ impl SchemaProcessor<Construction, Analyzed> {
                 };
 
                 let refs = raw.properties().ref_entries();
-                let mut expanded_props = expander
-                    .expand_properties(&refs)
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let mut expanded_props = expander.expand_properties(&refs)?;
 
                 let inline_entries = raw.properties().inline_entries();
                 if !inline_entries.is_empty() {
-                    let inline_props = PropertyMap::try_from(inline_entries)
-                        .map_err(SchemaLoaderError::Resolution)?;
+                    let inline_props = PropertyMap::try_from(inline_entries)?;
                     expanded_props.extend(inline_props);
                 }
 
@@ -2365,17 +2336,15 @@ impl SchemaProcessor<Construction, Analyzed> {
         let mut constructed_cache: HashMap<SchemaId, Arc<Schema>> =
             HashMap::new();
 
-        let topo_order = graph
-            .topo_order()
-            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
+        let topo_order = graph.topo_order()?;
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                    SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph"),
                     },
-                ))
+                )))
             })?;
 
             let schema_id = *id;
@@ -2383,13 +2352,13 @@ impl SchemaProcessor<Construction, Analyzed> {
                 || stale_timestamp_ids.contains(&schema_id)
             {
                 fetched_by_id.remove(&schema_id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                        crate::schema::error::SchemaReadError::FileSystem {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
                             reason: format!(
                                 "schema {id} not found in refresh cache"
                             ),
                         },
-                    ))
+                    )))
                 })?
             } else if rebuild_ids.contains(&schema_id) {
                 let parents = graph.graph().parents_of(schema_id);
@@ -2405,20 +2374,15 @@ impl SchemaProcessor<Construction, Analyzed> {
                     &constructed_cache,
                 )?
             } else {
-                repository
-                    .find_schema_by_id(schema_id)
-                    .map_err(SchemaLoaderError::Repository)?
-                    .ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(
-                            SchemaIngestionError::Read(
-                                crate::schema::error::SchemaReadError::FileSystem {
-                                    reason: format!(
-                                        "schema {id} not found in repository"
-                                    ),
-                                },
+                repository.find_schema_by_id(schema_id)?.ok_or_else(|| {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
+                            reason: format!(
+                                "schema {id} not found in repository"
                             ),
-                        )
-                    })?
+                        },
+                    )))
+                })?
             };
 
             let is_changed = rebuild_ids.contains(&schema_id);
@@ -2454,7 +2418,7 @@ impl SchemaProcessor<Construction, Analyzed> {
         expanded_by_id: &HashMap<SchemaId, PropertyMap>,
         fetched_by_id: &HashMap<SchemaId, Schema>,
         constructed_cache: &HashMap<SchemaId, Arc<Schema>>,
-    ) -> Result<Schema, SchemaLoaderError> {
+    ) -> Result<Schema, SchemaError> {
         let payload = &node.payload;
         let (raw, property_delta) = if let Some(payload) =
             payload.as_analysis().and_then(AnalysisBranch::as_rebuild)
@@ -2468,23 +2432,17 @@ impl SchemaProcessor<Construction, Analyzed> {
             payload,
             PipelinePayload::Analysis(AnalysisBranch::Refresh(_))
         ) {
-            return Err(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
-                        reason: "unexpected refresh node in rebuild path"
-                            .into(),
-                    },
-                ),
-            ));
+            return Err(SchemaError::Builder(Box::new(
+                SchemaBuilderError::Read(SchemaReadError::FileSystem {
+                    reason: "unexpected refresh node in rebuild path".into(),
+                }),
+            )));
         } else if matches!(payload, PipelinePayload::Deleted(_)) {
-            return Err(SchemaLoaderError::Ingestion(
-                SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
-                        reason: "unexpected deleted node in rebuild path"
-                            .into(),
-                    },
-                ),
-            ));
+            return Err(SchemaError::Builder(Box::new(
+                SchemaBuilderError::Read(SchemaReadError::FileSystem {
+                    reason: "unexpected deleted node in rebuild path".into(),
+                }),
+            )));
         } else {
             return Err(stage_variant_error(
                 "construct_schema_incremental",
@@ -2499,27 +2457,29 @@ impl SchemaProcessor<Construction, Analyzed> {
                 let schema = fetched_by_id
                     .get(&id)
                     .cloned()
-                    .or_else(|| constructed_cache.get(&id).map(|s| (**s).clone()))
+                    .or_else(|| {
+                        constructed_cache.get(&id).map(|s| (**s).clone())
+                    })
                     .ok_or_else(|| {
-                        SchemaLoaderError::Ingestion(
-                            SchemaIngestionError::Read(
-                                crate::schema::error::SchemaReadError::FileSystem {
-                                    reason: format!(
-                                        "schema {id} not found for update"
-                                    ),
+                        SchemaError::Builder(Box::new(
+                            SchemaBuilderError::Read(
+                                SchemaReadError::FileSystem {
+                                    reason: "missing schema metadata in \
+                                             cached view"
+                                        .into(),
                                 },
                             ),
-                        )
+                        ))
                     })?;
 
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                        crate::schema::error::SchemaReadError::FileSystem {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             ),
                         },
-                    ))
+                    )))
                 })?;
 
                 let mut properties = schema.properties().clone();
@@ -2532,8 +2492,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                     properties.remove(name);
                 }
 
-                let name = SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let name = SchemaName::try_new(raw.name())?;
 
                 Ok(Schema::new(
                     id,
@@ -2549,13 +2508,13 @@ impl SchemaProcessor<Construction, Analyzed> {
                 _,
             ) => {
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                        crate::schema::error::SchemaReadError::FileSystem {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             ),
                         },
-                    ))
+                    )))
                 })?;
 
                 let parent_props = if parents.is_empty() {
@@ -2574,8 +2533,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                     raw.excludes(),
                 );
 
-                let name = SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let name = SchemaName::try_new(raw.name())?;
 
                 Ok(Schema::new(
                     id,
@@ -2588,17 +2546,16 @@ impl SchemaProcessor<Construction, Analyzed> {
 
             (ExtendsChangeKind::ChildToRoot, _) => {
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                        crate::schema::error::SchemaReadError::FileSystem {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             ),
                         },
-                    ))
+                    )))
                 })?;
 
-                let name = SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let name = SchemaName::try_new(raw.name())?;
 
                 Ok(Schema::new(
                     id,
@@ -2618,13 +2575,13 @@ impl SchemaProcessor<Construction, Analyzed> {
                 }
 
                 let expanded = expanded_by_id.get(&id).ok_or_else(|| {
-                    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                        crate::schema::error::SchemaReadError::FileSystem {
+                    SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                        SchemaReadError::FileSystem {
                             reason: format!(
                                 "expanded properties not found for {id}"
                             ),
                         },
-                    ))
+                    )))
                 })?;
 
                 let parent_props = if parents.is_empty() {
@@ -2643,8 +2600,7 @@ impl SchemaProcessor<Construction, Analyzed> {
                     raw.excludes(),
                 );
 
-                let name = SchemaName::try_new(raw.name())
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let name = SchemaName::try_new(raw.name())?;
 
                 Ok(Schema::new(
                     id,
@@ -2680,10 +2636,6 @@ impl SchemaProcessor<Construction, Analyzed> {
 
 impl SchemaProcessor<Construction, NewBuild> {
     #[expect(
-        clippy::too_many_lines,
-        reason = "new-schema construction keeps fetch/build flow in one place"
-    )]
-    #[expect(
         clippy::wildcard_enum_match_arm,
         reason = "stage invariant failures intentionally collapse to one error"
     )]
@@ -2695,7 +2647,7 @@ impl SchemaProcessor<Construction, NewBuild> {
         self,
         repository: &impl WriteRepository,
         property_bank: &PropertyBank,
-    ) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
+    ) -> Result<Vec<Arc<Schema>>, SchemaError> {
         use crate::schema::expander::RefExpander;
 
         let NewBuild {
@@ -2708,17 +2660,15 @@ impl SchemaProcessor<Construction, NewBuild> {
         let expander = RefExpander::new(property_bank);
         let empty_cache: HashMap<SchemaId, Schema> = HashMap::new();
 
-        let topo_order = graph
-            .topo_order()
-            .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
+        let topo_order = graph.topo_order()?;
 
         for id in &topo_order {
             let node = graph.graph().get(*id).ok_or_else(|| {
-                SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                    crate::schema::error::SchemaReadError::FileSystem {
+                SchemaError::Builder(Box::new(SchemaBuilderError::Read(
+                    SchemaReadError::FileSystem {
                         reason: format!("schema {id} missing from graph"),
                     },
-                ))
+                )))
             })?;
             let parsed = match &node.payload() {
                 PipelinePayload::NewParsed(parsed) => parsed,
@@ -2734,13 +2684,10 @@ impl SchemaProcessor<Construction, NewBuild> {
             };
 
             let refs = parsed.raw.properties().ref_entries();
-            let mut expanded_props = expander
-                .expand_properties(&refs)
-                .map_err(SchemaLoaderError::Resolution)?;
+            let mut expanded_props = expander.expand_properties(&refs)?;
             let inline_entries = parsed.raw.properties().inline_entries();
             if !inline_entries.is_empty() {
-                let inline_props = PropertyMap::try_from(inline_entries)
-                    .map_err(SchemaLoaderError::Resolution)?;
+                let inline_props = PropertyMap::try_from(inline_entries)?;
                 expanded_props.extend(inline_props);
             }
 
@@ -2762,8 +2709,7 @@ impl SchemaProcessor<Construction, NewBuild> {
                 &expanded_props,
                 parsed.raw.excludes(),
             );
-            let name = SchemaName::try_new(parsed.raw.name())
-                .map_err(SchemaLoaderError::Resolution)?;
+            let name = SchemaName::try_new(parsed.raw.name())?;
             let schema = Schema::new(
                 schema_id,
                 name,
@@ -2779,9 +2725,7 @@ impl SchemaProcessor<Construction, NewBuild> {
                     parsed.content_hash,
                 )?;
             let view = RawSchemaView::new(path, version);
-            repository
-                .save_raw_schema_view(schema_id, &view)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.save_raw_schema_view(schema_id, &view)?;
 
             let schema = Arc::new(schema);
             constructed_cache.insert(schema_id, Arc::clone(&schema));
@@ -2794,9 +2738,7 @@ impl SchemaProcessor<Construction, NewBuild> {
                 .map(std::convert::AsRef::as_ref)
                 .cloned()
                 .collect();
-            repository
-                .save_many_schemas(&owned)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.save_many_schemas(&owned)?;
         }
 
         // Build unit-payload graph for persistence (structure only)
@@ -2811,11 +2753,8 @@ impl SchemaProcessor<Construction, NewBuild> {
         }
 
         let inheritance_graph =
-            InheritanceGraph::try_from(persist_builder.build())
-                .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
-        repository
-            .save_topological_graph(&inheritance_graph)
-            .map_err(SchemaLoaderError::Repository)?;
+            InheritanceGraph::try_from(persist_builder.build())?;
+        repository.save_topological_graph(&inheritance_graph)?;
 
         Ok(built)
     }
@@ -2829,8 +2768,7 @@ impl SchemaProcessor<Construction, Constructed> {
     pub(crate) fn complete(
         self,
         repository: &impl WriteRepository,
-    ) -> Result<SchemaProcessor<Completed, Constructed>, SchemaLoaderError>
-    {
+    ) -> Result<SchemaProcessor<Completed, Constructed>, SchemaError> {
         let Constructed {
             graph,
             schemas,
@@ -2843,15 +2781,11 @@ impl SchemaProcessor<Construction, Constructed> {
                 .map(std::convert::AsRef::as_ref)
                 .cloned()
                 .collect();
-            repository
-                .save_many_schemas(&owned)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.save_many_schemas(&owned)?;
         }
 
         for id in &deleted_ids {
-            repository
-                .delete_schema(*id)
-                .map_err(SchemaLoaderError::Repository)?;
+            repository.delete_schema(*id)?;
         }
 
         // Build unit-payload graph for persistence (structure only)
@@ -2866,12 +2800,9 @@ impl SchemaProcessor<Construction, Constructed> {
         }
 
         let inheritance_graph =
-            InheritanceGraph::try_from(persist_builder.build())
-                .map_err(|e| SchemaLoaderError::Resolution(e.into()))?;
+            InheritanceGraph::try_from(persist_builder.build())?;
 
-        repository
-            .save_topological_graph(&inheritance_graph)
-            .map_err(SchemaLoaderError::Repository)?;
+        repository.save_topological_graph(&inheritance_graph)?;
 
         Ok(Self::transition(Completed, Constructed {
             graph,
@@ -2897,15 +2828,13 @@ fn stage_variant_error(
     id: SchemaId,
     expected: &'static str,
     actual: &'static str,
-) -> SchemaLoaderError {
-    SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-        crate::schema::error::SchemaReadError::FileSystem {
-            reason: format!(
-                "stage {stage}: schema {id} expected {expected} payload, got \
-                 {actual}"
-            ),
-        },
-    ))
+) -> SchemaError {
+    SchemaError::from(SchemaBuilderError::Read(SchemaReadError::FileSystem {
+        reason: format!(
+            "stage {stage}: schema {id} expected {expected} payload, got \
+             {actual}"
+        ),
+    }))
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -107,6 +107,70 @@ impl From<crate::fs::error::PathError> for SchemaReadError {
     }
 }
 
+impl From<crate::fs::error::PathError> for SchemaError {
+    #[inline]
+    fn from(err: crate::fs::error::PathError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Read(
+            SchemaReadError::from(err),
+        )))
+    }
+}
+
+impl From<crate::fs::error::ParseError> for SchemaError {
+    #[inline]
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Parse(
+            SchemaParseError::Parse(err),
+        )))
+    }
+}
+
+impl From<crate::fs::error::ReadError> for SchemaError {
+    #[inline]
+    fn from(err: crate::fs::error::ReadError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Read(
+            SchemaReadError::Read(err),
+        )))
+    }
+}
+
+impl From<crate::fs::error::ScanError> for SchemaError {
+    #[inline]
+    fn from(err: crate::fs::error::ScanError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Read(
+            SchemaReadError::from(err),
+        )))
+    }
+}
+
+impl From<crate::fs::error::PathError> for SchemaBuilderError {
+    #[inline]
+    fn from(err: crate::fs::error::PathError) -> Self {
+        Self::Read(SchemaReadError::from(err))
+    }
+}
+
+impl From<crate::fs::error::ParseError> for SchemaBuilderError {
+    #[inline]
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        Self::Parse(SchemaParseError::Parse(err))
+    }
+}
+
+impl From<crate::fs::error::ReadError> for SchemaBuilderError {
+    #[inline]
+    fn from(err: crate::fs::error::ReadError) -> Self {
+        Self::Read(SchemaReadError::Read(err))
+    }
+}
+
+impl From<crate::fs::error::ScanError> for SchemaBuilderError {
+    #[inline]
+    fn from(err: crate::fs::error::ScanError) -> Self {
+        Self::Read(SchemaReadError::from(err))
+    }
+}
+
 /// Domain-level errors for in-memory schema validation and resolution.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

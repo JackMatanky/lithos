@@ -104,12 +104,12 @@ where
         };
 
         // 6. Process through pipeline (unchanged)
-        match branch {
+        let schemas = match branch {
             DiscoveryBranch::AllMissing(missing) => {
                 let parsed_new = missing.parse()?;
                 let new_build = parsed_new.build_new_graph()?;
                 new_build
-                    .construct_new_schemas(&self.repository, &property_bank)
+                    .construct_new_schemas(&self.repository, &property_bank)?
             }
             DiscoveryBranch::HasPresent(present) => {
                 let compared = present
@@ -124,11 +124,11 @@ where
                 let refreshed = analyzed.refresh_metadata(&self.repository)?;
                 let constructed = refreshed
                     .construct_schemas(&self.repository, &property_bank)?;
-                let schemas =
-                    constructed.complete(&self.repository)?.into_schemas();
-                Ok(schemas)
+                constructed.complete(&self.repository)?.into_schemas()
             }
-        }
+        };
+
+        Ok(schemas)
     }
 
     /// Load and construct the `PropertyBank`, automatically handling
