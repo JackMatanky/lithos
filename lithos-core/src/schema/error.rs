@@ -3,43 +3,44 @@
 //! This module provides a hierarchical, phase-oriented error taxonomy that
 //! maps to the Schema lifecycle:
 //!
-//! 1. **File Access**: Physical file access, filename validation, and format
-//!    filtering ([`SchemaReadError`]).
+//! 1. **File Access**: Physical file access and filesystem safety
+//!    ([`SchemaReadError`]).
 //! 2. **Parsing**: Structured decoding of JSON/TOML/YAML and cached views
 //!    ([`SchemaParseError`]).
 //! 3. **Versioning**: Schema version compatibility checks
 //!    ([`SchemaVersionError`]).
-//! 4. **Syntax**: Name and shape validation for raw schema inputs.
-//! 5. **Validation/Resolution**: Domain-level validation, property resolution,
-//!    and inheritance checks ([`SchemaError`] umbrella).
-//! 6. **Persistence**: Storage integrity and lookup behavior
-//!    ([`SchemaRepositoryError`]).
-//! 7. **Orchestration**: Top-level coordination of the full pipeline
+//! 4. **Orchestration**: Coordination of the building and inheritance pipeline
 //!    ([`SchemaBuilderError`]).
+//! 5. **Validation/Resolution**: Domain-level property validation and reference
+//!    resolution ([`SchemaError`] umbrella).
+//! 6. **Persistence**: Storage integrity and repository behavior
+//!    ([`SchemaRepositoryError`]).
 //!
 //! # Hierarchy
 //!
 //! ```text
-//! SchemaBuilderError (Orchestration)
-//!  ├── SchemaReadError (I/O & Naming)
-//!  ├── SchemaParseError (Syntax & Extraction)
-//!  ├── SchemaVersionError (Version Gate)
-//!  ├── SchemaInheritanceError (Graph Structure)
-//!  ├── SchemaResolutionError (Conflict Detection)
-//!  └── SchemaError (Domain Umbrella)
-//!       ├── PropertySpecError, PropertyValueError
-//!       ├── PropertyRefError, PropertyMapError
-//!       ├── PropertyBuilderError
-//!       └── SchemaRepositoryError (Persistence Phase)
-//!            └── DbError
+//! SchemaError (Domain Umbrella)
+//!  ├── SchemaBuilderError (Orchestration)
+//!  │    ├── SchemaReadError (I/O & Naming)
+//!  │    ├── SchemaParseError (Syntax & Extraction)
+//!  │    ├── SchemaVersionError (Version Gate)
+//!  │    ├── SchemaInheritanceError (Graph Structure)
+//!  │    ├── SchemaResolutionError (Conflict Detection)
+//!  │    └── PropertyBuilderError (Override logic)
+//!  ├── SchemaRepositoryError (Persistence Phase)
+//!  │    └── DbError
+//!  ├── SchemaNameError, PropertyNameError
+//!  ├── PropertySpecError, PropertyValueError
+//!  ├── PropertyRefError
+//!  └── PropertyMapError
 //! ```
 //!
 //! # Design Principles
 //!
 //! - **Context Preservation**: Each layer wraps the previous one using
 //!   `#[error(transparent)]` to preserve the `source()` chain.
-//! - **Ergonomics**: Dynamic error data uses `String` to prioritize ergonomics
-//!   and compatibility with standard error patterns.
+//! - **Ergonomics**: Primary entry points (like [`SchemaError`]) provide `From`
+//!   implementations for underlying orchestration sub-errors.
 //! - **Phase Orientation**: Errors are categorized by pipeline stage, avoiding
 //!   the “everything is ingestion” anti-pattern.
 //!
@@ -47,19 +48,20 @@
 //!
 //! | Error Type                | When to Use                                                         |
 //! | :------------------------ | :------------------------------------------------------------------ |
-//! | [`SchemaError`]           | Domain validation, property resolution, and inheritance handling.   |
-//! | [`SchemaRepositoryError`] | Storage adapters and persistence integrity checks.                  |
-//! | [`SchemaBuilderError`]     | Cross-cutting orchestration across the entire lifecycle.            |
+//! | [`SchemaError`]           | The primary error type returned by the Schema domain public API.    |
+//! | [`SchemaBuilderError`]     | Errors occurring during schema construction and inheritance.        |
+//! | [`SchemaRepositoryError`] | Storage-specific failures and persistence integrity issues.         |
 //!
 //! # Examples
 //!
-//! ## Handling a Load Failure
+//! ## Handling a Build Failure
 //!
 //! ```ignore
-//! match loader.load_all() {
+//! match builder.load_all() {
 //!     Err(SchemaError::Builder(e)) => handle_builder_error(e),
 //!     Err(SchemaError::Repository(e)) => handle_storage_error(e),
-//!     Ok(count) => println!("Loaded {count} schemas"),
+//!     Err(e) => println!("Other error: {e}"),
+//!     Ok(schemas) => println!("Loaded {} schemas", schemas.len()),
 //! }
 //! ```
 
