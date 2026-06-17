@@ -58,7 +58,8 @@
 //!
 //! - **Deserialization errors**: Serde provides line/column context
 //!   automatically
-//! - **Validation errors**: Wrapped in `SchemaIngestionError` with file path
+//! - **Validation errors**: Wrapped in `SchemaBuilderError::Validation` with
+//!   file path
 //! - **FileName errors**: Include full path for clear user feedback
 //!
 //! ## Performance

@@ -77,10 +77,7 @@ use crate::{
         delta::{
             ExcludesDelta, ExtendsDelta, PropertyDelta, PropertyDeltaEngine,
         },
-        error::{
-            SchemaBuilderError, SchemaError, SchemaIngestionError,
-            SchemaRepositoryError,
-        },
+        error::{SchemaBuilderError, SchemaError, SchemaRepositoryError},
         expander::RefExpander,
         identifier::{SchemaId, SchemaName},
         property::{PropertyMap, PropertyName},
@@ -771,7 +768,7 @@ impl BaseSchemaProcessor<Parsed, Missing> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaError::from(SchemaIngestionError::Read(
+                SchemaError::from(SchemaBuilderError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
@@ -817,7 +814,7 @@ impl BaseSchemaProcessor<Parsed, Stale> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaError::from(SchemaIngestionError::Read(
+                SchemaError::from(SchemaBuilderError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
@@ -866,7 +863,7 @@ impl BaseSchemaProcessor<Parsed, StaleReferences> {
 
         let schema_name =
             SchemaName::try_from(file.path().basename().ok_or_else(|| {
-                SchemaError::from(SchemaIngestionError::Read(
+                SchemaError::from(SchemaBuilderError::Read(
                     crate::schema::error::SchemaReadError::InvalidFileName {
                         path: file.path().as_path().to_path_buf(),
                         reason: "missing file stem".into(),
@@ -1321,8 +1318,7 @@ impl BaseSchemaProcessor<Construction, New> {
             &status.raw,
             path_key.clone(),
             hashes,
-        )
-        .map_err(SchemaError::from)?;
+        )?;
 
         repository
             .save_base_schema(&base)
@@ -1394,8 +1390,7 @@ impl BaseSchemaProcessor<Construction, Changed> {
         let hashes =
             HashRecord::new(status.content_hash, property_hashes.into());
         let version =
-            SchemaVersion::new(file.metadata().clone(), hashes, &status.raw)
-                .map_err(SchemaError::from)?;
+            SchemaVersion::new(file.metadata().clone(), hashes, &status.raw)?;
         let mut updated_view = status.view;
         updated_view.add_version(version);
 

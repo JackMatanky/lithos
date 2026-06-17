@@ -15,7 +15,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::{
     fs::metadata::FileMetadata,
     schema::{
-        error::SchemaIngestionError,
+        error::SchemaError,
         identifier::SchemaName,
         property::{PropertyMap, PropertyName},
         raw::{RawPropertyBank, RawSchema},
@@ -113,7 +113,7 @@ impl SchemaVersion {
         metadata: FileMetadata,
         hashes: HashRecord,
         raw: &RawSchema,
-    ) -> Result<Self, SchemaIngestionError> {
+    ) -> Result<Self, SchemaError> {
         // extends and excludes are already validated during deserialization
         // (custom Deserialize impls ensure type safety)
         let extends = raw.extends().to_vec();
@@ -353,7 +353,7 @@ impl PropertyBankVersion {
         metadata: FileMetadata,
         hashes: HashRecord,
         raw: &RawPropertyBank,
-    ) -> Result<Self, SchemaIngestionError> {
+    ) -> Result<Self, SchemaError> {
         Ok(Self {
             metadata,
             hashes,

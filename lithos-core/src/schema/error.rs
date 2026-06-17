@@ -15,24 +15,23 @@
 //! 6. **Persistence**: Storage integrity and lookup behavior
 //!    ([`SchemaRepositoryError`]).
 //! 7. **Orchestration**: Top-level coordination of the full pipeline
-//!    ([`SchemaLoaderError`]).
+//!    ([`SchemaBuilderError`]).
 //!
 //! # Hierarchy
 //!
 //! ```text
-//! SchemaLoaderError (Orchestration)
-//!  ├── SchemaIngestionError (Ingestion Phase)
-//!  │    ├── SchemaReadError (I/O & Naming)
-//!  │    ├── SchemaParseError (Syntax & Extraction)
-//!  │    ├── SchemaVersionError (Version Gate)
-//!  │    └── SchemaError (Domain Validation)
-//!  ├── SchemaError (Domain Umbrella)
-//!  │    ├── PropertySpecError, PropertyValueError
-//!  │    ├── PropertyRefError, PropertyMapError
-//!  │    ├── PropertyBuilderError
-//!  │    └── SchemaInheritanceError, SchemaResolutionError
-//!  └── SchemaRepositoryError (Persistence Phase)
-//!       └── DbError
+//! SchemaBuilderError (Orchestration)
+//!  ├── SchemaReadError (I/O & Naming)
+//!  ├── SchemaParseError (Syntax & Extraction)
+//!  ├── SchemaVersionError (Version Gate)
+//!  ├── SchemaInheritanceError (Graph Structure)
+//!  ├── SchemaResolutionError (Conflict Detection)
+//!  └── SchemaError (Domain Umbrella)
+//!       ├── PropertySpecError, PropertyValueError
+//!       ├── PropertyRefError, PropertyMapError
+//!       ├── PropertyBuilderError
+//!       └── SchemaRepositoryError (Persistence Phase)
+//!            └── DbError
 //! ```
 //!
 //! # Design Principles
@@ -49,9 +48,8 @@
 //! | Error Type                | When to Use                                                         |
 //! | :------------------------ | :------------------------------------------------------------------ |
 //! | [`SchemaError`]           | Domain validation, property resolution, and inheritance handling.   |
-//! | [`SchemaIngestionError`]  | Readers/parsers bridging raw bytes to structured schema data.       |
 //! | [`SchemaRepositoryError`] | Storage adapters and persistence integrity checks.                  |
-//! | [`SchemaLoaderError`]     | Cross-cutting orchestration across the entire lifecycle.            |
+//! | [`SchemaBuilderError`]     | Cross-cutting orchestration across the entire lifecycle.            |
 //!
 //! # Examples
 //!
@@ -59,9 +57,8 @@
 //!
 //! ```ignore
 //! match loader.load_all() {
-//!     Err(SchemaLoaderError::Ingestion(e)) => handle_ingestion_error(e),
-//!     Err(SchemaLoaderError::Repository(e)) => handle_storage_error(e),
-//!     Err(SchemaLoaderError::Resolution(e)) => handle_schema_error(e),
+//!     Err(SchemaError::Builder(e)) => handle_builder_error(e),
+//!     Err(SchemaError::Repository(e)) => handle_storage_error(e),
 //!     Ok(count) => println!("Loaded {count} schemas"),
 //! }
 //! ```
@@ -240,6 +237,27 @@ impl PartialEq for SchemaError {
             (Self::PropertyMap(a), Self::PropertyMap(b)) => a == b,
             _ => false,
         }
+    }
+}
+
+impl From<SchemaReadError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaReadError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Read(err)))
+    }
+}
+
+impl From<SchemaParseError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaParseError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Parse(err)))
+    }
+}
+
+impl From<SchemaVersionError> for SchemaError {
+    #[inline]
+    fn from(err: SchemaVersionError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::Version(err)))
     }
 }
 
@@ -445,37 +463,6 @@ pub enum SchemaParseError {
     },
 }
 
-/// Schema ingestion error with file context.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaIngestionError {
-    /// Returned when filesystem access fails.
-    #[error(transparent)]
-    Read(#[from] SchemaReadError),
-
-    /// Returned when structured parsing fails.
-    #[error(transparent)]
-    Parse(#[from] SchemaParseError),
-
-    /// Returned when schema version validation fails.
-    #[error(transparent)]
-    Version(#[from] SchemaVersionError),
-
-    /// Returned when repository access fails during ingestion.
-    #[error(transparent)]
-    Repository(#[from] SchemaRepositoryError),
-
-    /// Returned when schema validation fails with file context.
-    #[error("schema validation failed in {path}: {source}")]
-    Schema {
-        /// Path to the schema file that failed validation.
-        path: PathBuf,
-        /// Underlying schema error.
-        #[source]
-        source: SchemaError,
-    },
-}
-
 /// Errors returned by schema repository implementations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -533,30 +520,6 @@ impl SchemaRepositoryError {
                 Self::EmptyVersionHistory(path.clone())
             }
         }
-    }
-}
-
-/// High-level errors returned by schema loading operations.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum SchemaLoaderError {
-    /// Returned when ingestion (file I/O or parsing) fails.
-    #[error(transparent)]
-    Ingestion(#[from] SchemaIngestionError),
-
-    /// Returned when repository access fails.
-    #[error(transparent)]
-    Repository(#[from] SchemaRepositoryError),
-
-    /// Returned when schema resolution fails.
-    #[error(transparent)]
-    Resolution(#[from] SchemaError),
-}
-
-impl From<SchemaInheritanceError> for SchemaLoaderError {
-    #[inline]
-    fn from(value: SchemaInheritanceError) -> Self {
-        Self::Resolution(value.into())
     }
 }
 
@@ -1036,62 +999,14 @@ pub enum SchemaResolutionError {
     },
 }
 
-impl From<SchemaIngestionError> for SchemaError {
-    #[inline]
-    fn from(err: SchemaIngestionError) -> Self {
-        match err {
-            SchemaIngestionError::Read(e) => {
-                Self::Builder(Box::new(SchemaBuilderError::Read(e)))
-            }
-            SchemaIngestionError::Parse(e) => {
-                Self::Builder(Box::new(SchemaBuilderError::Parse(e)))
-            }
-            SchemaIngestionError::Version(e) => {
-                Self::Builder(Box::new(SchemaBuilderError::Version(e)))
-            }
-            SchemaIngestionError::Repository(e) => {
-                Self::Repository(Box::new(e))
-            }
-            SchemaIngestionError::Schema {
-                path,
-                source,
-            } => Self::Builder(Box::new(SchemaBuilderError::Validation {
-                path,
-                source: Box::new(source),
-            })),
-        }
-    }
-}
-
-impl From<crate::fs::error::FsError> for SchemaError {
-    #[inline]
-    fn from(err: crate::fs::error::FsError) -> Self {
-        Self::from(SchemaIngestionError::from(err))
-    }
-}
-
-impl From<crate::fs::error::ParseError> for SchemaIngestionError {
-    #[inline]
-    fn from(err: crate::fs::error::ParseError) -> Self {
-        Self::Parse(SchemaParseError::Parse(err))
-    }
-}
-
-impl From<crate::fs::error::ReadError> for SchemaIngestionError {
-    #[inline]
-    fn from(err: crate::fs::error::ReadError) -> Self {
-        Self::Read(SchemaReadError::Read(err))
-    }
-}
-
-impl From<crate::fs::error::FsError> for SchemaIngestionError {
+impl From<crate::fs::error::FsError> for SchemaBuilderError {
     #[inline]
     fn from(err: crate::fs::error::FsError) -> Self {
         use crate::fs::error::FsError;
         match err {
-            FsError::Read(e) => Self::from(e),
-            FsError::Scan(e) => Self::from(e),
-            FsError::Parse(e) => Self::from(e),
+            FsError::Read(e) => Self::Read(SchemaReadError::Read(e)),
+            FsError::Scan(e) => Self::Read(SchemaReadError::from(e)),
+            FsError::Parse(e) => Self::Parse(SchemaParseError::Parse(e)),
             FsError::Path(e) => Self::Read(SchemaReadError::from(e)),
             FsError::Validation(e) => Self::Read(SchemaReadError::FileSystem {
                 reason: e.to_string(),
@@ -1103,17 +1018,10 @@ impl From<crate::fs::error::FsError> for SchemaIngestionError {
     }
 }
 
-impl From<crate::fs::error::ScanError> for SchemaIngestionError {
+impl From<crate::fs::error::FsError> for SchemaError {
     #[inline]
-    fn from(err: crate::fs::error::ScanError) -> Self {
-        Self::Read(SchemaReadError::from(err))
-    }
-}
-
-impl From<crate::fs::error::PathError> for SchemaIngestionError {
-    #[inline]
-    fn from(err: crate::fs::error::PathError) -> Self {
-        Self::Read(SchemaReadError::from(err))
+    fn from(err: crate::fs::error::FsError) -> Self {
+        Self::Builder(Box::new(SchemaBuilderError::from(err)))
     }
 }
 
@@ -1130,9 +1038,7 @@ mod tests {
 
             assert_send_sync::<SchemaError>();
             assert_send_sync::<SchemaBuilderError>();
-            assert_send_sync::<SchemaIngestionError>();
             assert_send_sync::<SchemaRepositoryError>();
-            assert_send_sync::<SchemaLoaderError>();
             assert_send_sync::<SchemaReadError>();
             assert_send_sync::<SchemaParseError>();
             assert_send_sync::<SchemaVersionError>();
@@ -1263,20 +1169,20 @@ mod tests {
         }
 
         #[test]
-        fn ingestion_schema_exposes_source() {
-            let error = SchemaIngestionError::Schema {
+        fn builder_validation_exposes_source() {
+            let error = SchemaBuilderError::Validation {
                 path: PathBuf::from("schemas/bad.json"),
-                source: SchemaError::PropertyRef(
+                source: Box::new(SchemaError::PropertyRef(
                     PropertyRefError::TargetPropertyNotFoundInBank {
                         reference: "#property_bank/title".into(),
                     },
-                ),
+                )),
             };
 
             let source = StdError::source(&error);
             assert!(
                 source.is_some(),
-                "Expected source for SchemaIngestionError::Schema"
+                "Expected source for SchemaBuilderError::Validation"
             );
 
             if let Some(source) = source {
@@ -1358,8 +1264,8 @@ mod tests {
         }
 
         #[test]
-        fn parse_error_maps_to_schema_ingestion_error() {
-            let error: SchemaIngestionError =
+        fn parse_error_maps_to_schema_builder_error() {
+            let error: SchemaBuilderError =
                 crate::fs::error::ParseError::UnsupportedFormat {
                     path: PathBuf::from("schemas/schema.xml"),
                     supported: &["json", "yaml"],
@@ -1368,7 +1274,7 @@ mod tests {
 
             assert!(matches!(
                 error,
-                SchemaIngestionError::Parse(SchemaParseError::Parse(
+                SchemaBuilderError::Parse(SchemaParseError::Parse(
                     crate::fs::error::ParseError::UnsupportedFormat {
                         path: _,
                         supported: _,
@@ -1376,7 +1282,7 @@ mod tests {
                 ))
             ));
 
-            if let SchemaIngestionError::Parse(SchemaParseError::Parse(
+            if let SchemaBuilderError::Parse(SchemaParseError::Parse(
                 crate::fs::error::ParseError::UnsupportedFormat {
                     path,
                     supported,

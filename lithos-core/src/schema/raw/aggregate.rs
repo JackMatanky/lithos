@@ -6,7 +6,7 @@
 use crate::{
     fs::metadata::{FileMetadata, FsTimes},
     schema::{
-        error::SchemaIngestionError,
+        error::{SchemaBuilderError, SchemaError},
         identifier::SchemaName,
         property::PropertyName,
         raw::{RawProperty, RawPropertyMap, version::RawSchemaVersion},
@@ -167,15 +167,15 @@ impl RawSchema {
     /// - Schema name (derived from filename, needs file path context)
     ///
     /// # Errors
-    /// Returns `SchemaIngestionError` if validation fails.
+    /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn validated(self, path: &str) -> Result<Self, SchemaIngestionError> {
+    pub fn validated(self, path: &str) -> Result<Self, SchemaError> {
         // Validate schema name syntax (filename → SchemaName conversion)
         SchemaName::try_new(self.name.as_ref()).map_err(|error| {
-            SchemaIngestionError::Schema {
+            SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
                 path: path.into(),
-                source: error,
-            }
+                source: Box::new(error),
+            }))
         })?;
 
         // extends and excludes are already validated by serde

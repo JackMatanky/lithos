@@ -10,7 +10,7 @@ use crate::{
         aggregate::Schema,
         bank::PropertyBank,
         discovery::{DiscoveryEngine, PropertyBankDiscovery},
-        error::{SchemaIngestionError, SchemaLoaderError},
+        error::SchemaError,
         property::PropertyName,
         property_bank_processor::PropertyBankProcessor,
         repository::Repository,
@@ -46,7 +46,7 @@ where
     }
 
     /// Run the full ingestion pipeline.
-    pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaLoaderError> {
+    pub fn load_all(&mut self) -> Result<Vec<Arc<Schema>>, SchemaError> {
         use super::schema_processor::{
             Discovery, DiscoveryBranch, NeverSeen, Review, SchemaProcessor,
         };
@@ -57,16 +57,17 @@ where
             // md): Introduce a dedicated cross-context projection
             // error instead of stringifying config-spec
             // construction failures into FileSystem.
-            SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                crate::schema::error::SchemaReadError::FileSystem {
-                    reason: format!(
-                        "failed to build schema config spec: {error}"
-                    ),
-                },
+            SchemaError::Builder(Box::new(
+                crate::schema::error::SchemaBuilderError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
+                        reason: format!(
+                            "failed to build schema config spec: {error}"
+                        ),
+                    },
+                ),
             ))
         })?;
-        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)
-            .map_err(SchemaLoaderError::Resolution)?;
+        let discovery = DiscoveryEngine::run(&schema_spec, &self.repository)?;
 
         // 2. Load property bank if present
         let property_bank =
@@ -136,24 +137,24 @@ where
     pub(crate) fn load_property_bank(
         &mut self,
         bank_discovery: &PropertyBankDiscovery,
-    ) -> Result<PropertyBank, SchemaLoaderError> {
-        use crate::schema::error::SchemaIngestionError;
-
+    ) -> Result<PropertyBank, SchemaError> {
         let file = bank_discovery.entry().clone();
 
         let schema_spec = self.config.to_schema_spec().map_err(|error| {
-            SchemaLoaderError::Ingestion(SchemaIngestionError::Read(
-                crate::schema::error::SchemaReadError::FileSystem {
-                    reason: format!(
-                        "failed to build schema config spec: {error}"
-                    ),
-                },
+            SchemaError::Builder(Box::new(
+                crate::schema::error::SchemaBuilderError::Read(
+                    crate::schema::error::SchemaReadError::FileSystem {
+                        reason: format!(
+                            "failed to build schema config spec: {error}"
+                        ),
+                    },
+                ),
             ))
         })?;
 
         let processor =
             PropertyBankProcessor::from_discovery(file, schema_spec.root())
-                .map_err(SchemaIngestionError::from)?;
+                .map_err(SchemaError::from)?;
 
         let resolution = processor.run(
             bank_discovery.view(),
@@ -246,11 +247,7 @@ description = "Test schema"
         // this test)
         assert!(
             result.is_ok()
-                || matches!(
-                    result.unwrap_err(),
-                    SchemaLoaderError::Ingestion(_)
-                        | SchemaLoaderError::Resolution(_)
-                )
+                || matches!(result.unwrap_err(), SchemaError::Builder(_))
         );
     }
 

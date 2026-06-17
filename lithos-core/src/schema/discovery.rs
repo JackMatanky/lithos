@@ -149,8 +149,7 @@ impl DiscoveryEngine {
         R: ReadRepository,
     {
         // Step 1: Scan filesystem
-        let entries =
-            Self::scan_filesystem(spec).map_err(SchemaBuilderError::from)?;
+        let entries = Self::scan_filesystem(spec).map_err(SchemaError::from)?;
 
         // Step 2: Separate property bank from schemas (O(n) single pass)
         let (property_bank_entry, schema_entries) =

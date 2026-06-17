@@ -1909,8 +1909,7 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
                             file_info,
                             hashes,
                             &payload.raw,
-                        )
-                        .map_err(SchemaError::from)?;
+                        )?;
                         let view = RawSchemaView::new(path, version);
                         let rebuild = RebuildNodePayload {
                             path: payload.path,
@@ -2069,7 +2068,6 @@ impl SchemaProcessor<PropertyAnalysis, Graphed> {
             property_hashes.into(),
         );
         crate::schema::views::SchemaVersion::new(file_info, hashes, raw)
-            .map_err(SchemaError::from)
     }
 }
 

@@ -13,7 +13,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::{
     fs::PathKey,
     schema::{
-        error::{SchemaIngestionError, SchemaRepositoryError},
+        error::{SchemaError, SchemaRepositoryError},
         raw::{RawPropertyBank, RawSchema},
         views::{
             contracts::{RawView, RawViewRead, Version, VersionRead as _},
@@ -88,14 +88,14 @@ impl RawSchemaView {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaIngestionError`] if metadata is missing or validation
+    /// Returns [`SchemaError`] if metadata is missing or validation
     /// fails.
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawSchema,
         path: PathKey,
         hashes: HashRecord,
-    ) -> Result<Self, SchemaIngestionError> {
+    ) -> Result<Self, SchemaError> {
         let info = raw.metadata().clone();
         let version = SchemaVersion::new(info, hashes, raw)?;
 
@@ -258,14 +258,14 @@ impl RawPropertyBankView {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaIngestionError`] if metadata is missing or validation
+    /// Returns [`SchemaError`] if metadata is missing or validation
     /// fails.
     #[inline]
     pub fn try_from_raw_with_hashes(
         raw: &RawPropertyBank,
         path: PathKey,
         raw_hash: HashRecord,
-    ) -> Result<Self, SchemaIngestionError> {
+    ) -> Result<Self, SchemaError> {
         let info = raw.metadata().clone();
 
         let version = PropertyBankVersion::new(info, raw_hash, raw)?;

@@ -775,8 +775,7 @@ impl PropertyBankProcessor<Construction, New> {
             &status.raw,
             path_key.clone(),
             raw_hash,
-        )
-        .map_err(SchemaError::from)?;
+        )?;
 
         let bank = PropertyBank::try_from(status.raw).map_err(|err| {
             SchemaError::Builder(Box::new(SchemaBuilderError::Validation {
@@ -850,8 +849,7 @@ impl PropertyBankProcessor<Construction, Changed> {
             &raw,
             path_key.clone(),
             raw_hash,
-        )
-        .map_err(SchemaError::from)?;
+        )?;
 
         repository
             .save_property_bank(&bank)
