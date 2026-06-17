@@ -100,8 +100,6 @@ You may find it more convenient to use the [`filter_entry`](#method.filter_entry
 
 ## Trait Implementations
 
-
-
 ### `impl<I: Debug, P: Debug> Debug for FilterEntry<I, P>`
 
 #### `fmt(&self, f: &mut Formatter<'_>) -> Result`
@@ -123,6 +121,7 @@ impl<P> Iterator for FilterEntry<IntoIter, P>
 where
     P: FnMut(&DirEntry) -> bool,
 ```
+
 #### `next(&mut self) -> Option<Self::Item>`
 
 Advances the iterator and returns the next value.
@@ -150,6 +149,7 @@ where
 Advances the iterator and returns an array containing the next `N` values. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.next_chunk)
 
 #### `fn size_hint(&self) -> (usize, Option<usize>)`
+
 Returns the bounds on the remaining length of the iterator. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.size_hint)
 
 #### `fn count(self) -> usize`
@@ -832,31 +832,113 @@ where
 
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are equal to those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.eq)
 
-#### fn eq_by<I, F>(self, other: I, eq: F) -> bool
+#### `fn eq_by<I, F>(self, other: I, eq: F) -> bool`
+
+```rust
+fn eq_by<I, F>(self, other: I, eq: F) -> bool
+where
+    Self: Sized,
+    I: IntoIterator,
+    F: FnMut(Self::Item, <I as IntoIterator>::Item) -> bool,
+```
 
 🔬This is a nightly-only experimental API. (`iter_order_by`)
 
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are equal to those of another with respect to the specified equality function. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.eq_by)
 
+#### `fn ne<I>(self, other: I) -> bool`
+
+```rust
+fn ne<I>(self, other: I) -> bool
+where
+    I: IntoIterator,
+    Self::Item: PartialEq<<I as IntoIterator>::Item>,
+    Self: Sized,
+```
+
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are not equal to those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.ne)
+
+#### `fn lt<I>(self, other: I) -> bool`
+
+```rust
+fn lt<I>(self, other: I) -> bool
+where
+    I: IntoIterator,
+    Self::Item: PartialOrd<<I as IntoIterator>::Item>,
+    Self: Sized,
+```
 
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are [lexicographically](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html#lexicographical-comparison "trait core::cmp::Ord") less than those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.lt)
 
+#### `fn le<I>(self, other: I) -> bool`
+
+```rust
+fn le<I>(self, other: I) -> bool
+where
+    I: IntoIterator,
+    Self::Item: PartialOrd<<I as IntoIterator>::Item>,
+    Self: Sized,
+```
+
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are [lexicographically](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html#lexicographical-comparison "trait core::cmp::Ord") less or equal to those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.le)
+
+#### `fn gt<I>(self, other: I) -> bool`
+
+```rust
+fn gt<I>(self, other: I) -> bool
+where
+    I: IntoIterator,
+    Self::Item: PartialOrd<<I as IntoIterator>::Item>,
+    Self: Sized,
+```
 
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are [lexicographically](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html#lexicographical-comparison "trait core::cmp::Ord") greater than those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.gt)
 
+#### `fn ge<I>(self, other: I) -> bool`
+
+```rust
+fn ge<I>(self, other: I) -> bool
+where
+    I: IntoIterator,
+    Self::Item: PartialOrd<<I as IntoIterator>::Item>,
+    Self: Sized,
+```
+
 Determines if the elements of this [`Iterator`](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html "trait core::iter::traits::iterator::Iterator") are [lexicographically](https://doc.rust-lang.org/nightly/core/cmp/trait.Ord.html#lexicographical-comparison "trait core::cmp::Ord") greater than or equal to those of another. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.ge)
+
+#### `fn is_sorted(self) -> bool`
+
+```rust
+fn is_sorted(self) -> bool
+where
+    Self: Sized,
+    Self::Item: PartialOrd,
+```
 
 Checks if the elements of this iterator are sorted. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.is_sorted)
 
+#### `fn is_sorted_by<F>(self, compare: F) -> bool`
+
+```rust
+fn is_sorted_by<F>(self, compare: F) -> bool
+where
+    Self: Sized,
+    F: FnMut(&Self::Item, &Self::Item) -> bool,
+```
+
 Checks if the elements of this iterator are sorted using the given comparator function. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.is_sorted_by)
 
-#### fn is_sorted_by_key<F, K>(self, f: F) -> boolwhere Self: Sized, F: FnMut(Self::Item) -> K, K: PartialOrd,
+#### `fn is_sorted_by_key<F, K>(self, f: F) -> bool`
+
+```rust
+fn is_sorted_by_key<F, K>(self, f: F) -> bool
+where
+    Self: Sized,
+    F: FnMut(Self::Item) -> K,
+    K: PartialOrd,
+```
 
 Checks if the elements of this iterator are sorted using the given key extraction function. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/iterator/trait.Iterator.html#method.is_sorted_by_key)
-
-### impl<P> FusedIterator for FilterEntry<IntoIter, P>
 
 ## Auto Trait Implementations
 
@@ -932,6 +1014,7 @@ impl<T> Any for T
 where
     T: 'static + ?Sized,
 ```
+
 #### `fn type_id(&self) -> TypeId`
 
 Gets the `TypeId` of `self`. [Read more](https://doc.rust-lang.org/nightly/core/any/trait.Any.html#tymethod.type_id)
@@ -943,9 +1026,10 @@ impl<T> Borrow<T> for T
 where
     T: ?Sized,
 ```
-#### `fn borrow(&self) -> &T`
-Immutably borrows from an owned value. [Read more](https://doc.rust-lang.org/nightly/core/borrow/trait.Borrow.html#tymethod.borrow)
 
+#### `fn borrow(&self) -> &T`
+
+Immutably borrows from an owned value. [Read more](https://doc.rust-lang.org/nightly/core/borrow/trait.Borrow.html#tymethod.borrow)
 
 ### `impl<T> BorrowMut<T> for T`
 
@@ -954,7 +1038,9 @@ impl<T> BorrowMut<T> for T
 where
     T: ?Sized,
 ```
+
 #### `fn borrow_mut(&mut self) -> &mut T`
+
 Mutably borrows from an owned value. [Read more](https://doc.rust-lang.org/nightly/core/borrow/trait.BorrowMut.html#tymethod.borrow_mut)
 
 ### `impl<T> From<T> for T`
@@ -962,6 +1048,7 @@ Mutably borrows from an owned value. [Read more](https://doc.rust-lang.org/night
 ```rust
 impl<T> From<T> for T
 ```
+
 #### `fn from(t: T) -> T`
 
 Returns the argument unchanged.
@@ -973,6 +1060,7 @@ impl<T, U> Into<U> for T
 where
     U: From<T>,
 ```
+
 #### `fn into(self) -> U`
 
 Calls `U::from(self)`.
@@ -986,13 +1074,17 @@ impl<I> IntoIterator for I
 where
     I: Iterator,
 ```
+
 #### `type Item = <I as Iterator>::Item`
+
 The type of the elements being iterated over.
 
 #### `type IntoIter = I`
+
 Which kind of iterator are we turning this into?
 
 #### `fn into_iter(self) -> I`
+
 Creates an iterator from a value. [Read more](https://doc.rust-lang.org/nightly/core/iter/traits/collect/trait.IntoIterator.html#tymethod.into_iter)
 
 ### `impl<T, U> TryFrom<U> for T`
@@ -1002,10 +1094,13 @@ impl<T, U> TryFrom<U> for T
 where
     U: Into<T>,
 ```
+
 #### `type Error = Infallible`
+
 The type returned in the event of a conversion error.
 
 #### `fn try_from(value: U) -> Result<T, <T as TryFrom<U>>::Error>`
+
 Performs the conversion.
 
 ### `impl<T, U> TryInto<U> for T`
@@ -1015,8 +1110,11 @@ impl<T, U> TryInto<U> for T
 where
     U: TryFrom<T>,
 ```
+
 #### `type Error = <U as TryFrom<T>>::Error`
+
 The type returned in the event of a conversion error.
 
 #### `fn try_into(self) -> Result<U, <U as TryFrom<T>>::Error>`
+
 Performs the conversion.
