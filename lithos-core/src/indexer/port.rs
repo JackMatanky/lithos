@@ -10,6 +10,10 @@ use crate::{
 };
 
 /// Lazy iterator type returned by [`ScannerPort::walk`].
+///
+/// Uses `'static` so mockall can store the expectation closure without
+/// invariance issues — the adapter clones `DirPath` and `ScanFilters`
+/// internally.
 pub(crate) type WalkIter =
     Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>;
 
@@ -57,8 +61,6 @@ mod tests {
         },
     };
 
-    // Use mock! macro (not #[automock]) for compatibility with the 'static
-    // return type — follows the established pattern from discovery/port.rs.
     mock! {
         pub(crate) ScannerPort {}
         impl ScannerPort for ScannerPort {
