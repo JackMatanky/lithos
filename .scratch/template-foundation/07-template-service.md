@@ -113,6 +113,7 @@ No `TemplateDiagnostic`. No `unwrap()` or `panic!` in service code. No `minijinj
 
 **Acceptance criteria:**
 - [ ] `TemplateService::load()` runs the full processor pipeline and returns `Ok(())` on success
+- [ ] `TemplateService::load()` handles batch template deletion after all templates in the directory are processed (Deletions deferred from issue-04)
 - [ ] `TemplateService::create()` returns the committed vault-relative path on success
 - [ ] `TemplateService::create_dry_run()` (or equivalent) returns the rendered string without writing any file
 - [ ] Missing template name returns `TemplateError::NotFound` (no panic, no unwrap)

@@ -155,10 +155,10 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 - [x] New files go through full construction and are persisted
 - [x] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
 - [x] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
-- [x] Deleted-cache entries (present in repository but not on disk) are removed from the repository
+- [x] Deleted-cache entries (present in repository but not on disk) are removed from the repository (DEFERRED to issue-07)
 - [x] Tests use the in-memory test double from issue-03, not a real redb instance
 - [x] Tests are written before implementation and use descriptive behavior-focused names
-- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, deleted-cache entry, batch path comparison correctness
+- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, batch path comparison correctness (DELETED-CACHE ENTRIES DEFERRED)
 - [x] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
 - [x] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
 - [x] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
@@ -296,9 +296,9 @@ Tests:
 - `stale_timestamp_only_does_not_call_save_template`
 - `stale_timestamp_only_fetches_existing_template_without_reconstruction`
 
-### Phase 6 — Deleted-cache entries
+### Phase 6 — Deleted-cache entries (DEFERRED to issue-07)
 
-Entries present in the repository's cached views but absent from the discovered set are deleted from both `Template` and `RawTemplateView` storage.
+Entries present in the repository's cached views but absent from the discovered set are deleted from both `Template` and `RawTemplateView` storage. Handling of these deletions is deferred to the `TemplateService` in issue-07.
 
 Tests:
 - `deleted_entry_removes_template_from_repository`
@@ -323,7 +323,7 @@ Examples to verify at compile time (via doc tests or `compile_fail` tests where 
 | New file               | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
 | Stale content          | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
 | Stale timestamp only   | Discovery → Comparison → Refresh → Construction → Completed        | `save_raw_template_view` only                  |
-| Deleted-cache entry    | Detected in Comparison batch diff                                  | `delete_template` + `delete_raw_template_view` |
+| Deleted-cache entry    | Detected in Comparison batch diff (DEFERRED)                       | `delete_template` + `delete_raw_template_view` |
 | Batch path correctness | Mixed batch with all of the above                                  | Correct per-entry branching                    |
 | Repository failure     | Any write or delete path                                           | `Err` propagated, no panic                     |
 | File read failure      | New file or stale content path                                     | `Err(TemplateError::Read(...))`, no panic      |
