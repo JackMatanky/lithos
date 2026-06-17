@@ -29,13 +29,9 @@ impl WalkdirAdapter {
             return true;
         }
 
-        if !filters.included_extensions.is_empty() {
-            let ext =
-                entry.path().extension().and_then(|e| e.to_str()).unwrap_or("");
-            return filters.is_included_extension(ext);
-        }
-
-        true
+        let ext =
+            entry.path().extension().and_then(|e| e.to_str()).unwrap_or("");
+        filters.is_included_extension(ext)
     }
 
     fn try_map_entry(
@@ -181,10 +177,7 @@ mod tests {
         std::fs::write(temp_dir.path().join("c.md"), "").unwrap();
 
         let adapter = WalkdirAdapter;
-        let filters = ScanFilters {
-            included_extensions: vec!["md".into()],
-            excluded_names: vec![],
-        };
+        let filters = ScanFilters::new(vec!["md".into()], vec![]);
 
         let results: Vec<_> = adapter
             .walk(&root, &filters)
@@ -215,10 +208,7 @@ mod tests {
         std::fs::write(temp_dir.path().join("readme.md"), "").unwrap();
 
         let adapter = WalkdirAdapter;
-        let filters = ScanFilters {
-            included_extensions: vec![],
-            excluded_names: vec![".git".into()],
-        };
+        let filters = ScanFilters::new(vec![], vec![".git".into()]);
 
         let results: Vec<_> = adapter
             .walk(&root, &filters)
@@ -266,5 +256,34 @@ mod tests {
             std::fs::Permissions::from_mode(0o755),
         )
         .unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn yields_unsupported_entry_type_as_skipped_in_stream() {
+        use std::os::unix::net::UnixListener;
+
+        let temp = TempDir::new().unwrap();
+        let root = DirPath::try_new(temp.path().to_path_buf()).unwrap();
+        let socket_path = temp.path().join("socket");
+        UnixListener::bind(&socket_path).unwrap();
+
+        let adapter = WalkdirAdapter;
+        let filters = ScanFilters::default();
+
+        let results: Vec<_> = adapter
+            .walk(&root, &filters)
+            .expect("walk should succeed")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("no fatal errors");
+
+        assert!(results.iter().any(|e| {
+            matches!(
+                e,
+                ScanEntry::Skipped(s)
+                    if s.path == socket_path
+                    && s.reason == SkipReason::UnsupportedEntryType
+            )
+        }));
     }
 }

@@ -75,6 +75,7 @@ Tables live in `storage::tables` and are all updated atomically in one
 | `DIR_ID_BY_PATH`       | `PathKey` string      | `FsRecordId`      |
 | `FILE_IDS_BY_BASENAME` | `&str`                | `FsRecordId`      |
 | `FILE_IDS_BY_PARENT`   | `FsRecordId` (parent) | `FsRecordId` (child) |
+| `DIR_IDS_BY_PARENT`    | `FsRecordId` (parent) | `FsRecordId` (child) |
 | `FILE_IDS_BY_FORMAT`   | `&str`                | `FsRecordId`      |
 
 redb primitives stay inside the adapter. The public repository port exposes
@@ -159,12 +160,17 @@ pub(crate) enum SkipReason {
 /// avoiding a two-pass design (scan then classify). The `root` is always a
 /// concrete `DirPath` resolved by the service layer — the adapter does not
 /// know about vaults, `PathKey`, or `IndexScope`.
+///
+/// The returned iterator is `'static` — the adapter clones inputs into `move`
+/// closures. The spec originally used `'s` lifetime parameters, but mockall's
+/// `Expectations` struct is invariant over the lifetime, making non-`'static`
+/// returns unmockable.
 pub(crate) trait ScannerPort {
-    fn walk<'s>(
-        &'s self,
-        root: &'s DirPath,
-        filters: &'s ScanFilters,
-    ) -> Result<Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>> + 's>, ScannerError>;
+    fn walk(
+        &self,
+        root: &DirPath,
+        filters: &ScanFilters,
+    ) -> Result<WalkIter, ScannerError>;
 }
 ```
 
@@ -195,12 +201,25 @@ utility methods for the adapter:
 ```rust
 pub(crate) struct ScanFilters {
     /// File extensions to include, without a leading dot. Empty means all files.
-    included_extensions: Vec<Box<str>>,
+    included_extensions: Box<[Box<str>]>,
     /// Entry names to exclude from traversal or file results.
-    excluded_names: Vec<Box<str>>,
+    excluded_names: Box<[Box<str>]>,
 }
 
 impl ScanFilters {
+    /// Creates a new `ScanFilters` with the given inclusion and exclusion
+    /// lists. Accepts `Vec` for ergonomic construction; converts internally
+    /// to `Box<[Box<str>]>` for immutability.
+    pub(crate) fn new(
+        included_extensions: Vec<Box<str>>,
+        excluded_names: Vec<Box<str>>,
+    ) -> Self {
+        Self {
+            included_extensions: included_extensions.into_boxed_slice(),
+            excluded_names: excluded_names.into_boxed_slice(),
+        }
+    }
+
     /// Returns true when `ext` matches an included extension (or no extension
     /// filter is configured).
     pub(crate) fn is_included_extension(&self, ext: &str) -> bool {
@@ -289,9 +308,10 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
 - [ ] `ReadRepository`, `WriteRepository`, and `Repository` traits are defined
       with the exact signatures above.
 - [ ] `RedbRepository` implements all three traits.
-- [ ] All seven tables are defined; `save_many_records` and
-      `delete_many_records` perform all writes in a single `WriteTransaction`
-      (primary records and all secondary indexes commit atomically).
+- [ ] All eight tables (including `DIR_IDS_BY_PARENT`) are defined;
+      `save_many_records` and `delete_many_records` perform all writes in a
+      single `WriteTransaction` (primary records and all secondary indexes
+      commit atomically).
 - [ ] Single-record methods (`save_file`, `save_dir`, `delete_file`,
       `delete_dir`) each open and commit their own `WriteTransaction`.
 - [ ] Repository contract tests prove all secondary indexes (`path`, `parent`,
@@ -303,6 +323,11 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
       `ScannerError` variants.
 - [ ] `IndexReport` gains a `skipped: Box<[SkippedEntry]>` field and an
       updated constructor.
+- [ ] Unsupported entry types (sockets, FIFOs) are tested via
+      `yields_unsupported_entry_type_as_skipped_in_stream`.
+- [ ] `ScanFilters` fields are private; construction is through
+      `ScanFilters::new()` or `ScanFilters::default()`; fields use
+      `Box<[Box<str>]>` (immutable, matching codebase conventions).
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 
@@ -334,7 +359,7 @@ work session.
 
 ### 2026-06-17 — Session 6: Implementation (scanner port streaming redesign)
 
-**Commits**: (pending commit after review)
+**Commits**: `2175c511`
 
 Implemented the scanner streaming redesign across 4 files. All 2030 tests pass.
 
@@ -374,6 +399,38 @@ Implemented the scanner streaming redesign across 4 files. All 2030 tests pass.
 
 **GitNexus impact**: LOW risk (0 affected processes, 33 symbols changed across
 4 files, all `pub(crate)` within indexer, zero external consumers).
+
+### 2026-06-17 — Session 7: Review-drive refinements
+
+**Commits**: (pending)
+
+Review of issue 03 found two gaps:
+
+1. **Missing unsupported-entry-type test**: Cycle 7 specified
+   `yields_unsupported_entry_type_as_skipped_in_stream` but the test was never
+   written. Added it — creates a Unix socket via `UnixListener::bind`, walks the
+   temp dir, asserts it's yielded as `ScanEntry::Skipped(UnsupportedEntryType)`.
+   `#[cfg(unix)]` gated like the existing permission-denied test.
+
+2. **`ScanFilters` fields not private**: Spec shows private fields with
+   `pub(crate)` utility methods, but fields were `pub(crate)`. Made them private,
+   added `ScanFilters::new(included_extensions, excluded_names)` constructor.
+
+3. **`ScanFilters` used `Vec` not `Box<[T]>`**: Codebase convention is `Box<[T]>`
+   for immutable collections (every other collection in the indexer uses it).
+   Changed both `included_extensions` and `excluded_names` from `Vec<Box<str>>`
+   to `Box<[Box<str>]>`. Constructor accepts `Vec` for ergonomics and converts
+   internally. The `filter_entry` adapter method was restructured to use the
+   public `is_included_extension` method instead of accessing the private field
+   directly.
+
+**Key decisions**:
+- `UnixListener::bind` chosen over `mkfifo` for the socket test — no external
+  dependency needed, works on all Unix targets.
+- `ScanFilters::new()` accepts `Vec`, converts to `Box<[T]>` — callers avoid
+  `into_boxed_slice()` boilerplate.
+
+**GitNexus impact**: LOW (0 processes affected, 2 files touched).
 
 ### 2026-06-15 — Session 4: Adversarial review — hexagonal boundary enforcement
 
@@ -471,13 +528,13 @@ Replaced raw table definitions with typed wrappers (`UuidTable`, `PathUuidTable`
 
 ## Status
 
-**Label**: `ready-for-agent` (awaiting issue 04 — scanner and adapters
-complete).
+**Label**: `closed` — scanner, adapters, repository ports, and storage all
+complete.
 
-**Completed (repository ports + storage — unchanged by redesign)**:
+**Repository ports + storage**:
 - [x] `ReadRepository`, `WriteRepository`, `Repository` traits defined
 - [x] `RedbRepository` implements all three traits
-- [x] All 7 tables defined with typed wrappers
+- [x] All 8 tables defined with typed wrappers (including `DIR_IDS_BY_PARENT`)
 - [x] `save_many_records` / `delete_many_records` atomic batch operations
 - [x] Single-record `save_file`/`save_dir`/`delete_file`/`delete_dir`
 - [x] Upsert cleanup (load old → remove stale indexes → insert new)
@@ -487,15 +544,18 @@ complete).
 - [x] Raw `&[u8]` storage via `rkyv::to_bytes`/`rkyv::from_bytes`
 - [x] Serialization outside write transaction (perf)
 
-**Needs redesign (scanner port — Session 5 redesign)**: COMPLETED by Session 6
-- [x] `ScannerPort` — switch from batch `scan(&self, &IndexScope)` to
-      streaming `walk(&self, &DirPath, &ScanFilters)` yielding `ScanEntry`
-- [x] `WalkdirAdapter` — remove `vault_root` field, make zero-size
-- [x] `ScanEntry` enum — replace `ScanResult` batch type
+**Scanner port + walkdir adapter**:
+- [x] `ScannerPort` with streaming `walk()` returning lazy `WalkIter`
+- [x] `WalkdirAdapter` — zero-size, no `vault_root`, per-entry errors → `ScanEntry::Skipped`
+- [x] `ScanEntry` enum (File, Dir, Skipped) — no batch `ScanResult`
+- [x] Unsupported-entry-type and permission-denied diagnostics tested
+- [x] `ScannerPort` mockable via `mock!` for issue 04 service tests
+
+**Scan filters**:
 - [x] `ScanFilters::is_included_extension()` / `is_excluded_name()` — utility methods
-- [x] `IndexScope` — change `Partial { root: PathKey }` to `Partial { root: DirPath }`
-- [x] `IndexReport::skipped` — accumulated by service, not by adapter batch
-- [x] `ScannerError` — defined; `ScanResult` removed from module exports
+- [x] `ScanFilters` fields private, use `Box<[Box<str>]>`, construct via `new()` or `default()`
+- [x] `IndexScope` — `Partial { root: DirPath }` (no PathKey roundtrip)
+- [x] `IndexReport::skipped` field — accumulated from stream, present in constructor
 
 ---
 

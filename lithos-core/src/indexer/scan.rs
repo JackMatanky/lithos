@@ -10,13 +10,27 @@ use crate::fs::DirPath;
 pub(crate) struct ScanFilters {
     /// File extensions to include, without a leading dot. Empty means all
     /// files.
-    pub(crate) included_extensions: Vec<Box<str>>,
+    included_extensions: Box<[Box<str>]>,
     /// Exact directory or file names to exclude (e.g., `[".git",
     /// "node_modules"]`).
-    pub(crate) excluded_names: Vec<Box<str>>,
+    excluded_names: Box<[Box<str>]>,
 }
 
 impl ScanFilters {
+    /// Creates a new `ScanFilters` with the given inclusion and exclusion
+    /// lists.
+    #[inline]
+    #[must_use]
+    pub(crate) fn new(
+        included_extensions: Vec<Box<str>>,
+        excluded_names: Vec<Box<str>>,
+    ) -> Self {
+        Self {
+            included_extensions: included_extensions.into_boxed_slice(),
+            excluded_names: excluded_names.into_boxed_slice(),
+        }
+    }
+
     /// Returns true when `ext` matches an included extension (or no extension
     /// filter is configured).
     pub(crate) fn is_included_extension(&self, ext: &str) -> bool {
@@ -95,10 +109,7 @@ mod tests {
 
             #[test]
             fn excludes_files_when_extension_does_not_match() {
-                let filters = ScanFilters {
-                    included_extensions: vec!["md".into()],
-                    excluded_names: vec![],
-                };
+                let filters = ScanFilters::new(vec!["md".into()], vec![]);
                 assert!(filters.is_included_extension("md"));
                 assert!(!filters.is_included_extension("toml"));
             }
@@ -111,10 +122,10 @@ mod tests {
 
             #[test]
             fn excludes_entries_when_name_is_excluded() {
-                let filters = ScanFilters {
-                    included_extensions: vec![],
-                    excluded_names: vec![".git".into(), "node_modules".into()],
-                };
+                let filters = ScanFilters::new(vec![], vec![
+                    ".git".into(),
+                    "node_modules".into(),
+                ]);
                 assert!(filters.is_excluded_name(".git"));
                 assert!(filters.is_excluded_name("node_modules"));
                 assert!(!filters.is_excluded_name("src"));
