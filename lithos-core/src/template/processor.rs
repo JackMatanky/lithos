@@ -1,9 +1,56 @@
 //! Template ingestion pipeline.
 //!
-//! Implements a dual-typestate processor for discovering, comparing, and
-//! constructing template aggregates from filesystem entries.
-#![allow(dead_code, reason = "Unused during feature development")]
-#![allow(unused_imports, reason = "Unused during feature development")]
+//! # Purpose
+//!
+//! This module implements a typestate pipeline that chooses the cheapest valid
+//! path to a final `Template`. It uses two compile-time dimensions:
+//!
+//! - **Stage**: the current pipeline phase (`Discovery`, `Comparison`,
+//!   `Parsed`, `Refresh`, `Construction`, `Completed`).
+//! - **Status**: the knowledge state carrying data and invariants
+//!   (`Discovered`, `Missing`, `Present`, `Suspect`, `StaleMetadata`, `New`,
+//!   `Changed`, `Stale`, `Fresh`).
+//!
+//! The dual-typestate design prevents invalid transitions at compile time and
+//! keeps orchestration in the
+//! [`Repository`](crate::template::repository::Repository).
+//!
+//! # Flow
+//!
+//! ```text
+//! Entry
+//!   ├─ No view
+//!   │   → [Parsed] parse raw file
+//!   │   → [Construction] construct domain from raw → Completed
+//!   └─ View found
+//!       → [Comparison] check metadata
+//!
+//! Metadata Check
+//!   ├─ [match]
+//!   │   → [Construction] fetch cached domain → Completed
+//!   └─ [mismatch]
+//!       → [Comparison] check content hash
+//!
+//! Content Check
+//!   ├─ [match]
+//!   │   → [Refresh] sync metadata
+//!   │   → [Construction] fetch cached domain → Completed
+//!   └─ [mismatch]
+//!       → [Parsed] parse raw template
+//!       → [Construction] construct/update aggregate → Completed
+//! ```
+//!
+//! # Maintenance Notes
+//!
+//! - Add new stages/statuses only when they introduce a new invariant or reduce
+//!   work; each state must carry the data needed to satisfy its invariant.
+
+#![allow(
+    dead_code,
+    unused_imports,
+    reason = "Template pipeline is work-in-progress and unused until further \
+              development."
+)]
 
 use std::marker::PhantomData;
 
@@ -19,55 +66,9 @@ use crate::{
     },
 };
 
-// ============================================================================
-// Typestate Markers (Visibility: private)
-// ============================================================================
-
-struct Discovery;
-struct Comparison;
-struct Parsed;
-struct Refresh;
-struct Construction;
-struct StaleMetadata {
-    view: RawTemplateView,
-}
-struct New {
-    content_hash: Blake3Hash,
-    raw: RawTemplate,
-}
-struct Changed {
-    content_hash: Blake3Hash,
-    raw: RawTemplate,
-    view: RawTemplateView,
-}
-struct Stale {
-    content_str: String,
-    content_hash: Blake3Hash,
-    view: RawTemplateView,
-}
-struct Completed;
-
-struct Discovered;
-
-#[derive(Debug)]
-struct Missing;
-
-#[derive(Debug)]
-struct Present {
-    view: RawTemplateView,
-}
-
-#[derive(Debug)]
-struct Fresh;
-
-#[derive(Debug)]
-struct Suspect {
-    view: RawTemplateView,
-}
-
-// ============================================================================
-// Processor Struct
-// ============================================================================
+// ─────────────────────────────────────────────────────────────────────────────
+//  Processor Core
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 pub(crate) struct TemplateProcessor<Phase, Status> {
@@ -78,38 +79,68 @@ pub(crate) struct TemplateProcessor<Phase, Status> {
 }
 
 impl<Phase, Status> TemplateProcessor<Phase, Status> {
-    fn transition<NP, NS>(
-        self,
-        _phase: NP,
+    #[inline]
+    fn into_parts(self) -> (FileNode, PathKey, Status) {
+        (self.file, self.path_key, self.status)
+    }
+
+    #[inline]
+    fn transition_from_parts<NP, NS>(
+        file: FileNode,
+        path_key: PathKey,
         status: NS,
     ) -> TemplateProcessor<NP, NS> {
         TemplateProcessor {
-            file: self.file,
-            path_key: self.path_key,
+            file,
+            path_key,
             status,
             _phase: PhantomData,
         }
     }
 
-    pub fn file(&self) -> &FileNode {
+    #[inline]
+    fn transition<NP, NS>(
+        self,
+        _phase: NP,
+        status: NS,
+    ) -> TemplateProcessor<NP, NS> {
+        let (file, path_key, _) = self.into_parts();
+        Self::transition_from_parts(file, path_key, status)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn file(&self) -> &FileNode {
         &self.file
     }
 
-    pub fn path_key(&self) -> &PathKey {
+    #[cfg(test)]
+    pub(crate) fn path_key(&self) -> &PathKey {
         &self.path_key
     }
 }
 
-// ============================================================================
-// Implementation
-// ============================================================================
+// ─────────────────────────────────────────────────────────────────────────────
+//  Discovery Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Discovery;
+#[derive(Debug)]
+pub(crate) struct Discovered;
+#[derive(Debug)]
+pub(crate) struct Missing;
+#[derive(Debug)]
+pub(crate) struct Present {
+    pub(crate) id: TemplateId,
+    pub(crate) view: RawTemplateView,
+}
 
-enum DiscoveryBranch {
+#[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+pub(crate) enum DiscoveryBranch {
     Missing(TemplateProcessor<Parsed, Missing>),
     Present(TemplateProcessor<Comparison, Present>),
 }
 
 impl TemplateProcessor<Discovery, Discovered> {
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn new(file: FileNode, path_key: PathKey) -> Self {
         Self {
             file,
@@ -119,34 +150,51 @@ impl TemplateProcessor<Discovery, Discovered> {
         }
     }
 
-    /// Comparison stage transition
-    fn compare<R: ReadRepository>(self, repository: &R) -> DiscoveryBranch {
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn compare<R: ReadRepository>(
+        self,
+        repository: &R,
+    ) -> DiscoveryBranch {
+        let id =
+            repository.find_template_id_by_path(&self.path_key).ok().flatten();
         let view =
             repository.find_raw_template_view(&self.path_key).ok().flatten();
 
-        match view {
-            None => DiscoveryBranch::Missing(self.transition(Parsed, Missing)),
-            Some(view) => {
+        match (id, view) {
+            (Some(id), Some(view)) => {
                 DiscoveryBranch::Present(self.transition(Comparison, Present {
+                    id,
                     view,
                 }))
             }
+            _ => DiscoveryBranch::Missing(self.transition(Parsed, Missing)),
         }
     }
 }
 
-enum MetadataBranch {
+// ─────────────────────────────────────────────────────────────────────────────
+//  Comparison Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Comparison;
+#[derive(Debug)]
+pub(crate) struct Suspect {
+    pub(crate) id: TemplateId,
+    pub(crate) view: RawTemplateView,
+}
+#[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+pub(crate) enum MetadataBranch {
     Match(TemplateProcessor<Construction, Fresh>),
     Mismatch(TemplateProcessor<Comparison, Suspect>),
 }
 
 impl TemplateProcessor<Comparison, Present> {
-    fn view(&self) -> &RawTemplateView {
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn view(&self) -> &RawTemplateView {
         &self.status.view
     }
 
-    /// Classifies template against cached view.
-    fn check_metadata(self) -> MetadataBranch {
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn check_metadata(self) -> MetadataBranch {
         let f = self.file.metadata();
         let is_size_match = f.is_size_match(self.status.view.metadata().size());
         let is_timestamp_match = f.is_timestamp_match(
@@ -154,24 +202,38 @@ impl TemplateProcessor<Comparison, Present> {
             self.status.view.metadata().times().modified_at(),
         );
 
+        let id = self.status.id;
         if is_size_match && is_timestamp_match {
-            MetadataBranch::Match(self.transition(Construction, Fresh))
+            MetadataBranch::Match(self.transition(Construction, Fresh {
+                id,
+            }))
         } else {
             let view = self.status.view.clone();
             MetadataBranch::Mismatch(self.transition(Comparison, Suspect {
+                id,
                 view,
             }))
         }
     }
 }
 
-enum ContentBranch {
-    Match(TemplateProcessor<Construction, Completed>),
-    Mismatch(Box<TemplateProcessor<Parsed, Stale>>),
+#[derive(Debug)]
+pub(crate) struct Stale {
+    pub(crate) id: TemplateId,
+    pub(crate) content_str: String,
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) view: RawTemplateView,
+}
+
+#[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+pub(crate) enum ContentBranch {
+    Match(TemplateProcessor<Refresh, StaleMetadata>),
+    Mismatch(TemplateProcessor<Parsed, Stale>),
 }
 
 impl TemplateProcessor<Comparison, Suspect> {
-    fn check_content(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn check_content(
         self,
         source: &FileReader,
     ) -> Result<ContentBranch, TemplateReadError> {
@@ -185,23 +247,36 @@ impl TemplateProcessor<Comparison, Suspect> {
         let hash = Blake3Hash::compute(HashInput::Text(content.clone()));
 
         if self.status.view.content_hash().is_match(&hash) {
-            Ok(ContentBranch::Match(self.transition(Construction, Completed)))
+            let (file, path_key, status) = self.into_parts();
+            Ok(ContentBranch::Match(Self::transition_from_parts(
+                file,
+                path_key,
+                StaleMetadata {
+                    id: status.id,
+                    view: status.view,
+                },
+            )))
         } else {
             let view = self.status.view.clone();
-            Ok(ContentBranch::Mismatch(Box::new(self.transition(
-                Parsed,
-                Stale {
-                    content_str: content,
-                    content_hash: hash,
-                    view,
-                },
-            ))))
+            let id = self.status.id;
+            Ok(ContentBranch::Mismatch(self.transition(Parsed, Stale {
+                id,
+                content_str: content,
+                content_hash: hash,
+                view,
+            })))
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Parsed Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Parsed;
+
 impl TemplateProcessor<Parsed, Missing> {
-    fn parse(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn parse(
         self,
         source: &FileReader,
     ) -> Result<TemplateProcessor<Construction, New>, TemplateReadError> {
@@ -214,6 +289,7 @@ impl TemplateProcessor<Parsed, Missing> {
             })?;
         let hash = Blake3Hash::compute(HashInput::Text(content.clone()));
         Ok(self.transition(Construction, New {
+            id: TemplateId::new(),
             content_hash: hash,
             raw: RawTemplate::new(content),
         }))
@@ -221,48 +297,96 @@ impl TemplateProcessor<Parsed, Missing> {
 }
 
 impl TemplateProcessor<Parsed, Stale> {
-    fn parse(self) -> TemplateProcessor<Construction, Changed> {
-        TemplateProcessor {
-            file: self.file,
-            path_key: self.path_key,
-            status: Changed {
-                content_hash: self.status.content_hash,
-                raw: RawTemplate::new(self.status.content_str),
-                view: self.status.view,
-            },
-            _phase: PhantomData,
-        }
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn parse(self) -> TemplateProcessor<Construction, Changed> {
+        let (file, path_key, status) = self.into_parts();
+        Self::transition_from_parts(file, path_key, Changed {
+            id: status.id,
+            content_hash: status.content_hash,
+            raw: RawTemplate::new(status.content_str),
+            view: status.view,
+        })
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Refresh Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Refresh;
+#[derive(Debug)]
+pub(crate) struct StaleMetadata {
+    pub(crate) id: TemplateId,
+    pub(crate) view: RawTemplateView,
 }
 
 impl TemplateProcessor<Refresh, StaleMetadata> {
-    fn sync_metadata(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn sync_metadata<R: WriteRepository>(
         self,
-        _view: RawTemplateView,
-    ) -> TemplateProcessor<Construction, Fresh> {
-        self.transition(Construction, Fresh)
+        repository: &R,
+    ) -> Result<TemplateProcessor<Construction, Fresh>, TemplateError> {
+        let (file, path_key, mut status) = self.into_parts();
+        status.view.update_metadata(file.metadata().clone());
+        repository
+            .save_raw_template_view(&status.view)
+            .map_err(TemplateError::Repository)?;
+        Ok(Self::transition_from_parts(file, path_key, Fresh {
+            id: status.id,
+        }))
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Construction Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Construction;
+
+#[derive(Debug)]
+pub(crate) struct New {
+    pub(crate) id: TemplateId,
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) raw: RawTemplate,
+}
+#[derive(Debug)]
+pub(crate) struct Changed {
+    pub(crate) id: TemplateId,
+    pub(crate) content_hash: Blake3Hash,
+    pub(crate) raw: RawTemplate,
+    pub(crate) view: RawTemplateView,
+}
+#[derive(Debug)]
+pub(crate) struct Fresh {
+    pub(crate) id: TemplateId,
+}
+
 impl TemplateProcessor<Construction, New> {
-    fn create(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn create(
         self,
         template_root: &std::path::Path,
-    ) -> Result<Template, TemplateError> {
+    ) -> Result<(Template, RawTemplateView), TemplateError> {
         let name =
             TemplateName::try_new(self.file.path().as_ref(), template_root)?;
-        Ok(Template::new(
-            TemplateId::new(),
-            self.path_key,
+        let template = Template::new(
+            self.status.id,
+            self.path_key.clone(),
             name,
             crate::template::aggregate::TemplateBody::try_new(
                 self.status.raw.into_inner(),
             )?,
-        ))
+        );
+        let view = RawTemplateView::new(
+            self.path_key,
+            self.status.content_hash,
+            self.file.metadata().clone(),
+            std::time::SystemTime::now(),
+        );
+        Ok((template, view))
     }
 
-    fn persist(
-        repository: &dyn WriteRepository,
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn persist<R: WriteRepository>(
+        repository: &R,
         template: &Template,
         view: &RawTemplateView,
     ) -> Result<(), TemplateError> {
@@ -277,7 +401,8 @@ impl TemplateProcessor<Construction, New> {
 }
 
 impl TemplateProcessor<Construction, Changed> {
-    fn update(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn update(
         self,
         id: TemplateId,
         template_root: &std::path::Path,
@@ -294,8 +419,9 @@ impl TemplateProcessor<Construction, Changed> {
         ))
     }
 
-    fn persist(
-        repository: &dyn WriteRepository,
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn persist<R: WriteRepository>(
+        repository: &R,
         template: &Template,
         view: &RawTemplateView,
     ) -> Result<(), TemplateError> {
@@ -310,9 +436,10 @@ impl TemplateProcessor<Construction, Changed> {
 }
 
 impl TemplateProcessor<Construction, Fresh> {
-    fn fetch(
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn fetch<R: ReadRepository>(
         &self,
-        repository: &dyn ReadRepository,
+        repository: &R,
     ) -> Result<Template, TemplateError> {
         repository
             .find_template_by_path(&self.path_key)
@@ -326,6 +453,15 @@ impl TemplateProcessor<Construction, Fresh> {
             })
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Completed Stage
+// ─────────────────────────────────────────────────────────────────────────────
+pub(crate) struct Completed;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tests
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -371,13 +507,30 @@ mod tests {
         use super::{fixtures, *};
 
         #[test]
-        fn returns_present_branch_when_template_found() {
+        fn test_discovery_compares_present_when_found() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "content");
-            let processor =
-                TemplateProcessor::<Discovery, Discovered>::new(file, path_key);
+            let processor = TemplateProcessor::<Discovery, Discovered>::new(
+                file.clone(),
+                path_key.clone(),
+            );
 
             let repo = InMemoryRepository::new();
+            let template = Template::new(
+                TemplateId::new(),
+                path_key.clone(),
+                TemplateName::try_new(
+                    file.path().as_ref(),
+                    std::path::Path::new("/"),
+                )
+                .unwrap(),
+                crate::template::aggregate::TemplateBody::try_new(
+                    "content".to_owned(),
+                )
+                .unwrap(),
+            );
+            repo.save_template(&template).unwrap();
+
             let view = crate::template::views::RawTemplateView::new(
                 PathKey::try_new("templates/test.md").unwrap(),
                 crate::support::content_hash::Blake3Hash::from_bytes(b"hash"),
@@ -395,7 +548,7 @@ mod tests {
         use super::{fixtures::*, *};
 
         #[test]
-        fn returns_mismatch_when_hash_differs() {
+        fn test_check_content_returns_mismatch_when_hash_differs() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "content");
             let view = crate::template::views::RawTemplateView::new(
@@ -411,6 +564,7 @@ mod tests {
                 file,
                 path_key,
                 status: Suspect {
+                    id: TemplateId::new(),
                     view,
                 },
                 _phase: PhantomData,
@@ -428,7 +582,7 @@ mod tests {
         use super::{fixtures::*, *};
 
         #[test]
-        fn returns_new_when_file_is_missing_in_repo() {
+        fn test_parse_returns_new_when_file_is_missing_in_repo() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "new-content");
             let processor = TemplateProcessor::<Parsed, Missing> {
@@ -444,11 +598,11 @@ mod tests {
 
             let result = processor.parse(&file_reader).unwrap();
 
-            assert!(matches!(result.status, New { .. }));
+            assert_ne!(result.status.id, TemplateId::default());
         }
 
         #[test]
-        fn returns_changed_when_file_is_stale_in_repo() {
+        fn test_parse_returns_changed_when_file_is_stale_in_repo() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "new-content");
             let view = crate::template::views::RawTemplateView::new(
@@ -460,10 +614,13 @@ mod tests {
                 SystemTime::now(),
             );
 
+            let id = TemplateId::new();
+
             let processor = TemplateProcessor::<Parsed, Stale> {
-                file,
-                path_key,
+                file: file.clone(),
+                path_key: path_key.clone(),
                 status: Stale {
+                    id,
                     content_str: "new-content".to_owned(),
                     content_hash:
                         crate::support::content_hash::Blake3Hash::from_bytes(
@@ -476,7 +633,7 @@ mod tests {
 
             let result = processor.parse();
 
-            assert!(matches!(result.status, Changed { .. }));
+            assert_eq!(result.status.id, id);
         }
     }
 
@@ -485,7 +642,7 @@ mod tests {
         use crate::template::storage::testing::InMemoryRepository;
 
         #[test]
-        fn persists_template_and_view_successfully() {
+        fn test_persists_template_and_view_successfully() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "content");
 
@@ -493,30 +650,15 @@ mod tests {
                 file: file.clone(),
                 path_key: path_key.clone(),
                 status: New {
+                    id: TemplateId::new(),
                     content_hash: Blake3Hash::from_bytes(b"hash"),
                     raw: RawTemplate::new("content".to_owned()),
                 },
                 _phase: PhantomData,
             };
 
-            let _processor_for_persist = TemplateProcessor::<Construction, New> {
-                file: file.clone(),
-                path_key: path_key.clone(),
-                status: New {
-                    content_hash: Blake3Hash::from_bytes(b"hash"),
-                    raw: RawTemplate::new("content".to_owned()),
-                },
-                _phase: PhantomData,
-            };
-
-            let template =
+            let (template, view) =
                 processor.create(&std::path::PathBuf::from("/")).unwrap();
-            let view = crate::template::views::RawTemplateView::new(
-                path_key.clone(),
-                Blake3Hash::from_bytes(b"hash"),
-                file.metadata().clone(),
-                SystemTime::now(),
-            );
 
             let repo = InMemoryRepository::new();
             TemplateProcessor::<Construction, New>::persist(
@@ -534,13 +676,15 @@ mod tests {
         use crate::template::storage::testing::InMemoryRepository;
 
         #[test]
-        fn returns_template_when_found_in_repository() {
+        fn test_fetch_returns_template_when_found_in_repository() {
             let (file, path_key, _temp) =
                 fixtures::create_test_file("templates/test.md", "content");
             let processor = TemplateProcessor::<Construction, Fresh> {
                 file,
                 path_key: path_key.clone(),
-                status: Fresh,
+                status: Fresh {
+                    id: TemplateId::new(),
+                },
                 _phase: PhantomData,
             };
 

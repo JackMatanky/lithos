@@ -24,6 +24,7 @@
 /// let s = raw.into_inner();
 /// assert_eq!(s, "# Hello {{ name }}");
 /// ```
+#[derive(Debug)]
 pub struct RawTemplate(String);
 
 impl RawTemplate {

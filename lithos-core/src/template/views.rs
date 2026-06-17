@@ -96,6 +96,14 @@ impl RawTemplateView {
     pub const fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
+
+    /// Updates the view metadata to the provided new metadata and records the
+    /// update time.
+    #[inline]
+    pub(crate) fn update_metadata(&mut self, metadata: FileMetadata) {
+        self.metadata = metadata;
+        self.recorded_at = SystemTime::now();
+    }
 }
 
 impl HasContentHash for RawTemplateView {
