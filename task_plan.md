@@ -53,10 +53,10 @@ A pure domain error core (`SchemaError`) surrounded by port-specific and orchest
             - [x] 6c.3.2: Migrate `SchemaDiscovery` & `SchemaDelta` (Low complexity)
             - [x] 6c.3.3: Migrate `PropertyBankProcessor` & `BaseSchemaProcessor` (Medium complexity)
             - [ ] 6c.3.4: Migrate `SchemaProcessor` (High complexity - migration chunking)
-        - [ ] Task 6c.4: Legacy Cleanup & Final Verification
-            - [ ] 6c.4.1: Remove `SchemaIngestionError` & `SchemaLoaderError`
-            - [ ] 6c.4.2: Final Audit of Error Mapping & Documentation
-    - [ ] Phase 7: Verification <!-- id: 6 -->
+        - [x] Task 6c.4: Legacy Cleanup & Final Verification
+            - [x] 6c.4.1: Remove `SchemaIngestionError` & `SchemaLoaderError`
+            - [x] 6c.4.2: Final Audit of Error Mapping & Documentation
+    - [x] Phase 7: Verification <!-- id: 6 -->
 
 ## Strategy
 1. **Remove Duplication**: Replace internal `SchemaReadError` and `SchemaParseError` by importing `ParseError` and `ReadError` from `crate::fs::error` and mapping them via `SchemaIngestionError`.
