@@ -23,61 +23,46 @@ use crate::{
 // Typestate Markers (Visibility: private)
 // ============================================================================
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Discovery;
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Comparison;
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Parsed;
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Refresh;
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Construction;
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct StaleMetadata {
-    pub(crate) view: RawTemplateView,
+struct Discovery;
+struct Comparison;
+struct Parsed;
+struct Refresh;
+struct Construction;
+struct StaleMetadata {
+    view: RawTemplateView,
 }
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct New {
-    pub(crate) content_hash: Blake3Hash,
-    pub(crate) raw: RawTemplate,
+struct New {
+    content_hash: Blake3Hash,
+    raw: RawTemplate,
 }
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Changed {
-    pub(crate) content_hash: Blake3Hash,
-    pub(crate) raw: RawTemplate,
-    pub(crate) view: RawTemplateView,
+struct Changed {
+    content_hash: Blake3Hash,
+    raw: RawTemplate,
+    view: RawTemplateView,
 }
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Stale {
-    pub(crate) content_str: String,
-    pub(crate) content_hash: Blake3Hash,
-    pub(crate) view: RawTemplateView,
+struct Stale {
+    content_str: String,
+    content_hash: Blake3Hash,
+    view: RawTemplateView,
 }
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Completed;
+struct Completed;
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
-pub(crate) struct Discovered;
+struct Discovered;
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-pub(crate) struct Missing;
+struct Missing;
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-pub(crate) struct Present {
-    pub(crate) view: RawTemplateView,
+struct Present {
+    view: RawTemplateView,
 }
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-pub(crate) struct Fresh;
+struct Fresh;
 
-#[allow(dead_code, reason = "Used in typestate pattern")]
 #[derive(Debug)]
-pub(crate) struct Suspect {
-    pub(crate) view: RawTemplateView,
+struct Suspect {
+    view: RawTemplateView,
 }
 
 // ============================================================================
