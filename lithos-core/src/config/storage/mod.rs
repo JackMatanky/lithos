@@ -2,7 +2,6 @@
 
 mod read;
 pub(crate) mod tables;
-#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 mod write;
 

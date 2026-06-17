@@ -51,8 +51,7 @@ mod path;
 mod read;
 pub mod retry;
 mod table;
-#[cfg(any(test, feature = "testing"))]
-pub(crate) mod testing;
+pub mod testing;
 mod uuid;
 mod write;
 
