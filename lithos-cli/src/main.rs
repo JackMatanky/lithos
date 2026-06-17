@@ -118,8 +118,10 @@ fn run_main() -> Result<(), CliError> {
     let mut err = stderr.lock();
 
     match cli.command {
-        Command::Config(config_args) => {
-            match config_args.subcommand {
+        Command::Config {
+            command,
+        } => {
+            match command {
                 None => {
                     // `lithos config` — show resolved configuration summary.
                     run_config(
@@ -169,17 +171,18 @@ fn run_main() -> Result<(), CliError> {
 fn build_discovery_flags(
     cli: &cli::Cli,
 ) -> Result<Option<DiscoveryFlags>, CliError> {
-    let has_overrides =
-        cli.vault.is_some() || cli.config.is_some() || cli.no_global_config;
+    let has_overrides = cli.bootstrap.vault.is_some()
+        || cli.bootstrap.config.is_some()
+        || cli.bootstrap.no_global_config;
 
     if !has_overrides {
         return Ok(None);
     }
 
     let flags = DiscoveryFlags::new(
-        cli.config.as_deref(),
-        cli.vault.as_deref(),
-        cli.no_global_config,
+        cli.bootstrap.config.as_deref(),
+        cli.bootstrap.vault.as_deref(),
+        cli.bootstrap.no_global_config,
     )
     .map_err(|e| {
         CliError::Bootstrap(

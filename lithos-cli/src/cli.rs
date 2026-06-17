@@ -16,17 +16,9 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
     about = "A CLI-first templating and schema system for Obsidian vaults"
 )]
 pub(crate) struct Cli {
-    /// Path to the vault root directory.
-    #[arg(long, global = true)]
-    pub(crate) vault: Option<PathBuf>,
-
-    /// Path to an explicit config file to load.
-    #[arg(long, global = true)]
-    pub(crate) config: Option<PathBuf>,
-
-    /// Skip loading the global (user-level) config file.
-    #[arg(long, global = true)]
-    pub(crate) no_global_config: bool,
+    /// Bootstrap/loading flags shared by all commands.
+    #[command(flatten)]
+    pub(crate) bootstrap: BootstrapArgs,
 
     /// Output format for command results.
     #[arg(long, global = true, default_value = "human")]
@@ -41,21 +33,35 @@ pub(crate) struct Cli {
     pub(crate) command: Command,
 }
 
+/// Bootstrap/loading flags shared by all commands.
+///
+/// These flags control how vault and config file discovery is performed before
+/// any command runs. They are flattened into the top-level [`Cli`] struct so
+/// they appear as top-level options in the CLI.
+#[derive(Debug, Args)]
+pub(crate) struct BootstrapArgs {
+    /// Override the vault root directory for this invocation.
+    #[arg(long, global = true)]
+    pub(crate) vault: Option<PathBuf>,
+    /// Override the config file path for this invocation.
+    #[arg(long, global = true)]
+    pub(crate) config: Option<PathBuf>,
+    /// Suppress loading the global config file.
+    #[arg(long, global = true)]
+    pub(crate) no_global_config: bool,
+}
+
 /// Top-level subcommands available in the Lithos CLI.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Inspect or manage configuration.
-    Config(ConfigArgs),
+    /// Inspect the effective bootstrap and configuration loading state.
+    Config {
+        /// Optional sub-subcommand under `config`.
+        #[command(subcommand)]
+        command: Option<ConfigSubcommand>,
+    },
     /// Run health checks on the current environment.
     Doctor,
-}
-
-/// Arguments for the `config` subcommand.
-#[derive(Debug, Args)]
-pub(crate) struct ConfigArgs {
-    /// Optional sub-subcommand under `config`.
-    #[command(subcommand)]
-    pub(crate) subcommand: Option<ConfigSubcommand>,
 }
 
 /// Sub-subcommands available under `config`.
@@ -91,21 +97,24 @@ mod arg_parsing {
     fn returns_vault_flag_value_when_provided() {
         let cli = parse(&["lithos", "--vault", "/tmp/vault", "doctor"])
             .expect("valid args");
-        assert_eq!(cli.vault, Some(PathBuf::from("/tmp/vault")));
+        assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/tmp/vault")));
     }
 
     #[test]
     fn returns_config_flag_value_when_provided() {
         let cli = parse(&["lithos", "--config", "/tmp/lithos.toml", "doctor"])
             .expect("valid args");
-        assert_eq!(cli.config, Some(PathBuf::from("/tmp/lithos.toml")));
+        assert_eq!(
+            cli.bootstrap.config,
+            Some(PathBuf::from("/tmp/lithos.toml"))
+        );
     }
 
     #[test]
     fn returns_no_global_config_when_flag_present() {
         let cli = parse(&["lithos", "--no-global-config", "doctor"])
             .expect("valid args");
-        assert!(cli.no_global_config);
+        assert!(cli.bootstrap.no_global_config);
     }
 
     #[test]
@@ -143,21 +152,21 @@ mod arg_parsing {
     #[test]
     fn routes_config_subcommand() {
         let cli = parse(&["lithos", "config"]).expect("valid args");
-        assert!(matches!(cli.command, Command::Config(_)));
+        assert!(matches!(cli.command, Command::Config { .. }));
     }
 
     #[test]
     fn routes_config_files_subcommand() {
         let cli = parse(&["lithos", "config", "files"]).expect("valid args");
-        let is_config = matches!(cli.command, Command::Config(_));
+        let is_config = matches!(cli.command, Command::Config { .. });
         assert!(is_config, "expected Config command variant");
-        let Command::Config(config_args) = cli.command else {
+        let Command::Config {
+            command,
+        } = cli.command
+        else {
             return;
         };
-        assert!(matches!(
-            config_args.subcommand,
-            Some(ConfigSubcommand::Files)
-        ));
+        assert!(matches!(command, Some(ConfigSubcommand::Files)));
     }
 
     #[test]
@@ -170,13 +179,13 @@ mod arg_parsing {
     fn vault_flag_is_available_to_config_files_subcommand() {
         let cli = parse(&["lithos", "--vault", "/my/vault", "config", "files"])
             .expect("valid args");
-        assert_eq!(cli.vault, Some(PathBuf::from("/my/vault")));
+        assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/my/vault")));
     }
 
     #[test]
     fn vault_flag_is_available_to_doctor_subcommand() {
         let cli = parse(&["lithos", "--vault", "/my/vault", "doctor"])
             .expect("valid args");
-        assert_eq!(cli.vault, Some(PathBuf::from("/my/vault")));
+        assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/my/vault")));
     }
 }
