@@ -106,6 +106,25 @@ impl InMemoryRepository {
         }
     }
 
+    /// Replaces the test harness with a custom one (test helper).
+    #[must_use]
+    pub(crate) fn with_harness(
+        mut self,
+        harness: Arc<InMemoryHarness>,
+    ) -> Self {
+        self.harness = harness;
+        self
+    }
+
+    /// Configures a failure injector for the repository (test helper).
+    #[must_use]
+    pub(crate) fn with_failure_injector(
+        self,
+        injector: Box<dyn crate::db::testing::FailureInjector + Send + Sync>,
+    ) -> Self {
+        self.with_harness(Arc::new(InMemoryHarness::with_injector(injector)))
+    }
+
     /// Returns a reference to the test harness for instrumentation.
     #[must_use]
     pub(crate) fn harness(&self) -> &InMemoryHarness {
@@ -540,14 +559,11 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_write_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnWrite));
                 let template = test_template("failwrite");
 
-                let result = repo2.save_template(&template);
+                let result = repo.save_template(&template);
 
                 assert!(matches!(
                     result,
@@ -667,13 +683,10 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_read_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnRead));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnRead));
 
-                let result = repo2.find_template_by_id(TemplateId::new());
+                let result = repo.find_template_by_id(TemplateId::new());
 
                 assert!(matches!(
                     result,
@@ -781,14 +794,11 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_write_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnWrite));
                 let view = test_view("templates/fail.md");
 
-                let result = repo2.save_raw_template_view(&view);
+                let result = repo.save_raw_template_view(&view);
 
                 assert!(matches!(
                     result,
@@ -823,14 +833,11 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_read_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnRead));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnRead));
 
                 let path = PathKey::try_new("templates/any.md").unwrap();
-                let result = repo2.find_raw_template_view(&path);
+                let result = repo.find_raw_template_view(&path);
 
                 assert!(matches!(
                     result,
