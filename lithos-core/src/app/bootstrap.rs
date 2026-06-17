@@ -15,6 +15,18 @@ use crate::{
     fs::DirPath,
 };
 
+/// The outcome of a successful full bootstrap run.
+///
+/// Returned by [`Bootstrapper::run()`]. Contains the resolved [`Config`] and
+/// the [`DiscoveryReport`] produced during the discovery phase.
+#[derive(Debug)]
+pub struct BootstrapResult {
+    /// The fully resolved and merged configuration.
+    pub config: Config,
+    /// Non-fatal diagnostic information from the discovery phase.
+    pub report: DiscoveryReport,
+}
+
 /// Application-owned bootstrap orchestration entry point.
 ///
 /// `Bootstrapper` is generic over `D: DiscoveryPort` so that the discovery
@@ -136,11 +148,14 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
         repository: R,
-    ) -> Result<(Config, DiscoveryReport), BootstrapError> {
+    ) -> Result<BootstrapResult, BootstrapError> {
         let context = Self::build_context(flags, env, anchor)?;
         let (discovery, report) = self.discover(&context)?;
         let config = Builder::from_discovery(discovery, repository).build()?;
-        Ok((config, report))
+        Ok(BootstrapResult {
+            config,
+            report,
+        })
     }
 }
 
@@ -787,7 +802,7 @@ mod tests {
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
-            let (_, returned_report) = bootstrapper
+            let result = bootstrapper
                 .run::<InMemoryRepository>(
                     None,
                     None,
@@ -797,7 +812,7 @@ mod tests {
                 .expect("run should succeed");
 
             assert_eq!(
-                returned_report, expected_report,
+                result.report, expected_report,
                 "returned report should match mock report"
             );
         }

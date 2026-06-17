@@ -27,7 +27,7 @@ use std::{
 };
 
 use lithos_core::{
-    app::bootstrap::{BootstrapError, Bootstrapper},
+    app::bootstrap::{BootstrapError, BootstrapResult, Bootstrapper},
     config::{
         aggregate::{Config, Version},
         error::ConfigRepositoryError,
@@ -282,8 +282,10 @@ impl<D: DiscoveryPort> BootstrapRunner for Bootstrapper<D> {
             .map(|c| c.path().as_path().to_path_buf());
 
         // Second pass: full bootstrap (discovery + config build).
-        let (config, report) =
-            self.run(flags, None, anchor, CliRepository::new())?;
+        let BootstrapResult {
+            config,
+            report,
+        } = self.run(flags, None, anchor, CliRepository::new())?;
 
         Ok(BootstrapOutcome {
             config,
