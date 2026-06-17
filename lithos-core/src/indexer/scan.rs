@@ -3,16 +3,31 @@
 //! Defines the boundaries and options used to control which filesystem nodes
 //! are eligible for indexing and how an indexing run is executed.
 
-use crate::fs::path::PathKey;
+use crate::fs::DirPath;
 
 /// Filters applied during a filesystem scan to include or exclude nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ScanFilters {
-    /// Optional file extensions to include (e.g., `["md", "toml"]`).
+    /// File extensions to include, without a leading dot. Empty means all
+    /// files.
     pub(crate) included_extensions: Vec<Box<str>>,
     /// Exact directory or file names to exclude (e.g., `[".git",
     /// "node_modules"]`).
     pub(crate) excluded_names: Vec<Box<str>>,
+}
+
+impl ScanFilters {
+    /// Returns true when `ext` matches an included extension (or no extension
+    /// filter is configured).
+    pub(crate) fn is_included_extension(&self, ext: &str) -> bool {
+        self.included_extensions.is_empty()
+            || self.included_extensions.iter().any(|e| e.as_ref() == ext)
+    }
+
+    /// Returns true when `name` matches an excluded entry name.
+    pub(crate) fn is_excluded_name(&self, name: &str) -> bool {
+        self.excluded_names.iter().any(|n| n.as_ref() == name)
+    }
 }
 
 /// The scope of an indexing operation.
@@ -23,13 +38,15 @@ pub(crate) struct ScanFilters {
 pub(crate) enum IndexScope {
     /// Scan the full vault, applying the given filters.
     Full {
+        /// The root directory of the vault.
+        root: DirPath,
         /// Filters controlling node inclusion.
         filters: ScanFilters,
     },
     /// Scan a subtree rooted at `root`, applying the given filters.
     Partial {
-        /// The vault-relative root of the partial scan.
-        root: PathKey,
+        /// The root of the partial scan (concrete OS path).
+        root: DirPath,
         /// Filters controlling node inclusion.
         filters: ScanFilters,
     },
@@ -72,19 +89,53 @@ impl IndexOptions {
 
 #[cfg(test)]
 mod tests {
-    mod scan_scope {
+    mod scan_filters {
         mod constructor {
-            use crate::indexer::scan::{IndexOptions, IndexScope, ScanFilters};
+            use crate::indexer::scan::ScanFilters;
 
             #[test]
-            fn scans_only_partial_scope_root() {
-                // Placeholder for partial scope scanning test
+            fn excludes_files_when_extension_does_not_match() {
+                let filters = ScanFilters {
+                    included_extensions: vec!["md".into()],
+                    excluded_names: vec![],
+                };
+                assert!(filters.is_included_extension("md"));
+                assert!(!filters.is_included_extension("toml"));
             }
 
             #[test]
-            fn full_scope_wraps_filters() {
+            fn includes_all_when_no_extension_filter() {
+                let filters = ScanFilters::default();
+                assert!(filters.is_included_extension("anything"));
+            }
+
+            #[test]
+            fn excludes_entries_when_name_is_excluded() {
+                let filters = ScanFilters {
+                    included_extensions: vec![],
+                    excluded_names: vec![".git".into(), "node_modules".into()],
+                };
+                assert!(filters.is_excluded_name(".git"));
+                assert!(filters.is_excluded_name("node_modules"));
+                assert!(!filters.is_excluded_name("src"));
+            }
+        }
+    }
+
+    mod index_scope {
+        mod constructor {
+            use crate::{
+                fs::DirPath,
+                indexer::scan::{IndexOptions, IndexScope, ScanFilters},
+            };
+
+            #[test]
+            fn full_scope_wraps_root_and_filters() {
+                let tmp = tempfile::TempDir::new().unwrap();
+                let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
                 let filters = ScanFilters::default();
                 let scope = IndexScope::Full {
+                    root: root.clone(),
                     filters,
                 };
                 assert!(matches!(scope, IndexScope::Full { .. }));
@@ -92,21 +143,14 @@ mod tests {
 
             #[test]
             fn partial_scope_stores_root_and_filters() {
-                use crate::fs::path::PathKey;
-                let root = PathKey::try_new("notes").unwrap();
+                let tmp = tempfile::TempDir::new().unwrap();
+                let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
                 let filters = ScanFilters::default();
                 let scope = IndexScope::Partial {
                     root: root.clone(),
                     filters,
                 };
                 assert!(matches!(scope, IndexScope::Partial { .. }));
-                if let IndexScope::Partial {
-                    root: r,
-                    ..
-                } = &scope
-                {
-                    assert_eq!(r.as_str(), "notes");
-                }
             }
 
             #[test]

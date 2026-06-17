@@ -28,7 +28,7 @@ mod summary;
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub(crate) use error::{IndexerError, IndexerRepositoryError, ScannerError};
 pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
-pub(crate) use port::{ScanResult, ScannerPort};
+pub(crate) use port::{ScanEntry, ScannerPort};
 pub(crate) use report::{
     IndexNodeFailure, IndexReport, SkipReason, SkippedEntry,
 };
@@ -45,8 +45,6 @@ mod tests {
 
     #[test]
     fn test_indexer_exports() {
-        // These should be accessible via `super::` or `crate::indexer::`
-        // if correctly re-exported as pub(crate).
         let _: Option<&dyn ReadRepository> = None;
         let _: Option<&dyn WriteRepository> = None;
         let _: Option<&dyn Repository> = None;

@@ -1,47 +1,97 @@
 //! Scanner port — filesystem traversal contract for the indexer context.
 //!
 //! Defines the `ScannerPort` trait, the interface through which the indexer
-//! requests filesystem traversal, along with its associated result type.
+//! requests filesystem traversal, along with the `ScanEntry` type it yields.
 //! Implementations (adapters) live in the scanner submodule.
 
 use crate::{
     fs::{DirNode, FileNode},
-    indexer::{error::ScannerError, report::SkippedEntry, scan::IndexScope},
+    indexer::{error::ScannerError, report::SkippedEntry, scan::ScanFilters},
 };
 
+/// Lazy iterator type returned by [`ScannerPort::walk`].
+pub(crate) type WalkIter =
+    Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>;
+
+/// A single item yielded by the scanner's lazy walk iterator.
+///
+/// Filtered entries are silently dropped by walkdir's `filter_entry` and never
+/// appear in the stream. Entries that match filters but can't be read yield
+/// the `Skipped` variant — the caller accumulates these into `IndexReport`.
+#[derive(Debug)]
+pub(crate) enum ScanEntry {
+    File(FileNode),
+    Dir(DirNode),
+    Skipped(SkippedEntry),
+}
+
 /// Interface for filesystem traversal.
+///
+/// Returns a lazy iterator so the caller can classify each entry inline,
+/// avoiding a two-pass design (scan then classify). The `root` is always a
+/// concrete `DirPath` resolved by the service layer — the adapter does not
+/// know about vaults, `PathKey`, or `IndexScope`.
+///
+/// The returned iterator is `'static` — it owns all captured state. The
+/// adapter clones `DirPath` and `ScanFilters` internally when building the
+/// iterator, so the caller's references are not borrowed by the stream.
 pub(crate) trait ScannerPort {
-    /// Scan the filesystem within the given scope.
-    ///
-    /// # Errors
-    /// Returns a `ScannerError` if scanning fails.
-    fn scan(&self, scope: &IndexScope) -> Result<ScanResult, ScannerError>;
+    fn walk(
+        &self,
+        root: &crate::fs::DirPath,
+        filters: &ScanFilters,
+    ) -> Result<WalkIter, ScannerError>;
 }
 
-/// The result of a scan operation.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ScanResult {
-    /// Discovered files.
-    pub(crate) files: Vec<FileNode>,
-    /// Discovered directories.
-    pub(crate) dirs: Vec<DirNode>,
-    /// Entries that were skipped during scanning.
-    pub(crate) skipped: Vec<SkippedEntry>,
-}
+#[cfg(test)]
+mod tests {
+    use mockall::{mock, predicate::always};
 
-impl ScanResult {
-    /// Create a new `ScanResult`.
-    #[must_use]
-    #[inline]
-    pub(crate) fn new(
-        files: Vec<FileNode>,
-        dirs: Vec<DirNode>,
-        skipped: Vec<SkippedEntry>,
-    ) -> Self {
-        Self {
-            files,
-            dirs,
-            skipped,
+    use crate::{
+        fs::DirPath,
+        indexer::{
+            error::ScannerError,
+            port::{ScanEntry, ScannerPort, WalkIter},
+            report::{SkipReason, SkippedEntry},
+            scan::ScanFilters,
+        },
+    };
+
+    // Use mock! macro (not #[automock]) for compatibility with the 'static
+    // return type — follows the established pattern from discovery/port.rs.
+    mock! {
+        pub(crate) ScannerPort {}
+        impl ScannerPort for ScannerPort {
+            fn walk(
+                &self,
+                root: &DirPath,
+                filters: &ScanFilters,
+            ) -> Result<WalkIter, ScannerError>;
         }
+    }
+
+    /// Verifies the generated mock compiles and returns the expected type.
+    #[test]
+    fn scanner_port_can_be_mocked() {
+        let mut mock = MockScannerPort::new();
+        let root = DirPath::try_new("/tmp".into()).unwrap();
+        let filters = ScanFilters::default();
+
+        mock.expect_walk().with(always(), always()).returning(|_, _| {
+            let iter: WalkIter =
+                Box::new(std::iter::empty::<Result<ScanEntry, ScannerError>>());
+            Ok(iter)
+        });
+
+        let result = mock.walk(&root, &filters);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn yields_file_dir_and_skipped_variants() {
+        let _entry = ScanEntry::Skipped(SkippedEntry {
+            path: "/tmp/test".into(),
+            reason: SkipReason::PermissionDenied,
+        });
     }
 }

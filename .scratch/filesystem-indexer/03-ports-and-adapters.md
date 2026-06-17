@@ -2,11 +2,11 @@
 title: 03-indexer-ports-and-adapters
 category: enhancement
 label: ready-for-agent
-status: open
+status: closed
 branch:
 merge_commit:
 date_created: 2026-06-09
-date_completed:
+date_completed: 2026-06-17
 ---
 
 # Issue 03: ScannerPort, walkdir adapter, repository ports, and redb storage adapter
@@ -21,20 +21,24 @@ tables independently.
 
 ### Scanner
 
-- Define `ScannerPort` trait in `lithos-core::indexer::scanner`. The trait
-  returns a `ScanResult` (discovered FS nodes + skipped diagnostics) from an
-  `IndexScope`.
-- Implement the walkdir adapter (`WalkdirAdapter`) as the sole concrete
-  `ScannerPort` implementation. It holds a `vault_root: DirPath`, translates
-  `ScanFilters` into walkdir `filter_entry` predicates, walks the subtree, and
-  produces a `ScanResult`. Per-entry errors (permission denied, unsupported
-  type) are recorded in `ScanResult::skipped` — never escalated as hard errors.
+- Define `ScannerPort` trait in `lithos-core::indexer::port`. The trait
+  returns a lazy iterator of `ScanEntry` values from a `DirPath` + `ScanFilters`
+  — no batch `ScanResult` type. The iterator yields one entry at a time; the
+  caller classifies each entry inline without a second pass.
+- `ScanEntry` is an enum with three variants: `File(FileNode)`, `Dir(DirNode)`,
+  `Skipped(SkippedEntry)`. Entries excluded by `ScanFilters` are
+  silently dropped by walkdir's `filter_entry` and never appear in the stream.
+  Entries that match filters but can't be read (permission denied, unsupported
+  type) are yielded as `ScanEntry::Skipped` — never escalated as hard errors.
+- Implement the walkdir adapter (`WalkdirAdapter`) as a zero-size struct (no
+  `vault_root` field — the adapter receives the resolved `DirPath` per call via
+  the port). It translates `ScanFilters` into walkdir `filter_entry` predicates,
+  wraps the walkdir iterator, and maps entries to `ScanEntry` variants.
   The existing FS context `DirScanner` is **not** used here.
-- Extend `ScanFilters` with the minimal concrete criteria needed for the
-  walkdir adapter to prove real predicate translation: included file
-  extensions and excluded entry names. Directories are traversed unless their
-  name is excluded; files are returned only when they match the extension
-  filter, if one is configured.
+- Extend `ScanFilters` with utility methods (`is_included_extension`,
+  `is_excluded_name`) that the adapter calls to build `filter_entry` predicates.
+  Directories are traversed unless their name is excluded; files are returned
+  only when they match the extension filter, if one is configured.
 
 ### Repository ports
 
@@ -122,16 +126,19 @@ pub(crate) enum IndexerRepositoryError {
 }
 ```
 
-### Scanner types (`lithos-core::indexer::scanner`)
+### Scanner types (`lithos-core::indexer::port`)
 
 ```rust
-/// Raw filesystem nodes discovered during a scan, before ID assignment or
-/// index-status comparison. Uses `fs::entry::FileNode` / `fs::entry::DirNode`
-/// directly — no redundant wrapper types.
-pub(crate) struct ScanResult {
-    pub(crate) files: Vec<fs::entry::FileNode>,
-    pub(crate) dirs: Vec<fs::entry::DirNode>,
-    pub(crate) skipped: Vec<SkippedEntry>,
+/// A single item yielded by the scanner's lazy walk iterator.
+///
+/// Filtered entries are silently dropped by walkdir's `filter_entry` and never
+/// appear in the stream. Entries that match filters but can't be read yield
+/// the `Skipped` variant — the caller accumulates these into `IndexReport`.
+#[derive(Debug)]
+pub(crate) enum ScanEntry {
+    File(fs::entry::FileNode),
+    Dir(fs::entry::DirNode),
+    Skipped(SkippedEntry),
 }
 
 /// An entry encountered during scanning that could not be indexed.
@@ -146,17 +153,44 @@ pub(crate) enum SkipReason {
     UnsupportedEntryType,
 }
 
+/// Interface for filesystem traversal.
+///
+/// Returns a lazy iterator so the caller can classify each entry inline,
+/// avoiding a two-pass design (scan then classify). The `root` is always a
+/// concrete `DirPath` resolved by the service layer — the adapter does not
+/// know about vaults, `PathKey`, or `IndexScope`.
 pub(crate) trait ScannerPort {
-    /// Walk the subtree defined by `scope`. Returns discovered FS nodes and a
-    /// diagnostic report. Permission-denied and unreadable entries are
-    /// collected in `ScanResult::skipped` — never propagated as `Err`.
-    fn scan(&self, scope: &IndexScope) -> Result<ScanResult, ScannerError>;
+    fn walk<'s>(
+        &'s self,
+        root: &'s DirPath,
+        filters: &'s ScanFilters,
+    ) -> Result<Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>> + 's>, ScannerError>;
 }
 ```
 
+### `IndexScope` change (`lithos-core::indexer::scan`)
+
+`IndexScope` currently uses `PathKey` for the Partial variant root. This forces
+a conversion circle: CLI path → `PathKey` (needs vault root) → `DirPath` (in
+adapter). **Fix**: both variants carry a `DirPath` directly:
+
+```rust
+pub(crate) enum IndexScope {
+    Full  { root: DirPath, filters: ScanFilters },
+    Partial { root: DirPath, filters: ScanFilters },
+}
+```
+
+The semantic difference between Full and Partial is deletion-detection scope
+(Full checks all persisted paths; Partial checks only paths under `root`).
+Both variants are concrete OS paths ready for the scanner — no roundtrip
+through `PathKey`. The service constructs the appropriate variant from CLI
+input (Full from vault root config, Partial by resolving user-provided path).
+
 ### `ScanFilters` addition (`lithos-core::indexer::scan`)
 
-Replace the current empty placeholder with minimal concrete filters:
+Replace the current empty placeholder with minimal concrete filters and add
+utility methods for the adapter:
 
 ```rust
 pub(crate) struct ScanFilters {
@@ -165,10 +199,24 @@ pub(crate) struct ScanFilters {
     /// Entry names to exclude from traversal or file results.
     excluded_names: Vec<Box<str>>,
 }
+
+impl ScanFilters {
+    /// Returns true when `ext` matches an included extension (or no extension
+    /// filter is configured).
+    pub(crate) fn is_included_extension(&self, ext: &str) -> bool {
+        self.included_extensions.is_empty()
+            || self.included_extensions.iter().any(|e| e.as_ref() == ext)
+    }
+
+    /// Returns true when `name` matches an excluded entry name.
+    pub(crate) fn is_excluded_name(&self, name: &str) -> bool {
+        self.excluded_names.iter().any(|n| n.as_ref() == name)
+    }
+}
 ```
 
-The walkdir adapter must translate these into traversal behavior without
-leaking walkdir types into `ScanFilters` or `ScannerPort`.
+The walkdir adapter calls `filters.is_excluded_name()` in `filter_entry` and
+`filters.is_included_extension()` for file entries — no inline iteration.
 
 ### `IndexReport` addition (`lithos-core::indexer::summary`)
 
@@ -181,7 +229,7 @@ pub(crate) struct IndexReport {
     fresh: usize,
     stale: usize,
     deleted: usize,
-    skipped: Box<[SkippedEntry]>,      // NEW — populated from ScanResult::skipped
+    skipped: Box<[SkippedEntry]>,      // NEW — accumulated by service from ScanEntry::Skipped stream
     failures: Box<[IndexNodeFailure]>,
 }
 ```
@@ -220,17 +268,24 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
 
 ## Acceptance criteria
 
-- [ ] `ScannerPort` trait and `ScanResult` / `SkippedEntry` / `SkipReason` types
-      are defined in `lithos-core::indexer::scanner`.
-- [ ] `WalkdirAdapter` implements `ScannerPort`; per-entry errors (permission
-      denied, unsupported type) go to `ScanResult::skipped`, never `Err`.
+- [ ] `ScannerPort` trait, `ScanEntry`, `SkippedEntry`, and `SkipReason` types
+      are defined in `lithos-core::indexer::port`.
+- [ ] `ScannerPort::walk` returns a lazy iterator (not a batch `ScanResult`).
+- [ ] `WalkdirAdapter` is a zero-size struct (no `vault_root` field). It
+      implements `ScannerPort`; per-entry errors (permission denied,
+      unsupported type) are yielded as `ScanEntry::Skipped`, never `Err`.
 - [ ] Scanner adapter tests prove `ScanFilters` translate into correct walkdir
       traversal without leaking walkdir types into domain contracts; test covers
-      permission-denied subtree appearing in `skipped`, not as an error.
+      permission-denied subtree appearing as `ScanEntry::Skipped`, not as an error.
 - [ ] `ScannerPort` is annotated for mockall-based tests so issue 04 can use a
       generated mock instead of a handwritten scanner double.
 - [ ] `ScanFilters` includes minimal concrete filters for included file
-      extensions and excluded entry names, with tests proving both are applied.
+      extensions and excluded entry names, with utility methods
+      (`is_included_extension`, `is_excluded_name`) and tests proving both
+      are applied.
+- [ ] `IndexScope::Full` and `IndexScope::Partial` both carry `root: DirPath`
+      (not `PathKey`). `Partial` resolution no longer roundtrips through
+      `PathKey`.
 - [ ] `ReadRepository`, `WriteRepository`, and `Repository` traits are defined
       with the exact signatures above.
 - [ ] `RedbRepository` implements all three traits.
@@ -252,6 +307,73 @@ pub(crate) trait Repository: ReadRepository + WriteRepository {}
 - [ ] No clippy warnings (`mise run lint`).
 
 ## Changlog
+
+### 2026-06-17 — Session 5: Streaming scanner redesign (adversarial review)
+
+**No commits yet** — design session.
+
+Redesigned the scanner port from batch to streaming, informed by adversarial
+review against the two-pass problem (scan then classify).
+
+**Design changes**:
+1. `ScannerPort::scan(&self, &IndexScope) -> Result<ScanResult, ScannerError>`
+   → `ScannerPort::walk(&self, &DirPath, &ScanFilters) -> Result<Box<dyn
+   Iterator<Item = Result<ScanEntry, ScannerError>>>, ScannerError>`.
+2. `ScanResult` removed — replaced by `ScanEntry` enum (lazy stream).
+3. `WalkdirAdapter` becomes zero-size (no `vault_root`). Receives `DirPath`
+   per call.
+4. `IndexScope::Partial { root: PathKey }` → `IndexScope::Partial { root:
+   DirPath }`. Breaks the OS-path → PathKey → DirPath conversion circle.
+5. `ScanFilters` gains utility methods `is_included_extension()` and
+   `is_excluded_name()`.
+6. `SkippedEntry` values now flow through `ScanEntry::Skipped` in the stream
+   instead of being batched in `ScanResult::skipped`.
+
+**Status**: Design agreed with stakeholder. Implementation deferred to issue 03
+work session.
+
+### 2026-06-17 — Session 6: Implementation (scanner port streaming redesign)
+
+**Commits**: (pending commit after review)
+
+Implemented the scanner streaming redesign across 4 files. All 2030 tests pass.
+
+**Changes per TDD cycle**:
+- **Cycle 2**: `ScanEntry` enum with `File(FileNode)`, `Dir(DirNode)`,
+  `Skipped(SkippedEntry)` variants; removed batch `ScanResult` type.
+- **Cycle 3**: `ScannerPort` trait with `walk()` returning
+  `Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>` (`WalkIter`
+  type alias for clippy hygiene). Mock via `mockall::mock!` macro (not
+  `#[automock]`) following the `discovery/port.rs` pattern — needed because
+  mockall can't handle lifetime-parameterized return types.
+- **Cycle 4/5**: `WalkdirAdapter` zero-size (no `vault_root`, no constructor).
+  `walk()` clones `ScanFilters` + root `PathBuf` into `move` closures so the
+  returned iterator is `'static`. `filter_entry` uses `ScanFilters` utility
+  methods.
+- **Cycle 6**: `ScanFilters::is_included_extension()` and
+  `is_excluded_name()` added. `IndexScope::Partial { root: DirPath }` — both
+  variants carry `DirPath`, breaking the PathKey conversion circle.
+- **Cycle 7**: Permission-denied and unsupported-entry-type errors yield
+  `ScanEntry::Skipped` (never `Err`). `try_map_entry` returns `Option` to
+  silently skip the root directory itself.
+- **Cycle 22**: `mod.rs` exports `ScanEntry` instead of `ScanResult`.
+
+**Key decisions**:
+- `'static` iterator return (not borrowed). Adapter clones `DirPath` and
+  `ScanFilters` into `move` closures. Cheap — `ScanFilters` is small
+  `Vec<Box<str>>`, `DirPath` is a `PathBuf`. Avoids mockall lifetime issues.
+- `Box<dyn Iterator>` with `WalkIter` type alias satisfies clippy's
+  `type_complexity` lint.
+- `filter_entry` + `filter_map` pattern: `filter_entry` drops excluded
+  entries before the walkdir inner loop; `filter_map` converts remaining
+  entries while skipping the root dir via `None`.
+- `scanner/mod.rs` unchanged — already `pub(crate) mod scanner;` with
+  `mod walkdir;`.
+- `report.rs` unchanged — `SkippedEntry`, `SkipReason`, `IndexReport::skipped`
+  were already correct from session 4.
+
+**GitNexus impact**: LOW risk (0 affected processes, 33 symbols changed across
+4 files, all `pub(crate)` within indexer, zero external consumers).
 
 ### 2026-06-15 — Session 4: Adversarial review — hexagonal boundary enforcement
 
@@ -352,11 +474,7 @@ Replaced raw table definitions with typed wrappers (`UuidTable`, `PathUuidTable`
 **Label**: `ready-for-agent` (awaiting issue 04 — scanner and adapters
 complete).
 
-**Completed**:
-- [x] `ScannerPort` trait and `ScanResult`/`SkippedEntry`/`SkipReason` types
-- [x] `WalkdirAdapter` implementing `ScannerPort`
-- [x] `ScanFilters` with extension inclusion and name exclusion (`Vec<Box<str>>`)
-- [x] `IndexReport::skipped` field
+**Completed (repository ports + storage — unchanged by redesign)**:
 - [x] `ReadRepository`, `WriteRepository`, `Repository` traits defined
 - [x] `RedbRepository` implements all three traits
 - [x] All 7 tables defined with typed wrappers
@@ -365,11 +483,19 @@ complete).
 - [x] Upsert cleanup (load old → remove stale indexes → insert new)
 - [x] Index consistency after all write operations (path, parent, basename, format)
 - [x] In-memory test double (`InMemoryRepository`)
-- [x] `IndexerError`, `ScannerError`, `IndexerRepositoryError` defined
+- [x] `IndexerRepositoryError` defined
 - [x] Raw `&[u8]` storage via `rkyv::to_bytes`/`rkyv::from_bytes`
 - [x] Serialization outside write transaction (perf)
-- [x] Hexagonal boundary enforcement (port in `port.rs`, adapter in `scanner/`,
-      walkdir encapsulated, Unknown variants removed, nesting flattened)
+
+**Needs redesign (scanner port — Session 5 redesign)**: COMPLETED by Session 6
+- [x] `ScannerPort` — switch from batch `scan(&self, &IndexScope)` to
+      streaming `walk(&self, &DirPath, &ScanFilters)` yielding `ScanEntry`
+- [x] `WalkdirAdapter` — remove `vault_root` field, make zero-size
+- [x] `ScanEntry` enum — replace `ScanResult` batch type
+- [x] `ScanFilters::is_included_extension()` / `is_excluded_name()` — utility methods
+- [x] `IndexScope` — change `Partial { root: PathKey }` to `Partial { root: DirPath }`
+- [x] `IndexReport::skipped` — accumulated by service, not by adapter batch
+- [x] `ScannerError` — defined; `ScanResult` removed from module exports
 
 ---
 
@@ -469,9 +595,10 @@ refactors only after green.
 - Hexagonal boundary: `ScannerPort`, `ReadRepository`, `WriteRepository`, and
   `Repository` are owned by `indexer`; walkdir and redb remain adapter details.
 - Storage layout: `lithos-core/src/indexer/storage/{mod.rs,read.rs,write.rs,tables.rs,testing.rs}`.
-- Runtime scanner accumulation: `ScanResult` uses `Vec<FileNode>`,
-  `Vec<DirNode>`, and `Vec<SkippedEntry>` because it is internal and built by
-  pushing during traversal.
+- Streaming scanner design: `ScannerPort::walk` returns a lazy iterator of
+  `ScanEntry` values. No batch `ScanResult` type — the service classifies each
+  entry inline. `SkippedEntry` values are yielded as `ScanEntry::Skipped` and
+  accumulated by the service into `IndexReport`.
 - Stable report boundary: `IndexReport::skipped` uses `Box<[SkippedEntry]>`,
   matching existing report/result collection conventions.
 - Test naming follows `docs/engineering/testing/unit.md` and
@@ -489,13 +616,12 @@ refactors only after green.
 - Keep per-entry unsupported types out of `ScannerError`; they are skipped
   diagnostics.
 
-### Cycle 2 — Scan result model
+### Cycle 2 — Stream entry model
 
-- RED: `scanner::scan_result::stores_files_dirs_and_skipped_entries`.
-- GREEN: add `ScanResult`, `SkippedEntry`, and `SkipReason` with `Vec<T>`
-  collections.
+- RED: `scanner::walk_entry::yields_file_dir_and_skipped_variants`.
+- GREEN: add `ScanEntry`, `SkippedEntry`, and `SkipReason`.
 - Verify direct FS context types are used: `fs::entry::FileNode` and
-  `fs::entry::DirNode`.
+  `fs::entry::DirNode`. No batch `ScanResult` type.
 
 ### Cycle 3 — Scanner port and mockability
 
@@ -507,35 +633,33 @@ refactors only after green.
 ### Cycle 4 — Walkdir adapter happy path
 
 - RED: `scanner::walkdir_adapter::returns_file_and_dir_nodes_for_full_scope`.
-- GREEN: add `WalkdirAdapter { vault_root: DirPath }` and implement
-  `ScannerPort::scan` for `IndexScope::Full`.
+- GREEN: add zero-size `WalkdirAdapter` and implement `ScannerPort::walk`.
+  Adapter receives `DirPath` per call — no `vault_root` field.
 - Verify no walkdir type appears in scanner port contracts.
 
-### Cycle 5 — Partial scope traversal
+### Cycle 5 — Walkdir adapter test with different roots
 
-- RED: `scanner::walkdir_adapter::scans_only_partial_scope_root`.
-- GREEN: map `IndexScope::Partial { root, filters }` to a subtree under
-  `vault_root`.
-- Verify files outside the partial root are not returned.
+- RED: `scanner::walkdir_adapter::scans_different_root_on_each_call`.
+- GREEN: adapter accepts any `DirPath` per call — no vault coupling.
+- Verify files outside the specified root are not returned.
 
 ### Cycle 6 — Scan filter translation
 
 - RED: `scanner::filter::excludes_files_when_extension_does_not_match`.
-- GREEN: add `ScanFilters::included_extensions` behavior and apply it during
-  traversal.
+- GREEN: add `ScanFilters::is_included_extension()` and apply it in the
+  adapter's `filter_entry`.
 - RED: `scanner::filter::excludes_entries_when_name_is_excluded`.
-- GREEN: add `ScanFilters::excluded_names` behavior and translate it into
-  walkdir `filter_entry` traversal exclusion.
+- GREEN: add `ScanFilters::is_excluded_name()` and apply it in the adapter's
+  `filter_entry`.
 - Verify directories are traversed unless excluded by name, while files are
   returned only when extension filters allow them.
 
-### Cycle 7 — Skipped diagnostics
+### Cycle 7 — Skipped diagnostics in stream
 
-- RED: `scanner::skipped::records_permission_denied_entry_as_skipped`.
-- GREEN: map permission/read failures to `SkippedEntry { reason:
-  PermissionDenied }` without returning `Err`.
-- RED: `scanner::skipped::records_unsupported_entry_type_as_skipped`.
-- GREEN: map unsupported file types to `SkipReason::UnsupportedEntryType`.
+- RED: `scanner::walk::yields_permission_denied_as_skipped_in_stream`.
+- GREEN: map permission/read failures to `ScanEntry::Skipped` — never `Err`.
+- RED: `scanner::walk::yields_unsupported_entry_type_as_skipped_in_stream`.
+- GREEN: map unsupported file types to `ScanEntry::Skipped`.
 
 ### Cycle 8 — Repository port contract
 
@@ -641,19 +765,20 @@ refactors only after green.
 - Prefer mockall-generated mocks for ports; do not add handwritten doubles by
   default.
 
-### Cycle 21 — IndexReport skipped field
+### Cycle 21 — IndexReport skipped field (stream-aware)
 
 - RED: `summary::report::stores_skipped_entries`.
 - GREEN: add `skipped: Box<[SkippedEntry]>` and `skipped(&self) ->
-  &[SkippedEntry]` to `IndexReport`.
+  &[SkippedEntry]` to `IndexReport`. Skipped entries are accumulated from
+  `ScanEntry::Skipped` stream values, not from a batch `ScanResult`.
 - Keep existing count accessors intact.
 
 ### Cycle 22 — Module wiring
 
-- RED: compile tests importing `crate::indexer::{ScannerPort, ReadRepository,
-  WriteRepository, Repository, RedbRepository}` from internal tests.
+- RED: compile tests importing `crate::indexer::{ScannerPort, ScanEntry,
+  ReadRepository, WriteRepository, Repository, RedbRepository}`.
 - GREEN: wire `scanner`, `repository`, and `storage` in `indexer/mod.rs` with
-  `pub(crate)` exports only.
+  `pub(crate)` exports only. `ScanEntry` exported from `port.rs`.
 
 ### Cycle 23 — Refactor after green [DONE]
 
