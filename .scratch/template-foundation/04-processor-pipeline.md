@@ -2,8 +2,8 @@
 title: 04-processor-pipeline
 category: enhancement
 label: ready-for-agent
-status: open
-branch:
+status: in-progress
+branch: feature/04-processor-pipeline
 merge_commit:
 date_created: 2026-06-11
 date_completed:
@@ -35,12 +35,49 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 
 ## Acceptance criteria
 
-- [ ] Processor dual typestate phases are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
-- [ ] No `Compiled` or `Validated` stage exists
-- [ ] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
-- [ ] File reads use `FileReader`, not raw `std::fs`
-- [ ] Directory scanning uses `DirScanner`, scoped to `.md` files
-- [ ] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache entry (removal from repository), batch path comparison correctness
+- [x] Processor dual typestate phases are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
+- [x] No `Compiled` or `Validated` stage exists
+- [x] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
+- [x] File reads use `FileReader`, not raw `std::fs`
+- [x] Directory scanning uses `DirScanner`, scoped to `.md` files
+- [x] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache entry (removal from repository), batch path comparison correctness
+
+---
+
+## Implementation Notes
+
+### Stage-Based Typestate Pipeline
+The `TemplateProcessor` is implemented using a dual-typestate pattern: `TemplateProcessor<Phase, Status>`. This ensures that only valid transitions are possible at compile-time.
+
+- **Discovery**: Entry point, initializes the pipeline with discovered filesystem paths.
+- **Comparison**: Interacts with the repository to classify paths into `Missing`, `Present`, `Suspect`, or `Deleted`.
+- **Parsed**: Handles I/O via `FileReader` for `Missing` or `StaleContent` paths.
+- **Refresh**: Prepares `RawTemplateView` updates for `StaleTimestamps`.
+- **Construction**: Resolves `TemplateId` (one-time lookup) and constructs `Template` aggregates.
+- **Completed**: Terminal stage that persists changes (templates and views) back to the repository.
+
+### Static Dispatch
+Repository interactions use static dispatch (`<R: ReadRepository>`, `<R: WriteRepository>`) to avoid virtual call overhead and align with project performance patterns.
+
+### Failure Injection & Testing
+The `InMemoryRepository` in `testing.rs` was enhanced with a fluent API for failure injection:
+- `with_failure_injector(Box<dyn FailureInjector + Send + Sync>)`
+- `with_harness(Arc<InMemoryHarness>)`
+
+This allows for fine-grained control over repository errors in unit tests without exposing internal harness fields.
+
+### IO Failure Simulation
+Since `FilePath::try_new` validates file existence, simulating IO errors during read requires a "create-then-delete" strategy in tests to trigger `std::io::ErrorKind::NotFound` or similar at the point of `FileReader` usage.
+
+### Test Hygiene
+- Followed `unit-naming.md` (Structure A, verb-first naming).
+- Used `pretty_assertions` for all diff-based checks.
+- Zero `unwrap()`/`expect()` in production code; all errors are mapped to the domain-specific `TemplateError`.
+
+### Verification
+- `mise run test:unit -p template processor` (183 tests passed)
+- `mise run lint` (Passed)
+- `mise run fmt` (Passed)
 
 ## Blocked by
 
@@ -103,31 +140,31 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`. Design the input boundary so it accepts a description of discovered files rather than performing the scan internally. The natural unit is one entry per template file carrying: the filesystem path (`FilePath`), the storage key (`PathKey`), and file metadata (`FileMetadata`). This matches the shape that the in-progress `indexer/` context already produces (`FileIndexEntry` carrying `FileRecord { path, name, metadata }` plus `FilePath`). When the indexer is wired in, Discovery will receive `FileIndexEntry` slices instead of running its own `DirScanner` walk — no processor internals need to change. For now, the processor should own a thin constructor that runs `DirScanner` and converts results to this input shape, keeping the scan logic behind a clear seam.
 
 **Acceptance criteria:**
-- [ ] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
-- [ ] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
-- [ ] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
-- [ ] All transitions use the private `transition()` / `transition_from_parts()` helpers on `TemplateProcessor<P, S>`, mirroring the existing processor pattern; `impl From` is not used for stage transitions
-- [ ] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
-- [ ] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
-- [ ] No `Compiled` or `Validated` stage exists anywhere in the processor
-- [ ] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
-- [ ] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
-- [ ] `TemplateId` is resolved exactly once in the `Construction` stage; the `Completed` stage does not re-query the repository for IDs
-- [ ] Existing-template ID resolution uses a repository path lookup/index, not `list_templates()` scanning
-- [ ] Fresh files produce no repository write (no-op path)
-- [ ] New files go through full construction and are persisted
-- [ ] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
-- [ ] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
-- [ ] Deleted-cache entries (present in repository but not on disk) are removed from the repository
-- [ ] Tests use the in-memory test double from issue-03, not a real redb instance
-- [ ] Tests are written before implementation and use descriptive behavior-focused names
-- [ ] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, deleted-cache entry, batch path comparison correctness
-- [ ] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
-- [ ] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
-- [ ] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
-- [ ] `mise run fmt` passes
-- [ ] `mise run lint` passes
-- [ ] `mise run test` passes
+- [x] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
+- [x] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
+- [x] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
+- [x] All transitions use the private `transition()` / `transition_from_parts()` helpers on `TemplateProcessor<P, S>`, mirroring the existing processor pattern; `impl From` is not used for stage transitions
+- [x] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
+- [x] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
+- [x] No `Compiled` or `Validated` stage exists anywhere in the processor
+- [x] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
+- [x] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
+- [x] `TemplateId` is resolved exactly once in the `Construction` stage; the `Completed` stage does not re-query the repository for IDs
+- [x] Existing-template ID resolution uses a repository path lookup/index, not `list_templates()` scanning
+- [x] Fresh files produce no repository write (no-op path)
+- [x] New files go through full construction and are persisted
+- [x] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
+- [x] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
+- [x] Deleted-cache entries (present in repository but not on disk) are removed from the repository
+- [x] Tests use the in-memory test double from issue-03, not a real redb instance
+- [x] Tests are written before implementation and use descriptive behavior-focused names
+- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, deleted-cache entry, batch path comparison correctness
+- [x] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
+- [x] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
+- [x] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
+- [x] `mise run fmt` passes
+- [x] `mise run lint` passes
+- [x] `mise run test` passes
 
 **Out of scope:**
 - redb storage adapter
