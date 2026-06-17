@@ -10,18 +10,15 @@
 
 // This module is wired to the CLI dispatch layer in main.rs.
 
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{io::Write, path::Path};
 
 use lithos_core::{
-    app::bootstrap::{BootstrapError, Bootstrapper},
+    app::bootstrap::Bootstrapper,
     config::InMemoryRepository,
-    discovery::{DiscoveryFlags, error::DiscoveryError, port::DiscoveryPort},
+    discovery::{DiscoveryFlags, port::DiscoveryPort},
 };
 
-use crate::{cli::OutputFormat, error::CliError};
+use crate::{cli::OutputFormat, commands::output, error::CliError};
 
 // ------------------------------------------------------------------ //
 //                          Handler                                   //
@@ -171,14 +168,17 @@ fn write_human_success(
         "no"
     };
 
-    writeln!(out, "Bootstrap/Config Diagnostics").map_err(write_error)?;
-    writeln!(out, "  vault root:  {vault_root_str}").map_err(write_error)?;
-    writeln!(out, "  vault config: {vault_config_str}").map_err(write_error)?;
+    writeln!(out, "Bootstrap/Config Diagnostics")
+        .map_err(output::stdout_err)?;
+    writeln!(out, "  vault root:  {vault_root_str}")
+        .map_err(output::stdout_err)?;
+    writeln!(out, "  vault config: {vault_config_str}")
+        .map_err(output::stdout_err)?;
     writeln!(out, "  global config: {global_config_str}")
-        .map_err(write_error)?;
+        .map_err(output::stdout_err)?;
     writeln!(out, "  global config suppressed: {suppressed}")
-        .map_err(write_error)?;
-    writeln!(out, "  status: healthy").map_err(write_error)?;
+        .map_err(output::stdout_err)?;
+    writeln!(out, "  status: healthy").map_err(output::stdout_err)?;
 
     Ok(())
 }
@@ -188,14 +188,37 @@ fn write_human_failure(
     message: &str,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
-    writeln!(out, "Bootstrap/Config Diagnostics").map_err(write_error)?;
-    writeln!(out, "  status: failed").map_err(write_error)?;
-    writeln!(out, "  error: {message}").map_err(write_error)?;
+    writeln!(out, "Bootstrap/Config Diagnostics")
+        .map_err(output::stdout_err)?;
+    writeln!(out, "  status: failed").map_err(output::stdout_err)?;
+    writeln!(out, "  error: {message}").map_err(output::stdout_err)?;
 
     Ok(())
 }
 
-/// Writes JSON success diagnostics.
+/// Serialisable representation of the bootstrap section in the success case.
+#[derive(serde::Serialize)]
+struct DoctorBootstrapSection<'a> {
+    /// Resolved vault root directory path, or `null` if not found.
+    vault_root: Option<&'a str>,
+    /// Resolved vault config file path, or `null` if not found.
+    vault_config: Option<&'a str>,
+    /// Resolved global config file path, or `null` if not found.
+    global_config: Option<&'a str>,
+    /// Whether global config resolution was suppressed by a CLI flag.
+    global_config_suppressed: bool,
+    /// Bootstrap health status (`"healthy"`).
+    status: &'static str,
+}
+
+/// Serialisable representation of the `doctor` command's JSON success output.
+#[derive(serde::Serialize)]
+struct DoctorOutput<'a> {
+    /// Bootstrap and config diagnostics section.
+    bootstrap: DoctorBootstrapSection<'a>,
+}
+
+/// Writes JSON success diagnostics using [`serde_json`].
 fn write_json_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
@@ -203,61 +226,48 @@ fn write_json_success(
     report: &lithos_core::discovery::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
-    let vault_root_json = vault_root.map_or_else(
-        || "null".to_owned(),
-        |p| json_string(&p.display().to_string()),
-    );
-
-    let vault_config_json = json_path_or_null(vault_config);
-    let global_config_json = json_path_or_null(global_config);
-    let suppressed = report.global_resolution_skip_reason.is_some();
-
-    writeln!(
-        out,
-        r#"{{"bootstrap":{{"vault_root":{vault_root_json},"vault_config":{vault_config_json},"global_config":{global_config_json},"global_config_suppressed":{suppressed},"status":"healthy"}}}}"#,
-    )
-    .map_err(write_error)?;
-
-    Ok(())
+    let payload = DoctorOutput {
+        bootstrap: DoctorBootstrapSection {
+            vault_root: vault_root.and_then(Path::to_str),
+            vault_config: vault_config.and_then(Path::to_str),
+            global_config: global_config.and_then(Path::to_str),
+            global_config_suppressed: report
+                .global_resolution_skip_reason
+                .is_some(),
+            status: "healthy",
+        },
+    };
+    output::write_json_line(out, &payload)
 }
 
-/// Writes JSON failure diagnostics.
+/// Serialisable representation of the bootstrap section in the failure case.
+#[derive(serde::Serialize)]
+struct DoctorFailureSection {
+    /// Bootstrap health status (`"failed"`).
+    status: &'static str,
+    /// Human-readable error message from the bootstrap pipeline.
+    error: String,
+}
+
+/// Serialisable representation of the `doctor` command's JSON failure output.
+#[derive(serde::Serialize)]
+struct DoctorFailureOutput {
+    /// Bootstrap and config diagnostics section (failure variant).
+    bootstrap: DoctorFailureSection,
+}
+
+/// Writes JSON failure diagnostics using [`serde_json`].
 fn write_json_failure(
     message: &str,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
-    let message_json = json_string(message);
-    writeln!(
-        out,
-        r#"{{"bootstrap":{{"status":"failed","error":{message_json}}}}}"#,
-    )
-    .map_err(write_error)?;
-
-    Ok(())
-}
-
-/// Returns `"<escaped>"` for `Some(path)` or `null` for `None`.
-fn json_path_or_null(path: Option<&Path>) -> String {
-    path.map_or_else(
-        || "null".to_owned(),
-        |p| json_string(&p.display().to_string()),
-    )
-}
-
-/// Wraps a string value in JSON double-quotes with basic escaping.
-fn json_string(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{escaped}\"")
-}
-
-/// Converts an [`std::io::Error`] from a write call into a [`CliError`].
-fn write_error(e: std::io::Error) -> CliError {
-    CliError::Bootstrap(BootstrapError::Discovery(
-        DiscoveryError::ReadDirectory {
-            path: PathBuf::from("<stdout>"),
-            source: e,
+    let payload = DoctorFailureOutput {
+        bootstrap: DoctorFailureSection {
+            status: "failed",
+            error: message.to_owned(),
         },
-    ))
+    };
+    output::write_json_line(out, &payload)
 }
 
 // ------------------------------------------------------------------ //

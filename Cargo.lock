@@ -714,6 +714,8 @@ dependencies = [
  "lithos-core",
  "miette",
  "rkyv",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tracing",

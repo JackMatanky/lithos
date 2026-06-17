@@ -27,6 +27,16 @@ pub(crate) enum CliError {
     /// Bootstrap pipeline failed (discovery or config error).
     #[error(transparent)]
     Bootstrap(#[from] BootstrapError),
+
+    /// Writing to stdout or stderr failed.
+    #[error("failed to write to {stream}")]
+    Write {
+        /// The stream that failed (`"stdout"` or `"stderr"`).
+        stream: &'static str,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 impl CliError {
@@ -50,6 +60,7 @@ impl CliError {
     ///   [`DiscoveryError::CanonicalizePath`] where `source.kind() ==
     ///   PermissionDenied` → 3
     /// - [`BootstrapError::Config`] → 2
+    /// - [`CliError::Write`] → 3 (I/O failure writing to stdout or stderr)
     /// - All other variants → 2
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
@@ -57,6 +68,9 @@ impl CliError {
                 exit_code_for_discovery(discovery_err)
             }
             Self::Bootstrap(BootstrapError::Config(_)) => 2,
+            Self::Write {
+                ..
+            } => 3,
         }
     }
 }
@@ -228,6 +242,23 @@ mod tests {
                 err.exit_code(),
                 3,
                 "ReadDirectory must map to exit code 3"
+            );
+        }
+
+        #[test]
+        fn returns_3_when_write_fails() {
+            let source = std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "broken pipe",
+            );
+            let err = CliError::Write {
+                stream: "stdout",
+                source,
+            };
+            assert_eq!(
+                err.exit_code(),
+                3,
+                "Write error must map to exit code 3"
             );
         }
 

@@ -12,17 +12,14 @@
 
 // This module is wired to the CLI dispatch layer in main.rs.
 
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{io::Write, path::PathBuf};
 
 use lithos_core::{
-    app::bootstrap::{BootstrapError, Bootstrapper},
+    app::bootstrap::Bootstrapper,
     discovery::{DiscoveryFlags, port::DiscoveryPort},
 };
 
-use crate::{cli::OutputFormat, error::CliError};
+use crate::{cli::OutputFormat, commands::output, error::CliError};
 
 // ------------------------------------------------------------------ //
 //                          Handler                                   //
@@ -43,7 +40,7 @@ use crate::{cli::OutputFormat, error::CliError};
 pub(crate) fn run_config_files<D: DiscoveryPort>(
     bootstrapper: &Bootstrapper<D>,
     flags: Option<DiscoveryFlags>,
-    anchor: &Path,
+    anchor: &std::path::Path,
     format: OutputFormat,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
@@ -87,57 +84,47 @@ fn write_human(
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     if vault.is_empty() && global.is_empty() {
-        writeln!(out, "(no candidates found)").map_err(write_error)?;
+        writeln!(out, "(no candidates found)").map_err(output::stdout_err)?;
         return Ok(());
     }
 
-    writeln!(out, "vault candidates:").map_err(write_error)?;
+    writeln!(out, "vault candidates:").map_err(output::stdout_err)?;
     for path in vault {
-        writeln!(out, "  {}", path.display()).map_err(write_error)?;
+        writeln!(out, "  {}", path.display()).map_err(output::stdout_err)?;
     }
 
-    writeln!(out, "global candidates:").map_err(write_error)?;
+    writeln!(out, "global candidates:").map_err(output::stdout_err)?;
     for path in global {
-        writeln!(out, "  {}", path.display()).map_err(write_error)?;
+        writeln!(out, "  {}", path.display()).map_err(output::stdout_err)?;
     }
 
     Ok(())
 }
 
-/// Writes JSON candidate list output.
+/// Serialisable representation of the `config files` command's JSON output.
+#[derive(serde::Serialize)]
+struct ConfigFilesOutput<'a> {
+    /// Discovered vault config file candidates.
+    vault: Vec<&'a str>,
+    /// Discovered global config file candidates.
+    global: Vec<&'a str>,
+}
+
+/// Writes JSON candidate list output using [`serde_json`].
 fn write_json(
     vault: &[PathBuf],
     global: &[PathBuf],
     out: &mut impl Write,
 ) -> Result<(), CliError> {
-    let vault_json = format_json_path_array(vault);
-    let global_json = format_json_path_array(global);
-    writeln!(out, r#"{{"vault":{vault_json},"global":{global_json}}}"#)
-        .map_err(write_error)?;
-    Ok(())
-}
-
-/// Formats a slice of paths as a JSON array of strings.
-fn format_json_path_array(paths: &[PathBuf]) -> String {
-    let items: Vec<String> =
-        paths.iter().map(|p| json_string(&p.display().to_string())).collect();
-    format!("[{}]", items.join(","))
-}
-
-/// Wraps a string value in JSON double-quotes with basic escaping.
-fn json_string(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{escaped}\"")
-}
-
-/// Converts an [`std::io::Error`] from a write call into a [`CliError`].
-fn write_error(e: std::io::Error) -> CliError {
-    CliError::Bootstrap(BootstrapError::Discovery(
-        lithos_core::discovery::error::DiscoveryError::ReadDirectory {
-            path: PathBuf::from("<stdout>"),
-            source: e,
-        },
-    ))
+    let vault_strs: Vec<&str> =
+        vault.iter().map(|p| p.to_str().unwrap_or("")).collect();
+    let global_strs: Vec<&str> =
+        global.iter().map(|p| p.to_str().unwrap_or("")).collect();
+    let payload = ConfigFilesOutput {
+        vault: vault_strs,
+        global: global_strs,
+    };
+    output::write_json_line(out, &payload)
 }
 
 // ------------------------------------------------------------------ //
