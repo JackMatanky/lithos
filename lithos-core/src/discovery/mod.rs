@@ -55,6 +55,7 @@
 pub(crate) mod context;
 pub(crate) mod engine;
 pub mod error;
+pub mod location;
 pub(crate) mod policy;
 pub mod port;
 pub(super) mod probe;
@@ -65,6 +66,9 @@ pub mod service;
 pub(super) mod walk;
 
 pub use context::{DiscoveryEnv, DiscoveryFlags};
+pub use location::{
+    CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
+};
 pub use report::{
     DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
     SkippedCeiling, SkippedCeilingReason,
