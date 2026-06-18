@@ -108,7 +108,7 @@ internally. The Bootstrapper reads env vars before constructing `DiscoveryContex
 and injects them as typed values. `LITHOS_CACHE_DIR` is not yet a field on
 `DiscoveryEnv`.
 
-To make `LITHOS_CACHE_DIR` available inside `finalize()`, this issue must:
+To make `LITHOS_CACHE_DIR` available inside the processor pipeline, this issue must:
 
 1. Add `cache_dir: Option<PathBuf>` to `DiscoveryEnv` (an unvalidated `PathBuf`,
    not `DirPath` — the directory need not exist yet at context-construction time).
@@ -116,10 +116,42 @@ To make `LITHOS_CACHE_DIR` available inside `finalize()`, this issue must:
 3. Have the Bootstrapper read `LITHOS_CACHE_DIR` from `std::env::var` and pass the
    raw path into `DiscoveryEnv` — following the same pattern as the existing
    `vault_dir` and `config_file` fields.
-4. `finalize()` reads `self.ctx.env().cache_dir()` to obtain the override value.
+4. The new `CacheResolution` phase reads `self.ctx.env().cache_dir()` to obtain the
+   override value (see Pipeline change below).
 
-`ctx` is already accessible inside `finalize()` — the `DiscoveryProcessor` carries
+`ctx` is already accessible at every phase — the `DiscoveryProcessor` carries
 `ctx: &'ctx DiscoveryContext<'ctx>` through every phase transition unchanged.
+
+### Pipeline change: `CacheResolution` phase
+
+Cache root computation belongs in a dedicated pipeline phase, not inside `finalize()`.
+The `finalize()` method's sole responsibility is packing accumulated state into
+`DiscoveryResult`; adding resolution logic there would mix concerns and break the
+established pattern where every computation happens in a `From` transition.
+
+A new `CacheResolution` phase is inserted immediately before `Finalized`. Every
+path that previously transitioned directly to `Finalized` now transitions through
+`CacheResolution` first:
+
+```
+FlagOverride (VaultAndConfigSet)        ──┐
+EnvOverride  (VaultProbedSkipGlobal)    ──┤
+AscendingTraversal (AscendSkipGlobal)   ──┼──► CacheResolution ──► Finalized
+GlobalResolution                        ──┘
+```
+
+The `CacheResolution` transition has access to the fully-accumulated `vault`
+candidates and `self.ctx.env().cache_dir()`. It computes the `CacheRoot` and stores
+it in a new `cache_root` field on `DiscoveryProcessor`. `finalize()` then packs
+`vault`, `global`, and `cache_root` into `DiscoveryResult` without performing any
+additional computation.
+
+The `DiscoveryProcessor` struct gains:
+- A `cache_root: Option<CacheRoot>` field initialised to `None`.
+- Populated to `Some(...)` exclusively during the `CacheResolution` transition.
+
+`DiscoveryService::discover()` in `service.rs` is updated to add the extra hop on
+all five terminal paths.
 
 ### `DirPath` construction
 
@@ -131,8 +163,6 @@ To make `LITHOS_CACHE_DIR` available inside `finalize()`, this issue must:
 is not validated for existence at construction — creation is the caller's
 responsibility.
 
-Update the data model accordingly:
-
 ```rust
 pub struct CacheRoot {
     pub location: CacheLocation,
@@ -142,11 +172,27 @@ pub struct CacheRoot {
 
 ### `dirs` crate
 
-`dirs` is **not** currently a dependency of `lithos-core`. It must be added to
-`lithos-core/Cargo.toml` (and the workspace `Cargo.toml` `[workspace.dependencies]`
-if the project uses centralised dependency management) before `PlatformUserCache`
-resolution can be implemented. Add `dirs = "5"` (or the current semver-compatible
-version).
+`dirs` is **not** currently a dependency of `lithos-core`. The current published
+version is **6** (`dirs = "6"`). It must be added to both:
+
+- `Cargo.toml` `[workspace.dependencies]` as `dirs = "6"`
+- `lithos-core/Cargo.toml` `[dependencies]` as `dirs.workspace = true`
+
+`dirs::cache_dir()` is used for `PlatformUserCache` resolution.
+
+### `DiscoveryEnv::new()` is a breaking constructor change
+
+Adding `cache_dir: Option<PathBuf>` as a 4th positional parameter breaks every
+existing call site. Unlike `vault_dir` and `config_file`, `cache_dir` is
+**not validated** — it is stored as-is without filesystem checks, and no new
+`EnvironmentOverrideError` variant is needed. All existing call sites pass `None`
+as the new argument; the Bootstrapper passes the value read from `LITHOS_CACHE_DIR`.
+
+### `DiscoveryResult::new()` is a breaking constructor change
+
+Adding `cache_root: CacheRoot` as a 3rd required parameter breaks every existing
+call site in `service.rs` tests (~4 sites) and `bootstrap.rs` tests (~12 mock
+setups). All must be updated to supply a `CacheRoot` value.
 
 ## Vault root derivation
 
@@ -154,10 +200,11 @@ version).
 derived from the `base()` of the winning vault `CandidatePath`:
 
 ```rust
-let vault_root: Option<&DirPath> = discovery_result.vault().first().map(|c| c.base());
+let vault_root: Option<&DirPath> = self.vault.first().map(|c| c.base());
 ```
 
-The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<PathBuf>`).
+This derivation happens inside the `CacheResolution` transition (on the processor,
+before the result is constructed).
 
 ## Integration points
 
@@ -169,8 +216,10 @@ The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<Path
       cache_root: CacheRoot,   // new
   }
   ```
-- `DiscoveryProcessor::finalize()` computes the `CacheRoot` from the accumulated
-  vault candidates and the runtime env, then includes it in `DiscoveryResult`.
+- The new `CacheResolution` phase on `DiscoveryProcessor` computes the `CacheRoot`
+  and stores it before `Finalized` is entered.
+- `finalize()` packs `vault`, `global`, and `cache_root` into `DiscoveryResult`
+  without additional logic.
 - `Bootstrapper` does not need changes — it already threads `DiscoveryResult`
   through to `BootstrapResult` consumers.
 - `CacheConfig::cache_dir` is deprecated; any existing callers of `CacheConfig::cache_dir()`
@@ -183,12 +232,17 @@ The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<Path
 - [ ] `DiscoveryResult` gains a `cache_root: CacheRoot` field with a `cache_root()` accessor.
 - [ ] `DiscoveryEnv` gains a `cache_dir: Option<PathBuf>` field, getter, and updated constructor.
 - [ ] Bootstrapper reads `LITHOS_CACHE_DIR` from `std::env::var` and passes it into `DiscoveryEnv`.
-- [ ] `DiscoveryProcessor::finalize()` populates `cache_root` using the vault root derived
-      from `vault.first().map(|c| c.base())` and `self.ctx.env().cache_dir()`.
+- [ ] A `CacheResolution` typestate phase is introduced in `processor.rs`; all five
+      paths that previously transitioned directly to `Finalized` now go through
+      `CacheResolution → Finalized`.
+- [ ] `CacheResolution` computes `CacheRoot` using the vault root derived from
+      `self.vault.first().map(|c| c.base())` and `self.ctx.env().cache_dir()`.
+- [ ] `finalize()` packs `vault`, `global`, and `cache_root` into `DiscoveryResult`
+      without additional computation.
 - [ ] `LITHOS_CACHE_DIR` env var at highest precedence; result carries `GlobalCacheLocation::EnvironmentOverride`.
 - [ ] Vault root present and no env var → `<vault_root>/.lithos/cache/`; result carries `LocalCacheLocation::ProjectCacheDirectory`.
 - [ ] Vault root absent and no env var → OS platform default; result carries `GlobalCacheLocation::PlatformUserCache`.
-- [ ] `dirs` crate added to `lithos-core/Cargo.toml` (and workspace `Cargo.toml`) for `PlatformUserCache` resolution.
+- [ ] `dirs = "6"` added to workspace `Cargo.toml` and `lithos-core/Cargo.toml` for `PlatformUserCache` resolution.
 - [ ] `CacheRoot::path` is `PathBuf` (not `DirPath`) — the directory need not exist at construction time.
 - [ ] `CacheConfig::cache_dir` field and accessor are deprecated (marked `#[deprecated]` or removed if no callers remain after migration).
 - [ ] All callers of `CacheConfig::cache_dir()` are migrated to `DiscoveryResult::cache_root()`.
@@ -207,18 +261,28 @@ The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<Path
 - CLI commands for inspecting the cache root (may follow in a later issue).
 - Removing `CacheConfig` entirely (only `cache_dir` is deprecated/removed).
 - Flag options for overriding the cache directory at the CLI level.
+- Replacing `platform_global_directory_candidates()` in `bootstrap.rs` with
+  `dirs::config_dir()` — deferred to a later issue.
 
 ## Agent Brief
 
 **Category:** enhancement
 
-**Summary:** Add `CacheRoot` to `DiscoveryResult`, produced by `DiscoveryProcessor::finalize()`, replacing the deprecated `CacheConfig::cache_dir` static relative-path field.
+**Summary:** Add `CacheRoot` to `DiscoveryResult` via a new `CacheResolution` typestate
+phase in `DiscoveryProcessor`, replacing the deprecated `CacheConfig::cache_dir` static
+relative-path field.
 
 **Current behavior:**
-`CacheConfig` holds a `CacheDir` wrapping a `RelativeDirPath` (default `.cache`). Callers must combine it with the vault root themselves. There is no env-var override and no platform-level fallback. The cache location is a config value, not a discovered value.
+`CacheConfig` holds a `CacheDir` wrapping a `RelativeDirPath` (default `.cache`). Callers
+must combine it with the vault root themselves. There is no env-var override and no
+platform-level fallback. The cache location is a config value, not a discovered value.
 
 **Desired behavior:**
-`DiscoveryResult` includes a `CacheRoot` field populated during `DiscoveryProcessor::finalize()`. Resolution follows a three-step chain: `LITHOS_CACHE_DIR` env var → `<vault_root>/.lithos/cache/` (if vault is known) → OS platform user cache fallback. The static `CacheConfig::cache_dir` field is deprecated and all callers migrated.
+`DiscoveryResult` includes a `CacheRoot` field populated during a new `CacheResolution`
+phase in the `DiscoveryProcessor` typestate pipeline. Resolution follows a three-step
+chain: `LITHOS_CACHE_DIR` env var → `<vault_root>/.lithos/cache/` (if vault is known) →
+OS platform user cache fallback (`dirs::cache_dir()`). The static `CacheConfig::cache_dir`
+field is deprecated and all callers migrated.
 
 **Key interfaces:**
 - `CacheRoot { location: CacheLocation, path: PathBuf }` — new type in `discovery/location.rs`; `PathBuf` not `DirPath` because the directory need not exist at construction
@@ -226,18 +290,19 @@ The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<Path
 - `LocalCacheLocation::ProjectCacheDirectory` — `<vault_root>/.lithos/cache/`
 - `GlobalCacheLocation::{EnvironmentOverride, PlatformUserCache}`
 - `DiscoveryResult::cache_root() -> &CacheRoot` — new accessor
-- `DiscoveryProcessor::finalize()` — computes and embeds `CacheRoot`; reads env override via `self.ctx.env().cache_dir()`
-- Vault root derived from: `self.vault.first().map(|c| c.base())` inside `finalize()`
+- `CacheResolution` — new typestate phase; all five `→ Finalized` paths in the pipeline now go through `CacheResolution → Finalized`
+- Vault root derived inside `CacheResolution` from: `self.vault.first().map(|c| c.base())`
 - `DiscoveryEnv::cache_dir: Option<PathBuf>` — new field; Bootstrapper reads `LITHOS_CACHE_DIR` and injects it
-- `dirs` crate — must be added as a new dependency for `PlatformUserCache`
+- `dirs = "6"` crate — must be added as a new dependency for `PlatformUserCache`
 - `CacheConfig::cache_dir` — deprecated; callers migrated
 
 **Acceptance criteria:**
 - [ ] `CacheRoot { location: CacheLocation, path: PathBuf }` and related types in `discovery/location.rs`, publicly exported
 - [ ] `DiscoveryEnv` gains `cache_dir: Option<PathBuf>` field; Bootstrapper reads `LITHOS_CACHE_DIR` and injects it
 - [ ] `DiscoveryResult::cache_root()` accessor present
+- [ ] `CacheResolution` typestate phase introduced; all five terminal paths route through it
 - [ ] Three-step precedence chain implemented and independently testable
-- [ ] `dirs` crate added to `lithos-core/Cargo.toml`
+- [ ] `dirs = "6"` added to workspace and `lithos-core` `Cargo.toml`
 - [ ] `CacheConfig::cache_dir` deprecated, all callers migrated
 - [ ] All tests pass, lint clean, no `unwrap()` in production code
 
@@ -246,6 +311,415 @@ The cache root resolver receives this `Option<&DirPath>` (not a raw `Option<Path
 - Cache invalidation / eviction
 - CLI flag for cache dir override
 - Broader removal of `CacheConfig`
+- Replacing `platform_global_directory_candidates()` with `dirs::config_dir()`
+
+## TDD Plan
+
+### Overview
+
+Eight vertical slices. Each slice must compile and all tests must pass before the
+next slice begins (no horizontal slicing). Slices 7 and 8 are mechanical fix-ups
+driven by the breaking constructor changes introduced in slices 2 and 4.
+
+All tests follow the naming conventions in `docs/engineering/testing/unit-naming.md`
+(Structure A with submodules; verb-first function names).
+
+```
+Slice 1: location.rs — new types, no dependencies broken
+Slice 2: DiscoveryEnv — add cache_dir field (4th constructor param)
+Slice 3: DiscoveryProcessor — CacheResolution phase
+Slice 4: DiscoveryResult — add cache_root field (3rd constructor param)
+Slice 5: DiscoveryProcessor::finalize() — pack cache_root into DiscoveryResult
+Slice 6: DiscoveryService::discover() — route all paths through CacheResolution
+Slice 7: DiscoveryEnv call-site fix-ups (mechanical — add None as 4th arg)
+Slice 8: DiscoveryResult call-site fix-ups (mechanical — add CacheRoot as 3rd arg)
+Slice 9: Bootstrapper — read LITHOS_CACHE_DIR, inject into DiscoveryEnv
+Slice 10: CacheConfig::cache_dir deprecation
+Slice 11: dirs = "6" dependency + public re-exports + doc comments
+```
+
+---
+
+### Slice 1 — `discovery/location.rs`: new types
+
+**Files:** `lithos-core/src/discovery/location.rs` (new),
+`lithos-core/src/discovery/mod.rs` (register module, add `pub use`)
+
+No existing code is modified. This slice compiles and tests green in isolation.
+
+**Behaviors to verify** (in `location.rs` `#[cfg(test)] mod tests`):
+
+| Module | Test name | Behavior |
+|---|---|---|
+| `cache_root::constructor` | `returns_path_and_location_as_provided` | `CacheRoot { location, path }` stores both fields |
+| `cache_root::accessors` | `returns_location_matching_provided_value` | `.location` field accessible |
+| `cache_root::accessors` | `returns_path_matching_provided_value` | `.path` field accessible |
+| `cache_root::accessors` | `does_not_validate_path_existence_at_construction` | constructing with non-existent path does not error |
+| `cache_location` | `local_variant_wraps_local_cache_location` | `CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory)` is constructible |
+| `cache_location` | `global_env_override_variant_is_constructible` | `CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride)` is constructible |
+| `cache_location` | `global_platform_user_cache_variant_is_constructible` | `CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)` is constructible |
+
+**Notes:**
+- All four types are `pub` and require doc comments.
+- Derive `Debug` on all types. Add `Clone`, `Eq`, `PartialEq` — `DiscoveryResult`
+  derives `Clone, Eq, PartialEq` and will carry `CacheRoot`.
+- `CacheRoot` has public fields (`pub location`, `pub path`) per the data model.
+- No filesystem I/O in this slice.
+
+---
+
+### Slice 2 — `DiscoveryEnv`: add `cache_dir` field
+
+**Files:** `lithos-core/src/discovery/context.rs`
+
+**Constructor change:**
+```rust
+pub fn new(
+    config_file: Option<&Path>,
+    vault_dir: Option<&Path>,
+    ceiling_dirs_raw: Option<&'a OsStr>,
+    cache_dir: Option<PathBuf>,      // NEW — 4th param, unvalidated
+) -> Result<Self, DiscoveryError>
+```
+
+`cache_dir` is stored as-is — no filesystem validation, no new error variant.
+`DiscoveryEnv::default()` derives correctly (`Option<PathBuf>` defaults to `None`).
+
+**New behaviors to verify** (new tests in `context.rs::tests::discovery_env`):
+
+| Module | Test name | Behavior |
+|---|---|---|
+| `constructor` | `returns_cache_dir_when_provided` | `cache_dir()` returns the provided `PathBuf` |
+| `constructor` | `returns_none_cache_dir_when_not_provided` | `cache_dir()` is `None` when `None` given |
+| `defaults` | `returns_none_cache_dir` | `DiscoveryEnv::default().cache_dir()` is `None` |
+
+**Existing tests in `context.rs`:** All `DiscoveryEnv::new(a, b, c)` calls gain a
+4th `None` argument. No behavioral change — fix-ups only.
+
+**Do not yet fix** `processor.rs` or `bootstrap.rs` call sites — those are Slice 7.
+
+---
+
+### Slice 3 — `DiscoveryProcessor`: `CacheResolution` phase
+
+**Files:** `lithos-core/src/discovery/processor.rs`
+
+**Structural changes:**
+1. Add `pub(crate) struct CacheResolution;` phase marker.
+2. Add `cache_root: Option<CacheRoot>` field to `DiscoveryProcessor` (initialised
+   to `None` in `Init::new`).
+3. Add a single generic `From<DiscoveryProcessor<'ctx, P>> for DiscoveryProcessor<'ctx, CacheResolution>`
+   impl that computes `CacheRoot` from accumulated state and stores it in `cache_root`.
+
+**The resolution function** (private, in `processor.rs`):
+```rust
+fn resolve_cache_root(
+    env_cache_dir: Option<&PathBuf>,
+    vault_root: Option<&DirPath>,
+) -> CacheRoot {
+    if let Some(path) = env_cache_dir {
+        return CacheRoot {
+            location: CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride),
+            path: path.clone(),
+        };
+    }
+    if let Some(root) = vault_root {
+        return CacheRoot {
+            location: CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory),
+            path: root.as_path().join(".lithos/cache"),
+        };
+    }
+    let path = dirs::cache_dir()
+        .map(|p| p.join("lithos"))
+        .unwrap_or_else(|| PathBuf::from(".lithos/cache"));
+    CacheRoot {
+        location: CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
+        path,
+    }
+}
+```
+
+Note: `dirs::cache_dir()` returns `Option<PathBuf>`. The
+`.unwrap_or_else(|| PathBuf::from(".lithos/cache"))` fallback covers the
+pathological case where the OS provides no cache dir (required to avoid `unwrap()`
+in production code per lint rules).
+
+**New behaviors to verify** (new `mod cache_resolution` in `processor.rs::tests`):
+
+| Test name | Behavior |
+|---|---|
+| `returns_environment_override_when_cache_dir_env_is_set` | env set → `EnvironmentOverride`, path matches env value |
+| `returns_environment_override_regardless_of_vault_presence` | env set + vault found → env still wins |
+| `returns_project_cache_directory_when_vault_present_and_no_env` | no env, vault found → `ProjectCacheDirectory`, path is `<vault>/.lithos/cache` |
+| `returns_platform_user_cache_when_no_vault_and_no_env` | no env, no vault → `PlatformUserCache` |
+| `path_is_not_validated_for_existence_at_construction` | `CacheRoot` path need not exist on disk |
+
+Each test advances the processor to `CacheResolution` (via the generic `From` impl)
+and asserts on `processor.cache_root`.
+
+**Note:** `processor.rs` tests that call `DiscoveryEnv::new(a, b, c)` are **not**
+fixed in this slice — those are Slice 7. The new `cache_resolution` test module
+uses `DiscoveryEnv::new(a, b, c, None)` (already corrected in Slice 2).
+
+---
+
+### Slice 4 — `DiscoveryResult`: add `cache_root` field
+
+**Files:** `lithos-core/src/discovery/service.rs`
+
+**Constructor change:**
+```rust
+pub fn new<V, G>(vault: V, global: G, cache_root: CacheRoot) -> Self
+where
+    V: Into<Box<[CandidatePath]>>,
+    G: Into<Box<[CandidatePath]>>,
+```
+
+**New accessor:**
+```rust
+pub fn cache_root(&self) -> &CacheRoot { &self.cache_root }
+```
+
+**New behaviors to verify** (new tests in `service.rs::tests::discovery_result`):
+
+| Module | Test name | Behavior |
+|---|---|---|
+| `constructor` | `stores_cache_root_alongside_candidates` | all three fields are stored correctly |
+| `accessors` | `returns_cache_root_matching_provided_value` | `cache_root()` returns the expected `&CacheRoot` |
+
+**Existing `service.rs` tests:** `DiscoveryResult::new(v, g)` calls gain a 3rd
+`CacheRoot` argument. Use a helper `fn placeholder_cache_root() -> CacheRoot`
+in the test fixtures module to avoid repeating construction boilerplate.
+
+Do not yet fix `bootstrap.rs` call sites — those are Slice 8.
+
+---
+
+### Slice 5 — `DiscoveryProcessor::finalize()`: pack `cache_root`
+
+**Files:** `lithos-core/src/discovery/processor.rs`
+
+**Change:** `finalize()` now reads `self.cache_root` (set during `CacheResolution`)
+and passes it to `DiscoveryResult::new`. No resolution logic here.
+
+```rust
+pub(crate) fn finalize(self) -> (DiscoveryResult, DiscoveryReport) {
+    let cache_root = self.cache_root
+        .expect("cache_root must be set before Finalized");
+    let result = DiscoveryResult::new(self.vault, self.global, cache_root);
+    (result, self.report)
+}
+```
+
+The `expect` is acceptable here because `Finalized` can only be constructed from
+`CacheResolution` (enforced by the `From` impls added in Slice 6) — the `expect`
+is a programmer-error guard, not a runtime fallibility. If the lint rejects this,
+use `#[expect(clippy::expect_used, reason = "Finalized is only reachable via CacheResolution which always sets cache_root")]`.
+
+**Update existing `finalize` tests** in `mod finalize` to assert on `cache_root`:
+- `returns_empty_vault_when_no_candidates_found` — also verify `cache_root` is a
+  `PlatformUserCache` variant (no vault, no env)
+- `returns_empty_global_when_no_candidates_found` — same
+- `returns_report_with_filesystem_root_stop_reason` — no change to assertion
+
+---
+
+### Slice 6 — `DiscoveryService::discover()`: route all paths through `CacheResolution`
+
+**Files:** `lithos-core/src/discovery/service.rs`
+
+**Change:** All five terminal paths in `discover()` gain one extra hop. Before:
+```rust
+let final_s: DiscoveryProcessor<Finalized> = From::from(flag);
+```
+After:
+```rust
+let cache: DiscoveryProcessor<CacheResolution> = From::from(flag);
+let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
+```
+
+The five `From<X> for DiscoveryProcessor<Finalized>` impls in `processor.rs` are
+replaced by a single `From<DiscoveryProcessor<'ctx, CacheResolution>> for DiscoveryProcessor<'ctx, Finalized>`
+impl (which just carries state forward unchanged — `finalize()` does the packing).
+
+The four old specific `→ Finalized` impls (`FlagOverride→Finalized`,
+`EnvOverride→Finalized`, `AscendingTraversal→Finalized`, `GlobalResolution→Finalized`)
+are **deleted**. Only `CacheResolution→Finalized` remains.
+
+No new tests needed for this slice — the existing pipeline end-to-end tests in
+`mod pipeline` exercise all five paths and will confirm correctness once Slices 7
+and 8 fix the constructor call sites.
+
+---
+
+### Slice 7 — `DiscoveryEnv` call-site fix-ups (mechanical)
+
+**Files:** `lithos-core/src/discovery/processor.rs`,
+`lithos-core/src/app/bootstrap.rs`
+
+All `DiscoveryEnv::new(a, b, c)` calls gain a 4th `None` argument. This is a
+purely mechanical change with no behavioral effect. Approximately:
+
+| File | Approximate count |
+|---|---|
+| `discovery/processor.rs` tests | ~4 call sites |
+| `app/bootstrap.rs` tests | ~2 call sites |
+
+After this slice, all tests in `processor.rs` and `bootstrap.rs` compile again.
+
+---
+
+### Slice 8 — `DiscoveryResult` call-site fix-ups (mechanical)
+
+**Files:** `lithos-core/src/app/bootstrap.rs`, `lithos-core/src/discovery/service.rs`
+(if any remain after Slice 4)
+
+All `DiscoveryResult::new(v, g)` calls in mock setups gain a 3rd `CacheRoot`
+argument. Use a shared `fn placeholder_cache_root() -> CacheRoot` in the
+`bootstrap.rs` test fixtures module. Approximately:
+
+| File | Approximate count |
+|---|---|
+| `app/bootstrap.rs` tests | ~12 call sites |
+
+After this slice, all tests in `bootstrap.rs` compile and pass.
+
+---
+
+### Slice 9 — Bootstrapper: read `LITHOS_CACHE_DIR`, inject into `DiscoveryEnv`
+
+**Files:** `lithos-core/src/app/bootstrap.rs`
+
+**Change in `build_context`:** Read `LITHOS_CACHE_DIR` from the environment and
+pass it as the 4th argument to `DiscoveryEnv::new()`.
+
+```rust
+let cache_dir = std::env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+// ...pass into DiscoveryEnv::new(config_file, vault_dir, ceiling_dirs_raw, cache_dir)
+```
+
+**New behaviors to verify** (new tests in `bootstrap.rs::tests::build_context`):
+
+| Test name | Behavior |
+|---|---|
+| `returns_context_with_cache_dir_when_lithos_cache_dir_env_is_set` | `LITHOS_CACHE_DIR` set → `context.env().cache_dir()` matches it |
+| `returns_context_with_none_cache_dir_when_lithos_cache_dir_env_is_absent` | env absent → `context.env().cache_dir()` is `None` |
+
+These tests must set/unset `LITHOS_CACHE_DIR` safely. Use `std::env::set_var` /
+`remove_var` with care, or pass `cache_dir` as an explicit parameter to
+`build_context` if environment mutation in tests is a concern. If env mutation is
+used, document that the tests must not run in parallel with other env-reading tests
+(use `#[serial_test::serial]` or equivalent if available, otherwise document the
+constraint).
+
+---
+
+### Slice 10 — `CacheConfig::cache_dir` deprecation
+
+**Files:** `lithos-core/src/config/cache.rs`,
+`lithos-core/src/config/aggregate.rs`
+
+**Changes:**
+
+1. Mark `CacheConfig::cache_dir()` accessor:
+   ```rust
+   #[deprecated(
+       since = "0.1.0",
+       note = "Use `DiscoveryResult::cache_root()` instead. \
+               Cache root is now resolved by the discovery pipeline."
+   )]
+   pub const fn cache_dir(&self) -> &CacheDir { &self.cache_dir }
+   ```
+
+2. `Config::to_cache_spec()` in `aggregate.rs` calls `self.cache.cache_dir()`.
+   Since the accessor is now deprecated, suppress the warning at this single
+   remaining call site:
+   ```rust
+   #[expect(
+       deprecated,
+       reason = "to_cache_spec() is itself deprecated pending migration to \
+                 DiscoveryResult::cache_root()"
+   )]
+   pub fn to_cache_spec(&self) -> Result<CacheConfigSpec, ConfigError> { ... }
+   ```
+   And mark `to_cache_spec()` itself as deprecated:
+   ```rust
+   #[deprecated(
+       since = "0.1.0",
+       note = "Use `DiscoveryResult::cache_root()` instead."
+   )]
+   ```
+
+3. The `config/builder.rs` usage constructs `CacheConfig::new(cache_dir)` — this
+   is the constructor, not the deprecated accessor. No change needed there.
+
+No existing callers of `CacheConfig::cache_dir()` exist outside of `to_cache_spec()`
+and tests. Tests in `config/cache.rs` may call it directly; suppress with
+`#[expect(deprecated, reason = "testing deprecated accessor behavior")]`.
+
+---
+
+### Slice 11 — `dirs` dependency, public re-exports, doc comments
+
+**Files:** `Cargo.toml` (workspace), `lithos-core/Cargo.toml`,
+`lithos-core/src/discovery/mod.rs`
+
+**Changes:**
+
+1. `Cargo.toml` `[workspace.dependencies]`:
+   ```toml
+   dirs = "6"
+   ```
+
+2. `lithos-core/Cargo.toml` `[dependencies]`:
+   ```toml
+   dirs.workspace = true
+   ```
+
+3. `lithos-core/src/discovery/mod.rs` — register the new module and add re-exports:
+   ```rust
+   pub mod location;
+   pub use location::{
+       CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
+   };
+   ```
+
+4. Verify all public types in `location.rs` have `///` doc comments (acceptance criterion).
+
+5. Run `mise run lint` and `mise run fmt` to confirm clean.
+
+---
+
+### Existing test inventory: full call-site update map
+
+| File | Pattern | Approx. sites | Slice |
+|---|---|---|---|
+| `discovery/context.rs` tests | `DiscoveryEnv::new(a, b, c)` | ~8 | 2 (inline) |
+| `discovery/processor.rs` tests | `DiscoveryEnv::new(a, b, c)` | ~4 | 7 |
+| `app/bootstrap.rs` tests | `DiscoveryEnv::new(a, b, c)` | ~2 | 7 |
+| `discovery/service.rs` tests | `DiscoveryResult::new(v, g)` | ~4 | 4 (inline) |
+| `app/bootstrap.rs` tests | `DiscoveryResult::new(v, g)` | ~12 | 8 |
+
+---
+
+### Definition of done
+
+| Criterion | Slice |
+|---|---|
+| `CacheRoot`, `CacheLocation`, `LocalCacheLocation`, `GlobalCacheLocation` in `location.rs`, publicly exported | 1, 11 |
+| `DiscoveryEnv::cache_dir` field, getter, updated constructor | 2 |
+| `CacheResolution` typestate phase; all five terminal paths route through it | 3, 6 |
+| Three-step precedence chain independently testable | 3 |
+| `DiscoveryResult::cache_root()` accessor | 4 |
+| `finalize()` packs without resolution logic | 5 |
+| Bootstrapper reads `LITHOS_CACHE_DIR` | 9 |
+| `CacheConfig::cache_dir` deprecated, `to_cache_spec` deprecated | 10 |
+| `dirs = "6"` in workspace and `lithos-core` | 11 |
+| `mise run test` passes | all |
+| `mise run lint` clean | all |
+| `mise run fmt` passes | all |
+| All public APIs have doc comments | 1, 11 |
+| No `unwrap()`/`panic!` in production code | 3, 5 |
 
 ## Blocked by
 
