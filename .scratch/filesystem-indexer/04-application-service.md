@@ -72,7 +72,8 @@ Service::run(scope, opts, scanner, repo)
 /// `Root` represents the vault root itself — used when an entry is directly
 /// in the vault root (no parent directory exists). `Id(id)` represents a
 /// specific indexed directory that contains this entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(Debug))]
 pub(crate) enum FsParentId {
     /// Entry is directly under the vault root.
     Root,
@@ -80,6 +81,11 @@ pub(crate) enum FsParentId {
     Id(FsRecordId),
 }
 ```
+
+`FsParentId` has a `to_storage_key()` method that maps `Root` to a zero
+sentinel ([`FsRecordId::MAX`]) and `Id(id)` to `id`. This is used by
+parent-index tables (which have `FsRecordId` keys) without storing an
+`Option<FsRecordId>`.
 
 ### Per-entry typestate: `IndexNode<State>`
 
@@ -120,26 +126,32 @@ impl IndexNode<Scanned> {
     /// (New/Fresh/Stale).
     /// This is the sole transition — after this the entry is ready to
     /// consume.
-    pub(crate) fn classify(
-        self,
+    pub(crate) fn classify<R: ReadRepository>(
+        &self,
         vault_root: &DirPath,
         parent_id: FsParentId,
-        repo: &impl ReadRepository,
+        repo: &R,
     ) -> Result<IndexNode<Classified>, IndexerError> {
-        let (key, entry) = match self.inner.0 {
+        let (key, entry) = match &self.inner.0 {
             FsNode::File(file) => {
                 let key = file.path().as_key(vault_root)?;
                 let existing = repo.find_file_by_path(&key)?;
-                let status = classify_status(file.metadata(), existing.as_ref());
-                let record = build_file_record(&file, &key, parent_id, status);
+                let status = classify_status(
+                    file.metadata(),
+                    existing.as_ref().map(|r| r.metadata()),
+                );
+                let record = build_file_record(file, &key, parent_id, status);
                 let entry = FileIndexEntry::new(record.id(), record, file.path().clone(), status);
                 (key, IndexedEntry::File(entry))
             }
             FsNode::Dir(dir) => {
                 let key = dir.path().as_key(vault_root)?;
                 let existing = repo.find_dir_by_path(&key)?;
-                let status = classify_status(dir.metadata(), existing.as_ref());
-                let record = build_dir_record(&dir, &key, parent_id, status);
+                let status = classify_status(
+                    dir.metadata(),
+                    existing.as_ref().map(|r| r.metadata()),
+                );
+                let record = build_dir_record(dir, &key, parent_id, status);
                 let entry = DirIndexEntry::new(record.id(), record, dir.path().clone(), status);
                 (key, IndexedEntry::Dir(entry))
             }
@@ -175,13 +187,20 @@ impl IndexNode<Classified> {
 ```rust
 /// Derive the parent for an entry at `key`. Root-level entries return
 /// `FsParentId::Root`. Subdirectory entries look up their parent from the
-/// `dir_ids` map. Panics if the parent has not been classified yet
-/// (walkdir guarantees parents before children, so this is a bug).
+/// `dir_ids` map. Panics if the parent has not been classified yet (walkdir
+/// guarantees parents before children, so this is a programmer error).
 fn derive_parent_id(
     key: &PathKey,
     dir_ids: &HashMap<PathKey, FsRecordId>,
 ) -> FsParentId {
-    let parent_key = key.parent_key();
+    let s = key.as_str();
+    let parent_key = match s.rfind('/') {
+        None => None,
+        Some(pos) => Some(
+            PathKey::try_new(&s[..pos])
+                .expect("parent of valid path is a valid path"),
+        ),
+    };
     match parent_key {
         None => FsParentId::Root,
         Some(pk) => FsParentId::Id(
@@ -221,10 +240,11 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
 
     pub(crate) fn run(
         &self,
-        scope: IndexScope,
+        scope: &IndexScope,
         opts: IndexOptions,
     ) -> Result<IndexResult, IndexerError> {
-        let (root, filters) = (scope.root(), scope.filters());
+        let root = scope.root();
+        let filters = scope.filters();
 
         // 1. If reindex, discard all persisted state before scanning
         if opts.reindex() { self.repo.clear()?; }
@@ -239,23 +259,28 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         let mut fresh_count = 0usize;
         let mut stale_count = 0usize;
 
-        for entry in self.scanner.walk(&root, &filters)? {
-            match entry? {
-                ScanEntry::Skipped(s) => { skipped.push(s); continue; }
-                ScanEntry::File(node) => {
+        for entry in self.scanner.walk(root, filters)? {
+            match entry {
+                Ok(ScanEntry::Skipped(s)) => skipped.push(s),
+                Ok(ScanEntry::File(node)) => {
                     let key = node.path().as_key(&self.vault_root)?;
                     let parent_id = derive_parent_id(&key, &dir_ids);
                     let scanned = IndexNode::new(FsNode::File(node));
                     let classified = scanned.classify(
                         &self.vault_root, parent_id, &self.repo,
                     )?;
-                    seen_paths.insert(key);
+                    let pk = classified.path_key().clone();
+                    seen_paths.insert(pk);
                     if let IndexedEntry::File(f) = classified.into_entry() {
-                        update_counts(f.status(), ...);
+                        match f.status() {
+                            IndexStatus::New => new_count += 1,
+                            IndexStatus::Fresh => fresh_count += 1,
+                            IndexStatus::Stale => stale_count += 1,
+                        }
                         indexed_files.push(f);
                     }
                 }
-                ScanEntry::Dir(node) => {
+                Ok(ScanEntry::Dir(node)) => {
                     let key = node.path().as_key(&self.vault_root)?;
                     let parent_id = derive_parent_id(&key, &dir_ids);
                     let scanned = IndexNode::new(FsNode::Dir(node));
@@ -263,13 +288,19 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
                         &self.vault_root, parent_id, &self.repo,
                     )?;
                     let id = classified.entry_id();
-                    seen_paths.insert(key.clone());
+                    let pk = classified.path_key().clone();
+                    seen_paths.insert(pk.clone());
                     if let IndexedEntry::Dir(d) = classified.into_entry() {
-                        update_counts(d.status(), ...);
-                        dir_ids.insert(key, id);
+                        match d.status() {
+                            IndexStatus::New => new_count += 1,
+                            IndexStatus::Fresh => fresh_count += 1,
+                            IndexStatus::Stale => stale_count += 1,
+                        }
+                        dir_ids.insert(pk, id);
                         indexed_dirs.push(d);
                     }
                 }
+                Err(e) => return Err(e.into()),
             }
         }
 
@@ -278,11 +309,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
 
         // 4. Persist (skip if dry_run)
         if !opts.dry_run() {
-            let indexed = IndexedNodes::new(
-                indexed_files.clone().into_boxed_slice(),
-                indexed_dirs.clone().into_boxed_slice(),
-            );
-            self.persist(&indexed, &deleted)?;
+            self.persist(&seen_paths, &deleted)?;
         }
 
         // 5. Build report and return
@@ -323,29 +350,34 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
 
 1. **`reindex: true`** — discard all persisted state before scanning. Every
    node is treated as `New`. The clear operation deletes all records in the
-   repository for this vault, so `detect_deletions` produces no deletions
-   (nothing persists to compare against).
+   repository via `delete_table`+`open_table` on each of the 8 tables within
+   a single write transaction (atomic). Afterwards, `detect_deletions` produces
+   no deletions (nothing persists to compare against).
 2. **Scan + classify (fused loop)** — `scanner.walk()` yields entries lazily.
    `IndexNode` resolves each entry's `PathKey` and classifies it against the
    repository inline. No intermediate `ScanResult` batch — one pass.
-3. **Parent tracking via `dir_ids` map** — directories are inserted into the
-   map immediately after classification, before their children are processed
-   (walkdir yields parents before children). Root-level entries whose parent
-   isn't in the map fall back to `FsRecordId::new()`.
+3. **Parent tracking via `dir_ids` map** — `derive_parent_id` strips the last
+   path component via `s.rfind('/')` on `PathKey::as_str()`. Root-level entries
+   (no `/`) return `FsParentId::Root`. Subdirectory entries look up their
+   parent in the `dir_ids` map (walkdir guarantees parents before children).
 4. **Deletion detection** — after the loop, query `repo.all_paths()` and
    compare against `seen_paths`. Paths in the repo but absent from the scan
-   are deleted.
-5. **Persist / dry_run** — `IndexedNodes` from the loop are written via
-   `repo.save_many_records()`. Deleted IDs are pruned via
-   `repo.delete_many_records()`. Skipped when `dry_run: true`.
-6. **IndexReport** — built from counters accumulated during the loop, returned
-   as part of `IndexResult`.
+   are deleted. Each path is queried as file first, then dir; paths matching
+   neither are silently skipped.
+5. **Persist / dry_run** — `persist()` writes `IndexResult::indexed()` entries
+   via `self.repo.save_many_records()` and deletes via
+   `self.repo.delete_many_records()`. No-op when `opts.dry_run()` is true.
+   Note: `persist` takes `seen_paths` and `deleted` directly, not `IndexedNodes`
+   (the indexed entries are already consumed into the `IndexResult` by that point).
+6. **IndexReport** — built from counters accumulated during the loop (including
+   deleted count from `detect_deletions`), returned as part of `IndexResult`.
 
-Hard abort conditions (return an error, do not return a partial result):
-configuration errors (invalid vault root, missing config specs) and repository
-initialisation failures.
+Hard abort conditions: path resolution errors (`PathKey::as_key` fails) and
+scanner errors (passed through via `Err(e) => return Err(e.into())`).
+`ScanEntry::Skipped` entries are non-fatal — accumulated into `skipped` list
+and appear in `IndexReport::skipped()`.
 
-The service must depend only on the `ScannerPort` and `Repository` traits —
+The service depends only on the `ScannerPort` and `Repository` traits —
 no walkdir, no redb, no concrete adapter types in the service module.
 `IndexNode` depends on `ReadRepository` for its `classify()` transition.
 
@@ -353,13 +385,17 @@ no walkdir, no redb, no concrete adapter types in the service module.
 
 | File                       | Change                                                               |
 | -------------------------- | -------------------------------------------------------------------- |
-| `indexer/error.rs`           | Add `Path(#[from] PathError)` variant to `IndexerError`                  |
-| `indexer/scan.rs`            | Add `IndexScope::root()` and `IndexScope::filters()`                     |
-| `indexer/repository.rs`      | Add `WriteRepository::clear()` + update test `MockRepository`            |
-| `indexer/storage/testing.rs` | Implement `InMemoryRepository::clear()`                                |
-| `indexer/storage/write.rs`   | Implement `RedbRepository::clear()` (drain all 8 tables in write tx)   |
-| `indexer/mod.rs`             | Add `mod service;`                                                     |
-| `indexer/summary.rs`         | Add `report: IndexReport` to `IndexResult`; update constructor to 3 args |
+| `indexer/service.rs`       | NEW — IndexerService, IndexNode typestate, classify, helpers, 36 tests |
+| `indexer/error.rs`         | Add `Path(#[from] PathError)` variant to `IndexerError`              |
+| `indexer/scan.rs`          | Add `IndexScope::root()` and `IndexScope::filters()`                 |
+| `indexer/repository.rs`    | Add `FsParentId` to trait signatures, `WriteRepository::clear()`     |
+| `indexer/model.rs`         | Add `FsParentId` enum with rkyv derives + `to_storage_key()`         |
+| `indexer/storage/testing.rs` | Implement `InMemoryRepository::clear()` + parent-index table methods |
+| `indexer/storage/write.rs` | `clear()` uses `delete_table`+`open_table` (not iterate+remove)      |
+| `indexer/storage/read.rs`  | Parent-index lookups accept `FsParentId`                              |
+| `indexer/entry.rs`         | Use `FsParentId` in `FileIndexEntry`/`DirIndexEntry` constructors    |
+| `indexer/summary.rs`       | Add `report: IndexReport` to `IndexResult`; update constructor       |
+| `indexer/mod.rs`           | Add `mod service;`                                                    |
 
 ## Acceptance criteria
 
@@ -458,6 +494,42 @@ no walkdir, no redb, no concrete adapter types in the service module.
 ---
 
 ## Changelog
+
+### 2026-06-18 — Session 7: Implementation (committed)
+
+**Commit**: `00a0f45f` on `04-application-service`
+
+**Implemented:**
+1. `service.rs` (1407 lines) — `IndexerService` with `IndexNode<S>` typestate,
+   `run()` fused loop, `detect_deletions()`, `persist()`, and 36 tests across
+   5 cycles (typestate, service_run, detect_deletions, persist, integration).
+2. `FsParentId` enum in `model.rs` with `to_storage_key()` mapping `Root` to
+   zero sentinel. Derives `Archive+Serialize+Deserialize` for rkyv embedding.
+3. Parent-index tables in read/write/testing backends — `list_files_by_parent`
+   and `list_dirs_by_parent` accept `FsParentId`.
+4. `clear()` uses `delete_table`+`open_table` within a single `WriteTransaction`
+   instead of iterating all keys — simpler and allocation-free.
+
+**Deviation from spec:**
+- `classify()` takes `&self` not `self` (state types behind `&`).
+- `derive_parent_id` uses `s.rfind('/')` on `PathKey::as_str()` (no `parent_key()` method).
+- `run()` takes `scope: &IndexScope` to satisfy `clippy::needless_pass_by_value`.
+- `FsParentId` has rkyv derives for redb storage (spec didn't mention rkyv).
+- `Scope::root()` returns `&DirPath` (not owned); `scope.root()` renamed from
+  `Scope::root()` to `IndexScope::root()` after scan module restructure.
+
+**Test infrastructure:**
+- `MockScanner` uses `RefCell<Vec<...>>` for interior mutability (avoids Clone
+  bound on `ScanEntry`/`ScannerError`).
+- `make_vault_root()` creates `/tmp/vault` on disk (required by `DirPath::try_new`).
+- `make_file_node()` / `make_dir_node()` create real files/dirs before construction.
+- `repo_with_file()` / `repo_with_dir()` helpers for pre-seeded InMemoryRepository.
+- 36 tests all pass, 2067 total (no regressions).
+
+**Quality:**
+- Zero clippy warnings (all targets).
+- `cargo fmt --check` clean.
+- All pre-push hooks pass (gitleaks, conventional-commits, fmt, clippy, tests).
 
 ### 2026-06-18 — Session 6: TDD plan + design refinements
 
