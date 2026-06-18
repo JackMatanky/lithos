@@ -336,3 +336,66 @@ To orchestrate the ingestion pipeline and avoid coupling `TemplateProcessor` to 
 - **`load`**: Orchestration method that ties the scan, cached view fetching, and `TemplateProcessor` together, advancing each discovered file through its appropriate state transitions to the `Completed` stage.
 
 *Note: Identifying deleted templates (present in the repository but absent from the scan) is also managed by this orchestrator, but actual deletion processing is deferred to issue-07.*
+
+### Revised TDD Plan: `TemplateService` Orchestration
+
+Following the **vertical slicing** approach, we will first refactor the `TemplateProcessor` boundary, and then build out the `TemplateService` behaviors sequentially.
+
+#### Cycle 0: Refactor `TemplateProcessor` for Batch Pre-fetching
+**Goal:** Remove individual repository lookups from `TemplateProcessor::compare` to support batch processing.
+*   **Test:** Update existing processor tests in `lithos-core/src/template/processor.rs` to pass `Option<TemplateId>` and `Option<RawTemplateView>` directly to `compare` instead of passing the repository.
+*   **Implementation:**
+    *   Change the signature: `pub(crate) fn compare(self, id: Option<TemplateId>, view: Option<RawTemplateView>) -> DiscoveryBranch`
+    *   Remove `<R: ReadRepository>` generic from `compare`.
+
+#### Cycle 1: The Tracer Bullet (Empty Directory)
+**Goal:** Establish the basic struct, `scan_templates`, and the `load` entry point.
+*   **Test:** `load_should_return_empty_list_when_template_directory_is_empty`
+*   **Implementation:**
+    *   Create `TemplateService` struct.
+    *   Implement private `scan_templates` using `DirScanner::new().entries()` filtered to `.md` extensions and `recursive(true)`.
+    *   Implement public `load` that calls `scan_templates` and returns an empty vector.
+
+#### Cycle 2: Batch Cache Checking (`check_batch_existence`)
+**Goal:** Implement the batch fetching mechanism that powers the comparison stage.
+*   **Test:** `check_batch_existence_should_retrieve_views_and_ids_for_provided_paths`
+*   **Implementation:**
+    *   Implement `fn check_batch_existence<R: ReadRepository>(&self, repository: &R, paths: &[PathKey]) -> Result<Vec<(Option<TemplateId>, Option<RawTemplateView>)>, TemplateError>`
+    *   Perform a lookup using `repository.find_raw_template_views_by_paths(paths)` and loop over paths with `repository.find_template_id_by_path(path)` to zip the results together.
+
+#### Cycle 3: Discovering & Processing New Templates
+**Goal:** Orchestrate the pipeline for entirely new markdown files.
+*   **Test:** `load_should_process_new_markdown_files_and_ignore_other_extensions`
+*   **Implementation:**
+    *   In `load`, gather paths from `scan_templates`.
+    *   Pass paths to `check_batch_existence`.
+    *   Iterate over zipped `(file, path_key)` and `(id, view)`.
+    *   Instantiate `TemplateProcessor::new(file, path_key)`.
+    *   Drive the processor: `compare(id, view)` → `DiscoveryBranch::Missing` → `parse(file_reader)` → `create(repo, template_root)`.
+
+#### Cycle 4: Processing Fresh Templates (No-op)
+**Goal:** Ensure unmodified files skip parsing and reconstruction.
+*   **Test:** `load_should_fetch_existing_templates_without_repository_writes_when_fresh`
+*   **Implementation:**
+    *   In `load`, handle `DiscoveryBranch::Present`.
+    *   Call `check_metadata()` → matches `MetadataBranch::Match` → calls `fetch(repo)`.
+
+#### Cycle 5: Processing Stale Content
+**Goal:** Orchestrate the pipeline when file content has actually changed.
+*   **Test:** `load_should_reconstruct_and_update_template_when_content_hash_changes`
+*   **Implementation:**
+    *   In `load`, handle `MetadataBranch::Mismatch`.
+    *   Call `check_content(file_reader)` → `ContentBranch::Mismatch` → `parse()` → `update(repo, id, template_root)`.
+
+#### Cycle 6: Processing Stale Metadata (Timestamp-only refresh)
+**Goal:** Ensure files with changed timestamps but identical content hashes only sync metadata.
+*   **Test:** `load_should_sync_metadata_without_reconstruction_when_only_timestamps_change`
+*   **Implementation:**
+    *   In `load`, handle `ContentBranch::Match`.
+    *   Call `sync_metadata(repo)` → calls `fetch(repo)`.
+
+#### Cycle 7: Deletion Detection (Deferred execution)
+**Goal:** Ensure the orchestrator identifies deleted templates as requested by the handoff.
+*   **Test:** `load_should_identify_deleted_templates_for_deferred_processing`
+*   **Implementation:**
+    *   Add a `// TODO(#issue-07): Process deletions for paths in cache but absent from disk.` note where we would process the diff between discovered paths and cached paths.
