@@ -101,6 +101,40 @@ impl IndexOptions {
     }
 }
 
+impl IndexScope {
+    /// Returns the root directory for the scan.
+    #[inline]
+    #[must_use]
+    pub(crate) fn root(&self) -> &DirPath {
+        match self {
+            Self::Full {
+                root,
+                ..
+            }
+            | Self::Partial {
+                root,
+                ..
+            } => root,
+        }
+    }
+
+    /// Returns the scan filters.
+    #[inline]
+    #[must_use]
+    pub(crate) fn filters(&self) -> &ScanFilters {
+        match self {
+            Self::Full {
+                filters,
+                ..
+            }
+            | Self::Partial {
+                filters,
+                ..
+            } => filters,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod scan_filters {

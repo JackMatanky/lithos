@@ -22,12 +22,15 @@ pub(crate) mod report;
 pub(crate) mod repository;
 mod scan;
 pub(crate) mod scanner;
+mod service;
 pub(crate) mod storage;
 mod summary;
 
 pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub(crate) use error::{IndexerError, IndexerRepositoryError, ScannerError};
-pub(crate) use model::{DirRecord, FileRecord, FsRecordId, FsRecordType};
+pub(crate) use model::{
+    DirRecord, FileRecord, FsParentId, FsRecordId, FsRecordType,
+};
 pub(crate) use port::{ScanEntry, ScannerPort};
 pub(crate) use report::{
     IndexNodeFailure, IndexReport, SkipReason, SkippedEntry,

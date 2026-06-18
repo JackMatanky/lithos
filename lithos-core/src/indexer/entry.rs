@@ -167,7 +167,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{FileIndexEntry, IndexStatus},
-                    model::{FileRecord, FsRecordId},
+                    model::{FileRecord, FsParentId, FsRecordId},
                 },
             };
 
@@ -177,7 +177,7 @@ mod tests {
                 std::fs::File::create(&file_path_buf).unwrap();
 
                 let id = FsRecordId::new();
-                let parent_id = FsRecordId::new();
+                let parent_id = FsParentId::Id(FsRecordId::new());
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
@@ -210,7 +210,7 @@ mod tests {
                 std::fs::File::create(&file_path_buf).unwrap();
 
                 let id = FsRecordId::new();
-                let parent_id = FsRecordId::new();
+                let parent_id = FsParentId::Id(FsRecordId::new());
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
@@ -247,7 +247,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{DirIndexEntry, IndexStatus},
-                    model::{DirRecord, FsRecordId},
+                    model::{DirRecord, FsParentId, FsRecordId},
                 },
             };
 
@@ -263,8 +263,14 @@ mod tests {
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let recorded_at = SystemTime::now();
-                let node =
-                    DirRecord::new(id, None, key, name, metadata, recorded_at);
+                let node = DirRecord::new(
+                    id,
+                    FsParentId::Root,
+                    key,
+                    name,
+                    metadata,
+                    recorded_at,
+                );
                 let path = DirPath::try_new(dir_path_buf).unwrap();
                 let entry =
                     DirIndexEntry::new(id, node, path, IndexStatus::Stale);

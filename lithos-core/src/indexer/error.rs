@@ -2,7 +2,10 @@
 
 use std::path::PathBuf;
 
-use crate::{db::DbError, fs::path::PathKey};
+use crate::{
+    db::DbError,
+    fs::{error::PathError, path::PathKey},
+};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -11,6 +14,8 @@ pub(crate) enum IndexerError {
     Scanner(#[from] ScannerError),
     #[error(transparent)]
     Repository(#[from] IndexerRepositoryError),
+    #[error(transparent)]
+    Path(#[from] PathError),
 }
 
 /// Repository-layer errors surfaced through the port boundary.

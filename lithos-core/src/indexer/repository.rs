@@ -8,7 +8,7 @@ use crate::{
     fs::{FileFormat, path::PathKey},
     indexer::{
         error::IndexerRepositoryError,
-        model::{DirRecord, FileRecord, FsRecordId},
+        model::{DirRecord, FileRecord, FsParentId, FsRecordId},
     },
 };
 
@@ -32,11 +32,11 @@ pub(crate) trait ReadRepository {
     ) -> Result<Option<DirRecord>, IndexerRepositoryError>;
     fn list_files_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[FileRecord]>, IndexerRepositoryError>;
     fn list_dirs_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[DirRecord]>, IndexerRepositoryError>;
     fn list_files_by_format(
         &self,
@@ -80,6 +80,8 @@ pub(crate) trait WriteRepository {
         file_ids: &[FsRecordId],
         dir_ids: &[FsRecordId],
     ) -> Result<(), IndexerRepositoryError>;
+    /// Remove all persisted records.
+    fn clear(&self) -> Result<(), IndexerRepositoryError>;
 }
 
 /// Unified repository trait combining read and write capabilities.
@@ -90,7 +92,9 @@ impl<T> Repository for T where T: ReadRepository + WriteRepository {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::indexer::model::{DirRecord, FileRecord, FsRecordId};
+    use crate::indexer::model::{
+        DirRecord, FileRecord, FsParentId, FsRecordId,
+    };
 
     struct MockRepository;
 
@@ -125,14 +129,14 @@ mod tests {
 
         fn list_files_by_parent(
             &self,
-            _parent_id: FsRecordId,
+            _parent_id: FsParentId,
         ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
             Ok(Box::new([]))
         }
 
         fn list_dirs_by_parent(
             &self,
-            _parent_id: FsRecordId,
+            _parent_id: FsParentId,
         ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
             Ok(Box::new([]))
         }
@@ -198,6 +202,10 @@ mod tests {
             _file_ids: &[FsRecordId],
             _dir_ids: &[FsRecordId],
         ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn clear(&self) -> Result<(), IndexerRepositoryError> {
             Ok(())
         }
     }
