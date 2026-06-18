@@ -12,9 +12,9 @@ use crate::{
         },
         port::DiscoveryPort,
         processor::{
-            AscendingTraversal, DiscoveryProcessor, EnvOverride,
-            ExplicitOverrideBranch, Finalized, FlagBranch, FlagOverride,
-            GlobalResolution,
+            AscendingTraversal, CacheResolution, DiscoveryProcessor,
+            EnvOverride, ExplicitOverrideBranch, Finalized, FlagBranch,
+            FlagOverride, GlobalResolution,
         },
         report::DiscoveryReport,
     },
@@ -226,13 +226,17 @@ impl DiscoveryPort for DiscoveryService {
         // path, skip env entirely.
         match flag.flag_branch() {
             FlagBranch::VaultAndConfigSet => {
-                let final_s: DiscoveryProcessor<Finalized> = From::from(flag);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(flag);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 return Ok(final_s.finalize());
             }
             FlagBranch::VaultOnlySet => {
                 let global: DiscoveryProcessor<GlobalResolution> =
                     From::from(flag);
-                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(global);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 return Ok(final_s.finalize());
             }
             FlagBranch::ConsultEnv => {}
@@ -243,19 +247,25 @@ impl DiscoveryPort for DiscoveryService {
 
         match env.branch_strategy() {
             ExplicitOverrideBranch::VaultProbedSkipGlobal => {
-                let final_s: DiscoveryProcessor<Finalized> = From::from(env);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(env);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 Ok(final_s.finalize())
             }
             ExplicitOverrideBranch::VaultProbedRunGlobal => {
                 let global: DiscoveryProcessor<GlobalResolution> =
                     From::from(env);
-                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(global);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 Ok(final_s.finalize())
             }
             ExplicitOverrideBranch::AscendSkipGlobal => {
                 let ascend: DiscoveryProcessor<AscendingTraversal> =
                     TryFrom::try_from(env)?;
-                let final_s: DiscoveryProcessor<Finalized> = From::from(ascend);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(ascend);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 Ok(final_s.finalize())
             }
             ExplicitOverrideBranch::AscendThenGlobal => {
@@ -263,7 +273,9 @@ impl DiscoveryPort for DiscoveryService {
                     TryFrom::try_from(env)?;
                 let global: DiscoveryProcessor<GlobalResolution> =
                     From::from(ascend);
-                let final_s: DiscoveryProcessor<Finalized> = From::from(global);
+                let cache: DiscoveryProcessor<CacheResolution> =
+                    From::from(global);
+                let final_s: DiscoveryProcessor<Finalized> = From::from(cache);
                 Ok(final_s.finalize())
             }
         }
@@ -385,7 +397,7 @@ mod tests {
 
                 let result = DiscoveryResult::new(
                     vec![vault.clone()],
-                    vec![] as Vec<CandidatePath>,
+                    Vec::<CandidatePath>::new(),
                     cache_root.clone(),
                 );
 
@@ -404,8 +416,8 @@ mod tests {
                 let cache_root = placeholder_cache_root();
 
                 let result = DiscoveryResult::new(
-                    vec![] as Vec<CandidatePath>,
-                    vec![] as Vec<CandidatePath>,
+                    Vec::<CandidatePath>::new(),
+                    Vec::<CandidatePath>::new(),
                     cache_root.clone(),
                 );
 

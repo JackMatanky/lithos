@@ -10,13 +10,13 @@
 //! ```text
 //! Init
 //!  └─ FlagOverride      (probe flag vault/config; parse ceilings)
-//!      ├─ [flag vault + flag config] ──────────────────────────── Finalized
-//!      ├─ [flag vault only] ───────────── GlobalResolution ─────► Finalized
+//!      ├─ [flag vault + flag config] ──────────────────────────── CacheResolution ──► Finalized
+//!      ├─ [flag vault only] ───────────── GlobalResolution ─────► CacheResolution ──► Finalized
 //!      └─ [flags insufficient] ──► EnvOverride
-//!                                      ├─ [env vault + env config] ── Finalized
-//!                                      ├─ [env vault only] ─── GlobalResolution ─► Finalized
-//!                                      ├─ [env config only] ─► AscendingTraversal ─► Finalized
-//!                                      └─ [no overrides] ────► AscendingTraversal ─► GlobalResolution ─► Finalized
+//!                                      ├─ [env vault + env config] ── CacheResolution ──► Finalized
+//!                                      ├─ [env vault only] ─── GlobalResolution ─► CacheResolution ──► Finalized
+//!                                      ├─ [env config only] ─► AscendingTraversal ─► CacheResolution ──► Finalized
+//!                                      └─ [no overrides] ────► AscendingTraversal ─► GlobalResolution ─► CacheResolution ──► Finalized
 //! ```
 //!
 //! Flags have highest precedence. [`FlagOverride::flag_branch`] decides
@@ -283,36 +283,6 @@ impl DiscoveryProcessor<'_, FlagOverride> {
 }
 
 // ---------------------------------------------------------------------------
-// FlagOverride → Finalized  (VaultAndConfigSet branch)
-// ---------------------------------------------------------------------------
-
-impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
-    for DiscoveryProcessor<'ctx, Finalized>
-{
-    /// Finalizes directly from `FlagOverride` when both a vault dir and a
-    /// config file were supplied via CLI flags.
-    ///
-    /// Neither env vars nor global resolution are consulted — flags have
-    /// the highest precedence and fully determine the result.
-    fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
-        let mut report = val.report;
-        report.local_traversal_stop_reason =
-            LocalTraversalStopReason::ExplicitConfigFile;
-
-        DiscoveryProcessor {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global: val.global,
-            report,
-            ceilings: val.ceilings,
-            cache_root: val.cache_root,
-            _phase: PhantomData,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // FlagOverride → GlobalResolution  (VaultOnlySet branch)
 // ---------------------------------------------------------------------------
 
@@ -556,34 +526,6 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
 }
 
 // ---------------------------------------------------------------------------
-// EnvOverride → Finalized  (VaultProbedSkipGlobal branch)
-// ---------------------------------------------------------------------------
-
-impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
-    for DiscoveryProcessor<'ctx, Finalized>
-{
-    /// Finalizes directly from `EnvOverride` when both vault and config
-    /// overrides are present — no global resolution is needed.
-    ///
-    /// Global resolution is skipped because the caller already supplied an
-    /// explicit config file path; the skip reason is left as `None` to
-    /// distinguish this from an explicit `--no-global-config` suppression.
-    fn from(val: DiscoveryProcessor<'ctx, EnvOverride>) -> Self {
-        // No report mutation on this path; advance all state unchanged.
-        DiscoveryProcessor {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global: val.global,
-            report: val.report,
-            ceilings: val.ceilings,
-            cache_root: val.cache_root,
-            _phase: PhantomData,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // AscendingTraversal → GlobalResolution  (AscendThenGlobal branch)
 // ---------------------------------------------------------------------------
 
@@ -596,50 +538,6 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
     /// and [`GlobalResolutionSkipReason::SuppressedByFlag`] is recorded.
     fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
         run_global_resolution(val)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// AscendingTraversal → Finalized  (AscendSkipGlobal branch)
-// ---------------------------------------------------------------------------
-
-impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
-    for DiscoveryProcessor<'ctx, Finalized>
-{
-    /// Finalizes directly after ascending traversal, skipping global
-    /// resolution because an explicit config file override is present.
-    fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
-        DiscoveryProcessor {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global: val.global,
-            report: val.report,
-            ceilings: val.ceilings,
-            cache_root: val.cache_root,
-            _phase: PhantomData,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// GlobalResolution → Finalized
-// ---------------------------------------------------------------------------
-
-impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
-    for DiscoveryProcessor<'ctx, Finalized>
-{
-    fn from(val: DiscoveryProcessor<'ctx, GlobalResolution>) -> Self {
-        DiscoveryProcessor {
-            config: val.config,
-            ctx: val.ctx,
-            vault: val.vault,
-            global: val.global,
-            report: val.report,
-            ceilings: val.ceilings,
-            cache_root: val.cache_root,
-            _phase: PhantomData,
-        }
     }
 }
 
@@ -677,11 +575,11 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, CacheResolution>>
 /// Computes the [`CacheRoot`] from accumulated vault candidates and the
 /// optional env-var cache directory override. Each concrete `From` impl
 /// delegates here to avoid code duplication.
-fn into_cache_resolution<'ctx, P>(
-    val: DiscoveryProcessor<'ctx, P>,
-) -> DiscoveryProcessor<'ctx, CacheResolution> {
+fn into_cache_resolution<P>(
+    val: DiscoveryProcessor<'_, P>,
+) -> DiscoveryProcessor<'_, CacheResolution> {
     let env_cache_dir = val.ctx.env().cache_dir();
-    let vault_root = val.vault.first().map(|c| c.base());
+    let vault_root = val.vault.first().map(CandidatePath::base);
     let cache_root = resolve_cache_root(env_cache_dir, vault_root);
 
     DiscoveryProcessor {
@@ -707,7 +605,19 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
 impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
     for DiscoveryProcessor<'ctx, CacheResolution>
 {
+    /// Advances from `FlagOverride` to cache resolution.
+    ///
+    /// When both a flag vault dir and a flag config file are set
+    /// (`VaultAndConfigSet`), records
+    /// [`LocalTraversalStopReason::ExplicitConfigFile`] — neither env vars
+    /// nor traversal were needed, so traversal never ran.
     fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
+        let has_flag_config = val.ctx.flags().config_file().is_some();
+        let mut val = val;
+        if has_flag_config {
+            val.report.local_traversal_stop_reason =
+                LocalTraversalStopReason::ExplicitConfigFile;
+        }
         into_cache_resolution(val)
     }
 }
@@ -743,14 +653,13 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
 impl DiscoveryProcessor<'_, Finalized> {
     /// Consumes the processor and returns the discovery output.
     pub(crate) fn finalize(self) -> (DiscoveryResult, DiscoveryReport) {
-        // `cache_root` is set by `CacheResolution`; compute a fallback only
-        // when reaching `Finalized` through a legacy direct path (e.g. tests
-        // that bypass `CacheResolution`).
-        let cache_root = self.cache_root.unwrap_or_else(|| {
-            let env_cache_dir = self.ctx.env().cache_dir();
-            let vault_root = self.vault.first().map(CandidatePath::base);
-            resolve_cache_root(env_cache_dir, vault_root)
-        });
+        #[expect(
+            clippy::expect_used,
+            reason = "Finalized is only reachable via CacheResolution which \
+                      always sets cache_root"
+        )]
+        let cache_root =
+            self.cache_root.expect("cache_root must be set before Finalized");
         let result = DiscoveryResult::new(self.vault, self.global, cache_root);
         (result, self.report)
     }
@@ -851,8 +760,7 @@ fn resolve_cache_root(
     // No env override and no vault root — use OS platform cache directory.
     // `.unwrap_or_else` covers pathological cases where the OS provides none.
     let path = dirs::cache_dir()
-        .map(|p| p.join("lithos"))
-        .unwrap_or_else(|| PathBuf::from(".lithos/cache"));
+        .map_or_else(|| PathBuf::from(".lithos/cache"), |p| p.join("lithos"));
     CacheRoot {
         location: CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
         path,
@@ -1762,7 +1670,8 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
             assert_eq!(flag.flag_branch(), FlagBranch::VaultAndConfigSet);
-            let final_: DiscoveryProcessor<Finalized> = flag.into();
+            let cache: DiscoveryProcessor<CacheResolution> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.vault().is_empty());
@@ -1786,7 +1695,8 @@ mod tests {
 
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
-            let final_: DiscoveryProcessor<Finalized> = flag.into();
+            let cache: DiscoveryProcessor<CacheResolution> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(result.global().is_empty());
@@ -1811,7 +1721,8 @@ mod tests {
 
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
-            let final_: DiscoveryProcessor<Finalized> = flag.into();
+            let cache: DiscoveryProcessor<CacheResolution> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert!(report.global_resolution_skip_reason.is_none());
@@ -1834,7 +1745,8 @@ mod tests {
 
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
-            let final_: DiscoveryProcessor<Finalized> = flag.into();
+            let cache: DiscoveryProcessor<CacheResolution> = flag.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert_eq!(
@@ -1870,7 +1782,8 @@ mod tests {
                 DiscoveryProcessor::new(&config, &ctx).into();
             assert_eq!(flag.flag_branch(), FlagBranch::VaultOnlySet);
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.vault().is_empty());
@@ -1899,7 +1812,8 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.global().is_empty());
@@ -1919,7 +1833,8 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> =
                 DiscoveryProcessor::new(&config, &ctx).into();
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert!(report.global_resolution_skip_reason.is_none());
@@ -1971,7 +1886,8 @@ mod tests {
             let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env_p.try_into().expect("ascend");
-            let final_: DiscoveryProcessor<Finalized> = ascend.into();
+            let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert_eq!(
@@ -2005,7 +1921,8 @@ mod tests {
             );
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env_p.try_into().expect("ascend");
-            let final_: DiscoveryProcessor<Finalized> = ascend.into();
+            let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(result.global().is_empty());
@@ -2028,7 +1945,8 @@ mod tests {
             let env_p: DiscoveryProcessor<EnvOverride> = flag.into();
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env_p.try_into().expect("ascend");
-            let final_: DiscoveryProcessor<Finalized> = ascend.into();
+            let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert_eq!(
@@ -2065,7 +1983,8 @@ mod tests {
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env.try_into().expect("ascend");
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.vault().is_empty());
@@ -2093,7 +2012,8 @@ mod tests {
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env.try_into().expect("ascend");
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(!result.global().is_empty());
@@ -2111,7 +2031,8 @@ mod tests {
             let ascend: DiscoveryProcessor<AscendingTraversal> =
                 env.try_into().expect("ascend");
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert!(report.global_resolution_skip_reason.is_none());
@@ -2139,7 +2060,8 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let global: DiscoveryProcessor<GlobalResolution> = env.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert_eq!(
@@ -2168,7 +2090,8 @@ mod tests {
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let global: DiscoveryProcessor<GlobalResolution> = env.into();
-            let final_: DiscoveryProcessor<Finalized> = global.into();
+            let cache: DiscoveryProcessor<CacheResolution> = global.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(
@@ -2191,8 +2114,8 @@ mod tests {
             CacheLocation, GlobalCacheLocation, LocalCacheLocation,
         };
 
-        /// Helper: advance processor through FlagOverride → EnvOverride →
-        /// CacheResolution. Used when a vault needs to be probed (env vault
+        /// Helper: advance processor through `FlagOverride` → `EnvOverride` →
+        /// `CacheResolution`. Used when a vault needs to be probed (env vault
         /// dir or flag vault dir).
         fn advance_to_cache_resolution_with_vault<'a>(
             config: &'a DiscoveryServiceConfig,
@@ -2206,8 +2129,9 @@ mod tests {
             env.into()
         }
 
-        /// Helper: advance processor directly Init → CacheResolution (no vault
-        /// probing). Used for tests that only need cache_dir env var logic.
+        /// Helper: advance processor directly Init → `CacheResolution` (no
+        /// vault probing). Used for tests that only need `cache_dir`
+        /// env var logic.
         fn advance_to_cache_resolution<'a>(
             config: &'a DiscoveryServiceConfig,
             ctx: &'a DiscoveryContext<'a>,
