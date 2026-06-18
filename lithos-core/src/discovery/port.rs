@@ -17,7 +17,7 @@ use crate::discovery::{
 /// decoupled from the discovery implementation.
 ///
 /// [`DiscoveryEngine`]: crate::discovery::engine::DiscoveryEngine
-pub(crate) trait DiscoveryPort {
+pub trait DiscoveryPort {
     /// Runs discovery using the provided invocation context.
     ///
     /// # Errors

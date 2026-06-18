@@ -19,5 +19,5 @@
 //! - `diagnostics`: app-level result summaries returned to executable adapters
 //!   for rendering; not CLI-formatted output.
 
-pub(crate) mod bootstrap;
-pub(crate) mod error;
+pub mod bootstrap;
+pub mod error;

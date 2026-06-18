@@ -54,15 +54,22 @@
 
 pub(crate) mod context;
 pub(crate) mod engine;
-pub(crate) mod error;
+pub mod error;
 pub(crate) mod policy;
-pub(crate) mod port;
+pub mod port;
 pub(super) mod probe;
 pub(super) mod processor;
-pub(crate) mod report;
+pub mod report;
 pub(super) mod selector;
-pub(crate) mod service;
+pub mod service;
 pub(super) mod walk;
+
+pub use context::{DiscoveryEnv, DiscoveryFlags};
+pub use report::{
+    DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
+    SkippedCeiling, SkippedCeilingReason,
+};
+pub use service::{CandidatePath, DiscoveryResult, DiscoveryService};
 
 /// Diagnostics and warnings during discovery.
 pub(super) mod diagnostics;

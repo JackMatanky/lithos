@@ -200,7 +200,6 @@ impl From<ConfigRepositoryError> for ConfigError {
     }
 }
 
-#[cfg(any(test, feature = "testing"))]
 impl From<crate::db::testing::InMemoryDbError> for ConfigRepositoryError {
     #[inline]
     fn from(err: crate::db::testing::InMemoryDbError) -> Self {

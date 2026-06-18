@@ -26,26 +26,18 @@ use crate::{
 /// The `base` directory is the starting point used to resolve `path`
 /// during a traversal or global probe pass.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder; CLI wiring pending"
-)]
-pub(crate) struct CandidatePath {
+pub struct CandidatePath {
     /// Base directory used to resolve the candidate.
     base: DirPath,
     /// Candidate config file path.
     path: FilePath,
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder; CLI wiring pending"
-)]
 impl CandidatePath {
     /// Creates a validated discovery candidate path.
     #[inline]
     #[must_use]
-    pub(crate) fn new(base: DirPath, path: FilePath) -> Self {
+    pub fn new(base: DirPath, path: FilePath) -> Self {
         Self {
             base,
             path,
@@ -55,14 +47,14 @@ impl CandidatePath {
     /// Returns the base directory used to resolve this candidate.
     #[inline]
     #[must_use]
-    pub(crate) fn base(&self) -> &DirPath {
+    pub fn base(&self) -> &DirPath {
         &self.base
     }
 
     /// Returns the candidate config file path.
     #[inline]
     #[must_use]
-    pub(crate) fn path(&self) -> &FilePath {
+    pub fn path(&self) -> &FilePath {
         &self.path
     }
 }
@@ -78,31 +70,22 @@ type DiscoveryResultParts = (Box<[CandidatePath]>, Box<[CandidatePath]>);
 /// point, so `Box<[T]>` communicates immutability and avoids carrying
 /// unused `Vec` capacity into downstream callers.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder via into_parts(); CLI \
-              wiring pending"
-)]
-pub(crate) struct DiscoveryResult {
+pub struct DiscoveryResult {
     /// Ordered vault-local candidates.
     vault: Box<[CandidatePath]>,
     /// Ordered global candidates.
     global: Box<[CandidatePath]>,
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by config::builder::Builder via into_parts(); CLI \
-              wiring pending"
-)]
 impl DiscoveryResult {
     /// Creates discovery output from ordered vault and global candidates.
     #[inline]
     #[must_use]
-    pub(crate) fn new(
-        vault: impl Into<Box<[CandidatePath]>>,
-        global: impl Into<Box<[CandidatePath]>>,
-    ) -> Self {
+    pub fn new<V, G>(vault: V, global: G) -> Self
+    where
+        V: Into<Box<[CandidatePath]>>,
+        G: Into<Box<[CandidatePath]>>,
+    {
         Self {
             vault: vault.into(),
             global: global.into(),
@@ -112,21 +95,21 @@ impl DiscoveryResult {
     /// Returns ordered vault-local candidates.
     #[inline]
     #[must_use]
-    pub(crate) fn vault(&self) -> &[CandidatePath] {
+    pub fn vault(&self) -> &[CandidatePath] {
         &self.vault
     }
 
     /// Returns ordered global candidates.
     #[inline]
     #[must_use]
-    pub(crate) fn global(&self) -> &[CandidatePath] {
+    pub fn global(&self) -> &[CandidatePath] {
         &self.global
     }
 
     /// Consumes the result into owned boxed candidate slices.
     #[inline]
     #[must_use]
-    pub(crate) fn into_parts(self) -> DiscoveryResultParts {
+    pub fn into_parts(self) -> DiscoveryResultParts {
         (self.vault, self.global)
     }
 }
@@ -138,10 +121,6 @@ impl DiscoveryResult {
 /// and traversal policy. Per-invocation state like `suppress_global`,
 /// explicit paths, and anchor directory belong in
 /// [`DiscoveryContext`](crate::discovery::context::DiscoveryContext).
-#[allow(
-    dead_code,
-    reason = "Consumed by DiscoveryService::new(); CLI wiring pending"
-)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DiscoveryServiceConfig {
     /// Ordered marker patterns for vault/local config candidates.
@@ -168,10 +147,6 @@ impl Default for DiscoveryServiceConfig {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "Consumed by DiscoveryService::new(); CLI wiring pending"
-)]
 impl DiscoveryServiceConfig {
     /// Validates internal consistency of the configuration.
     ///
@@ -198,21 +173,19 @@ impl DiscoveryServiceConfig {
 /// Construction validates that the provided configuration is internally
 /// consistent. No discovery execution happens at construction time.
 ///
+/// This type is `pub` so that external crates can name the concrete
+/// bootstrapper type returned by [`Bootstrapper::from_platform`].
+/// Construction is still restricted to crate-internal code via the
+/// `pub(crate)` [`DiscoveryService::new`] constructor.
+///
 /// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
-#[allow(
-    dead_code,
-    reason = "Wired into Bootstrapper<DiscoveryService>; CLI wiring pending"
-)]
+/// [`Bootstrapper::from_platform`]: crate::app::bootstrap::Bootstrapper::from_platform
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct DiscoveryService {
+pub struct DiscoveryService {
     /// Stable service configuration.
     config: DiscoveryServiceConfig,
 }
 
-#[allow(
-    dead_code,
-    reason = "Wired into Bootstrapper<DiscoveryService>; CLI wiring pending"
-)]
 impl DiscoveryService {
     /// Constructs a validated discovery service from the given config.
     ///
@@ -230,6 +203,7 @@ impl DiscoveryService {
 }
 
 impl DiscoveryPort for DiscoveryService {
+    #[inline]
     fn discover(
         &self,
         context: &DiscoveryContext<'_>,

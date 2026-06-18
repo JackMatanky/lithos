@@ -106,8 +106,7 @@ pub mod repository;
 pub mod storage;
 
 pub use repository::{ReadRepository, Repository, WriteRepository};
-#[cfg(any(test, feature = "testing"))]
-pub use storage::{RedbRepository, RedbStorage};
+pub use storage::{RedbRepository, RedbStorage, testing::InMemoryRepository};
 
 // ----------------------------------------------------------- //
 

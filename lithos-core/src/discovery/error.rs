@@ -22,9 +22,8 @@ use crate::fs::PathError;
 ///
 /// These errors typically indicate a configuration error (e.g., pointing to a
 /// missing directory) or a system-level issue (e.g., permission denied).
-#[allow(dead_code, reason = "Phase-1 seam; wired in once orchestration lands")]
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum DiscoveryError {
+pub enum DiscoveryError {
     /// Fatal error while validating explicit CLI flag overrides.
     #[error(transparent)]
     Flag(#[from] FlagOverrideError),
@@ -75,18 +74,8 @@ pub(crate) enum DiscoveryError {
 /// execution begins.
 ///
 /// [`DiscoveryServiceConfig`]: crate::discovery::service::DiscoveryServiceConfig
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
-#[expect(
-    clippy::enum_variant_names,
-    reason = "Variants are intentionally explicit — the error type describes \
-              WHAT is empty (vault patterns, global patterns, boundary \
-              markers)"
-)]
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ServiceConfigError {
+pub enum ServiceConfigError {
     /// Vault marker pattern list is empty.
     #[error("vault_marker_patterns must not be empty")]
     VaultMarkerPatterns,
@@ -99,12 +88,8 @@ pub(crate) enum ServiceConfigError {
 }
 
 /// Fatal errors produced by explicit CLI flag override validation.
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum FlagOverrideError {
+pub enum FlagOverrideError {
     /// Explicit config file override path does not exist on the filesystem.
     #[error("Explicit config file path not found: {path}")]
     GlobalConfigPathNotFound {
@@ -139,12 +124,8 @@ pub(crate) enum FlagOverrideError {
 }
 
 /// Fatal errors produced by environment variable override validation.
-#[allow(
-    dead_code,
-    reason = "Contract slice; wired in once orchestration lands"
-)]
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum EnvironmentOverrideError {
+pub enum EnvironmentOverrideError {
     /// Config file path from environment does not exist on the filesystem.
     #[error("Environment config file path not found: {path}")]
     GlobalConfigPathNotFound {

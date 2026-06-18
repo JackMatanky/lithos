@@ -21,11 +21,9 @@
 //! These non-goals protect DB context locality and prevent creating a shallow
 //! cross-context fake storage module.
 
-#![cfg(any(test, feature = "testing"))]
 #![allow(
     dead_code,
-    reason = "Testing utilities may be unused when features are active but \
-              tests are not running"
+    reason = "Testing utilities may be unused in non-test builds"
 )]
 
 use std::sync::{
@@ -105,6 +103,7 @@ pub struct InMemoryHarness {
 }
 
 impl std::fmt::Debug for InMemoryHarness {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InMemoryHarness")
             .field("counters", &self.counters)
@@ -115,12 +114,16 @@ impl std::fmt::Debug for InMemoryHarness {
 
 impl InMemoryHarness {
     /// Creates a new harness with no failure injector.
-    pub(crate) fn new() -> Self {
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Creates a new harness with the specified failure injector.
-    pub(crate) fn with_injector(
+    #[inline]
+    #[must_use]
+    pub fn with_injector(
         injector: Box<dyn FailureInjector + Send + Sync>,
     ) -> Self {
         Self {
@@ -133,15 +136,18 @@ impl InMemoryHarness {
     ///
     /// If an injector is configured, delegates to it. Otherwise returns
     /// `Ok(())`.
-    pub(crate) fn fail_at(
-        &self,
-        point: FailurePoint,
-    ) -> Result<(), InMemoryDbError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `InMemoryDbError` if the injector produces a failure.
+    #[inline]
+    pub fn fail_at(&self, point: FailurePoint) -> Result<(), InMemoryDbError> {
         self.injector.as_ref().map_or(Ok(()), |inj| inj.fail_at(point))
     }
 
     /// Returns a reference to the operation counters.
-    pub(crate) fn counters(&self) -> &OpCounters {
+    #[inline]
+    pub fn counters(&self) -> &OpCounters {
         &self.counters
     }
 }
@@ -165,36 +171,43 @@ pub struct OpCounters {
 
 impl OpCounters {
     /// Increments the read operation counter.
-    pub(crate) fn inc_read(&self) {
+    #[inline]
+    pub fn inc_read(&self) {
         self.reads.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the write operation counter.
-    pub(crate) fn inc_write(&self) {
+    #[inline]
+    pub fn inc_write(&self) {
         self.writes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the batch operation counter.
-    pub(crate) fn inc_batch(&self) {
+    #[inline]
+    pub fn inc_batch(&self) {
         self.batches.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the delete operation counter.
+    #[inline]
     #[allow(dead_code, reason = "Reserved for future test scenarios")]
-    pub(crate) fn inc_delete(&self) {
+    pub fn inc_delete(&self) {
         self.deletes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the injected failure counter.
+    #[inline]
     #[allow(dead_code, reason = "Reserved for future test scenarios")]
-    pub(crate) fn inc_injected_failure(&self) {
+    pub fn inc_injected_failure(&self) {
         self.injected_failures.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Takes a snapshot of all counters for assertions.
     ///
     /// Returns a `OpCountersSnapshot` with plain `usize` values.
-    pub(crate) fn snapshot(&self) -> OpCountersSnapshot {
+    #[inline]
+    #[must_use]
+    pub fn snapshot(&self) -> OpCountersSnapshot {
         OpCountersSnapshot {
             reads: self.reads.load(Ordering::Relaxed),
             writes: self.writes.load(Ordering::Relaxed),
@@ -208,7 +221,8 @@ impl OpCounters {
     ///
     /// Useful for test isolation when reusing counter instances across
     /// test cases.
-    pub(crate) fn reset(&self) {
+    #[inline]
+    pub fn reset(&self) {
         self.reads.store(0, Ordering::Relaxed);
         self.writes.store(0, Ordering::Relaxed);
         self.batches.store(0, Ordering::Relaxed);
@@ -221,17 +235,17 @@ impl OpCounters {
 ///
 /// Used for assertions in tests. All fields are plain `usize` values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OpCountersSnapshot {
+pub struct OpCountersSnapshot {
     /// Number of read operations.
-    pub(crate) reads: usize,
+    pub reads: usize,
     /// Number of write operations.
-    pub(crate) writes: usize,
+    pub writes: usize,
     /// Number of batch operations.
-    pub(crate) batches: usize,
+    pub batches: usize,
     /// Number of delete operations.
-    pub(crate) deletes: usize,
+    pub deletes: usize,
     /// Number of injected failures.
-    pub(crate) injected_failures: usize,
+    pub injected_failures: usize,
 }
 
 // ============================================================================
@@ -262,6 +276,10 @@ pub trait FailureInjector {
     ///
     /// Returns `Ok(())` if no failure should be injected, or
     /// `Err(InMemoryDbError::InjectedFailure)` to simulate a failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InMemoryDbError::InjectedFailure` when the injector triggers.
     fn fail_at(&self, point: FailurePoint) -> Result<(), InMemoryDbError>;
 }
 
@@ -287,7 +305,8 @@ pub trait FailureInjector {
 /// let guard = read_lock(&data, "my_operation").unwrap();
 /// assert_eq!(*guard, 42);
 /// ```
-pub(crate) fn read_lock<'a, T>(
+#[inline]
+pub fn read_lock<'a, T>(
     lock: &'a RwLock<T>,
     ctx: &'static str,
 ) -> Result<RwLockReadGuard<'a, T>, InMemoryDbError> {
@@ -302,7 +321,8 @@ pub(crate) fn read_lock<'a, T>(
 /// # Errors
 ///
 /// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
-pub(crate) fn write_lock<'a, T>(
+#[inline]
+pub fn write_lock<'a, T>(
     lock: &'a RwLock<T>,
     ctx: &'static str,
 ) -> Result<RwLockWriteGuard<'a, T>, InMemoryDbError> {
@@ -316,7 +336,8 @@ pub(crate) fn write_lock<'a, T>(
 /// # Errors
 ///
 /// Returns `InMemoryDbError::LockPoisoned` if the lock is poisoned.
-pub(crate) fn mutex_lock<'a, T>(
+#[inline]
+pub fn mutex_lock<'a, T>(
     lock: &'a Mutex<T>,
     ctx: &'static str,
 ) -> Result<MutexGuard<'a, T>, InMemoryDbError> {

@@ -2,7 +2,7 @@
 
 use std::{env, path::PathBuf};
 
-pub(crate) use crate::app::error::BootstrapError;
+pub use crate::app::error::BootstrapError;
 use crate::{
     config::{aggregate::Config, builder::Builder, repository::Repository},
     discovery::{
@@ -15,29 +15,32 @@ use crate::{
     fs::DirPath,
 };
 
+/// The outcome of a successful full bootstrap run.
+///
+/// Returned by [`Bootstrapper::run()`]. Contains the resolved [`Config`] and
+/// the [`DiscoveryReport`] produced during the discovery phase.
+#[derive(Debug)]
+pub struct BootstrapResult {
+    /// The fully resolved and merged configuration.
+    pub config: Config,
+    /// Non-fatal diagnostic information from the discovery phase.
+    pub report: DiscoveryReport,
+}
+
 /// Application-owned bootstrap orchestration entry point.
 ///
 /// `Bootstrapper` is generic over `D: DiscoveryPort` so that the discovery
 /// implementation can be swapped out in tests without touching the
 /// orchestration logic.
 #[derive(Debug, Default)]
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; exercised via tests until CLI layer wires \
-              run()"
-)]
-pub(crate) struct Bootstrapper<D: DiscoveryPort> {
+pub struct Bootstrapper<D: DiscoveryPort> {
     port: D,
 }
 
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; all methods exercised via tests until CLI \
-              layer wires run()"
-)]
 impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Creates a bootstrapper backed by the given discovery port.
-    pub(crate) fn new(port: D) -> Self {
+    #[inline]
+    pub fn new(port: D) -> Self {
         Self {
             port,
         }
@@ -54,7 +57,8 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
     /// resolve to an existing directory, or a flag/env validation error if the
     /// provided paths are invalid.
-    pub(crate) fn build_context<'a>(
+    #[inline]
+    pub fn build_context<'a>(
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'a>>,
         anchor: &std::path::Path,
@@ -74,11 +78,42 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// # Errors
     ///
     /// Propagates any [`DiscoveryError`] returned by the port implementation.
-    pub(crate) fn discover(
+    #[inline]
+    pub fn discover(
         &self,
         context: &DiscoveryContext<'_>,
     ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
         self.port.discover(context).map_err(Into::into)
+    }
+
+    /// Runs discovery only, without triggering config parsing or building.
+    ///
+    /// Builds the [`DiscoveryContext`] from the provided runtime inputs and
+    /// runs discovery through the port, returning the raw discovery result and
+    /// report.  The [`crate::config::builder::Builder`] is never invoked, so
+    /// invalid TOML in candidate files does not cause an error.
+    ///
+    /// # Parameters
+    ///
+    /// - `flags`: Optional CLI flag overrides. Pass `None` when absent.
+    /// - `env`: Optional environment variable overrides. Pass `None` when
+    ///   absent.
+    /// - `anchor`: The working directory used as the starting point for
+    ///   ascending vault discovery. Must refer to an existing directory.
+    ///
+    /// # Errors
+    ///
+    /// - [`BootstrapError::Discovery`] if `anchor` does not exist, or if
+    ///   discovery setup or execution fails.
+    #[inline]
+    pub fn run_discovery_only(
+        &self,
+        flags: Option<DiscoveryFlags>,
+        env: Option<DiscoveryEnv<'_>>,
+        anchor: &std::path::Path,
+    ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
+        let context = Self::build_context(flags, env, anchor)?;
+        self.discover(&context)
     }
 
     /// Runs the full bootstrap pipeline: discovery → config build.
@@ -106,25 +141,24 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///   discovery setup or execution fails.
     /// - [`BootstrapError::Config`] if configuration ingestion, validation, or
     ///   database operations fail.
-    pub(crate) fn run<R: Repository>(
+    #[inline]
+    pub fn run<R: Repository>(
         &self,
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
         repository: R,
-    ) -> Result<(Config, DiscoveryReport), BootstrapError> {
+    ) -> Result<BootstrapResult, BootstrapError> {
         let context = Self::build_context(flags, env, anchor)?;
         let (discovery, report) = self.discover(&context)?;
         let config = Builder::from_discovery(discovery, repository).build()?;
-        Ok((config, report))
+        Ok(BootstrapResult {
+            config,
+            report,
+        })
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "CLI wiring pending; concrete service methods exercised via \
-              tests until CLI layer wires run()"
-)]
 impl Bootstrapper<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
@@ -132,7 +166,8 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// Returns [`BootstrapError`] if the concrete discovery service rejects
     /// its stable configuration.
-    pub(crate) fn from_platform() -> Result<Self, BootstrapError> {
+    #[inline]
+    pub fn from_platform() -> Result<Self, BootstrapError> {
         Self::with_global_directories(platform_global_directories())
     }
 
@@ -145,7 +180,8 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// Returns [`BootstrapError`] if the concrete discovery service rejects
     /// its stable configuration.
-    pub(crate) fn with_global_directories(
+    #[inline]
+    pub fn with_global_directories(
         global_directories: Vec<DirPath>,
     ) -> Result<Self, BootstrapError> {
         let config = DiscoveryServiceConfig {
@@ -766,7 +802,7 @@ mod tests {
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
-            let (_, returned_report) = bootstrapper
+            let result = bootstrapper
                 .run::<InMemoryRepository>(
                     None,
                     None,
@@ -776,8 +812,161 @@ mod tests {
                 .expect("run should succeed");
 
             assert_eq!(
-                returned_report, expected_report,
+                result.report, expected_report,
                 "returned report should match mock report"
+            );
+        }
+    }
+
+    mod run_discovery_only {
+        use mockall::predicate::always;
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn returns_discovery_result_when_port_succeeds() {
+            let expected = DiscoveryResult::new(vec![], vec![]);
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::FilesystemRoot,
+                global_resolution_skip_reason: None,
+            };
+            let anchor = tempfile::tempdir().expect("anchor");
+            let mut mock = MockDiscoveryPort::new();
+            let ret = expected.clone();
+            let rep = report.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok((ret.clone(), rep.clone())));
+            let bootstrapper = Bootstrapper::new(mock);
+
+            let (result, _) = bootstrapper
+                .run_discovery_only(None, None, anchor.path())
+                .expect("run_discovery_only should succeed");
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn returns_report_when_port_succeeds() {
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![SkippedCeiling {
+                    segment: std::path::PathBuf::from("/missing"),
+                    reason: SkippedCeilingReason::InvalidPath,
+                }],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::ExplicitConfigFile,
+                global_resolution_skip_reason: Some(
+                    GlobalResolutionSkipReason::SuppressedByFlag,
+                ),
+            };
+            let anchor = tempfile::tempdir().expect("anchor");
+            let mut mock = MockDiscoveryPort::new();
+            let expected = report.clone();
+            mock.expect_discover().with(always()).once().returning(move |_| {
+                Ok((DiscoveryResult::new(vec![], vec![]), expected.clone()))
+            });
+            let bootstrapper = Bootstrapper::new(mock);
+
+            let (_, result) = bootstrapper
+                .run_discovery_only(None, None, anchor.path())
+                .expect("run_discovery_only should succeed");
+
+            assert_eq!(result, report);
+        }
+
+        #[test]
+        fn propagates_discovery_error_when_port_fails() {
+            let anchor = tempfile::tempdir().expect("anchor");
+            let mut mock = MockDiscoveryPort::new();
+            mock.expect_discover().with(always()).once().returning(|_| {
+                Err(DiscoveryError::InvalidAnchorDirectory {
+                    path: std::path::PathBuf::from("/bad"),
+                    source: PathError::NotADirectory(std::path::PathBuf::from(
+                        "/bad",
+                    )),
+                })
+            });
+            let bootstrapper = Bootstrapper::new(mock);
+
+            let err = bootstrapper
+                .run_discovery_only(None, None, anchor.path())
+                .expect_err("run_discovery_only should fail");
+
+            assert!(
+                matches!(
+                    err,
+                    BootstrapError::Discovery(
+                        DiscoveryError::InvalidAnchorDirectory { .. }
+                    )
+                ),
+                "expected InvalidAnchorDirectory, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn propagates_discovery_error_from_invalid_anchor() {
+            let non_existent = std::path::PathBuf::from(
+                "/tmp/__lithos_test_nonexistent_anchor_dir_discovery_only__",
+            );
+            let _ = std::fs::remove_dir_all(&non_existent);
+
+            let mock = MockDiscoveryPort::new();
+            let bootstrapper = Bootstrapper::new(mock);
+
+            let err = bootstrapper
+                .run_discovery_only(None, None, &non_existent)
+                .expect_err("expected error for non-existent anchor");
+
+            assert!(
+                matches!(err, BootstrapError::Discovery(_)),
+                "expected Discovery error, got: {err:?}"
+            );
+        }
+
+        #[test]
+        fn does_not_return_config_error_when_discovery_result_contains_invalid_toml()
+         {
+            // run() would return BootstrapError::Config for invalid TOML
+            // because Builder parses it.  run_discovery_only() must
+            // NOT call Builder, so it must succeed even when the
+            // discovered candidate path points to invalid TOML.
+            let root = tempfile::tempdir().expect("vault root");
+            let config_path = root.path().join("lithos.toml");
+            // "not = [toml" is an unclosed array — invalid TOML.
+            std::fs::write(&config_path, "not = [toml").expect("write config");
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(root.path().to_path_buf())
+                    .expect("valid base dir"),
+                FilePath::try_new(config_path).expect("valid file path"),
+            );
+            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let report = DiscoveryReport {
+                skipped_ceilings: vec![],
+                local_traversal_stop_reason:
+                    LocalTraversalStopReason::FilesystemRoot,
+                global_resolution_skip_reason: None,
+            };
+            let mut mock = MockDiscoveryPort::new();
+            let disc = discovery.clone();
+            let rep = report.clone();
+            mock.expect_discover()
+                .with(always())
+                .once()
+                .returning(move |_| Ok((disc.clone(), rep.clone())));
+            let bootstrapper = Bootstrapper::new(mock);
+            let anchor = tempfile::tempdir().expect("anchor");
+
+            let result =
+                bootstrapper.run_discovery_only(None, None, anchor.path());
+
+            assert!(
+                result.is_ok(),
+                "run_discovery_only must not trigger config parsing; got: \
+                 {result:?}"
             );
         }
     }
