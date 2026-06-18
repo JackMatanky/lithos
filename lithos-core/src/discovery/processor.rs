@@ -644,6 +644,31 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
 }
 
 // ---------------------------------------------------------------------------
+// CacheResolution → Finalized
+// ---------------------------------------------------------------------------
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, CacheResolution>>
+    for DiscoveryProcessor<'ctx, Finalized>
+{
+    /// Advances from cache resolution to the terminal finalized phase.
+    ///
+    /// At this point `cache_root` is guaranteed to be `Some` — set by
+    /// `into_cache_resolution`. The `finalize()` method will unwrap it.
+    fn from(val: DiscoveryProcessor<'ctx, CacheResolution>) -> Self {
+        DiscoveryProcessor {
+            config: val.config,
+            ctx: val.ctx,
+            vault: val.vault,
+            global: val.global,
+            report: val.report,
+            ceilings: val.ceilings,
+            cache_root: val.cache_root,
+            _phase: PhantomData,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Any phase → CacheResolution
 // ---------------------------------------------------------------------------
 
@@ -718,7 +743,15 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
 impl DiscoveryProcessor<'_, Finalized> {
     /// Consumes the processor and returns the discovery output.
     pub(crate) fn finalize(self) -> (DiscoveryResult, DiscoveryReport) {
-        let result = DiscoveryResult::new(self.vault, self.global);
+        // `cache_root` is set by `CacheResolution`; compute a fallback only
+        // when reaching `Finalized` through a legacy direct path (e.g. tests
+        // that bypass `CacheResolution`).
+        let cache_root = self.cache_root.unwrap_or_else(|| {
+            let env_cache_dir = self.ctx.env().cache_dir();
+            let vault_root = self.vault.first().map(CandidatePath::base);
+            resolve_cache_root(env_cache_dir, vault_root)
+        });
+        let result = DiscoveryResult::new(self.vault, self.global, cache_root);
         (result, self.report)
     }
 }
@@ -1638,6 +1671,7 @@ mod tests {
 
     mod finalize {
         use super::*;
+        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
 
         #[test]
         fn returns_empty_vault_when_no_candidates_found() {
@@ -1648,10 +1682,15 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let cache: DiscoveryProcessor<CacheResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(result.vault().is_empty());
+            assert_eq!(
+                result.cache_root().location,
+                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+            );
         }
 
         #[test]
@@ -1663,10 +1702,15 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let cache: DiscoveryProcessor<CacheResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (result, _) = final_.finalize();
 
             assert!(result.global().is_empty());
+            assert_eq!(
+                result.cache_root().location,
+                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+            );
         }
 
         #[test]
@@ -1678,7 +1722,8 @@ mod tests {
             let init = DiscoveryProcessor::new(&config, &ctx);
             let flag: DiscoveryProcessor<FlagOverride> = init.into();
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
-            let final_: DiscoveryProcessor<Finalized> = env.into();
+            let cache: DiscoveryProcessor<CacheResolution> = env.into();
+            let final_: DiscoveryProcessor<Finalized> = cache.into();
             let (_, report) = final_.finalize();
 
             assert_eq!(

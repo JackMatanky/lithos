@@ -65,6 +65,16 @@ mod tests {
         )
     }
 
+    fn placeholder_cache_root() -> crate::discovery::location::CacheRoot {
+        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
+        crate::discovery::location::CacheRoot {
+            location: CacheLocation::Global(
+                GlobalCacheLocation::PlatformUserCache,
+            ),
+            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
+        }
+    }
+
     mod discovery_port {
         use super::*;
 
@@ -75,7 +85,11 @@ mod tests {
             fn returns_discovery_result_from_mock() {
                 let root = tempfile::tempdir().expect("root");
                 let candidate = make_candidate(&root, "lithos.toml");
-                let expected = DiscoveryResult::new(vec![candidate], vec![]);
+                let expected = DiscoveryResult::new(
+                    vec![candidate],
+                    vec![],
+                    placeholder_cache_root(),
+                );
                 let report = DiscoveryReport {
                     skipped_ceilings: vec![],
                     local_traversal_stop_reason:
@@ -102,7 +116,11 @@ mod tests {
 
             #[test]
             fn returns_empty_result_when_mock_returns_empty() {
-                let empty = DiscoveryResult::new(vec![], vec![]);
+                let empty = DiscoveryResult::new(
+                    vec![],
+                    vec![],
+                    placeholder_cache_root(),
+                );
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
@@ -111,7 +129,11 @@ mod tests {
                 mock.expect_discover().with(always()).once().returning(
                     move |_| {
                         Ok((
-                            DiscoveryResult::new(vec![], vec![]),
+                            DiscoveryResult::new(
+                                vec![],
+                                vec![],
+                                placeholder_cache_root(),
+                            ),
                             DiscoveryReport {
                                 skipped_ceilings: vec![],
                                 local_traversal_stop_reason:

@@ -5,6 +5,7 @@ use crate::{
     discovery::{
         context::DiscoveryContext,
         error::{DiscoveryError, ServiceConfigError},
+        location::CacheRoot,
         policy::{
             BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS, MarkerPattern,
             VAULT_MARKER_PATTERNS,
@@ -75,13 +76,15 @@ pub struct DiscoveryResult {
     vault: Box<[CandidatePath]>,
     /// Ordered global candidates.
     global: Box<[CandidatePath]>,
+    /// The resolved cache root and its provenance.
+    cache_root: CacheRoot,
 }
 
 impl DiscoveryResult {
     /// Creates discovery output from ordered vault and global candidates.
     #[inline]
     #[must_use]
-    pub fn new<V, G>(vault: V, global: G) -> Self
+    pub fn new<V, G>(vault: V, global: G, cache_root: CacheRoot) -> Self
     where
         V: Into<Box<[CandidatePath]>>,
         G: Into<Box<[CandidatePath]>>,
@@ -89,6 +92,7 @@ impl DiscoveryResult {
         Self {
             vault: vault.into(),
             global: global.into(),
+            cache_root,
         }
     }
 
@@ -111,6 +115,13 @@ impl DiscoveryResult {
     #[must_use]
     pub fn into_parts(self) -> DiscoveryResultParts {
         (self.vault, self.global)
+    }
+
+    /// Returns the resolved cache root and its provenance.
+    #[inline]
+    #[must_use]
+    pub fn cache_root(&self) -> &CacheRoot {
+        &self.cache_root
     }
 }
 
@@ -280,6 +291,16 @@ mod tests {
             .expect("valid global directory")
     }
 
+    fn placeholder_cache_root() -> CacheRoot {
+        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
+        CacheRoot {
+            location: CacheLocation::Global(
+                GlobalCacheLocation::PlatformUserCache,
+            ),
+            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
+        }
+    }
+
     mod discovery_result {
         use pretty_assertions::assert_eq;
 
@@ -292,8 +313,11 @@ mod tests {
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
 
-            let result =
-                DiscoveryResult::new(vec![vault.clone()], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault.clone()],
+                vec![global],
+                placeholder_cache_root(),
+            );
 
             assert_eq!(result.vault(), [vault]);
         }
@@ -305,8 +329,11 @@ mod tests {
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
 
-            let result =
-                DiscoveryResult::new(vec![vault], vec![global.clone()]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global.clone()],
+                placeholder_cache_root(),
+            );
 
             assert_eq!(result.global(), [global]);
         }
@@ -317,8 +344,11 @@ mod tests {
             let global_root = tempfile::tempdir().expect("global root");
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
-            let result =
-                DiscoveryResult::new(vec![vault.clone()], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault.clone()],
+                vec![global],
+                placeholder_cache_root(),
+            );
 
             let (vault_candidates, _) = result.into_parts();
 
@@ -331,12 +361,56 @@ mod tests {
             let global_root = tempfile::tempdir().expect("global root");
             let vault = candidate(&vault_root, "lithos.toml");
             let global = candidate(&global_root, "lithos.toml");
-            let result =
-                DiscoveryResult::new(vec![vault], vec![global.clone()]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global.clone()],
+                placeholder_cache_root(),
+            );
 
             let (_, global_candidates) = result.into_parts();
 
             assert_eq!(*global_candidates, [global]);
+        }
+
+        mod constructor {
+            use pretty_assertions::assert_eq;
+
+            use super::*;
+
+            #[test]
+            fn stores_cache_root_alongside_candidates() {
+                let vault_root = tempfile::tempdir().expect("vault root");
+                let vault = candidate(&vault_root, "lithos.toml");
+                let cache_root = placeholder_cache_root();
+
+                let result = DiscoveryResult::new(
+                    vec![vault.clone()],
+                    vec![] as Vec<CandidatePath>,
+                    cache_root.clone(),
+                );
+
+                assert_eq!(result.vault(), [vault]);
+                assert_eq!(result.cache_root(), &cache_root);
+            }
+        }
+
+        mod accessors {
+            use pretty_assertions::assert_eq;
+
+            use super::*;
+
+            #[test]
+            fn returns_cache_root_matching_provided_value() {
+                let cache_root = placeholder_cache_root();
+
+                let result = DiscoveryResult::new(
+                    vec![] as Vec<CandidatePath>,
+                    vec![] as Vec<CandidatePath>,
+                    cache_root.clone(),
+                );
+
+                assert_eq!(result.cache_root(), &cache_root);
+            }
         }
     }
 

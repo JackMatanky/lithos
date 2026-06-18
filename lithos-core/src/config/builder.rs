@@ -681,6 +681,16 @@ mod tests {
         )
     }
 
+    fn placeholder_cache_root() -> crate::discovery::location::CacheRoot {
+        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
+        crate::discovery::location::CacheRoot {
+            location: CacheLocation::Global(
+                GlobalCacheLocation::PlatformUserCache,
+            ),
+            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
+        }
+    }
+
     mod from_discovery {
         use super::*;
         use crate::config::repository::ReadRepository as _;
@@ -689,7 +699,11 @@ mod tests {
         fn stores_vault_candidates_as_boxed_slice() {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -702,7 +716,11 @@ mod tests {
             let global_dir = TempDir::new().expect("global dir");
             let vault = make_vault_candidate(&vault_dir, "");
             let global = make_global_candidate(&global_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -713,7 +731,8 @@ mod tests {
         fn is_infallible() {
             // from_discovery() returns Self, not Result — this compiles only
             // if the return type is Builder<_>.
-            let result = DiscoveryResult::new(vec![], vec![]);
+            let result =
+                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
             let _builder: Builder<InMemoryRepository> =
                 Builder::from_discovery(result, InMemoryRepository::new());
         }
@@ -725,7 +744,11 @@ mod tests {
             // get_or_create_vault_id).
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -758,7 +781,11 @@ mod tests {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
             let base = vault.base().clone();
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -772,7 +799,11 @@ mod tests {
         fn resolves_vault_id_from_database() {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -795,7 +826,11 @@ mod tests {
                 &vault_dir,
                 "[template]\ndirectory = \"t\"",
             );
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -809,7 +844,11 @@ mod tests {
         fn queries_database_for_vault_view() {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -825,7 +864,11 @@ mod tests {
                 &vault_dir,
                 "[template]\ndirectory = \"custom-templates\"",
             );
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -843,7 +886,11 @@ mod tests {
         fn returns_raw_vault_config() {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -859,7 +906,11 @@ mod tests {
         fn returns_none_when_no_global_candidate() {
             let vault_dir = TempDir::new().expect("vault dir");
             let vault = make_vault_candidate(&vault_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -877,7 +928,11 @@ mod tests {
                 &global_dir,
                 "[template]\ndirectory = \"global-templates\"",
             );
-            let result = DiscoveryResult::new(vec![vault], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -897,7 +952,11 @@ mod tests {
             let global_dir = TempDir::new().expect("global dir");
             let vault = make_vault_candidate(&vault_dir, "");
             let global = make_global_candidate(&global_dir, "");
-            let result = DiscoveryResult::new(vec![vault], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -1024,7 +1083,11 @@ mod tests {
                 &global_dir,
                 "[template]\ndirectory = \"global-templates\"",
             );
-            let result = DiscoveryResult::new(vec![vault], vec![global]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![global],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 
@@ -1049,7 +1112,11 @@ mod tests {
                 &vault_dir,
                 "[template]\ndirectory = \"custom-templates\"",
             );
-            let result = DiscoveryResult::new(vec![vault], vec![]);
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+            );
             let builder =
                 Builder::from_discovery(result, InMemoryRepository::new());
 

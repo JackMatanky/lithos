@@ -316,6 +316,16 @@ mod tests {
         }
     }
 
+    fn placeholder_cache_root() -> crate::discovery::location::CacheRoot {
+        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
+        crate::discovery::location::CacheRoot {
+            location: CacheLocation::Global(
+                GlobalCacheLocation::PlatformUserCache,
+            ),
+            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
+        }
+    }
+
     // --- build_context tests ---
 
     mod build_context {
@@ -446,7 +456,8 @@ mod tests {
 
         #[test]
         fn returns_result_from_port_when_port_succeeds() {
-            let expected = DiscoveryResult::new(vec![], vec![]);
+            let expected =
+                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -523,7 +534,14 @@ mod tests {
             let mut mock = MockDiscoveryPort::new();
             let expected = report.clone();
             mock.expect_discover().with(always()).once().returning(move |_| {
-                Ok((DiscoveryResult::new(vec![], vec![]), expected.clone()))
+                Ok((
+                    DiscoveryResult::new(
+                        vec![],
+                        vec![],
+                        placeholder_cache_root(),
+                    ),
+                    expected.clone(),
+                ))
             });
             let bootstrapper = Bootstrapper::new(mock);
 
@@ -578,7 +596,11 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid file path"),
             );
-            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![],
+                placeholder_cache_root(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -649,7 +671,11 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid file path"),
             );
-            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![],
+                placeholder_cache_root(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -711,9 +737,11 @@ mod tests {
                     .expect("valid global base dir"),
                 FilePath::try_new(global_path).expect("valid global path"),
             );
-            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![
-                global_candidate,
-            ]);
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![global_candidate],
+                placeholder_cache_root(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -784,7 +812,11 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid file path"),
             );
-            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![],
+                placeholder_cache_root(),
+            );
             let expected_report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -827,7 +859,8 @@ mod tests {
 
         #[test]
         fn returns_discovery_result_when_port_succeeds() {
-            let expected = DiscoveryResult::new(vec![], vec![]);
+            let expected =
+                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -868,7 +901,14 @@ mod tests {
             let mut mock = MockDiscoveryPort::new();
             let expected = report.clone();
             mock.expect_discover().with(always()).once().returning(move |_| {
-                Ok((DiscoveryResult::new(vec![], vec![]), expected.clone()))
+                Ok((
+                    DiscoveryResult::new(
+                        vec![],
+                        vec![],
+                        placeholder_cache_root(),
+                    ),
+                    expected.clone(),
+                ))
             });
             let bootstrapper = Bootstrapper::new(mock);
 
@@ -944,7 +984,11 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid file path"),
             );
-            let discovery = DiscoveryResult::new(vec![vault_candidate], vec![]);
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![],
+                placeholder_cache_root(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
