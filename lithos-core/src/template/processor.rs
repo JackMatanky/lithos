@@ -152,15 +152,11 @@ impl TemplateProcessor<Discovery, Discovered> {
     }
 
     #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
-    pub(crate) fn compare<R: ReadRepository>(
+    pub(crate) fn compare(
         self,
-        repository: &R,
+        id: Option<TemplateId>,
+        view: Option<RawTemplateView>,
     ) -> DiscoveryBranch {
-        let id =
-            repository.find_template_id_by_path(&self.path_key).ok().flatten();
-        let view =
-            repository.find_raw_template_view(&self.path_key).ok().flatten();
-
         match (id, view) {
             (Some(id), Some(view)) => {
                 DiscoveryBranch::Present(self.transition(Comparison, Present {
@@ -404,25 +400,30 @@ impl TemplateProcessor<Construction, Changed> {
     pub(crate) fn update<R: WriteRepository>(
         self,
         repository: &R,
-        id: TemplateId,
         template_root: &std::path::Path,
     ) -> Result<Template, TemplateError> {
         let name =
             TemplateName::try_new(self.file.path().as_ref(), template_root)?;
         let template = Template::new(
-            id,
-            self.path_key,
+            self.status.id,
+            self.path_key.clone(),
             name,
             crate::template::aggregate::TemplateBody::try_new(
                 self.status.raw.into_inner(),
             )?,
+        );
+        let view = RawTemplateView::new(
+            self.path_key,
+            self.status.content_hash,
+            self.file.metadata().clone(),
+            std::time::SystemTime::now(),
         );
 
         repository
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&self.status.view)
+            .save_raw_template_view(&view)
             .map_err(TemplateError::Repository)?;
 
         Ok(template)
@@ -522,7 +523,7 @@ mod tests {
     }
 
     mod state {
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
 
@@ -536,7 +537,6 @@ mod tests {
                 path_key.clone(),
             );
 
-            let repo = InMemoryRepository::new();
             let template = Template::new(
                 TemplateId::new(),
                 path_key.clone(),
@@ -550,7 +550,6 @@ mod tests {
                 )
                 .unwrap(),
             );
-            repo.save_template(&template).expect("save template");
 
             let view = RawTemplateView::new(
                 path_key.clone(),
@@ -558,9 +557,8 @@ mod tests {
                 file.metadata().clone(),
                 SystemTime::now(),
             );
-            repo.save_raw_template_view(&view).expect("save view");
 
-            let branch = processor.compare(&repo);
+            let branch = processor.compare(Some(*template.id()), Some(view));
             assert!(
                 matches!(branch, DiscoveryBranch::Present(_)),
                 "Expected Present branch when both ID and view exist in \
@@ -575,8 +573,7 @@ mod tests {
             let processor =
                 TemplateProcessor::<Discovery, Discovered>::new(file, path_key);
 
-            let repo = InMemoryRepository::new();
-            let branch = processor.compare(&repo);
+            let branch = processor.compare(None, None);
             assert!(
                 matches!(branch, DiscoveryBranch::Missing(_)),
                 "Expected Missing branch when repository is empty"
@@ -763,7 +760,7 @@ mod tests {
     }
 
     mod validation {
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
 
@@ -862,7 +859,7 @@ mod tests {
     }
 
     mod parse {
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
 
@@ -967,7 +964,7 @@ mod tests {
     }
 
     mod create {
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
 
@@ -1055,7 +1052,7 @@ mod tests {
     }
 
     mod update {
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
 
@@ -1087,7 +1084,7 @@ mod tests {
 
             let repo = InMemoryRepository::new();
             let _template = processor
-                .update(&repo, id, std::path::Path::new("/"))
+                .update(&repo, std::path::Path::new("/"))
                 .expect("update template");
 
             assert_eq!(
@@ -1099,7 +1096,7 @@ mod tests {
 
     mod lookup {
 
-        use pretty_assertions::{assert_eq, assert_ne};
+        use pretty_assertions::assert_eq;
 
         use super::{fixtures, *};
         use crate::template::storage::testing::InMemoryRepository;

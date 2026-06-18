@@ -245,6 +245,18 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let views = read_lock(&self.raw_views, "list_raw_template_view_paths")?;
+        self.harness.counters().inc_read();
+
+        Ok(views.keys().cloned().collect())
+    }
+
+    #[inline]
     fn find_raw_template_views_by_paths(
         &self,
         paths: &[PathKey],

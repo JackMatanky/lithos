@@ -18,6 +18,7 @@ pub(crate) mod error;
 pub(crate) mod processor;
 pub(crate) mod raw;
 pub(crate) mod repository;
+pub(crate) mod service;
 pub(crate) mod storage;
 pub(crate) mod views;
 
@@ -28,6 +29,7 @@ pub use error::{
 };
 pub use raw::RawTemplate;
 pub use repository::{ReadRepository, Repository, WriteRepository};
+pub use service::TemplateService;
 pub use views::RawTemplateView;
 
 // ============================================================================

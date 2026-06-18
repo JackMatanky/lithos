@@ -217,6 +217,30 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, crate::template::error::TemplateRepositoryError>
+    {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut paths = Vec::new();
+                for result in table.iter()? {
+                    let (path_guard, _) = result?;
+                    paths.push(path_guard.value());
+                }
+
+                Ok(paths)
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
     fn find_raw_template_views_by_paths(
         &self,
         paths: &[PathKey],

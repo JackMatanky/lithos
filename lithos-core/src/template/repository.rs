@@ -101,6 +101,15 @@ pub trait ReadRepository {
         path: &PathKey,
     ) -> Result<Option<RawTemplateView>, TemplateRepositoryError>;
 
+    /// List all raw template view paths currently cached.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, TemplateRepositoryError>;
+
     /// Find raw template views by a set of paths in a single transaction.
     ///
     /// Returns a vector in the same order as the input paths.
