@@ -38,6 +38,12 @@ use crate::utils::error::UuidV7Error;
 pub struct UuidV7(Uuid);
 
 impl UuidV7 {
+    /// Zero sentinel (nil UUID, not v7) — only for deterministic storage keys
+    /// that never represent a real record. Not a valid v7 UUID; use only when
+    /// deterministic identity is required and the value will never be confused
+    /// with a genuine record ID.
+    pub(crate) const ZERO: Self = Self(Uuid::nil());
+
     /// Creates a new UUID v7.
     #[inline]
     #[must_use]

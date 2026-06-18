@@ -37,6 +37,11 @@ use crate::{
 pub(crate) struct FsRecordId(pub(crate) UuidV7);
 
 impl FsRecordId {
+    /// Zero sentinel for storage keys — deterministic UUID (nil, not v7).
+    /// Never represents a real record; used only as the `Root` parent sentinel
+    /// in index tables.
+    pub(crate) const ZERO: Self = Self(UuidV7::ZERO);
+
     /// Creates a new random filesystem record identifier (UUID v7).
     #[inline]
     #[must_use]
@@ -48,7 +53,7 @@ impl FsRecordId {
 impl Default for FsRecordId {
     #[inline]
     fn default() -> Self {
-        Self::new()
+        Self::ZERO
     }
 }
 
@@ -313,10 +318,14 @@ mod tests {
             use crate::indexer::model::FsRecordId;
 
             #[test]
-            fn default_creates_valid_id() {
+            fn default_returns_zero_sentinel() {
                 let id = FsRecordId::default();
                 let id2 = FsRecordId::default();
-                assert_ne!(id, id2, "default should create unique IDs");
+                assert_eq!(
+                    id, id2,
+                    "default should return deterministic sentinel"
+                );
+                assert_eq!(id, FsRecordId::ZERO);
             }
         }
 
@@ -472,6 +481,25 @@ mod tests {
                 );
                 assert_eq!(node.parent_id(), FsParentId::Id(parent_id));
             }
+        }
+    }
+
+    mod fs_parent_id {
+        use crate::indexer::model::{FsParentId, FsRecordId};
+
+        #[test]
+        fn root_to_storage_key_is_deterministic() {
+            let k1 = FsParentId::Root.to_storage_key();
+            let k2 = FsParentId::Root.to_storage_key();
+            assert_eq!(k1, k2, "Root sentinel must be deterministic");
+            assert_eq!(k1, FsRecordId::ZERO);
+        }
+
+        #[test]
+        fn id_to_storage_key_returns_inner_id() {
+            let inner = FsRecordId::new();
+            let key = FsParentId::Id(inner).to_storage_key();
+            assert_eq!(key, inner);
         }
     }
 
