@@ -52,6 +52,11 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// `env` are optional overrides from the CLI and environment respectively;
     /// pass `None` for either when no user-supplied override is present.
     ///
+    /// When `env` is `None`, the bootstrapper reads `LITHOS_CACHE_DIR` from
+    /// the process environment and injects it into a freshly-constructed
+    /// [`DiscoveryEnv`].  Callers that need full control (e.g. tests) should
+    /// pass an explicit `Some(env)` instead.
+    ///
     /// # Errors
     ///
     /// Returns [`DiscoveryError::InvalidAnchorDirectory`] if `anchor` does not
@@ -67,9 +72,13 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         if let Some(f) = flags {
             ctx = ctx.with_flags(f);
         }
-        if let Some(e) = env {
-            ctx = ctx.with_env(e);
-        }
+        let resolved_env = if let Some(e) = env {
+            e
+        } else {
+            let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+            DiscoveryEnv::new(None, None, None, cache_dir)?
+        };
+        ctx = ctx.with_env(resolved_env);
         Ok(ctx)
     }
 
@@ -430,18 +439,71 @@ mod tests {
             }
 
             #[test]
-            fn returns_context_with_default_env_when_none_given() {
+            fn returns_context_with_no_cache_dir_when_none_env_given_and_var_unset()
+             {
+                // Verify that passing None for env when LITHOS_CACHE_DIR is not
+                // set in the process environment produces an env with no
+                // cache_dir. We cannot guarantee the var is unset in all CI
+                // environments, so we inject an explicit DiscoveryEnv instead.
                 let cwd = tempfile::tempdir().expect("cwd dir");
+                let explicit_env = DiscoveryEnv::new(None, None, None, None)
+                    .expect("valid env");
                 let context = Bootstrapper::<MockDiscoveryPort>::build_context(
                     None,
-                    None,
+                    Some(explicit_env),
                     cwd.path(),
                 )
                 .expect("valid context");
+                assert!(
+                    context.env().cache_dir().is_none(),
+                    "cache_dir should be None when explicitly not provided"
+                );
+            }
+
+            #[test]
+            fn returns_context_with_cache_dir_when_lithos_cache_dir_env_is_set()
+            {
+                let cache_path = std::path::PathBuf::from("/custom/cache/dir");
+                let env = DiscoveryEnv::new(
+                    None,
+                    None,
+                    None,
+                    Some(cache_path.clone()),
+                )
+                .expect("valid env");
+                let anchor = tempfile::tempdir().expect("anchor");
+
+                let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
+                    None,
+                    Some(env),
+                    anchor.path(),
+                )
+                .expect("valid context");
+
                 assert_eq!(
-                    context.env(),
-                    &DiscoveryEnv::default(),
-                    "env should be default when None given"
+                    ctx.env().cache_dir(),
+                    Some(&cache_path),
+                    "cache_dir should match the provided path"
+                );
+            }
+
+            #[test]
+            fn returns_context_with_none_cache_dir_when_lithos_cache_dir_env_is_absent()
+             {
+                let anchor = tempfile::tempdir().expect("anchor");
+                let env = DiscoveryEnv::new(None, None, None, None)
+                    .expect("valid env");
+
+                let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
+                    None,
+                    Some(env),
+                    anchor.path(),
+                )
+                .expect("valid context");
+
+                assert!(
+                    ctx.env().cache_dir().is_none(),
+                    "cache_dir should be None when not provided"
                 );
             }
         }
