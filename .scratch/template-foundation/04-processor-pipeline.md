@@ -327,3 +327,12 @@ Examples to verify at compile time (via doc tests or `compile_fail` tests where 
 | Batch path correctness | Mixed batch with all of the above                                  | Correct per-entry branching                    |
 | Repository failure     | Any write or delete path                                           | `Err` propagated, no panic                     |
 | File read failure      | New file or stale content path                                     | `Err(TemplateError::Read(...))`, no panic      |
+
+### TemplateService Orchestration
+
+To orchestrate the ingestion pipeline and avoid coupling `TemplateProcessor` to directory scanning or batch logic, a basic `TemplateService` acts as the coordinator:
+- **`scan_templates`**: Private method that uses `DirScanner` to discover `.md` files in the configured template directory.
+- **`fetch_cached_views`**: Private method that calls `ReadRepository::find_raw_template_views_by_paths` for all discovered files to retrieve existing `RawTemplateView`s.
+- **`load`**: Orchestration method that ties the scan, cached view fetching, and `TemplateProcessor` together, advancing each discovered file through its appropriate state transitions to the `Completed` stage.
+
+*Note: Identifying deleted templates (present in the repository but absent from the scan) is also managed by this orchestrator, but actual deletion processing is deferred to issue-07.*

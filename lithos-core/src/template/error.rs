@@ -9,13 +9,7 @@
 
 use thiserror::Error;
 
-use crate::{
-    db::DbError,
-    fs::{
-        PathKey,
-        error::{PathError, ScanError},
-    },
-};
+use crate::{db::DbError, fs::PathKey};
 
 // ============================================================================
 // TemplateError
@@ -42,10 +36,10 @@ pub enum TemplateError {
     Repository(#[from] TemplateRepositoryError),
     /// A path validation error.
     #[error(transparent)]
-    Path(#[from] PathError),
+    Path(#[from] TemplatePathError),
     /// A filesystem scanning error.
     #[error(transparent)]
-    Scan(#[from] ScanError),
+    Scan(#[from] TemplateDirScanError),
 }
 
 // ============================================================================
@@ -92,6 +86,35 @@ pub enum TemplateBodyError {
 pub enum TemplateReadError {
     #[error(transparent)]
     Read(#[from] crate::fs::ReadError),
+}
+
+// ============================================================================
+// TemplatePathError
+// ============================================================================
+
+/// Errors returned during path validation or resolution.
+///
+/// Wraps [`crate::fs::error::PathError`] so path failures surface through the
+/// template error hierarchy without leaking `fs` internals into call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplatePathError {
+    #[error(transparent)]
+    Path(#[from] crate::fs::error::PathError),
+}
+
+// ============================================================================
+// TemplateDirScanError
+// ============================================================================
+
+/// Errors returned during directory scanning.
+///
+/// Wraps [`crate::fs::error::ScanError`] so file discovery failures surface
+/// through the template error hierarchy without leaking `fs` internals into
+/// call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateDirScanError {
+    #[error(transparent)]
+    Scan(#[from] crate::fs::error::ScanError),
 }
 
 // ============================================================================
