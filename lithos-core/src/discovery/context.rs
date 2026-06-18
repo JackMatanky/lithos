@@ -1,6 +1,9 @@
 //! Invocation context supplied to Discovery by the application layer.
 
-use std::{ffi::OsStr, path::Path};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     discovery::error::{
@@ -217,6 +220,11 @@ pub struct DiscoveryEnv<'a> {
     vault_dir: Option<DirPath>,
     /// Raw platform-specific ceiling directory data.
     ceiling_dirs_raw: Option<&'a OsStr>,
+    /// Cache directory path from the `LITHOS_CACHE_DIR` environment variable.
+    ///
+    /// Stored as-is without filesystem validation — the directory need not
+    /// exist at construction time.
+    cache_dir: Option<PathBuf>,
 }
 
 impl<'a> DiscoveryEnv<'a> {
@@ -238,6 +246,7 @@ impl<'a> DiscoveryEnv<'a> {
         config_file: Option<&Path>,
         vault_dir: Option<&Path>,
         ceiling_dirs_raw: Option<&'a OsStr>,
+        cache_dir: Option<PathBuf>,
     ) -> Result<Self, DiscoveryError> {
         let config_file =
             config_file.map(Self::validate_config_file).transpose()?;
@@ -247,6 +256,7 @@ impl<'a> DiscoveryEnv<'a> {
             config_file,
             vault_dir,
             ceiling_dirs_raw,
+            cache_dir,
         })
     }
 
@@ -311,6 +321,15 @@ impl<'a> DiscoveryEnv<'a> {
     #[must_use]
     pub fn ceiling_dirs_raw(&self) -> Option<&'a OsStr> {
         self.ceiling_dirs_raw
+    }
+
+    /// Returns the cache directory path from `LITHOS_CACHE_DIR`, if set.
+    ///
+    /// The returned path is unvalidated — the directory need not exist.
+    #[inline]
+    #[must_use]
+    pub fn cache_dir(&self) -> Option<&PathBuf> {
+        self.cache_dir.as_ref()
     }
 }
 
@@ -519,8 +538,9 @@ mod tests {
                 let root = tempfile::tempdir().expect("root dir");
                 let config = fixtures::valid_config_file(&root);
 
-                let env = DiscoveryEnv::new(Some(config.as_path()), None, None)
-                    .expect("valid env");
+                let env =
+                    DiscoveryEnv::new(Some(config.as_path()), None, None, None)
+                        .expect("valid env");
 
                 assert_eq!(
                     env.config_file().map(FilePath::as_path),
@@ -533,8 +553,9 @@ mod tests {
             fn returns_vault_dir_when_path_is_valid() {
                 let root = tempfile::tempdir().expect("root dir");
 
-                let env = DiscoveryEnv::new(None, Some(root.path()), None)
-                    .expect("valid env");
+                let env =
+                    DiscoveryEnv::new(None, Some(root.path()), None, None)
+                        .expect("valid env");
 
                 assert_eq!(
                     env.vault_dir().map(DirPath::as_path),
@@ -547,8 +568,9 @@ mod tests {
             fn returns_ceiling_dirs_raw_when_provided() {
                 let ceiling_dirs = OsStr::new("/repo:/workspace");
 
-                let env = DiscoveryEnv::new(None, None, Some(ceiling_dirs))
-                    .expect("valid env");
+                let env =
+                    DiscoveryEnv::new(None, None, Some(ceiling_dirs), None)
+                        .expect("valid env");
 
                 assert_eq!(
                     env.ceiling_dirs_raw(),
@@ -559,7 +581,7 @@ mod tests {
 
             #[test]
             fn returns_none_config_file_when_no_override_given() {
-                let env = DiscoveryEnv::new(None, None, None)
+                let env = DiscoveryEnv::new(None, None, None, None)
                     .expect("env with no overrides");
 
                 assert!(
@@ -570,7 +592,7 @@ mod tests {
 
             #[test]
             fn returns_none_vault_dir_when_no_override_given() {
-                let env = DiscoveryEnv::new(None, None, None)
+                let env = DiscoveryEnv::new(None, None, None, None)
                     .expect("env with no overrides");
 
                 assert!(env.vault_dir().is_none(), "vault_dir should be None");
@@ -578,13 +600,36 @@ mod tests {
 
             #[test]
             fn returns_none_ceiling_dirs_raw_when_not_provided() {
-                let env = DiscoveryEnv::new(None, None, None)
+                let env = DiscoveryEnv::new(None, None, None, None)
                     .expect("env with no overrides");
 
                 assert!(
                     env.ceiling_dirs_raw().is_none(),
                     "ceiling_dirs_raw should be None"
                 );
+            }
+
+            #[test]
+            fn returns_cache_dir_when_provided() {
+                let path = std::path::PathBuf::from("/tmp/my/cache");
+
+                let env =
+                    DiscoveryEnv::new(None, None, None, Some(path.clone()))
+                        .expect("valid env");
+
+                assert_eq!(
+                    env.cache_dir(),
+                    Some(&path),
+                    "cache_dir should match the provided path"
+                );
+            }
+
+            #[test]
+            fn returns_none_cache_dir_when_not_provided() {
+                let env = DiscoveryEnv::new(None, None, None, None)
+                    .expect("env with no cache dir");
+
+                assert!(env.cache_dir().is_none(), "cache_dir should be None");
             }
         }
 
@@ -620,6 +665,16 @@ mod tests {
                     "default ceiling_dirs_raw should be None"
                 );
             }
+
+            #[test]
+            fn returns_none_cache_dir() {
+                let env = DiscoveryEnv::default();
+
+                assert!(
+                    env.cache_dir().is_none(),
+                    "default cache_dir should be None"
+                );
+            }
         }
 
         mod validation {
@@ -630,7 +685,7 @@ mod tests {
             #[test]
             fn rejects_config_file_when_path_does_not_exist() {
                 let path = std::path::Path::new("/nonexistent/lithos.toml");
-                let err = DiscoveryEnv::new(Some(path), None, None)
+                let err = DiscoveryEnv::new(Some(path), None, None, None)
                     .expect_err("nonexistent path should be rejected");
                 assert_eq!(
                     err.to_string(),
@@ -642,7 +697,7 @@ mod tests {
             #[test]
             fn rejects_config_file_when_path_is_a_directory() {
                 let dir = tempfile::tempdir().expect("dir");
-                let err = DiscoveryEnv::new(Some(dir.path()), None, None)
+                let err = DiscoveryEnv::new(Some(dir.path()), None, None, None)
                     .expect_err("directory is not a valid config file");
                 assert_eq!(
                     err.to_string(),
@@ -656,7 +711,7 @@ mod tests {
             #[test]
             fn rejects_vault_dir_when_path_does_not_exist() {
                 let path = std::path::Path::new("/nonexistent/vault");
-                let err = DiscoveryEnv::new(None, Some(path), None)
+                let err = DiscoveryEnv::new(None, Some(path), None, None)
                     .expect_err("nonexistent path should be rejected");
                 assert_eq!(
                     err.to_string(),
@@ -667,8 +722,9 @@ mod tests {
             #[test]
             fn rejects_vault_dir_when_path_is_a_file() {
                 let file = tempfile::NamedTempFile::new().expect("file");
-                let err = DiscoveryEnv::new(None, Some(file.path()), None)
-                    .expect_err("file is not a valid vault directory");
+                let err =
+                    DiscoveryEnv::new(None, Some(file.path()), None, None)
+                        .expect_err("file is not a valid vault directory");
                 assert_eq!(
                     err.to_string(),
                     format!(
@@ -827,9 +883,13 @@ mod tests {
                 let env_root = tempfile::tempdir().expect("env root");
                 let env_config = fixtures::valid_config_file(&env_root);
                 let anchor_root = tempfile::tempdir().expect("anchor root");
-                let env =
-                    DiscoveryEnv::new(Some(env_config.as_path()), None, None)
-                        .expect("valid env");
+                let env = DiscoveryEnv::new(
+                    Some(env_config.as_path()),
+                    None,
+                    None,
+                    None,
+                )
+                .expect("valid env");
 
                 let context = DiscoveryContext::new(anchor_root.path())
                     .expect("valid context")
@@ -846,8 +906,9 @@ mod tests {
             fn returns_env_vault_dir_when_set() {
                 let env_root = tempfile::tempdir().expect("env root");
                 let anchor_root = tempfile::tempdir().expect("anchor root");
-                let env = DiscoveryEnv::new(None, Some(env_root.path()), None)
-                    .expect("valid env");
+                let env =
+                    DiscoveryEnv::new(None, Some(env_root.path()), None, None)
+                        .expect("valid env");
 
                 let context = DiscoveryContext::new(anchor_root.path())
                     .expect("valid context")
@@ -864,8 +925,9 @@ mod tests {
             fn returns_ceiling_dirs_raw_when_set() {
                 let anchor_root = tempfile::tempdir().expect("anchor root");
                 let ceiling_dirs = OsStr::new("/repo:/workspace");
-                let env = DiscoveryEnv::new(None, None, Some(ceiling_dirs))
-                    .expect("valid env");
+                let env =
+                    DiscoveryEnv::new(None, None, Some(ceiling_dirs), None)
+                        .expect("valid env");
 
                 let context = DiscoveryContext::new(anchor_root.path())
                     .expect("valid context")
