@@ -37,7 +37,12 @@ use super::{
     service::{CandidatePath, DiscoveryResult, DiscoveryServiceConfig},
     walk::BoundedAscent,
 };
-use crate::fs::DirPath;
+use crate::{
+    discovery::location::{
+        CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
+    },
+    fs::DirPath,
+};
 
 // ---------------------------------------------------------------------------
 // Phase marker types
@@ -72,6 +77,11 @@ pub(crate) struct AscendingTraversal;
 /// Global directories have been probed. Global candidates are populated (or
 /// empty if no markers were found or global resolution was suppressed).
 pub(crate) struct GlobalResolution;
+
+/// Cache root has been resolved. The `cache_root` field on the processor holds
+/// the computed [`CacheRoot`]. This phase is the only valid predecessor of
+/// [`Finalized`].
+pub(crate) struct CacheResolution;
 
 /// All phases complete. [`DiscoveryProcessor::finalize`] consumes the processor
 /// and returns the [`DiscoveryResult`] and [`DiscoveryReport`].
@@ -155,6 +165,9 @@ pub(crate) struct DiscoveryProcessor<'ctx, P> {
     /// [`FlagOverride`] so the same set is available in [`AscendingTraversal`]
     /// without re-parsing.
     ceilings: HashSet<PathBuf>,
+    /// Resolved cache root. Populated exclusively during the
+    /// [`CacheResolution`] phase transition. `None` until that phase runs.
+    cache_root: Option<CacheRoot>,
     _phase: PhantomData<P>,
 }
 
@@ -176,6 +189,7 @@ impl<'ctx> DiscoveryProcessor<'ctx, Init> {
             global: Vec::new(),
             report: DiscoveryReport::default(),
             ceilings: HashSet::new(),
+            cache_root: None,
             _phase: PhantomData,
         }
     }
@@ -237,6 +251,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
             global: val.global,
             report,
             ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
     }
@@ -291,6 +306,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
             global: val.global,
             report,
             ceilings: val.ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
     }
@@ -362,6 +378,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
             global: val.global,
             report,
             ceilings: val.ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
     }
@@ -449,6 +466,7 @@ impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, EnvOverride>>
             global,
             report: init_report,
             ceilings,
+            cache_root,
             _phase: _,
         } = val;
 
@@ -515,6 +533,7 @@ impl<'ctx> TryFrom<DiscoveryProcessor<'ctx, EnvOverride>>
             global,
             report,
             ceilings,
+            cache_root,
             _phase: PhantomData,
         })
     }
@@ -558,6 +577,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
             global: val.global,
             report: val.report,
             ceilings: val.ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
     }
@@ -596,6 +616,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
             global: val.global,
             report: val.report,
             ceilings: val.ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
     }
@@ -616,8 +637,77 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
             global: val.global,
             report: val.report,
             ceilings: val.ceilings,
+            cache_root: val.cache_root,
             _phase: PhantomData,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Any phase → CacheResolution
+// ---------------------------------------------------------------------------
+
+/// Shared body for all `→ CacheResolution` transitions.
+///
+/// Computes the [`CacheRoot`] from accumulated vault candidates and the
+/// optional env-var cache directory override. Each concrete `From` impl
+/// delegates here to avoid code duplication.
+fn into_cache_resolution<'ctx, P>(
+    val: DiscoveryProcessor<'ctx, P>,
+) -> DiscoveryProcessor<'ctx, CacheResolution> {
+    let env_cache_dir = val.ctx.env().cache_dir();
+    let vault_root = val.vault.first().map(|c| c.base());
+    let cache_root = resolve_cache_root(env_cache_dir, vault_root);
+
+    DiscoveryProcessor {
+        config: val.config,
+        ctx: val.ctx,
+        vault: val.vault,
+        global: val.global,
+        report: val.report,
+        ceilings: val.ceilings,
+        cache_root: Some(cache_root),
+        _phase: PhantomData,
+    }
+}
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
+    for DiscoveryProcessor<'ctx, CacheResolution>
+{
+    fn from(val: DiscoveryProcessor<'ctx, Init>) -> Self {
+        into_cache_resolution(val)
+    }
+}
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
+    for DiscoveryProcessor<'ctx, CacheResolution>
+{
+    fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
+        into_cache_resolution(val)
+    }
+}
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
+    for DiscoveryProcessor<'ctx, CacheResolution>
+{
+    fn from(val: DiscoveryProcessor<'ctx, EnvOverride>) -> Self {
+        into_cache_resolution(val)
+    }
+}
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
+    for DiscoveryProcessor<'ctx, CacheResolution>
+{
+    fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
+        into_cache_resolution(val)
+    }
+}
+
+impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
+    for DiscoveryProcessor<'ctx, CacheResolution>
+{
+    fn from(val: DiscoveryProcessor<'ctx, GlobalResolution>) -> Self {
+        into_cache_resolution(val)
     }
 }
 
@@ -653,6 +743,7 @@ fn run_global_resolution<P>(
         global: _,
         mut report,
         ceilings,
+        cache_root,
         _phase: _,
     } = val;
 
@@ -667,6 +758,7 @@ fn run_global_resolution<P>(
             global: Vec::new(),
             report,
             ceilings,
+            cache_root,
             _phase: PhantomData,
         };
     }
@@ -691,7 +783,46 @@ fn run_global_resolution<P>(
         global,
         report,
         ceilings,
+        cache_root,
         _phase: PhantomData,
+    }
+}
+
+/// Resolves the cache root directory from the available inputs.
+///
+/// Precedence (highest → lowest):
+/// 1. `LITHOS_CACHE_DIR` env var (passed as `env_cache_dir`)
+/// 2. Vault-local default: `<vault_root>/.lithos/cache/`
+/// 3. OS platform user-cache directory: `dirs::cache_dir().join("lithos")`
+///    (falls back to `.lithos/cache` if the platform provides no cache dir)
+fn resolve_cache_root(
+    env_cache_dir: Option<&PathBuf>,
+    vault_root: Option<&DirPath>,
+) -> CacheRoot {
+    if let Some(path) = env_cache_dir {
+        return CacheRoot {
+            location: CacheLocation::Global(
+                GlobalCacheLocation::EnvironmentOverride,
+            ),
+            path: path.clone(),
+        };
+    }
+    if let Some(root) = vault_root {
+        return CacheRoot {
+            location: CacheLocation::Local(
+                LocalCacheLocation::ProjectCacheDirectory,
+            ),
+            path: root.as_path().join(".lithos/cache"),
+        };
+    }
+    // No env override and no vault root — use OS platform cache directory.
+    // `.unwrap_or_else` covers pathological cases where the OS provides none.
+    let path = dirs::cache_dir()
+        .map(|p| p.join("lithos"))
+        .unwrap_or_else(|| PathBuf::from(".lithos/cache"));
+    CacheRoot {
+        location: CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
+        path,
     }
 }
 
@@ -915,9 +1046,13 @@ mod tests {
             let raw = ceiling.path().to_str().expect("utf8").to_owned();
 
             let config = default_config();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new(&raw)),
+                None,
+            )
+            .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let flag: DiscoveryProcessor<FlagOverride> =
@@ -930,9 +1065,13 @@ mod tests {
         fn records_empty_ceiling_segment_as_skipped() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new("")))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new("")),
+                None,
+            )
+            .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let flag: DiscoveryProcessor<FlagOverride> =
@@ -1032,8 +1171,9 @@ mod tests {
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(None, Some(vault_dir.path()), None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             assert_eq!(
@@ -1068,8 +1208,9 @@ mod tests {
             write_marker(vault_dir.path(), "lithos.toml");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(None, Some(vault_dir.path()), None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let env_p = advance_to_env(&config, &ctx);
@@ -1116,7 +1257,7 @@ mod tests {
 
             let config = default_config();
             let env_override =
-                DiscoveryEnv::new(Some(config_file.path()), None, None)
+                DiscoveryEnv::new(Some(config_file.path()), None, None, None)
                     .expect("env");
             let ctx =
                 make_context(root.path()).expect("ctx").with_env(env_override);
@@ -1173,6 +1314,7 @@ mod tests {
                 Some(config_file.path()),
                 Some(vault_dir.path()),
                 None,
+                None,
             )
             .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
@@ -1189,8 +1331,9 @@ mod tests {
             let vault_dir = tempfile::tempdir().expect("vault dir");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(None, Some(vault_dir.path()), None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(None, Some(vault_dir.path()), None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             assert_eq!(
@@ -1205,8 +1348,9 @@ mod tests {
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(Some(config_file.path()), None, None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             assert_eq!(
@@ -1273,9 +1417,13 @@ mod tests {
                 .to_str()
                 .expect("utf8")
                 .to_owned();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new(&raw)),
+                None,
+            )
+            .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
@@ -1328,9 +1476,13 @@ mod tests {
             let ceiling =
                 root.path().canonicalize().expect("canonical ceiling");
             let raw = ceiling.to_str().expect("utf8").to_owned();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new(&raw)),
+                None,
+            )
+            .expect("env");
             let config = default_config();
             let ctx = make_context(&sub).expect("ctx").with_env(env);
 
@@ -1354,9 +1506,13 @@ mod tests {
             let ceiling =
                 root.path().canonicalize().expect("canonical ceiling");
             let raw = ceiling.to_str().expect("utf8").to_owned();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new(&raw)))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new(&raw)),
+                None,
+            )
+            .expect("env");
             let config = DiscoveryServiceConfig {
                 allow_marker_at_ceiling: false,
                 ..DiscoveryServiceConfig::default()
@@ -1372,9 +1528,13 @@ mod tests {
         fn ceiling_in_report_is_populated_from_env() {
             let root = tempfile::tempdir().expect("root");
             let config = default_config();
-            let env =
-                DiscoveryEnv::new(None, None, Some(std::ffi::OsStr::new("")))
-                    .expect("env");
+            let env = DiscoveryEnv::new(
+                None,
+                None,
+                Some(std::ffi::OsStr::new("")),
+                None,
+            )
+            .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let ascend = advance_to_ascend(&config, &ctx).expect("ascend");
@@ -1785,8 +1945,9 @@ mod tests {
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(Some(config_file.path()), None, None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let flag: DiscoveryProcessor<FlagOverride> =
@@ -1812,8 +1973,9 @@ mod tests {
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
-            let env = DiscoveryEnv::new(Some(config_file.path()), None, None)
-                .expect("env");
+            let env =
+                DiscoveryEnv::new(Some(config_file.path()), None, None, None)
+                    .expect("env");
             let ctx = make_context(root.path()).expect("ctx").with_env(env);
 
             let flag: DiscoveryProcessor<FlagOverride> =
@@ -1969,6 +2131,148 @@ mod tests {
                 "suppressed global must yield no candidates even when global \
                  directories contain markers"
             );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // CacheResolution phase
+    // -----------------------------------------------------------------------
+
+    mod cache_resolution {
+        use std::path::PathBuf;
+
+        use super::*;
+        use crate::discovery::location::{
+            CacheLocation, GlobalCacheLocation, LocalCacheLocation,
+        };
+
+        /// Helper: advance processor through FlagOverride → EnvOverride →
+        /// CacheResolution. Used when a vault needs to be probed (env vault
+        /// dir or flag vault dir).
+        fn advance_to_cache_resolution_with_vault<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, CacheResolution> {
+            let init = DiscoveryProcessor::new(config, ctx);
+            let flag: DiscoveryProcessor<FlagOverride> = init.into();
+            let env: DiscoveryProcessor<EnvOverride> = flag.into();
+            // EnvOverride → CacheResolution (vault already probed in
+            // EnvOverride)
+            env.into()
+        }
+
+        /// Helper: advance processor directly Init → CacheResolution (no vault
+        /// probing). Used for tests that only need cache_dir env var logic.
+        fn advance_to_cache_resolution<'a>(
+            config: &'a DiscoveryServiceConfig,
+            ctx: &'a DiscoveryContext<'a>,
+        ) -> DiscoveryProcessor<'a, CacheResolution> {
+            DiscoveryProcessor::new(config, ctx).into()
+        }
+
+        #[test]
+        fn returns_environment_override_when_cache_dir_env_is_set() {
+            let root = tempfile::tempdir().expect("root");
+            let cache_path = PathBuf::from("/custom/cache");
+            let config = default_config();
+            let env =
+                DiscoveryEnv::new(None, None, None, Some(cache_path.clone()))
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let p = advance_to_cache_resolution(&config, &ctx);
+
+            let cache_root = p.cache_root.expect("cache_root must be set");
+            assert_eq!(
+                cache_root.location,
+                CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride)
+            );
+            assert_eq!(cache_root.path, cache_path);
+        }
+
+        #[test]
+        fn returns_environment_override_regardless_of_vault_presence() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+            let cache_path = PathBuf::from("/env/cache");
+
+            let config = default_config();
+            let env = DiscoveryEnv::new(
+                None,
+                Some(vault_dir.path()),
+                None,
+                Some(cache_path.clone()),
+            )
+            .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let p = advance_to_cache_resolution_with_vault(&config, &ctx);
+
+            let cache_root = p.cache_root.expect("cache_root must be set");
+            assert_eq!(
+                cache_root.location,
+                CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride),
+                "env override wins even when vault is present"
+            );
+        }
+
+        #[test]
+        fn returns_project_cache_directory_when_vault_present_and_no_env() {
+            let root = tempfile::tempdir().expect("root");
+            let vault_dir = tempfile::tempdir().expect("vault dir");
+            write_marker(vault_dir.path(), "lithos.toml");
+
+            let config = default_config();
+            let env =
+                DiscoveryEnv::new(None, Some(vault_dir.path()), None, None)
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let p = advance_to_cache_resolution_with_vault(&config, &ctx);
+
+            let cache_root = p.cache_root.expect("cache_root must be set");
+            assert_eq!(
+                cache_root.location,
+                CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory)
+            );
+            assert!(
+                cache_root.path.ends_with(".lithos/cache"),
+                "path should end with .lithos/cache, got: {:?}",
+                cache_root.path
+            );
+        }
+
+        #[test]
+        fn returns_platform_user_cache_when_no_vault_and_no_env() {
+            let root = tempfile::tempdir().expect("root");
+            let config = default_config();
+            let ctx = make_context(root.path()).expect("ctx");
+
+            let p = advance_to_cache_resolution(&config, &ctx);
+
+            let cache_root = p.cache_root.expect("cache_root must be set");
+            assert_eq!(
+                cache_root.location,
+                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+            );
+        }
+
+        #[test]
+        fn path_is_not_validated_for_existence_at_construction() {
+            let root = tempfile::tempdir().expect("root");
+            let cache_path =
+                PathBuf::from("/absolutely/nonexistent/cache/path");
+            let config = default_config();
+            let env =
+                DiscoveryEnv::new(None, None, None, Some(cache_path.clone()))
+                    .expect("env");
+            let ctx = make_context(root.path()).expect("ctx").with_env(env);
+
+            let p = advance_to_cache_resolution(&config, &ctx);
+
+            let cache_root = p.cache_root.expect("cache_root must be set");
+            assert_eq!(cache_root.path, cache_path);
         }
     }
 }

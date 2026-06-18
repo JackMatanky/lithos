@@ -304,6 +304,7 @@ mod tests {
                     Some(self.env_config.as_path()),
                     Some(self.env_vault.path()),
                     Some(self.ceilings),
+                    None,
                 )
                 .expect("valid env");
                 Bootstrapper::<MockDiscoveryPort>::build_context(
