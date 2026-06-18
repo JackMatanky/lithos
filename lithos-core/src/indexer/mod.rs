@@ -14,6 +14,7 @@
     reason = "Domain types are implemented ahead of usage in subsequent issues"
 )]
 
+mod builder;
 mod entry;
 mod error;
 mod model;

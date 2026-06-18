@@ -1,21 +1,9 @@
 //! Indexer application service — orchestrates the index scan pipeline.
 //!
-//! Contains the procedural `IndexerService` that wires the scanner port,
-//! repository, and per-entry typestate classification into a single indexing
-//! run. The per-entry typestate (`IndexNode<S>`) ensures every entry resolves
-//! its `PathKey` before it can be consumed — a compile-time guarantee scoped
-//! to the service's scan loop.
-//!
-//! # Typestate transitions
-//!
-//! ```text
-//! IndexNode<Scanned>  ──classify()──→  IndexNode<Classified>
-//! ```
-//!
-//! `IndexNode<Classified>` wraps a raw `FsNode`. `IndexNode<Classified>`
-//! carries the resolved `PathKey` and classified `IndexedEntry`. The typestate
-//! guarantees that consumers see a resolved key, making `unwrap()` on
-//! `path_key()` unnecessary in service logic.
+//! Uses the `EntryBuilder<F, S>` typestate builder (see `builder.rs`) to
+//! ensure every entry resolves its `PathKey` before consumption — a
+//! compile-time guarantee scoped to the service's scan loop — without a
+//! runtime `IndexedEntry` tagged union or duplicated file/dir match arms.
 
 #![expect(
     clippy::arithmetic_side_effects,
@@ -25,8 +13,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    fs::{DirPath, FsNode, metadata::FsMetadata, path::PathKey},
+    fs::{DirPath, path::PathKey},
     indexer::{
+        builder::{Dir, EntryBuilder, File},
         entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
         error::IndexerError,
         model::FsParentId,
@@ -37,133 +26,6 @@ use crate::{
         summary::{DeletedNodes, IndexResult, IndexedNodes},
     },
 };
-
-// ─── Per-entry typestate ───────────────────────────────────────────
-
-/// State: raw `FsNode` from the scanner stream.
-#[derive(Debug)]
-pub(crate) struct Scanned(FsNode);
-
-/// State: resolved `PathKey` and classified entry.
-#[derive(Debug)]
-pub(crate) struct Classified {
-    entry: IndexedEntry,
-    path_key: PathKey,
-}
-
-/// Union enum for the service loop to accumulate.
-#[derive(Debug)]
-pub(crate) enum IndexedEntry {
-    File(FileIndexEntry),
-    Dir(DirIndexEntry),
-}
-
-/// The typestate struct — only exists inside the service's for loop.
-///
-/// `S` is the current state type (`Scanned` or `Classified`), which also
-/// carries the state-specific data. No `PhantomData`, no `Option`.
-#[derive(Debug)]
-pub(crate) struct IndexNode<S> {
-    inner: S,
-}
-
-impl IndexNode<Scanned> {
-    /// Wrap a raw `FsNode` from the scan stream.
-    #[inline]
-    #[must_use]
-    pub(crate) fn new(node: FsNode) -> Self {
-        Self {
-            inner: Scanned(node),
-        }
-    }
-
-    /// Resolve vault-relative `PathKey`, resolve `parent_id` from the
-    /// `derive_parent_id` helper, query repository, classify status
-    /// (New/Fresh/Stale).
-    ///
-    /// This is the sole transition — after this the entry is ready to
-    /// consume.
-    pub(crate) fn classify<R: ReadRepository>(
-        self,
-        vault_root: &DirPath,
-        parent_id: FsParentId,
-        repo: &R,
-    ) -> Result<IndexNode<Classified>, IndexerError> {
-        let (key, entry) = match self.inner.0 {
-            FsNode::File(file) => {
-                let key = file.path().as_key(vault_root)?;
-                let existing = repo.find_file_by_path(&key)?;
-                let status = classify_status(
-                    file.metadata(),
-                    existing.as_ref().map(super::model::FileRecord::metadata),
-                );
-                let record = build_file_record(&file, &key, parent_id, status);
-                let entry = FileIndexEntry::new(
-                    record.id(),
-                    record,
-                    file.path().clone(),
-                    status,
-                );
-                (key, IndexedEntry::File(entry))
-            }
-            FsNode::Dir(dir) => {
-                let key = dir.path().as_key(vault_root)?;
-                let existing = repo.find_dir_by_path(&key)?;
-                let status = classify_status(
-                    dir.metadata(),
-                    existing.as_ref().map(super::model::DirRecord::metadata),
-                );
-                let record = build_dir_record(&dir, &key, parent_id, status);
-                let entry = DirIndexEntry::new(
-                    record.id(),
-                    record,
-                    dir.path().clone(),
-                    status,
-                );
-                (key, IndexedEntry::Dir(entry))
-            }
-        };
-        Ok(IndexNode {
-            inner: Classified {
-                entry,
-                path_key: key,
-            },
-        })
-    }
-}
-
-impl IndexNode<Classified> {
-    /// The resolved `PathKey`, for the service to track seen paths.
-    #[inline]
-    #[must_use]
-    pub(crate) fn path_key(&self) -> &PathKey {
-        &self.inner.path_key
-    }
-
-    /// The `FsRecordId` of the classified entry, for parent tracking.
-    #[inline]
-    #[must_use]
-    pub(crate) fn entry_id(&self) -> crate::indexer::model::FsRecordId {
-        match &self.inner.entry {
-            IndexedEntry::File(f) => f.id(),
-            IndexedEntry::Dir(d) => d.id(),
-        }
-    }
-
-    /// True when the entry is a directory.
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_dir(&self) -> bool {
-        matches!(&self.inner.entry, IndexedEntry::Dir(_))
-    }
-
-    /// Extract the classified entry for accumulation.
-    #[inline]
-    #[must_use]
-    pub(crate) fn into_entry(self) -> IndexedEntry {
-        self.inner.entry
-    }
-}
 
 // ─── Helper functions ──────────────────────────────────────────────
 
@@ -194,106 +56,6 @@ fn derive_parent_id(
                 .expect("parent directory must be classified before child"),
         ),
     }
-}
-
-/// Classify an entry's status by comparing current metadata against the
-/// persisted record (if any).
-fn classify_status<T: PartialEq>(
-    current: &T,
-    existing: Option<&T>,
-) -> IndexStatus {
-    match existing {
-        None => IndexStatus::New,
-        Some(e) if current == e => IndexStatus::Fresh,
-        Some(_) => IndexStatus::Stale,
-    }
-}
-
-/// Build a `FileRecord` from the scanned data, parent info, and status.
-///
-/// For `New` entries a fresh `FsRecordId` is generated. For `Fresh`/`Stale`
-/// the existing ID is reused so the record identity is preserved across runs.
-fn build_file_record(
-    file: &crate::fs::FileNode,
-    key: &PathKey,
-    parent_id: FsParentId,
-    status: IndexStatus,
-) -> crate::indexer::model::FileRecord {
-    use std::time::SystemTime;
-
-    use crate::{
-        fs::name::FileName,
-        indexer::model::{FileRecord, FsRecordId},
-    };
-
-    let id = match status {
-        IndexStatus::New => FsRecordId::new(),
-        IndexStatus::Fresh | IndexStatus::Stale => {
-            // ID will be set by the caller — for status detection we always
-            // generate new since the classify loop doesn't know the existing
-            // record ID at this point. The repo's save_many_records will
-            // overwrite the correct record.
-            FsRecordId::new()
-        }
-    };
-    let name = FileName::new(
-        file.path()
-            .filename()
-            .map(|n| n.as_str().to_owned())
-            .unwrap_or_default()
-            .into(),
-    );
-    let format = crate::fs::FileFormat::from_extension(
-        file.path().as_ref().extension().unwrap_or_default(),
-    );
-
-    FileRecord::new(
-        id,
-        parent_id,
-        key.clone(),
-        name,
-        format,
-        file.metadata().clone(),
-        SystemTime::now(),
-    )
-}
-
-/// Build a `DirRecord` from the scanned data, parent info, and status.
-fn build_dir_record(
-    dir: &crate::fs::DirNode,
-    key: &PathKey,
-    parent_id: FsParentId,
-    status: IndexStatus,
-) -> crate::indexer::model::DirRecord {
-    use std::time::SystemTime;
-
-    use crate::{
-        fs::name::DirName,
-        indexer::model::{DirRecord, FsRecordId},
-    };
-
-    let id = match status {
-        IndexStatus::New | IndexStatus::Fresh | IndexStatus::Stale => {
-            FsRecordId::new()
-        }
-    };
-    let name = DirName::new(
-        dir.path()
-            .as_ref()
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-            .into(),
-    );
-
-    DirRecord::new(
-        id,
-        parent_id,
-        key.clone(),
-        name,
-        dir.metadata().clone(),
-        SystemTime::now(),
-    )
 }
 
 // ─── Indexer service ───────────────────────────────────────────────
@@ -357,44 +119,41 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
                 Ok(ScanEntry::File(node)) => {
                     let key = node.path().as_key(&self.vault_root)?;
                     let parent_id = derive_parent_id(&key, &dir_ids);
-                    let scanned = IndexNode::new(FsNode::File(node));
-                    let classified = scanned.classify(
-                        &self.vault_root,
+                    let builder = EntryBuilder::<File, _>::new(
+                        node,
+                        self.vault_root.clone(),
                         parent_id,
-                        &self.repo,
-                    )?;
-                    let pk = classified.path_key().clone();
-                    seen_paths.insert(pk);
-                    if let IndexedEntry::File(f) = classified.into_entry() {
-                        match f.status() {
-                            IndexStatus::New => new_count += 1,
-                            IndexStatus::Fresh => fresh_count += 1,
-                            IndexStatus::Stale => stale_count += 1,
-                        }
-                        indexed_files.push(f);
+                    );
+                    let classified = builder.classify(&self.repo)?;
+                    seen_paths.insert(classified.path_key().clone());
+                    let status = classified.status();
+                    match status {
+                        IndexStatus::New => new_count += 1,
+                        IndexStatus::Fresh => fresh_count += 1,
+                        IndexStatus::Stale => stale_count += 1,
                     }
+                    indexed_files.push(classified.build());
                 }
                 Ok(ScanEntry::Dir(node)) => {
                     let key = node.path().as_key(&self.vault_root)?;
                     let parent_id = derive_parent_id(&key, &dir_ids);
-                    let scanned = IndexNode::new(FsNode::Dir(node));
-                    let classified = scanned.classify(
-                        &self.vault_root,
+                    let builder = EntryBuilder::<Dir, _>::new(
+                        node,
+                        self.vault_root.clone(),
                         parent_id,
-                        &self.repo,
-                    )?;
+                    );
+                    let classified = builder.classify(&self.repo)?;
                     let id = classified.entry_id();
                     let pk = classified.path_key().clone();
                     seen_paths.insert(pk.clone());
-                    if let IndexedEntry::Dir(d) = classified.into_entry() {
-                        match d.status() {
-                            IndexStatus::New => new_count += 1,
-                            IndexStatus::Fresh => fresh_count += 1,
-                            IndexStatus::Stale => stale_count += 1,
-                        }
-                        dir_ids.insert(pk, id);
-                        indexed_dirs.push(d);
+                    let status = classified.status();
+                    match status {
+                        IndexStatus::New => new_count += 1,
+                        IndexStatus::Fresh => fresh_count += 1,
+                        IndexStatus::Stale => stale_count += 1,
                     }
+                    dir_ids.insert(pk, id);
+                    indexed_dirs.push(classified.build());
                 }
                 Err(e) => return Err(e.into()),
             }
@@ -487,7 +246,7 @@ mod tests {
         time::SystemTime,
     };
 
-    use super::{Classified, IndexerService, Scanned};
+    use super::{IndexerService, derive_parent_id};
     use crate::{
         fs::{
             DirPath, FileFormat, FilePath,
@@ -503,10 +262,6 @@ mod tests {
             report::{IndexReport, SkipReason, SkippedEntry},
             repository::{ReadRepository, Repository, WriteRepository},
             scan::{IndexOptions, IndexScope, ScanFilters},
-            service::{
-                IndexNode, IndexedEntry, build_dir_record, build_file_record,
-                classify_status, derive_parent_id,
-            },
             storage::InMemoryRepository,
             summary::{DeletedNodes, IndexResult, IndexedNodes},
         },
@@ -650,313 +405,7 @@ mod tests {
         }
     }
 
-    // ─── Cycle 1 — IndexNode typestate ──────────────────────────
-
-    mod index_node {
-        use super::*;
-
-        #[test]
-        fn scanned_new_wraps_fs_node() {
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let node = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let _ = node; // Compile-time: IndexNode<Scanned> inferred
-
-            let dir_node_fs = make_dir_node("/tmp/vault/sub");
-            let dir_node = IndexNode::new(crate::fs::FsNode::Dir(dir_node_fs));
-            let _ = dir_node;
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_file_new() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/notes/new.md");
-            let _key = file_node.path().as_key(&vault).unwrap();
-
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            // Should be New
-            match classified.into_entry() {
-                IndexedEntry::File(f) => {
-                    assert_eq!(f.status(), IndexStatus::New);
-                }
-                IndexedEntry::Dir(_) => panic!("expected file entry"),
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_file_fresh() {
-            let vault = make_vault_root();
-            let key = PathKey::try_new("notes/new.md").unwrap();
-            let repo = repo_with_file(&key);
-
-            // Create a matching file node
-            let file_path = vault.as_path().join("notes/new.md");
-            let fp = FilePath::try_new(file_path).unwrap();
-            let meta = FileMetadata::new(FsTimes::new(None, None), 100, false);
-            let file_node = crate::fs::FileNode::new(fp, meta);
-
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            match classified.into_entry() {
-                IndexedEntry::File(f) => {
-                    assert_eq!(f.status(), IndexStatus::Fresh);
-                }
-                IndexedEntry::Dir(_) => panic!("expected file entry"),
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_file_stale() {
-            let vault = make_vault_root();
-            let key = PathKey::try_new("notes/new.md").unwrap();
-            // Create a record with different metadata (size 200 vs current 100)
-            let repo = {
-                let r = InMemoryRepository::new();
-                let id = FsRecordId::new();
-                let name = FileName::new("new.md".into());
-                let meta =
-                    FileMetadata::new(FsTimes::new(None, None), 200, false);
-                let record = FileRecord::new(
-                    id,
-                    FsParentId::Root,
-                    key.clone(),
-                    name,
-                    FileFormat::Unknown,
-                    meta,
-                    SystemTime::now(),
-                );
-                r.save_file(&record).unwrap();
-                r
-            };
-
-            let file_path = vault.as_path().join("notes/new.md");
-            let fp = FilePath::try_new(file_path).unwrap();
-            let meta = FileMetadata::new(FsTimes::new(None, None), 100, false);
-            let file_node = crate::fs::FileNode::new(fp, meta);
-
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            match classified.into_entry() {
-                IndexedEntry::File(f) => {
-                    assert_eq!(f.status(), IndexStatus::Stale);
-                }
-                IndexedEntry::Dir(_) => panic!("expected file entry"),
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_dir_new() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-            let dir_node = make_dir_node("/tmp/vault/notes");
-            let scanned = IndexNode::new(crate::fs::FsNode::Dir(dir_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            match classified.into_entry() {
-                IndexedEntry::Dir(d) => {
-                    assert_eq!(d.status(), IndexStatus::New);
-                }
-                IndexedEntry::File(_) => panic!("expected dir entry"),
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_dir_fresh() {
-            let vault = make_vault_root();
-            let key = PathKey::try_new("notes").unwrap();
-            let repo = {
-                let r = InMemoryRepository::new();
-                let id = FsRecordId::new();
-                let name = DirName::new("notes".into());
-                let meta = DirMetadata::new(FsTimes::new(None, None), false);
-                let record = DirRecord::new(
-                    id,
-                    FsParentId::Root,
-                    key,
-                    name,
-                    meta.clone(),
-                    SystemTime::now(),
-                );
-                r.save_dir(&record).unwrap();
-                r
-            };
-
-            let dir_path = vault.as_path().join("notes");
-            let dp = DirPath::try_new(dir_path).unwrap();
-            let meta = DirMetadata::new(FsTimes::new(None, None), false);
-            let dir_node = crate::fs::DirNode::new(dp, meta);
-
-            let scanned = IndexNode::new(crate::fs::FsNode::Dir(dir_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            match classified.into_entry() {
-                IndexedEntry::Dir(d) => {
-                    assert_eq!(d.status(), IndexStatus::Fresh);
-                }
-                IndexedEntry::File(_) => panic!("expected dir entry"),
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classify_dir_stale() {
-            let vault = make_vault_root();
-            let key = PathKey::try_new("notes").unwrap();
-            let repo = {
-                let r = InMemoryRepository::new();
-                let id = FsRecordId::new();
-                let name = DirName::new("notes".into());
-                // Stale: different modified time
-                let meta = DirMetadata::new(
-                    FsTimes::new(Some(SystemTime::now()), None),
-                    false,
-                );
-                let record = DirRecord::new(
-                    id,
-                    FsParentId::Root,
-                    key,
-                    name,
-                    meta,
-                    SystemTime::now(),
-                );
-                r.save_dir(&record).unwrap();
-                r
-            };
-
-            let dir_path = vault.as_path().join("notes");
-            let dp = DirPath::try_new(dir_path).unwrap();
-            let meta = DirMetadata::new(FsTimes::new(None, None), false);
-            let dir_node = crate::fs::DirNode::new(dp, meta);
-
-            let scanned = IndexNode::new(crate::fs::FsNode::Dir(dir_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-
-            match classified.into_entry() {
-                IndexedEntry::Dir(d) => {
-                    assert_eq!(d.status(), IndexStatus::Stale);
-                }
-                IndexedEntry::File(_) => panic!("expected dir entry"),
-            }
-        }
-
-        #[test]
-        fn classify_handles_outside_path() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-
-            // File outside vault root should fail with PathError
-            let file_node = make_file_node("/tmp/other/file.md");
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let result = scanned.classify(&vault, FsParentId::Root, &repo);
-            assert!(result.is_err());
-            assert!(matches!(result.unwrap_err(), IndexerError::Path(_)));
-        }
-
-        #[test]
-        fn classified_path_key() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-            assert_eq!(classified.path_key().as_str(), "doc.md");
-        }
-
-        #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Test assertions use panic for failures"
-        )]
-        fn classified_into_entry() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-            match classified.into_entry() {
-                IndexedEntry::File(_) => {} // expected
-                IndexedEntry::Dir(_) => panic!("expected file entry"),
-            }
-        }
-
-        #[test]
-        fn classified_entry_id() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let scanned = IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified = scanned
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-            let _id = classified.entry_id();
-        }
-
-        #[test]
-        fn classified_is_dir() {
-            let vault = make_vault_root();
-            let repo = empty_repo();
-
-            // File → is_dir false
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let scanned_file =
-                IndexNode::new(crate::fs::FsNode::File(file_node));
-            let classified_file = scanned_file
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-            assert!(!classified_file.is_dir());
-
-            // Dir → is_dir true
-            let dir_node = make_dir_node("/tmp/vault/sub");
-            let scanned_dir = IndexNode::new(crate::fs::FsNode::Dir(dir_node));
-            let classified_dir = scanned_dir
-                .classify(&vault, FsParentId::Root, &repo)
-                .expect("classify should succeed");
-            assert!(classified_dir.is_dir());
-        }
-    }
+    // ─── Helper tests ──────────────────────────────────────────
 
     mod helpers {
         use super::*;
@@ -985,61 +434,6 @@ mod tests {
             let key = PathKey::try_new("notes/doc.md").unwrap();
             let dir_ids = HashMap::new();
             let _ = derive_parent_id(&key, &dir_ids);
-        }
-
-        #[test]
-        fn classify_status_new_when_missing() {
-            let status = classify_status::<FileMetadata>(
-                &FileMetadata::new(FsTimes::new(None, None), 100, false),
-                None,
-            );
-            assert_eq!(status, IndexStatus::New);
-        }
-
-        #[test]
-        fn classify_status_fresh_when_matching() {
-            let meta = FileMetadata::new(FsTimes::new(None, None), 100, false);
-            let status = classify_status(&meta, Some(&meta));
-            assert_eq!(status, IndexStatus::Fresh);
-        }
-
-        #[test]
-        fn classify_status_stale_when_different() {
-            let current =
-                FileMetadata::new(FsTimes::new(None, None), 100, false);
-            let existing =
-                FileMetadata::new(FsTimes::new(None, None), 200, false);
-            let status = classify_status(&current, Some(&existing));
-            assert_eq!(status, IndexStatus::Stale);
-        }
-
-        #[test]
-        fn build_file_record_creates_new_record() {
-            let vault = make_vault_root();
-            let file_node = make_file_node("/tmp/vault/doc.md");
-            let key = file_node.path().as_key(&vault).unwrap();
-            let record = build_file_record(
-                &file_node,
-                &key,
-                FsParentId::Root,
-                IndexStatus::New,
-            );
-            assert_eq!(record.path().as_str(), "doc.md");
-        }
-
-        #[test]
-        fn build_dir_record_creates_new_record() {
-            let vault = make_vault_root();
-            let dir_node = make_dir_node("/tmp/vault/sub");
-            let key = dir_node.path().as_key(&vault).unwrap();
-            let record = build_dir_record(
-                &dir_node,
-                &key,
-                FsParentId::Root,
-                IndexStatus::New,
-            );
-            assert_eq!(record.path().as_str(), "sub");
-            assert_eq!(record.parent_id(), FsParentId::Root);
         }
     }
 
