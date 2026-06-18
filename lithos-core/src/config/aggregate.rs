@@ -283,10 +283,23 @@ impl Config {
 
     /// Builds a cache configuration specification for cache consumers.
     ///
+    /// # Deprecation
+    ///
+    /// Use [`crate::discovery::DiscoveryResult`]'s cache root accessor instead.
+    ///
     /// # Errors
     ///
     /// Returns [`ConfigError::ValidationFailed`] if the cache directory
     /// declaration cannot be projected into config-spec types.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use `DiscoveryResult::cache_root()` instead."
+    )]
+    #[expect(
+        deprecated,
+        reason = "to_cache_spec() is itself deprecated pending migration to \
+                  DiscoveryResult::cache_root()"
+    )]
     #[inline]
     pub fn to_cache_spec(&self) -> Result<CacheConfigSpec, ConfigError> {
         let root = self.vault_metadata.root().as_dir_path().clone();
@@ -633,6 +646,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
@@ -705,6 +719,7 @@ mod tests {
         }
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn applies_paths_fields_from_raw() {
             let vault = crate::config::raw::RawVaultConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
@@ -882,6 +897,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn returns_default_split_path_configs_from_empty_raw() {
             let config = crate::config::builder::build_from_layers(
                 None,
@@ -915,6 +931,7 @@ mod tests {
         }
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn applies_path_fields_from_raw_to_split_configs() {
             let vault = crate::config::raw::RawVaultConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
@@ -1055,6 +1072,7 @@ mod tests {
         }
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated method behavior")]
         fn to_cache_spec_respects_custom_cache_config() {
             let root = tempfile::tempdir().expect("temp dir should be created");
             let cache = root.path().join(".lithos-cache");

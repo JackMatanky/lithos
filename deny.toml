@@ -24,6 +24,8 @@ allow = [
     "Unicode-3.0",
     "BSD-3-Clause",
     "BSD-2-Clause",
+    # MPL-2.0: option-ext (transitive dep of dirs via dirs-sys)
+    "MPL-2.0",
 ]
 confidence-threshold = 0.8
 
@@ -39,6 +41,12 @@ version = "0.1.14"
 [[bans.skip]]
 name = "wit-bindgen"
 version = "0.46.0"
+
+# getrandom: multiple versions pulled in transitively via dirs (0.2.x via
+# redox_users/dirs-sys) and uuid/tempfile/rkyv (0.4.x).
+[[bans.skip]]
+name = "getrandom"
+version = "0.2.17"
 
 [sources]
 unknown-registry = "deny"

@@ -20,12 +20,8 @@
 //! };
 //!
 //! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
-//! let cache_dir = CacheDir::new(RelativeDirPath::try_new(".cache")?);
-//! let config = CacheConfig::new(cache_dir);
-//! let spec = CacheConfigSpec::new(
-//!     root,
-//!     config.cache_dir().as_relative_dir().clone(),
-//! );
+//! let relative = RelativeDirPath::try_new(".cache")?;
+//! let spec = CacheConfigSpec::new(root, relative.clone());
 //!
 //! assert_eq!(spec.as_relative_dir().as_str(), ".cache");
 //! # Ok(())
@@ -116,6 +112,16 @@ impl CacheConfig {
     }
 
     /// Returns the configured cache directory.
+    ///
+    /// # Deprecation
+    ///
+    /// Use [`crate::discovery::DiscoveryResult`]'s cache root accessor instead.
+    /// Cache root is now resolved by the discovery pipeline.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use `DiscoveryResult::cache_root()` instead. Cache root is \
+                now resolved by the discovery pipeline."
+    )]
     #[inline]
     #[must_use]
     pub const fn cache_dir(&self) -> &CacheDir {
@@ -284,6 +290,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn returns_default_cache_dir() {
             let config = CacheConfig::default();
 
@@ -295,6 +302,7 @@ mod tests {
         }
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn returns_configured_cache_dir() {
             let cache_dir =
                 CacheDir::try_new(std::path::Path::new("custom-cache"))

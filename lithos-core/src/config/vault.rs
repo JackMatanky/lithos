@@ -858,6 +858,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn returns_cache_template_and_schema_overrides_from_raw_paths() {
             let raw_cache = crate::config::raw::RawCacheConfig {
                 directory: Some(".vault-cache".to_owned()),
