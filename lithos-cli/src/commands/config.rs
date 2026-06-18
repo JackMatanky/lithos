@@ -22,7 +22,7 @@ use lithos_core::{
     },
 };
 
-use crate::{cli::OutputFormat, commands::output, error::CliError};
+use crate::{cli::OutputFormat, error::CliError, output};
 
 // ------------------------------------------------------------------ //
 //                          Handler                                   //

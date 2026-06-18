@@ -32,6 +32,7 @@
 mod cli;
 mod commands;
 mod error;
+mod output;
 
 use std::process::ExitCode;
 

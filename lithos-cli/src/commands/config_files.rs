@@ -19,7 +19,7 @@ use lithos_core::{
     discovery::{DiscoveryFlags, port::DiscoveryPort},
 };
 
-use crate::{cli::OutputFormat, commands::output, error::CliError};
+use crate::{cli::OutputFormat, error::CliError, output};
 
 // ------------------------------------------------------------------ //
 //                          Handler                                   //
