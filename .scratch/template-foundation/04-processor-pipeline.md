@@ -421,3 +421,182 @@ Following the **vertical slicing** approach, we will first refactor the `Templat
 *   **Test:** `load_should_identify_deleted_templates_for_deferred_processing`
 *   **Implementation:**
     *   Add a `// TODO(#issue-07): Process deletions for paths in cache but absent from disk.` note where we would process the diff between discovered paths and cached paths.
+
+---
+
+## Approved Update Plan: Processor-Owned Execution
+
+### Goal
+
+Refactor the Template Processor integration so `TemplateService` owns only scan and cache prefetch orchestration while `TemplateProcessor<Init, Discovered>` owns per-template execution through `run()`, `run_present()`, `run_missing()`, and `run_corrupt()`.
+
+### Architecture
+
+`TemplateService::load()` scans markdown files, batch-loads cached raw views and template IDs, detects deferred deletions, and then hands one discovered template record at a time to `TemplateProcessor<Init, Discovered>::run()`. The processor classifies the discovered cache state into missing, present, or recoverably corrupt paths and returns a real terminal typestate carrying the completed `Template`.
+
+The processor must preserve the typestate pattern and use `self.into_parts()` / `transition_from_parts()` when moving state between phases. Content checks must use `status.view.is_content_match(&hash)` through `HasContentHash`; stale-content updates must mutate the carried `RawTemplateView` with `set_content_hash()` and `update_metadata()` instead of replacing it blindly.
+
+### Worktree Guardrail
+
+All implementation and verification work must run only under `/Users/jack/Documents/41_personal/lithos/.worktrees/04-processor-pipeline`. Agents and subagents must verify `pwd` before every command/read/edit and must not inspect or modify files outside `.worktrees/04-processor-pipeline`.
+
+### Files
+
+- Modify `lithos-core/src/template/service.rs`: scan output shape, cache-state classification, simplified `load()` loop.
+- Modify `lithos-core/src/template/processor.rs`: `Init`/`Discovered` entry, processor-owned `run()` methods, real terminal typestate, `into_parts()` cleanup, ID-based fresh fetch, recoverable corrupt rebuild.
+- Modify `lithos-core/src/template/views.rs` only if dead-code allowances become stale after `HasContentHash` use.
+- Modify `.scratch/template-foundation/04-processor-pipeline.md`: record this approved update plan and any final implementation notes.
+
+### Task 1: Service Scan Output
+
+- Introduce `ScannedTemplate { file: FileNode, path_key: PathKey }` in `service.rs`.
+- Change `scan_templates()` to return `Result<Vec<ScannedTemplate>, TemplateError>`.
+- Build `DirScanInput` with `.with_extensions(&["md"]).include_dirs(false).recursive(true)`.
+- Keep the `FsNode::File` match while using `DirScanner::entries()`, because the scanner API still returns `FsNode` even when directory output is disabled.
+- Update scan/load tests to assert only markdown files are processed.
+
+### Task 2: Service Builds Discovered Cache State
+
+- Replace `type CacheExistence = (Option<TemplateId>, Option<RawTemplateView>)` with processor input records.
+- Add processor-owned discovery input types:
+
+```rust
+pub(crate) struct Discovered {
+    file: FileNode,
+    path_key: PathKey,
+    cache: DiscoveredCacheState,
+}
+
+pub(crate) enum DiscoveredCacheState {
+    New(Missing),
+    Exists(Present),
+    Corrupt(Corrupted),
+}
+```
+
+- Change `check_batch_existence()` to accept `Vec<ScannedTemplate>` and return `Vec<Discovered>`.
+- Classify cache state as:
+  - `(None, None)` → `New(Missing)`
+  - `(Some(id), Some(view))` → `Exists(Present { id, view })`
+  - `(Some(id), None)` → recoverable `Corrupt(Corrupted { id, view: None })`
+  - `(None, Some(view))` → repository corruption error, because there is no stable `TemplateId` to preserve.
+- Preserve the existing batch length mismatch corruption check.
+
+### Task 3: Processor Owns Execution
+
+- Replace service-visible `DiscoveryBranch`, `MetadataBranch`, and `ContentBranch` orchestration with `TemplateProcessor<Init, Discovered>::run()`.
+- Add phases/statuses:
+
+```rust
+pub(crate) struct Init;
+pub(crate) struct CompletedPhase;
+pub(crate) struct Missing;
+pub(crate) struct Present { id: TemplateId, view: RawTemplateView }
+pub(crate) struct Corrupted { id: TemplateId, view: Option<RawTemplateView> }
+```
+
+- Add `TemplateProcessor::<Init, Discovered>::new(discovered: Discovered) -> Self`.
+- Add `run()`, `run_missing()`, `run_present()`, and `run_corrupt()`.
+- Keep internal branch enums where useful, but stop exposing branch handling to `TemplateService`.
+
+### Task 4: Real Terminal Typestate
+
+- Replace the marker-only `Completed` with a terminal status that carries the loaded or persisted template:
+
+```rust
+pub(crate) struct CompletedPhase;
+
+pub(crate) struct Completed {
+    template: Template,
+}
+
+impl TemplateProcessor<CompletedPhase, Completed> {
+    pub(crate) fn into_template(self) -> Template {
+        self.status.template
+    }
+}
+```
+
+- Change `create()`, `update()`, `fetch()`, and `run_corrupt()` to return `TemplateProcessor<CompletedPhase, Completed>`.
+- `TemplateService::load()` should call `.run(...)? .into_template()`.
+
+### Task 5: Fresh Fetch Uses TemplateId
+
+- Keep `Fresh { id }` meaningful.
+- Change `TemplateProcessor<Construction, Fresh>::fetch()` to call `ReadRepository::find_template_by_id(self.status.id)`.
+- Return `TemplateRepositoryError::NotFoundById(id)` or the nearest existing not-found error if `find_template_by_id()` returns `None`.
+- Do not fetch fresh templates by path.
+
+### Task 6: Stale Content Updates Existing View
+
+- In `TemplateProcessor<Construction, Changed>::update()`, destructure with `into_parts()`.
+- Build the updated `Template` using the existing `TemplateId`.
+- Mutate the carried `RawTemplateView`:
+
+```rust
+status.view.set_content_hash(status.content_hash);
+status.view.update_metadata(file.metadata().clone());
+```
+
+- Persist the template and the mutated view.
+- Return the terminal completed processor.
+
+### Task 7: Content Hash Trait And State Moves
+
+- Import `HasContentHash` and `HasContentHashMut` in `processor.rs`.
+- Replace `status.view.content_hash().is_match(&hash)` with `status.view.is_content_match(&hash)`.
+- Refactor `check_metadata()` and `check_content()` to destructure with `into_parts()` once and use `transition_from_parts()` for both branches.
+- Avoid cloning `RawTemplateView` when ownership can move through typestate status.
+
+### Task 8: Corrupt Rebuild Path
+
+- Implement `run_corrupt()` for recoverable `(Some(id), None)` cache state.
+- Read the file through `FileReader`.
+- Compute the hash.
+- Construct `Template` using the preserved `TemplateId`, current `PathKey`, derived `TemplateName`, and `TemplateBody`.
+- Build a new `RawTemplateView` when none exists, or update the carried view when present.
+- Persist both template and raw view.
+- Return the terminal completed processor.
+
+### Task 9: Service Simplification
+
+- Remove `process_branch()`, `process_present()`, and `process_suspect()` from `TemplateService`.
+- `load()` should:
+  1. scan templates;
+  2. derive `PathKey`s for deferred deletion detection;
+  3. call `check_batch_existence()`;
+  4. call `TemplateProcessor::<Init, Discovered>::new(discovered).run(...)?.into_template()` for each discovered record.
+
+### Task 10: Dead-Code Cleanup
+
+- Remove the module-level `#![allow(dead_code, unused_imports)]` in `processor.rs` after the refactor.
+- Remove obsolete test-only helpers and branch accessors that are no longer used.
+- Use narrow item-level `#[expect(dead_code, reason = "...")]` only for intentionally retained typestate markers.
+
+### TDD Checklist
+
+- Write failing tests before production changes for cache classification, terminal typestate return, fresh ID fetch, stale-content view mutation, recoverable corrupt rebuild, and view-without-ID corruption.
+- Run focused red tests before implementation.
+- Implement the minimum code to pass.
+- Run focused green tests after each slice.
+- Run `mise run fmt`, `mise run lint`, `mise run test`, `git diff --check`, and GitNexus `detect_changes()` before completion.
+
+### Implementation Result
+
+- `TemplateService` now scans into `ScannedTemplate` records, explicitly sets `DirScanInput::include_dirs(false)`, classifies cache state in `check_batch_existence()`, and delegates per-template execution to `TemplateProcessor<Init, Discovered>::run()`.
+- `check_batch_existence()` now maps discovered cache state to `New(Missing)`, `Exists(Present)`, or recoverable `Corrupt(Corrupted)` and treats `(None, Some(view))` as repository corruption because no stable `TemplateId` can be preserved.
+- `TemplateProcessor` now owns `run()`, `run_missing()`, `run_present()`, and `run_corrupt()` and returns `TemplateProcessor<CompletedPhase, Completed>` from all terminal paths.
+- Fresh templates fetch by `TemplateId` through `ReadRepository::find_template_by_id()`.
+- Stale-content updates mutate the carried `RawTemplateView` with `set_content_hash()` and `update_metadata()` before persistence.
+- Content comparison uses `status.view.is_content_match(&hash)` through `HasContentHash`.
+- `check_metadata()` and `check_content()` now destructure with `into_parts()` and move state through `transition_from_parts()` without cloning raw views.
+- The obsolete `Discovery`/`DiscoveryBranch`/`compare()` compatibility path and stale module-level dead-code allowance were removed.
+
+Verification:
+- Red check: `mise run test:unit:template` failed first with missing `DiscoveredTemplate`, `DiscoveredCacheState`, `Init`, `run()`, and terminal `into_template()` APIs.
+- Focused green check: `mise run test:unit:template` passed.
+- Lint: `mise run lint` passed.
+- Full tests: `mise run test` passed.
+- ADR validation: `mise run adr:validate` was up to date.
+- Whitespace: `git diff --check` passed.
+- GitNexus: `detect_changes(scope="all")` reported LOW risk and no affected processes.

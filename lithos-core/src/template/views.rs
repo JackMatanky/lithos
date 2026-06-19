@@ -50,7 +50,6 @@ impl RawTemplateView {
     /// and recorded timestamp.
     #[inline]
     #[must_use]
-    #[allow(dead_code, reason = "used by Template Processor (Issue 04)")]
     pub(crate) fn new(
         path: PathKey,
         content_hash: Blake3Hash,
@@ -75,10 +74,7 @@ impl RawTemplateView {
     /// Returns a reference to the content hash.
     #[inline]
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "used by staleness detection in Template Processor (Issue 04)"
-    )]
+    #[cfg(test)]
     pub(crate) const fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
     }
