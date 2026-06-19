@@ -2,7 +2,7 @@
 title: 04-processor-pipeline
 category: enhancement
 label: ready-for-agent
-status: in-progress
+status: in-review
 branch: feature/04-processor-pipeline
 merge_commit:
 date_created: 2026-06-11
@@ -11,7 +11,7 @@ date_completed:
 
 # Template Processor Pipeline
 
-Status: ready-for-agent
+Status: in-review
 
 ## Parent
 
@@ -40,7 +40,8 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 - [x] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
 - [x] File reads use `FileReader`, not raw `std::fs`
 - [x] Directory scanning uses `DirScanner`, scoped to `.md` files
-- [x] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache entry (removal from repository), batch path comparison correctness
+- [x] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache detection, batch path comparison correctness
+- [ ] Deleted-cache execution removes repository entries (deferred to issue-07)
 
 ---
 
@@ -78,6 +79,26 @@ Since `FilePath::try_new` validates file existence, simulating IO errors during 
 - `mise run test:unit -p template processor` (183 tests passed)
 - `mise run lint` (Passed)
 - `mise run fmt` (Passed)
+
+### Follow-up: TemplateService Integration
+
+The processor pipeline is now driven by `TemplateService::load` rather than only by processor unit tests. The service performs the batch orchestration that the processor intentionally does not own:
+
+- Scans the configured template directory with `DirScanner` and markdown filtering.
+- Batch-loads cached `RawTemplateView`s with `find_raw_template_views_by_paths`.
+- Resolves existing template IDs through the path index with `find_template_id_by_path`.
+- Drives the processor through fresh, new, stale-content, and stale-metadata branches.
+- Persists new and stale-content templates plus their fresh `RawTemplateView`s.
+- Persists metadata-only `RawTemplateView` refreshes without rewriting the aggregate.
+- Detects deleted cached paths by diffing `list_raw_template_view_paths()` against discovered paths; actual deletion remains deferred to issue-07.
+
+Service integration required the redb storage adapter to maintain the `TEMPLATE_ID_BY_PATH` index on save/delete so construction can resolve IDs by path without scanning all templates. It also added raw-view path listing for deletion detection and length validation around batch raw-view lookup so mismatched repository results fail as corruption instead of silently truncating work.
+
+### Remaining Dead-Code Allowances
+
+`lithos-core/src/template/processor.rs` still has a module-level `#![allow(dead_code, unused_imports)]`. The original reason string is stale: the processor is no longer completely unused because `TemplateService` exercises the main ingestion branches.
+
+The allowance remains because this issue introduced a compile-time typestate surface larger than the currently wired service path. Several marker/status types, branch wrappers, and test-facing accessors exist to document legal transitions or preserve forward-compatible states, but they are not all referenced as runtime values outside processor tests yet. Removing the broad allowance should be a cleanup task once issue-07 deletion execution and any remaining service-facing branches are wired, replacing it with narrower `#[cfg(test)]` or item-level allowances where needed.
 
 ## Blocked by
 
@@ -155,12 +176,13 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 - [x] New files go through full construction and are persisted
 - [x] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
 - [x] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
-- [x] Deleted-cache entries (present in repository but not on disk) are removed from the repository (DEFERRED to issue-07)
+- [ ] Deleted-cache entries (present in repository but not on disk) are removed from the repository (DEFERRED to issue-07)
 - [x] Tests use the in-memory test double from issue-03, not a real redb instance
 - [x] Tests are written before implementation and use descriptive behavior-focused names
-- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, batch path comparison correctness (DELETED-CACHE ENTRIES DEFERRED)
+- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, batch path comparison correctness, and deleted-cache detection (DELETED-CACHE REMOVAL DEFERRED)
 - [x] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
-- [x] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
+- [x] Tests cover repository failure propagation for batch lookup, template persistence, and raw view persistence
+- [ ] Tests cover repository failure propagation for deletion paths (DEFERRED to issue-07)
 - [x] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
 - [x] `mise run fmt` passes
 - [x] `mise run lint` passes
@@ -170,7 +192,7 @@ Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`
 - redb storage adapter
 - `Compiled` or `Validated` processor stages
 - Engine compilation or rendering
-- Template service, artifact pipeline, CLI
+- Artifact pipeline and CLI
 - Frontmatter parsing or query semantics
 
 ---
