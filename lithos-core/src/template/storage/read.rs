@@ -15,6 +15,7 @@
 //! Uses table definitions from [`crate::template::storage::tables`]:
 //! - [`TEMPLATES`]: Template aggregates by ID
 //! - [`TEMPLATE_ID_BY_NAME`]: Name-to-ID index
+//! - [`TEMPLATE_ID_BY_PATH`]: Path-to-ID index
 //! - [`RAW_TEMPLATE_VIEWS`]: Raw template views by path
 //!
 //! [`ReadRepository`]: crate::template::repository::ReadRepository
@@ -22,6 +23,7 @@
 //! [`Store`]: crate::db::Store
 //! [`TEMPLATES`]: crate::template::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::template::storage::tables::TEMPLATE_ID_BY_NAME
+//! [`TEMPLATE_ID_BY_PATH`]: crate::template::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`RAW_TEMPLATE_VIEWS`]: crate::template::storage::tables::RAW_TEMPLATE_VIEWS
 
 use redb::ReadableTable;

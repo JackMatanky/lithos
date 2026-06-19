@@ -8,17 +8,18 @@
 //! - **Single transaction per method**: Each write method opens one transaction
 //!   via `Store::write()`. If any table operation fails, the entire transaction
 //!   rolls back automatically.
-//! - **Multi-table coordination**: [`save_template`] atomically updates both
-//!   the template aggregate and its name index ([`TEMPLATE_ID_BY_NAME`]).
+//! - **Multi-table coordination**: [`save_template`] atomically updates the
+//!   template aggregate, name index ([`TEMPLATE_ID_BY_NAME`]), and path index
+//!   ([`TEMPLATE_ID_BY_PATH`]).
 //! - **Batch operations**: [`save_many_raw_template_views`] wraps all saves in
 //!   a single transaction for atomicity.
 //!
 //! # Cross-Table Invariants
 //!
-//! - `save_template`: Maintains [`TEMPLATES`] ↔ [`TEMPLATE_ID_BY_NAME`]
-//!   consistency
-//! - `delete_template`: Removes template aggregate + name index in a single
-//!   transaction
+//! - `save_template`: Maintains [`TEMPLATES`], [`TEMPLATE_ID_BY_NAME`], and
+//!   [`TEMPLATE_ID_BY_PATH`] consistency.
+//! - `delete_template`: Removes template aggregate, name index, and path index
+//!   in a single transaction.
 //!
 //! # Rollback Behavior
 //!
@@ -29,6 +30,7 @@
 //! [`RedbRepository`]: crate::template::storage::RedbRepository
 //! [`TEMPLATES`]: crate::template::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::template::storage::tables::TEMPLATE_ID_BY_NAME
+//! [`TEMPLATE_ID_BY_PATH`]: crate::template::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`save_template`]: WriteRepository::save_template
 //! [`save_many_raw_template_views`]: WriteRepository::save_many_raw_template_views
 //! [`delete_template`]: WriteRepository::delete_template

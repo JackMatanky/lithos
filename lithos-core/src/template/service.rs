@@ -1,3 +1,16 @@
+//! Template ingestion service orchestration.
+//!
+//! This module coordinates the template processor pipeline with filesystem
+//! discovery and repository batch reads. [`TemplateService`] owns the
+//! use-case-level flow: discover markdown templates, prefetch cached template
+//! views and IDs, drive each discovered file through the typestate processor,
+//! and identify cached paths that are absent from the current scan for deferred
+//! deletion handling.
+//!
+//! The service keeps file I/O behind [`crate::fs::reader::FileReader`], keeps
+//! storage access behind the template repository traits, and leaves engine
+//! compilation/rendering outside the ingestion path.
+
 use std::collections::HashSet;
 
 use crate::{
@@ -16,6 +29,11 @@ use crate::{
     },
 };
 
+/// Cached repository state for one discovered template path.
+///
+/// The first element is the persisted template identity, if an aggregate exists
+/// for the path. The second element is the raw view used for cheap freshness
+/// checks, if one exists for the same path.
 type CacheExistence = (Option<TemplateId>, Option<RawTemplateView>);
 
 /// Orchestrates the discovery and pipeline ingestion of templates.
@@ -77,6 +95,13 @@ impl TemplateService {
         Ok(results)
     }
 
+    /// Processes one discovery branch through the rest of the ingestion
+    /// pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when file reading, template construction,
+    /// metadata refresh, or repository access fails for the branch.
     fn process_branch<R: ReadRepository + WriteRepository>(
         branch: DiscoveryBranch,
         repository: &R,
@@ -96,6 +121,13 @@ impl TemplateService {
         }
     }
 
+    /// Processes a discovered path that has both a cached template ID and raw
+    /// view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when stale-content checks, metadata refresh,
+    /// aggregate fetch, or repository access fails.
     fn process_present<R: ReadRepository + WriteRepository>(
         processor: TemplateProcessor<Comparison, Present>,
         repository: &R,
@@ -113,6 +145,13 @@ impl TemplateService {
         }
     }
 
+    /// Processes a present template whose filesystem metadata no longer
+    /// matches the cached raw view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when reading the file, refreshing the cached
+    /// view, reconstructing the aggregate, or persisting updates fails.
     fn process_suspect<R: ReadRepository + WriteRepository>(
         processor: TemplateProcessor<Comparison, Suspect>,
         repository: &R,
@@ -129,6 +168,15 @@ impl TemplateService {
         }
     }
 
+    /// Identifies cached raw template paths that were not discovered on disk.
+    ///
+    /// Deletion is intentionally deferred to the follow-up deletion issue; this
+    /// method only computes the cache/disk diff so the service has the correct
+    /// source of truth when deletion processing is wired in.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when raw-view cache path listing fails.
     fn identify_deleted_template_paths<R: ReadRepository>(
         repository: &R,
         discovered_paths: &[PathKey],
@@ -145,6 +193,15 @@ impl TemplateService {
     }
 
     #[cfg_attr(test, allow(dead_code, reason = "test-only access"))]
+    /// Fetches cached template IDs and raw views for discovered paths.
+    ///
+    /// Raw views are read with the repository batch method. Template IDs still
+    /// use per-path lookup until a dedicated batch ID lookup exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when repository reads fail or when the
+    /// raw-view batch result violates the repository same-length contract.
     fn check_batch_existence<R: ReadRepository>(
         repository: &R,
         paths: &[PathKey],
@@ -175,6 +232,13 @@ impl TemplateService {
         Ok(results)
     }
 
+    /// Scans the configured template directory for markdown template files.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when the configured directory cannot be
+    /// resolved, scanning fails, or a discovered path cannot be converted to a
+    /// vault-relative storage key.
     fn scan_templates(
         config: &TemplateConfigSpec,
     ) -> Result<Vec<(FileNode, PathKey)>, TemplateError> {
