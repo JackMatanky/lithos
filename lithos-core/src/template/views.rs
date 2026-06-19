@@ -107,6 +107,11 @@ impl HasContentHash for RawTemplateView {
     fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
     }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.content_hash.is_match(hash)
+    }
 }
 
 impl HasContentHashMut for RawTemplateView {
