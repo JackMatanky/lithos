@@ -19,6 +19,11 @@
 
 use tracing::instrument;
 
+// ...
+#[allow(
+    unused_imports,
+    reason = "required for builder construction tests"
+)]
 use crate::{
     config::{
         aggregate::{Config, Version},
@@ -229,28 +234,14 @@ impl<R> Builder<R>
 where
     R: Repository,
 {
-    /// Create a builder from a [`DiscoveryResult`] produced by the
-    /// Bootstrapper.
-    ///
-    /// This constructor is infallible: all structural invariants (non-empty
-    /// vault candidate list, validated paths) are enforced by
-    /// `DiscoveryService` upstream. Error sources (`VaultId` resolution,
-    /// file I/O, staleness checking) live in [`Builder::build_vault`] and
-    /// [`Builder::build_global`].
-    ///
-    /// # Parameters
-    ///
-    /// - `result`: Discovery output with ordered vault and global candidates.
-    /// - `repository`: Database repository for persistence.
+    /// Create a new builder.
     #[inline]
     #[must_use]
-    // LINT: called from Bootstrapper::run() which is itself pending CLI wiring.
-    #[allow(dead_code, reason = "Wired via run(); CLI caller lands next issue")]
-    pub(crate) fn from_discovery(
-        result: DiscoveryResult,
+    pub fn new(
+        vault: Box<[CandidatePath]>,
+        global: Box<[CandidatePath]>,
         repository: R,
     ) -> Self {
-        let (vault, global) = result.into_parts();
         Self {
             vault,
             global,
@@ -653,9 +644,13 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    #[allow(
+        unused_imports,
+        reason = "required for builder construction tests"
+    )]
     use crate::{
         config::storage::testing::InMemoryRepository,
-        discovery::service::{CandidatePath, DiscoveryResult},
+        discovery::report::DiscoveryReport,
         fs::{DirPath, FilePath},
     };
 
@@ -685,6 +680,18 @@ mod tests {
         crate::discovery::location::tests::placeholder_cache_root()
     }
 
+    mod new {
+        use super::*;
+
+        #[test]
+        fn constructs_builder() {
+            let vault = Box::from([]);
+            let global = Box::from([]);
+            let _builder: Builder<InMemoryRepository> =
+                Builder::new(vault, global, InMemoryRepository::new());
+        }
+    }
+
     mod from_discovery {
         use super::*;
         use crate::config::repository::ReadRepository as _;
@@ -697,9 +704,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             assert_eq!(builder.vault.len(), 1);
         }
@@ -714,9 +726,14 @@ mod tests {
                 vec![vault],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             assert_eq!(builder.global.len(), 1);
         }
@@ -725,10 +742,20 @@ mod tests {
         fn is_infallible() {
             // from_discovery() returns Self, not Result — this compiles only
             // if the return type is Builder<_>.
-            let result =
-                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
-            let _builder: Builder<InMemoryRepository> =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let vault_dir = TempDir::new().expect("vault dir");
+            let vault = make_vault_candidate(&vault_dir, "");
+            let result = DiscoveryResult::new(
+                vec![vault],
+                vec![],
+                placeholder_cache_root(),
+                DiscoveryReport::default(),
+            );
+            let (vault_candidates, global_candidates) = result.candidates();
+            let _builder: Builder<InMemoryRepository> = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
         }
 
         #[test]
@@ -742,9 +769,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             // get_or_create_vault_id exercises the stored repository.
             let vault_root = VaultRoot::from_dir_path(
@@ -779,9 +811,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (_, vault_root, _, _) =
                 builder.build_vault().expect("build_vault");
@@ -797,9 +834,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (vault_id, vault_root, _, _) =
                 builder.build_vault().expect("build_vault");
@@ -824,9 +866,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (_, _, raw, _) = builder.build_vault().expect("build_vault");
 
@@ -842,9 +889,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             // No prior view → None from DB.
             let (_, _, _, view) = builder.build_vault().expect("build_vault");
@@ -862,9 +914,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (_, _, raw, _) = builder.build_vault().expect("build_vault");
 
@@ -884,9 +941,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (_, _, raw, _) = builder.build_vault().expect("build_vault");
             assert!(raw.is_some());
@@ -904,9 +966,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (raw, view) = builder.build_global().expect("build_global");
             assert!(raw.is_none());
@@ -926,9 +993,14 @@ mod tests {
                 vec![vault],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (raw, _) = builder.build_global().expect("build_global");
 
@@ -950,9 +1022,14 @@ mod tests {
                 vec![vault],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let (_, view) = builder.build_global().expect("build_global");
             // No prior view → None from DB.
@@ -1081,9 +1158,14 @@ mod tests {
                 vec![vault],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let config = builder.build().expect("build config");
 
@@ -1110,9 +1192,14 @@ mod tests {
                 vec![vault],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
-            let builder =
-                Builder::from_discovery(result, InMemoryRepository::new());
+            let (vault_candidates, global_candidates) = result.candidates();
+            let builder = Builder::new(
+                vault_candidates,
+                global_candidates,
+                InMemoryRepository::new(),
+            );
 
             let config = builder.build().expect("build config");
 

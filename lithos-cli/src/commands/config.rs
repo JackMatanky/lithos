@@ -61,9 +61,10 @@ pub(crate) fn run_config<D: DiscoveryPort>(
         .map_err(CliError::Bootstrap)?;
 
     // Discovery only: captures candidate paths for display.
-    let (discovery, report) = bootstrapper
+    let discovery = bootstrapper
         .run_discovery_only(flags, None, anchor)
         .map_err(CliError::Bootstrap)?;
+    let report = discovery.report().clone();
 
     write_diagnostics(verbose, &report, err)?;
     write_output(

@@ -94,7 +94,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     pub fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
+    ) -> Result<DiscoveryResult, BootstrapError> {
         self.port.discover(context).map_err(Into::into)
     }
 
@@ -123,7 +123,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
-    ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
+    ) -> Result<DiscoveryResult, BootstrapError> {
         let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
@@ -164,8 +164,10 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ) -> Result<BootstrapResult, BootstrapError> {
         let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
-        let (discovery, report) = self.discover(&context)?;
-        let config = Builder::from_discovery(discovery, repository).build()?;
+        let discovery = self.discover(&context)?;
+        let report = discovery.report().clone();
+        let (vault, global) = discovery.candidates();
+        let config = Builder::new(vault, global, repository).build()?;
         Ok(BootstrapResult {
             config,
             report,
@@ -248,10 +250,7 @@ mod tests {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
-            ) -> Result<
-                (DiscoveryResult, DiscoveryReport),
-                DiscoveryError,
-            >;
+            ) -> Result<DiscoveryResult, DiscoveryError>;
         }
     }
 
@@ -501,8 +500,12 @@ mod tests {
 
         #[test]
         fn returns_result_from_port_when_port_succeeds() {
-            let expected =
-                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
+            let expected = DiscoveryResult::new(
+                vec![],
+                vec![],
+                placeholder_cache_root(),
+                DiscoveryReport::default(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -515,14 +518,14 @@ mod tests {
 
             let mut mock = MockDiscoveryPort::new();
             let ret = expected.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((ret.clone(), rep.clone())));
+                .returning(move |_| Ok(ret.clone()));
             let bootstrapper = Bootstrapper::new(mock);
 
-            let (result, _) =
+            let result =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
 
             assert_eq!(result, expected);
@@ -577,23 +580,31 @@ mod tests {
                 DiscoveryContext::new(anchor.path()).expect("valid context");
 
             let mut mock = MockDiscoveryPort::new();
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(std::path::PathBuf::from("/tmp/vault"))
+                    .expect("valid dir"),
+                {
+                    let p = std::path::PathBuf::from("/tmp/vault/lithos.toml");
+                    std::fs::create_dir_all("/tmp/vault").ok();
+                    std::fs::write(&p, "").ok();
+                    FilePath::try_new(p).expect("valid file")
+                },
+            );
             let expected = report.clone();
             mock.expect_discover().with(always()).once().returning(move |_| {
-                Ok((
-                    DiscoveryResult::new(
-                        vec![],
-                        vec![],
-                        placeholder_cache_root(),
-                    ),
+                Ok(DiscoveryResult::new(
+                    vec![vault_candidate.clone()],
+                    vec![],
+                    placeholder_cache_root(),
                     expected.clone(),
                 ))
             });
             let bootstrapper = Bootstrapper::new(mock);
 
-            let (_, result) =
+            let result =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
 
-            assert_eq!(result, report);
+            assert_eq!(result.report(), &report);
         }
     }
 
@@ -645,6 +656,7 @@ mod tests {
                 vec![vault_candidate],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
@@ -654,11 +666,11 @@ mod tests {
             };
             let mut mock = MockDiscoveryPort::new();
             let disc = discovery.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((disc.clone(), rep.clone())));
+                .returning(move |_| Ok(disc.clone()));
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
@@ -720,6 +732,7 @@ mod tests {
                 vec![vault_candidate],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
@@ -729,11 +742,11 @@ mod tests {
             };
             let mut mock = MockDiscoveryPort::new();
             let disc = discovery.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((disc.clone(), rep.clone())));
+                .returning(move |_| Ok(disc.clone()));
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
@@ -777,15 +790,16 @@ mod tests {
                     .expect("valid vault base dir"),
                 FilePath::try_new(vault_path).expect("valid vault path"),
             );
-            let global_candidate = CandidatePath::new(
+            let _global_candidate = CandidatePath::new(
                 DirPath::try_new(global_root.path().to_path_buf())
                     .expect("valid global base dir"),
                 FilePath::try_new(global_path).expect("valid global path"),
             );
             let discovery = DiscoveryResult::new(
                 vec![vault_candidate],
-                vec![global_candidate],
+                vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
@@ -795,11 +809,11 @@ mod tests {
             };
             let mut mock = MockDiscoveryPort::new();
             let disc = discovery.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((disc.clone(), rep.clone())));
+                .returning(move |_| Ok(disc.clone()));
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
@@ -857,11 +871,6 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid file path"),
             );
-            let discovery = DiscoveryResult::new(
-                vec![vault_candidate],
-                vec![],
-                placeholder_cache_root(),
-            );
             let expected_report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -870,13 +879,19 @@ mod tests {
                     GlobalResolutionSkipReason::SuppressedByFlag,
                 ),
             };
+            let discovery = DiscoveryResult::new(
+                vec![vault_candidate],
+                vec![],
+                placeholder_cache_root(),
+                expected_report.clone(),
+            );
             let mut mock = MockDiscoveryPort::new();
             let disc = discovery.clone();
-            let rep = expected_report.clone();
+            let _rep = expected_report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((disc.clone(), rep.clone())));
+                .returning(move |_| Ok(disc.clone()));
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
@@ -904,8 +919,12 @@ mod tests {
 
         #[test]
         fn returns_discovery_result_when_port_succeeds() {
-            let expected =
-                DiscoveryResult::new(vec![], vec![], placeholder_cache_root());
+            let expected = DiscoveryResult::new(
+                vec![],
+                vec![],
+                placeholder_cache_root(),
+                DiscoveryReport::default(),
+            );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
                 local_traversal_stop_reason:
@@ -915,14 +934,14 @@ mod tests {
             let anchor = tempfile::tempdir().expect("anchor");
             let mut mock = MockDiscoveryPort::new();
             let ret = expected.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((ret.clone(), rep.clone())));
+                .returning(move |_| Ok(ret.clone()));
             let bootstrapper = Bootstrapper::new(mock);
 
-            let (result, _) = bootstrapper
+            let result = bootstrapper
                 .run_discovery_only(None, None, anchor.path())
                 .expect("run_discovery_only should succeed");
 
@@ -944,24 +963,32 @@ mod tests {
             };
             let anchor = tempfile::tempdir().expect("anchor");
             let mut mock = MockDiscoveryPort::new();
+            let vault_candidate = CandidatePath::new(
+                DirPath::try_new(std::path::PathBuf::from("/tmp/vault"))
+                    .expect("valid dir"),
+                {
+                    let p = std::path::PathBuf::from("/tmp/vault/lithos.toml");
+                    std::fs::create_dir_all("/tmp/vault").ok();
+                    std::fs::write(&p, "").ok();
+                    FilePath::try_new(p).expect("valid file")
+                },
+            );
             let expected = report.clone();
             mock.expect_discover().with(always()).once().returning(move |_| {
-                Ok((
-                    DiscoveryResult::new(
-                        vec![],
-                        vec![],
-                        placeholder_cache_root(),
-                    ),
+                Ok(DiscoveryResult::new(
+                    vec![vault_candidate.clone()],
+                    vec![],
+                    placeholder_cache_root(),
                     expected.clone(),
                 ))
             });
             let bootstrapper = Bootstrapper::new(mock);
 
-            let (_, result) = bootstrapper
+            let result = bootstrapper
                 .run_discovery_only(None, None, anchor.path())
                 .expect("run_discovery_only should succeed");
 
-            assert_eq!(result, report);
+            assert_eq!(result.report(), &report);
         }
 
         #[test]
@@ -1033,6 +1060,7 @@ mod tests {
                 vec![vault_candidate],
                 vec![],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
             let report = DiscoveryReport {
                 skipped_ceilings: vec![],
@@ -1042,11 +1070,11 @@ mod tests {
             };
             let mut mock = MockDiscoveryPort::new();
             let disc = discovery.clone();
-            let rep = report.clone();
+            let _rep = report.clone();
             mock.expect_discover()
                 .with(always())
                 .once()
-                .returning(move |_| Ok((disc.clone(), rep.clone())));
+                .returning(move |_| Ok(disc.clone()));
             let bootstrapper = Bootstrapper::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
@@ -1092,7 +1120,7 @@ mod tests {
             let bootstrapper = Bootstrapper::with_global_directories(vec![])
                 .expect("valid bootstrapper");
 
-            let (result, _) = bootstrapper
+            let result = bootstrapper
                 .discover(&context)
                 .expect("discovery should succeed");
 

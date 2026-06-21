@@ -5,9 +5,9 @@
 //! calls this trait; the Discovery domain provides the implementation.
 //! This allows the bootstrap layer to be tested with a mock without
 //! running the real filesystem traversal.
+
 use crate::discovery::{
-    context::DiscoveryContext, error::DiscoveryError, report::DiscoveryReport,
-    service::DiscoveryResult,
+    context::DiscoveryContext, error::DiscoveryError, service::DiscoveryResult,
 };
 
 /// Inbound port for vault and global config candidate discovery.
@@ -26,7 +26,7 @@ pub trait DiscoveryPort {
     fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>;
+    ) -> Result<DiscoveryResult, DiscoveryError>;
 }
 
 #[cfg(test)]
@@ -49,7 +49,7 @@ mod tests {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
-            ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError>;
+            ) -> Result<DiscoveryResult, DiscoveryError>;
         }
     }
 
@@ -76,31 +76,31 @@ mod tests {
             #[test]
             fn returns_discovery_result_from_mock() {
                 let root = tempfile::tempdir().expect("root");
-                let candidate = make_candidate(&root, "lithos.toml");
-                let expected = DiscoveryResult::new(
-                    vec![candidate],
-                    vec![],
-                    placeholder_cache_root(),
-                );
-                let report = DiscoveryReport {
+                let _candidate = make_candidate(&root, "lithos.toml");
+                let _report = DiscoveryReport {
                     skipped_ceilings: vec![],
                     local_traversal_stop_reason:
                         LocalTraversalStopReason::FilesystemRoot,
                     global_resolution_skip_reason: None,
                 };
+                let expected = DiscoveryResult::new(
+                    Vec::<CandidatePath>::new(),
+                    Vec::<CandidatePath>::new(),
+                    placeholder_cache_root(),
+                    DiscoveryReport::default(),
+                );
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
                     .expect("valid context");
 
                 let mut mock = MockDiscoveryPort::new();
                 let ret = expected.clone();
-                let rep = report.clone();
                 mock.expect_discover()
                     .with(always())
                     .once()
-                    .returning(move |_| Ok((ret.clone(), rep.clone())));
+                    .returning(move |_| Ok(ret.clone()));
 
-                let (result, _) =
+                let result =
                     mock.discover(&ctx).expect("discover should succeed");
 
                 assert_eq!(result, expected);
@@ -108,10 +108,17 @@ mod tests {
 
             #[test]
             fn returns_empty_result_when_mock_returns_empty() {
+                let _report = DiscoveryReport {
+                    skipped_ceilings: vec![],
+                    local_traversal_stop_reason:
+                        LocalTraversalStopReason::FilesystemRoot,
+                    global_resolution_skip_reason: None,
+                };
                 let empty = DiscoveryResult::new(
-                    vec![],
-                    vec![],
+                    Vec::<CandidatePath>::new(),
+                    Vec::<CandidatePath>::new(),
                     placeholder_cache_root(),
+                    DiscoveryReport::default(),
                 );
                 let anchor = tempfile::tempdir().expect("anchor");
                 let ctx = DiscoveryContext::new(anchor.path())
@@ -120,23 +127,16 @@ mod tests {
                 let mut mock = MockDiscoveryPort::new();
                 mock.expect_discover().with(always()).once().returning(
                     move |_| {
-                        Ok((
-                            DiscoveryResult::new(
-                                vec![],
-                                vec![],
-                                placeholder_cache_root(),
-                            ),
-                            DiscoveryReport {
-                                skipped_ceilings: vec![],
-                                local_traversal_stop_reason:
-                                    LocalTraversalStopReason::FilesystemRoot,
-                                global_resolution_skip_reason: None,
-                            },
+                        Ok(DiscoveryResult::new(
+                            Vec::<CandidatePath>::new(),
+                            Vec::<CandidatePath>::new(),
+                            placeholder_cache_root(),
+                            DiscoveryReport::default(),
                         ))
                     },
                 );
 
-                let (result, _) =
+                let result =
                     mock.discover(&ctx).expect("discover should succeed");
 
                 assert_eq!(result, empty);

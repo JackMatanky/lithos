@@ -77,7 +77,7 @@ impl PropertyBankDiscovery {
 /// This type replaces the previous `DiscoveryOutcome` with a clearer structure
 /// that separates schemas from property bank and makes new vs existing files
 /// explicit via the `cached` field.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct DiscoveryResult {
     /// Discovered schema files (path → discovery data).
     pub(crate) schemas: HashMap<PathKey, SchemaDiscovery>,

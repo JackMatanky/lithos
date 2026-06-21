@@ -673,7 +673,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
 
 impl DiscoveryProcessor<'_, Finalized> {
     /// Consumes the processor and returns the discovery output.
-    pub(crate) fn finalize(self) -> (DiscoveryResult, DiscoveryReport) {
+    pub(crate) fn finalize(self) -> DiscoveryResult {
         #[expect(
             clippy::expect_used,
             reason = "Finalized is only reachable via CacheResolution which \
@@ -681,8 +681,7 @@ impl DiscoveryProcessor<'_, Finalized> {
         )]
         let cache_root =
             self.cache_root.expect("cache_root must be set before Finalized");
-        let result = DiscoveryResult::new(self.vault, self.global, cache_root);
-        (result, self.report)
+        DiscoveryResult::new(self.vault, self.global, cache_root, self.report)
     }
 }
 
@@ -1606,7 +1605,7 @@ mod tests {
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = env.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(result.vault().is_empty());
             assert_eq!(
@@ -1626,7 +1625,7 @@ mod tests {
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = env.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(result.global().is_empty());
             assert_eq!(
@@ -1646,7 +1645,7 @@ mod tests {
             let env: DiscoveryProcessor<EnvOverride> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = env.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert_eq!(
                 report.local_traversal_stop_reason,
@@ -1686,7 +1685,7 @@ mod tests {
             assert_eq!(flag.flag_branch(), FlagBranch::VaultAndConfigSet);
             let cache: DiscoveryProcessor<CacheResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(!result.vault().is_empty());
         }
@@ -1711,7 +1710,7 @@ mod tests {
                 DiscoveryProcessor::new(&config, &ctx).into();
             let cache: DiscoveryProcessor<CacheResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(result.global().is_empty());
         }
@@ -1737,7 +1736,7 @@ mod tests {
                 DiscoveryProcessor::new(&config, &ctx).into();
             let cache: DiscoveryProcessor<CacheResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert!(report.global_resolution_skip_reason.is_none());
         }
@@ -1761,7 +1760,7 @@ mod tests {
                 DiscoveryProcessor::new(&config, &ctx).into();
             let cache: DiscoveryProcessor<CacheResolution> = flag.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert_eq!(
                 report.local_traversal_stop_reason,
@@ -1798,7 +1797,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(!result.vault().is_empty());
         }
@@ -1828,7 +1827,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(!result.global().is_empty());
         }
@@ -1849,7 +1848,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = flag.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert!(report.global_resolution_skip_reason.is_none());
         }
@@ -1902,7 +1901,7 @@ mod tests {
                 env_p.try_into().expect("ascend");
             let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert_eq!(
                 report.local_traversal_stop_reason,
@@ -1937,7 +1936,7 @@ mod tests {
                 env_p.try_into().expect("ascend");
             let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(result.global().is_empty());
         }
@@ -1961,7 +1960,7 @@ mod tests {
                 env_p.try_into().expect("ascend");
             let cache: DiscoveryProcessor<CacheResolution> = ascend.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert_eq!(
                 report.local_traversal_stop_reason,
@@ -1999,7 +1998,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(!result.vault().is_empty());
         }
@@ -2028,7 +2027,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(!result.global().is_empty());
         }
@@ -2047,7 +2046,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = ascend.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert!(report.global_resolution_skip_reason.is_none());
         }
@@ -2076,7 +2075,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = env.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (_, report) = final_.finalize();
+            let report = final_.finalize().report().clone();
 
             assert_eq!(
                 report.global_resolution_skip_reason,
@@ -2106,7 +2105,7 @@ mod tests {
             let global: DiscoveryProcessor<GlobalResolution> = env.into();
             let cache: DiscoveryProcessor<CacheResolution> = global.into();
             let final_: DiscoveryProcessor<Finalized> = cache.into();
-            let (result, _) = final_.finalize();
+            let result = final_.finalize();
 
             assert!(
                 result.global().is_empty(),

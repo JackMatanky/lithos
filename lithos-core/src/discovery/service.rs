@@ -61,8 +61,12 @@ impl CandidatePath {
 }
 
 /// Owned vault and global candidate slices returned by
-/// [`DiscoveryResult::into_parts`].
-type DiscoveryResultParts = (Box<[CandidatePath]>, Box<[CandidatePath]>);
+/// [`DiscoveryResult::candidates`].
+type DiscoveryResultCandidates = (Box<[CandidatePath]>, Box<[CandidatePath]>);
+
+/// Return type of [`DiscoveryResult::into_parts`].
+pub type DiscoveryParts =
+    (Box<[CandidatePath]>, Box<[CandidatePath]>, CacheRoot, DiscoveryReport);
 
 /// Pure discovery output consumed by downstream configuration loading.
 ///
@@ -78,13 +82,20 @@ pub struct DiscoveryResult {
     global: Box<[CandidatePath]>,
     /// The resolved cache root and its provenance.
     cache_root: CacheRoot,
+    /// The discovery process metadata.
+    report: DiscoveryReport,
 }
 
 impl DiscoveryResult {
     /// Creates discovery output from ordered vault and global candidates.
     #[inline]
     #[must_use]
-    pub fn new<V, G>(vault: V, global: G, cache_root: CacheRoot) -> Self
+    pub fn new<V, G>(
+        vault: V,
+        global: G,
+        cache_root: CacheRoot,
+        report: DiscoveryReport,
+    ) -> Self
     where
         V: Into<Box<[CandidatePath]>>,
         G: Into<Box<[CandidatePath]>>,
@@ -93,6 +104,7 @@ impl DiscoveryResult {
             vault: vault.into(),
             global: global.into(),
             cache_root,
+            report,
         }
     }
 
@@ -113,8 +125,16 @@ impl DiscoveryResult {
     /// Consumes the result into owned boxed candidate slices.
     #[inline]
     #[must_use]
-    pub fn into_parts(self) -> DiscoveryResultParts {
+    pub fn candidates(self) -> DiscoveryResultCandidates {
         (self.vault, self.global)
+    }
+
+    /// Consumes the result into owned boxed candidate slices, cache root, and
+    /// report.
+    #[inline]
+    #[must_use]
+    pub fn into_parts(self) -> DiscoveryParts {
+        (self.vault, self.global, self.cache_root, self.report)
     }
 
     /// Returns the resolved cache root and its provenance.
@@ -122,6 +142,13 @@ impl DiscoveryResult {
     #[must_use]
     pub fn cache_root(&self) -> &CacheRoot {
         &self.cache_root
+    }
+
+    /// Returns the discovery process metadata.
+    #[inline]
+    #[must_use]
+    pub fn report(&self) -> &DiscoveryReport {
+        &self.report
     }
 }
 
@@ -218,7 +245,7 @@ impl DiscoveryPort for DiscoveryService {
     fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<(DiscoveryResult, DiscoveryReport), DiscoveryError> {
+    ) -> Result<DiscoveryResult, DiscoveryError> {
         let init = DiscoveryProcessor::new(&self.config, context);
         let flag: DiscoveryProcessor<FlagOverride> = From::from(init);
 
@@ -323,6 +350,7 @@ mod tests {
                 vec![vault.clone()],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
 
             assert_eq!(result.vault(), [vault]);
@@ -339,6 +367,7 @@ mod tests {
                 vec![vault],
                 vec![global.clone()],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
 
             assert_eq!(result.global(), [global]);
@@ -354,9 +383,10 @@ mod tests {
                 vec![vault.clone()],
                 vec![global],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
 
-            let (vault_candidates, _) = result.into_parts();
+            let (vault_candidates, _) = result.candidates();
 
             assert_eq!(*vault_candidates, [vault]);
         }
@@ -371,9 +401,10 @@ mod tests {
                 vec![vault],
                 vec![global.clone()],
                 placeholder_cache_root(),
+                DiscoveryReport::default(),
             );
 
-            let (_, global_candidates) = result.into_parts();
+            let (_, global_candidates, _, _) = result.into_parts();
 
             assert_eq!(*global_candidates, [global]);
         }
@@ -393,6 +424,7 @@ mod tests {
                     vec![vault.clone()],
                     Vec::<CandidatePath>::new(),
                     cache_root.clone(),
+                    DiscoveryReport::default(),
                 );
 
                 assert_eq!(result.vault(), [vault]);
@@ -413,6 +445,7 @@ mod tests {
                     Vec::<CandidatePath>::new(),
                     Vec::<CandidatePath>::new(),
                     cache_root.clone(),
+                    DiscoveryReport::default(),
                 );
 
                 assert_eq!(result.cache_root(), &cache_root);

@@ -45,10 +45,7 @@ pub(crate) fn run_config_files<D: DiscoveryPort>(
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let discovery_result =
-        match bootstrapper.run_discovery_only(flags, None, anchor) {
-            Ok((result, _report)) => Some(result),
-            Err(_) => None,
-        };
+        bootstrapper.run_discovery_only(flags, None, anchor).ok();
 
     let (vault_candidates, global_candidates) = match discovery_result {
         Some(result) => {
