@@ -1,10 +1,11 @@
 //! Bootstrap orchestration seams for runtime context acquisition.
 
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 
 pub use crate::app::error::BootstrapError;
 use crate::{
     config::{aggregate::Config, builder::Builder, repository::Repository},
+    dirs::AppDirs,
     discovery::{
         context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
         error::DiscoveryError,
@@ -12,6 +13,7 @@ use crate::{
         report::DiscoveryReport,
         service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
     },
+    env::EnvVars,
     fs::DirPath,
 };
 
@@ -122,10 +124,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
     ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
-        // Read LITHOS_CACHE_DIR from the process environment and pass it to
-        // build_context. Callers that need deterministic behaviour (e.g. tests)
-        // should call build_context directly with an explicit cache_dir value.
-        let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+        let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
     }
@@ -163,10 +162,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         anchor: &std::path::Path,
         repository: R,
     ) -> Result<BootstrapResult, BootstrapError> {
-        // Read LITHOS_CACHE_DIR from the process environment and pass it to
-        // build_context. Callers that need deterministic behaviour (e.g. tests)
-        // should call build_context directly with an explicit cache_dir value.
-        let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+        let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         let (discovery, report) = self.discover(&context)?;
         let config = Builder::from_discovery(discovery, repository).build()?;
@@ -180,13 +176,28 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
 impl Bootstrapper<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
+    /// Creates the concrete discovery bootstrapper from platform config dirs.
+    ///
+    /// Resolves global config directories via [`AppDirs`], using
+    /// [`EnvVars::capture()`] to read the process environment.
+    ///
     /// # Errors
     ///
     /// Returns [`BootstrapError`] if the concrete discovery service rejects
     /// its stable configuration.
     #[inline]
     pub fn from_platform() -> Result<Self, BootstrapError> {
-        Self::with_global_directories(platform_global_directories())
+        let app = AppDirs::new(&EnvVars::capture());
+        let mut global_dirs: Vec<DirPath> = Vec::new();
+        if let Ok(dir) = DirPath::try_new(app.config().clone()) {
+            global_dirs.push(dir);
+        }
+        if let Some(sys) =
+            app.system_config().and_then(|s| DirPath::try_new(s.clone()).ok())
+        {
+            global_dirs.push(sys);
+        }
+        Self::with_global_directories(global_dirs)
     }
 
     /// Creates the concrete discovery bootstrapper with explicit global dirs.
@@ -209,37 +220,6 @@ impl Bootstrapper<DiscoveryService> {
         let service = DiscoveryService::new(config)?;
         Ok(Self::new(service))
     }
-}
-
-fn platform_global_directories() -> Vec<DirPath> {
-    platform_global_directory_candidates()
-        .into_iter()
-        .filter_map(|path| DirPath::try_new(path).ok())
-        .collect()
-}
-
-fn platform_global_directory_candidates() -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-
-    match (env::var_os("XDG_CONFIG_HOME"), env::var_os("HOME")) {
-        (Some(xdg_config_home), _) => {
-            candidates.push(PathBuf::from(xdg_config_home).join("lithos"));
-        }
-        (None, Some(home)) => {
-            candidates.push(PathBuf::from(home).join(".config/lithos"));
-        }
-        (None, None) => {}
-    }
-
-    #[cfg(windows)]
-    if let Some(appdata) = env::var_os("APPDATA") {
-        candidates.push(PathBuf::from(appdata).join("Lithos"));
-    }
-
-    #[cfg(unix)]
-    candidates.push(PathBuf::from("/etc/lithos"));
-
-    candidates
 }
 
 #[cfg(test)]

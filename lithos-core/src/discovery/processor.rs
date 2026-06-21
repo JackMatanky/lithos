@@ -41,6 +41,7 @@ use crate::{
     discovery::location::{
         CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
     },
+    env::XDG_CACHE_HOME,
     fs::DirPath,
 };
 
@@ -755,8 +756,7 @@ fn run_global_resolution<P>(
 /// Precedence (highest → lowest):
 /// 1. `LITHOS_CACHE_DIR` env var (passed as `env_cache_dir`)
 /// 2. Vault-local default: `<vault_root>/.lithos/cache/`
-/// 3. OS platform user-cache directory: `dirs::cache_dir().join("lithos")`
-///    (falls back to `.lithos/cache` if the platform provides no cache dir)
+/// 3. OS platform user-cache directory (`XDG_CACHE_HOME / "lithos"`).
 fn resolve_cache_root(
     env_cache_dir: Option<&std::path::Path>,
     vault_root: Option<&DirPath>,
@@ -774,9 +774,7 @@ fn resolve_cache_root(
         );
     }
     // No env override and no vault root — use OS platform cache directory.
-    // `.unwrap_or_else` covers pathological cases where the OS provides none.
-    let path = dirs::cache_dir()
-        .map_or_else(|| PathBuf::from(".lithos/cache"), |p| p.join("lithos"));
+    let path = XDG_CACHE_HOME.join("lithos");
     CacheRoot::new(
         CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
         path,
