@@ -24,21 +24,21 @@ Define the `TemplateEngine` port trait and implement `MiniJinjaEngine` as its bu
 **Port trait (`TemplateEngine`):**
 
 Two methods, both taking `&self`:
-- `compile` — checks engine-level source validity by calling `env.get_template(name)` against sources already loaded at construction. Does not mutate the engine. Returns `Result<(), TemplateEngineError>`.
+- `compile` — checks engine-level source validity by calling `env.get_template(name)` against sources already registered at construction. Does not mutate the source registry. Returns `Result<(), TemplateEngineError>`.
 - `render` — renders an already-supplied `Template` with an already-supplied `HashMap<String, String>` context. Returns `Result<String, TemplateEngineError>`.
 
 The port is Lithos-shaped: no MiniJinja types in method signatures. No `Clone + Send + Sync + 'static` bounds on the trait — this is a CLI tool, not a web server.
 
 **Adapter (`MiniJinjaEngine`):**
 
-Build-once: all template sources are registered at construction via `set_loader` or `add_template_owned`. The engine is never mutated after construction. Holds `env: minijinja::Environment<'static>` as a plain owned field — no `Arc`, `Mutex`, or `RwLock` needed (`Environment<'static>` is already `Send + Sync`).
+Build-once: all template sources are registered at construction. Prefer `set_loader` backed by an owned `HashMap<String, String>` so source parsing happens through `env.get_template(name)` in `compile`/`render`, preserving the port's compile-check semantics. Do not register, add, replace, or reload template sources after construction. Holds `env: minijinja::Environment<'static>` as a plain owned field — no `Arc`, `Mutex`, or `RwLock` needed (`Environment<'static>` is already `Send + Sync`).
 
 Configuration:
 - `UndefinedBehavior::Strict` (render fails on undefined variables)
 - `AutoEscape::None` (no Markdown auto-escape)
 - MiniJinja built-ins only (no custom extensions)
 
-The adapter converts `HashMap<String, String>` context values to `minijinja::Value` internally, keeping all `minijinja` types out of method signatures.
+The adapter converts `HashMap<String, String>` context values to MiniJinja values internally, keeping all MiniJinja types out of method signatures. `render` uses `template.name().as_ref()` as the lookup key into the already-registered environment and does not add or replace `template.body()` at render time.
 
 `TemplateEngineError` preserves the source `minijinja::Error` in its error chain without exposing `minijinja::Error` in public constructors, public fields, or trait method signatures.
 
@@ -46,12 +46,14 @@ The adapter converts `HashMap<String, String>` context values to `minijinja::Val
 
 - [ ] `TemplateEngine` trait is defined with `compile(&self, name: &str)` and `render(&self, template: &Template, context: &HashMap<String, String>)` (exact signatures may vary slightly per implementation pressure, but MiniJinja types must not appear)
 - [ ] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds
-- [ ] `MiniJinjaEngine` is constructed with a set of template sources and is never mutated after construction
+- [ ] `MiniJinjaEngine` is constructed from `Template` sources, registers them by `TemplateName`, and is never externally mutated after construction
+- [ ] `compile(&self, name: &str)` is name-based and checks the already-registered source by calling `env.get_template(name)`; it does not take a `Template`, parse a fresh source string, or mutate the source registry
+- [ ] `render(&self, template: &Template, context: &HashMap<String, String>)` looks up the registered source by `template.name()` and does not re-register `template.body()` at render time
 - [ ] `MiniJinjaEngine` uses `UndefinedBehavior::Strict`
 - [ ] `MiniJinjaEngine` uses `AutoEscape::None`
 - [ ] `TemplateEngineError` preserves `minijinja::Error` as its source via `std::error::Error::source()`
 - [ ] MiniJinja types (`Environment`, `Value`, etc.) do not appear in the `TemplateEngine` trait or `TemplateEngineError` public API surface
-- [ ] Tests cover: compile success, compile failure (invalid syntax) with preserved source error, render success with variable substitution, render failure (undefined variable under strict mode), no auto-escape of Markdown characters, build-once source registration (all templates available after construction without mutation)
+- [ ] Tests cover: compile success, compile failure (invalid syntax) with preserved source error, render success with variable substitution, render failure (undefined variable under strict mode), no auto-escape of Markdown characters, build-once source registration (all templates available after construction without additional source-registration calls)
 
 ## Blocked by
 
@@ -67,24 +69,26 @@ The adapter converts `HashMap<String, String>` context values to `minijinja::Val
 **Summary:** Define the `TemplateEngine` port trait and implement `MiniJinjaEngine` as a build-once adapter with strict/no-escape MiniJinja config
 
 **Current behavior:**
-No template rendering port or adapter exists. There is no Lithos-shaped API surface for compile-checking or rendering templates, and no MiniJinja integration anywhere in `lithos-core`.
+No template rendering port or adapter exists. There is no Lithos-shaped API surface for compile-checking or rendering templates. `minijinja` is already available as a `lithos-core` dependency, but the Template context does not yet expose a rendering boundary or adapter implementation.
 
 **Desired behavior:**
-Two artifacts are produced:
+Three artifacts are produced:
 
 **1. `TemplateEngine` trait** (lives in `lithos-core/src/template/engine.rs` or similar):
-- `fn compile(&self, name: &str) -> Result<(), TemplateEngineError>` — checks engine-level source validity against already-loaded sources; does not mutate the engine; does not do repository lookup
-- `fn render(&self, template: &Template, context: &HashMap<String, String>) -> Result<String, TemplateEngineError>` — renders the supplied template with the supplied context; does not mutate the engine
+- `fn compile(&self, name: &str) -> Result<(), TemplateEngineError>` — checks engine-level source validity against already-registered sources; does not mutate the source registry; does not do repository lookup
+- `fn render(&self, template: &Template, context: &HashMap<String, String>) -> Result<String, TemplateEngineError>` — renders the registered template selected by `template.name()` with the supplied context; does not mutate the source registry
+- `compile` is intentionally name-based. Do not use the older component-model shape `compile(&mut self, template: &Template)`; that design parsed/loaded supplied source during compile and conflicts with the PRD's build-once/name-check boundary.
 - No `Clone + Send + Sync + 'static` bounds on the trait itself
 - No `minijinja` types in any method signature
 
 **2. `MiniJinjaEngine` struct** (lives in an adapter module, e.g. `lithos-core/src/template/engine/minijinja.rs`):
 - Holds `env: minijinja::Environment<'static>` as a plain owned field; no `Arc`, `Mutex`, or `RwLock`
-- Build-once: all `Template` sources are registered at construction (via `add_template_owned` or equivalent); never mutated after construction
+- Build-once: constructed from `Template` sources and registers them by `TemplateName` at construction; never adds/replaces sources after construction
+- Prefer `set_loader` with an owned source map so invalid syntax is reported when `compile`/`render` calls `env.get_template(name)`. Avoid `add_template_owned` unless the implementation also maps construction-time syntax errors into `TemplateEngineError` and adjusts tests accordingly, because `add_template_owned` parses immediately.
 - Configured with `UndefinedBehavior::Strict` and `AutoEscape::None`
 - MiniJinja built-ins only; no custom filters/globals/extensions
 - `compile` is implemented by calling `env.get_template(name)` and mapping the result to `Ok(())` or `TemplateEngineError`
-- `render` converts `HashMap<String, String>` to `minijinja::Value` map internally; calls `env.get_template` + `tmpl.render`; returns the rendered string
+- `render` converts `HashMap<String, String>` to MiniJinja values internally; calls `env.get_template(template.name().as_ref())` + `tmpl.render`; returns the rendered string
 - Implements `TemplateEngine`
 
 **3. `TemplateEngineError` type**:
@@ -96,13 +100,15 @@ Two artifacts are produced:
 - `TemplateEngine` — the port trait; must be import-clean of `minijinja`
 - `MiniJinjaEngine` — the adapter; `minijinja` imports are confined to its module
 - `TemplateEngineError` — the error type; `minijinja::Error` appears only as a private/internal source field
-- `Template` from issue-01 — passed by reference to `render`; `TemplateBody` provides the source string; `TemplateName` provides the template key for `compile`
+- `Template` from issue-01 — constructor input provides both `TemplateName` and `TemplateBody`; `render` uses `TemplateName` as the lookup key and does not mutate the registered source body
 - Architecture test (issue-09) will verify that `minijinja` does not appear outside the adapter module — design the module boundary accordingly
 
 **Acceptance criteria:**
 - [ ] `TemplateEngine` trait compiles with `compile` and `render` methods and no `minijinja` types in signatures
 - [ ] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds on the trait definition
-- [ ] `MiniJinjaEngine` is constructed from a slice/vec of `(&str, &str)` name-source pairs or a `Vec<Template>` and is immutable after construction
+- [ ] `MiniJinjaEngine` is constructed from `Template` sources, registers each source under `template.name().as_ref()`, and is immutable after construction from the port caller's perspective
+- [ ] `compile` is implemented by `env.get_template(name)` against the already-registered source set; it does not take `&mut self`, accept a `Template`, or perform repository/filesystem lookup
+- [ ] `render` looks up the registered source by `template.name()` and does not add or replace sources during rendering
 - [ ] `MiniJinjaEngine` uses `UndefinedBehavior::Strict`
 - [ ] `MiniJinjaEngine` uses `AutoEscape::None`
 - [ ] `TemplateEngineError` preserves `minijinja::Error` as the error source (accessible via `std::error::Error::source()`)
@@ -112,7 +118,7 @@ Two artifacts are produced:
 - [ ] Render success test: `{{ name }}` rendered with `{"name": "Alice"}` produces `"Alice"`
 - [ ] Render failure test: undefined variable under strict mode returns `TemplateEngineError`
 - [ ] No auto-escape test: Markdown characters (`*`, `_`, `#`, `[`) are not escaped in rendered output
-- [ ] Build-once test: all registered templates are available after construction without additional mutation calls
+- [ ] Build-once test: all registered templates are available after construction without additional source-registration calls
 - [ ] `mise run test` passes
 
 **Out of scope:**
@@ -138,6 +144,9 @@ Two artifacts are produced:
 
 **Rust/API review findings:**
 - The original brief contradicted itself by describing public `TemplateEngineError` variants containing `minijinja::Error` while also requiring no MiniJinja leakage in the public API. The brief now requires an opaque/public error type that preserves `minijinja::Error` through `Error::source()` only.
+- The issue previously left `set_loader` versus `add_template_owned` ambiguous. It now prefers `set_loader` with an owned source map because MiniJinja's `add_template_owned` parses immediately, which would move invalid-syntax failures from `compile` to construction.
+- The issue now explicitly selects the PRD's name-based `compile(&self, name: &str)` and rejects the older component-model shape `compile(&mut self, template: &Template)`.
+- `render(&Template, ...)` now explicitly uses `template.name()` as the environment lookup key and does not re-register `template.body()` during rendering.
 - `HashMap<String, String>` remains acceptable for this foundation slice because the PRD and Template context explicitly define a flat, non-interactive render context. Future typed/borrowed contexts are out of scope.
 - No `Arc`, `Mutex`, or `RwLock` should be introduced unless implementation pressure proves shared mutable ownership is necessary.
 
