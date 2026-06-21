@@ -193,7 +193,6 @@ pub(crate) struct Present {
 }
 
 impl TemplateProcessor<Init, Discovered> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn new(discovered: DiscoveredTemplate) -> Self {
         Self {
             file: discovered.file,
@@ -309,14 +308,12 @@ pub(crate) struct Suspect {
     pub(crate) id: TemplateId,
     pub(crate) view: RawTemplateView,
 }
-#[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
 pub(crate) enum MetadataBranch {
     Match(TemplateProcessor<Construction, Fresh>),
     Mismatch(TemplateProcessor<Comparison, Suspect>),
 }
 
 impl TemplateProcessor<Comparison, Present> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn check_metadata(self) -> MetadataBranch {
         let (file, path_key, status) = self.into_parts();
         let metadata = file.metadata();
@@ -356,14 +353,12 @@ pub(crate) struct Stale {
     pub(crate) view: RawTemplateView,
 }
 
-#[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
 pub(crate) enum ContentBranch {
     Match(TemplateProcessor<Refresh, StaleMetadata>),
     Mismatch(TemplateProcessor<Parsed, Stale>),
 }
 
 impl TemplateProcessor<Comparison, Suspect> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn check_content(
         self,
         source: &FileReader,
@@ -409,7 +404,6 @@ impl TemplateProcessor<Comparison, Suspect> {
 pub(crate) struct Parsed;
 
 impl TemplateProcessor<Parsed, Missing> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn parse(
         self,
         source: &FileReader,
@@ -431,7 +425,6 @@ impl TemplateProcessor<Parsed, Missing> {
 }
 
 impl TemplateProcessor<Parsed, Stale> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn parse(self) -> TemplateProcessor<Construction, Changed> {
         let (file, path_key, status) = self.into_parts();
         Self::transition_from_parts(file, path_key, Changed {
@@ -444,7 +437,6 @@ impl TemplateProcessor<Parsed, Stale> {
 }
 
 impl TemplateProcessor<Parsed, Corrupted> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn parse(
         self,
         source: &FileReader,
@@ -480,7 +472,6 @@ pub(crate) struct StaleMetadata {
 }
 
 impl TemplateProcessor<Refresh, StaleMetadata> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn sync_metadata<R: WriteRepository>(
         self,
         repository: &R,
@@ -521,7 +512,6 @@ pub(crate) struct Fresh {
 }
 
 impl TemplateProcessor<Construction, New> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn create<R: WriteRepository>(
         self,
         repository: &R,
@@ -559,7 +549,6 @@ impl TemplateProcessor<Construction, New> {
 }
 
 impl TemplateProcessor<Construction, Changed> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn update<R: WriteRepository>(
         self,
         repository: &R,
@@ -604,7 +593,6 @@ impl TemplateProcessor<Construction, Changed> {
 }
 
 impl TemplateProcessor<Construction, Fresh> {
-    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
     pub(crate) fn fetch<R: ReadRepository>(
         self,
         repository: &R,
