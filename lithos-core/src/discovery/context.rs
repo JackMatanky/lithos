@@ -328,8 +328,8 @@ impl<'a> DiscoveryEnv<'a> {
     /// The returned path is unvalidated — the directory need not exist.
     #[inline]
     #[must_use]
-    pub fn cache_dir(&self) -> Option<&PathBuf> {
-        self.cache_dir.as_ref()
+    pub fn cache_dir(&self) -> Option<&std::path::Path> {
+        self.cache_dir.as_deref()
     }
 }
 
@@ -619,7 +619,7 @@ mod tests {
 
                 assert_eq!(
                     env.cache_dir(),
-                    Some(&path),
+                    Some(path.as_path()),
                     "cache_dir should match the provided path"
                 );
             }

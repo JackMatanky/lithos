@@ -304,13 +304,7 @@ mod tests {
     }
 
     fn placeholder_cache_root() -> CacheRoot {
-        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
-        CacheRoot {
-            location: CacheLocation::Global(
-                GlobalCacheLocation::PlatformUserCache,
-            ),
-            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
-        }
+        crate::discovery::location::tests::placeholder_cache_root()
     }
 
     mod discovery_result {

@@ -51,11 +51,12 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// `anchor` is the working directory and is always required. `flags` and
     /// `env` are optional overrides from the CLI and environment respectively;
     /// pass `None` for either when no user-supplied override is present.
+    /// `cache_dir` is the resolved `LITHOS_CACHE_DIR` value (already read by
+    /// the caller); pass `None` when the env var is absent.
     ///
-    /// When `env` is `None`, the bootstrapper reads `LITHOS_CACHE_DIR` from
-    /// the process environment and injects it into a freshly-constructed
-    /// [`DiscoveryEnv`].  Callers that need full control (e.g. tests) should
-    /// pass an explicit `Some(env)` instead.
+    /// When `env` is `None`, the bootstrapper constructs a fresh
+    /// [`DiscoveryEnv`] using `cache_dir`. Callers that need full control
+    /// (e.g. tests) should pass an explicit `Some(env)` instead.
     ///
     /// # Errors
     ///
@@ -67,6 +68,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'a>>,
         anchor: &std::path::Path,
+        cache_dir: Option<PathBuf>,
     ) -> Result<DiscoveryContext<'a>, DiscoveryError> {
         let mut ctx = DiscoveryContext::new(anchor)?;
         if let Some(f) = flags {
@@ -75,7 +77,6 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         let resolved_env = if let Some(e) = env {
             e
         } else {
-            let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
             DiscoveryEnv::new(None, None, None, cache_dir)?
         };
         ctx = ctx.with_env(resolved_env);
@@ -121,7 +122,11 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
     ) -> Result<(DiscoveryResult, DiscoveryReport), BootstrapError> {
-        let context = Self::build_context(flags, env, anchor)?;
+        // Read LITHOS_CACHE_DIR from the process environment and pass it to
+        // build_context. Callers that need deterministic behaviour (e.g. tests)
+        // should call build_context directly with an explicit cache_dir value.
+        let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+        let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
     }
 
@@ -158,7 +163,11 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         anchor: &std::path::Path,
         repository: R,
     ) -> Result<BootstrapResult, BootstrapError> {
-        let context = Self::build_context(flags, env, anchor)?;
+        // Read LITHOS_CACHE_DIR from the process environment and pass it to
+        // build_context. Callers that need deterministic behaviour (e.g. tests)
+        // should call build_context directly with an explicit cache_dir value.
+        let cache_dir = env::var_os("LITHOS_CACHE_DIR").map(PathBuf::from);
+        let context = Self::build_context(flags, env, anchor, cache_dir)?;
         let (discovery, report) = self.discover(&context)?;
         let config = Builder::from_discovery(discovery, repository).build()?;
         Ok(BootstrapResult {
@@ -320,19 +329,20 @@ mod tests {
                     Some(flags),
                     Some(env),
                     self.cwd.path(),
+                    None,
                 )
             }
         }
     }
 
     fn placeholder_cache_root() -> crate::discovery::location::CacheRoot {
-        use crate::discovery::location::{CacheLocation, GlobalCacheLocation};
-        crate::discovery::location::CacheRoot {
-            location: CacheLocation::Global(
-                GlobalCacheLocation::PlatformUserCache,
-            ),
-            path: std::path::PathBuf::from("/tmp/placeholder-cache"),
-        }
+        use crate::discovery::location::{
+            CacheLocation, CacheRoot, GlobalCacheLocation,
+        };
+        CacheRoot::new(
+            CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
+            std::path::PathBuf::from("/tmp/placeholder-cache"),
+        )
     }
 
     // --- build_context tests ---
@@ -429,6 +439,7 @@ mod tests {
                     None,
                     None,
                     cwd.path(),
+                    None,
                 )
                 .expect("valid context");
                 assert_eq!(
@@ -452,6 +463,7 @@ mod tests {
                     None,
                     Some(explicit_env),
                     cwd.path(),
+                    None,
                 )
                 .expect("valid context");
                 assert!(
@@ -461,49 +473,40 @@ mod tests {
             }
 
             #[test]
-            fn returns_context_with_cache_dir_when_lithos_cache_dir_env_is_set()
-            {
+            fn returns_context_with_cache_dir_when_provided_as_parameter() {
                 let cache_path = std::path::PathBuf::from("/custom/cache/dir");
-                let env = DiscoveryEnv::new(
-                    None,
-                    None,
-                    None,
-                    Some(cache_path.clone()),
-                )
-                .expect("valid env");
                 let anchor = tempfile::tempdir().expect("anchor");
 
                 let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
                     None,
-                    Some(env),
+                    None,
                     anchor.path(),
+                    Some(cache_path.clone()),
                 )
                 .expect("valid context");
 
                 assert_eq!(
                     ctx.env().cache_dir(),
-                    Some(&cache_path),
-                    "cache_dir should match the provided path"
+                    Some(cache_path.as_path()),
+                    "cache_dir should match the provided parameter"
                 );
             }
 
             #[test]
-            fn returns_context_with_none_cache_dir_when_lithos_cache_dir_env_is_absent()
-             {
+            fn returns_context_with_none_cache_dir_when_parameter_is_none() {
                 let anchor = tempfile::tempdir().expect("anchor");
-                let env = DiscoveryEnv::new(None, None, None, None)
-                    .expect("valid env");
 
                 let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
                     None,
-                    Some(env),
+                    None,
                     anchor.path(),
+                    None,
                 )
                 .expect("valid context");
 
                 assert!(
                     ctx.env().cache_dir().is_none(),
-                    "cache_dir should be None when not provided"
+                    "cache_dir should be None when parameter is None"
                 );
             }
         }
@@ -1098,6 +1101,7 @@ mod tests {
                 Some(flags),
                 None,
                 root.path(),
+                None,
             )
             .expect("valid context");
             let expected = CandidatePath::new(

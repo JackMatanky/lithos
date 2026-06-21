@@ -12,12 +12,44 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CacheRoot {
     /// The strategy that produced this cache root.
-    pub location: CacheLocation,
+    location: CacheLocation,
     /// The resolved absolute directory path.
     ///
     /// Not validated for existence at construction — callers are responsible
     /// for creating the directory when needed.
-    pub path: PathBuf,
+    path: PathBuf,
+}
+
+impl CacheRoot {
+    /// Creates a new `CacheRoot` from its provenance and resolved path.
+    ///
+    /// The path is not validated for existence at construction — callers are
+    /// responsible for creating the directory when needed.
+    #[inline]
+    #[must_use]
+    pub fn new(location: CacheLocation, path: PathBuf) -> Self {
+        Self {
+            location,
+            path,
+        }
+    }
+
+    /// Returns the cache location strategy that produced this root.
+    #[inline]
+    #[must_use]
+    pub fn location(&self) -> &CacheLocation {
+        &self.location
+    }
+
+    /// Returns the resolved absolute directory path.
+    ///
+    /// The directory is not guaranteed to exist — callers are responsible for
+    /// creating it when needed.
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
 }
 
 /// Top-level branch: is the cache local to the vault or at a global/platform
@@ -58,8 +90,18 @@ pub enum GlobalCacheLocation {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Shared test fixture. Returns a `CacheRoot` with a synthetic
+    /// `PlatformUserCache` location and `/tmp/placeholder-cache` path.
+    /// Use wherever a `CacheRoot` is needed but its value is not under test.
+    pub(crate) fn placeholder_cache_root() -> CacheRoot {
+        CacheRoot::new(
+            CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
+            std::path::PathBuf::from("/tmp/placeholder-cache"),
+        )
+    }
 
     mod cache_root {
         use super::*;
@@ -73,12 +115,9 @@ mod tests {
                 let location = CacheLocation::Local(
                     LocalCacheLocation::ProjectCacheDirectory,
                 );
-                let root = CacheRoot {
-                    location: location.clone(),
-                    path: path.clone(),
-                };
-                assert_eq!(root.path, path);
-                assert_eq!(root.location, location);
+                let root = CacheRoot::new(location.clone(), path.clone());
+                assert_eq!(root.path(), path.as_path());
+                assert_eq!(root.location(), &location);
             }
         }
 
@@ -90,42 +129,40 @@ mod tests {
                 let location = CacheLocation::Global(
                     GlobalCacheLocation::EnvironmentOverride,
                 );
-                let root = CacheRoot {
-                    location: location.clone(),
-                    path: std::path::PathBuf::from("/tmp/cache"),
-                };
-                assert_eq!(root.location, location);
+                let root = CacheRoot::new(
+                    location.clone(),
+                    std::path::PathBuf::from("/tmp/cache"),
+                );
+                assert_eq!(root.location(), &location);
             }
 
             #[test]
             fn returns_path_matching_provided_value() {
                 let path = std::path::PathBuf::from("/does/not/exist/cache");
-                let root = CacheRoot {
-                    location: CacheLocation::Global(
+                let root = CacheRoot::new(
+                    CacheLocation::Global(
                         GlobalCacheLocation::PlatformUserCache,
                     ),
-                    path: path.clone(),
-                };
-                assert_eq!(root.path, path);
+                    path.clone(),
+                );
+                assert_eq!(root.path(), path.as_path());
             }
 
             #[test]
             fn does_not_validate_path_existence_at_construction() {
                 // Non-existent path should not cause any error at construction
-                let root = CacheRoot {
-                    location: CacheLocation::Local(
+                let root = CacheRoot::new(
+                    CacheLocation::Local(
                         LocalCacheLocation::ProjectCacheDirectory,
                     ),
-                    path: std::path::PathBuf::from(
+                    std::path::PathBuf::from(
                         "/absolutely/nonexistent/path/cache",
                     ),
-                };
+                );
                 // Just verifying we reach here — construction didn't panic/fail
                 assert_eq!(
-                    root.path,
-                    std::path::PathBuf::from(
-                        "/absolutely/nonexistent/path/cache"
-                    )
+                    root.path(),
+                    std::path::Path::new("/absolutely/nonexistent/path/cache")
                 );
             }
         }

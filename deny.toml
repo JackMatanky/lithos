@@ -42,8 +42,9 @@ version = "0.1.14"
 name = "wit-bindgen"
 version = "0.46.0"
 
-# getrandom: multiple versions pulled in transitively via dirs (0.2.x via
-# redox_users/dirs-sys) and uuid/tempfile/rkyv (0.4.x).
+# getrandom: multiple versions pulled in transitively. dirs 6.x → dirs-sys →
+# redox_users pulls getrandom 0.2.x (on Linux/Unix); uuid/tempfile/rkyv pull
+# getrandom 0.4.x. Both versions must coexist.
 [[bans.skip]]
 name = "getrandom"
 version = "0.2.17"

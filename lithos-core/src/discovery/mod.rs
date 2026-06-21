@@ -2,8 +2,9 @@
 //!
 //! This context owns the first phase of the `Discovery -> Config -> Indexer`
 //! pipeline. It locates the vault root and the root marker file on disk and
-//! returns typed path/format metadata. It does **not** parse, merge, validate,
-//! or hash config contents — those responsibilities belong to [`Config`].
+//! returns typed path/format metadata, including the resolved cache root. It
+//! does **not** parse, merge, validate, or hash config contents — those
+//! responsibilities belong to [`Config`].
 //!
 //! # Boundary Invariants
 //!
@@ -12,44 +13,40 @@
 //! - **One-way Flow**: Config consumes Discovery outputs; Discovery never
 //!   imports Config types.
 //!
+//! # Modules
+//!
+//! - **`context`** — Per-invocation inputs: [`DiscoveryEnv`],
+//!   [`DiscoveryFlags`].
+//! - **`location`** — Cache root types: [`CacheRoot`], [`CacheLocation`],
+//!   [`LocalCacheLocation`], [`GlobalCacheLocation`].
+//! - **`port`** — Inbound port trait ([`DiscoveryPort`]).
+//! - **`report`** — Non-fatal diagnostic output ([`DiscoveryReport`]).
+//! - **`service`** — Concrete service ([`DiscoveryService`]) and boundary data
+//!   ([`DiscoveryResult`], [`CandidatePath`]).
+//! - **`error`** — Fatal error types ([`DiscoveryError`]).
+//! - **`processor`** — Internal typestate pipeline (crate-private).
+//! - **`probe`** / **`walk`** — Internal filesystem helpers (crate-private).
+//!
 //! # Usage Example
 //!
 //! ```rust,ignore
-//! use lithos_core::discovery::{DiscoveryEngine, DiscoveryPolicy, DiscoveryInput};
-//! use std::path::Path;
-//!
-//! let policy = DiscoveryPolicy::default();
-//! let engine = DiscoveryEngine::new(policy);
-//!
-//! let input = DiscoveryInput {
-//!     flag_path: None,
-//!     env_path: None,
-//!     cwd: Path::new("."),
-//!     ceiling_dirs_raw: None,
+//! use lithos_core::discovery::{
+//!     DiscoveryService, DiscoveryFlags, DiscoveryEnv,
+//!     port::DiscoveryPort,
+//!     service::DiscoveryServiceConfig,
 //! };
+//! use lithos_core::discovery::context::DiscoveryContext;
 //!
-//! let result = engine.find_vault(&input)?;
-//! if let Some(root) = result.root {
-//!     println!("Found vault root at: {:?}", root);
-//! }
+//! let service = DiscoveryService::new(DiscoveryServiceConfig::default())
+//!     .expect("valid config");
+//! let ctx = DiscoveryContext::new(std::path::Path::new("."))
+//!     .expect("valid anchor");
+//! let (result, report) = service.discover(&ctx).expect("discovery succeeded");
+//! println!("cache root: {:?}", result.cache_root().path());
 //! ```
 //!
-//! # Architecture
-//!
-//! - **`engine`** — The main entry point ([`DiscoveryEngine`]).
-//! - **`policy`** — Precedence and behavioral configuration.
-//! - **`probe`** — Directory examination for marker patterns.
-//! - **`walk`** — Ascending directory traversal with boundary enforcement.
-//! - **`selector`** — Tie-breaking logic for multiple discovered markers.
-//! - **`marker`** — Shared metadata types ([`DiscoveredMarker`]).
-//! - **`diagnostics`** — Structured non-fatal warnings
-//!   ([`VaultDiscoveryWarning`]).
-//! - **`error`** — Fatal error types ([`DiscoveryError`]).
-//!
 //! [`Config`]: crate::config
-//! [`DiscoveryEngine`]: crate::discovery::engine::DiscoveryEngine
-//! [`DiscoveredMarker`]: crate::discovery::engine::DiscoveredMarker
-//! [`VaultDiscoveryWarning`]: crate::discovery::diagnostics::VaultDiscoveryWarning
+//! [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
 //! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
 
 pub(crate) mod context;

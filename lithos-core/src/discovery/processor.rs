@@ -551,7 +551,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, CacheResolution>>
     /// Advances from cache resolution to the terminal finalized phase.
     ///
     /// At this point `cache_root` is guaranteed to be `Some` — set by
-    /// `into_cache_resolution`. The `finalize()` method will unwrap it.
+    /// `run_cache_resolution`. The `finalize()` method will unwrap it.
     fn from(val: DiscoveryProcessor<'ctx, CacheResolution>) -> Self {
         DiscoveryProcessor {
             config: val.config,
@@ -575,7 +575,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, CacheResolution>>
 /// Computes the [`CacheRoot`] from accumulated vault candidates and the
 /// optional env-var cache directory override. Each concrete `From` impl
 /// delegates here to avoid code duplication.
-fn into_cache_resolution<P>(
+fn run_cache_resolution<P>(
     val: DiscoveryProcessor<'_, P>,
 ) -> DiscoveryProcessor<'_, CacheResolution> {
     let env_cache_dir = val.ctx.env().cache_dir();
@@ -594,11 +594,20 @@ fn into_cache_resolution<P>(
     }
 }
 
+/// Advances directly from the initial phase to cache resolution,
+/// bypassing vault probing.
+///
+/// **Test-only.** Production code must go through `FlagOverride` (and
+/// optionally `EnvOverride`, `AscendingTraversal`, `GlobalResolution`)
+/// before reaching `CacheResolution`. Using this impl in production would
+/// compute the cache root before any vault candidates are accumulated,
+/// silently producing `PlatformUserCache` even when a vault is present.
+#[cfg(test)]
 impl<'ctx> From<DiscoveryProcessor<'ctx, Init>>
     for DiscoveryProcessor<'ctx, CacheResolution>
 {
     fn from(val: DiscoveryProcessor<'ctx, Init>) -> Self {
-        into_cache_resolution(val)
+        run_cache_resolution(val)
     }
 }
 
@@ -607,18 +616,29 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, FlagOverride>>
 {
     /// Advances from `FlagOverride` to cache resolution.
     ///
-    /// When both a flag vault dir and a flag config file are set
-    /// (`VaultAndConfigSet`), records
-    /// [`LocalTraversalStopReason::ExplicitConfigFile`] — neither env vars
-    /// nor traversal were needed, so traversal never ran.
+    /// In production this impl is only invoked on the
+    /// [`FlagBranch::VaultAndConfigSet`] path (both flag vault dir and flag
+    /// config file are set), so `has_flag_config` is always `true` on the
+    /// reachable path. The `debug_assert!` below catches any future misuse
+    /// where this transition is called without a flag config file (which would
+    /// silently skip setting [`LocalTraversalStopReason::ExplicitConfigFile`]).
     fn from(val: DiscoveryProcessor<'ctx, FlagOverride>) -> Self {
         let has_flag_config = val.ctx.flags().config_file().is_some();
+        // In production this is only reached via VaultAndConfigSet, where
+        // has_flag_config is always true. The assert fires in debug builds if
+        // this transition is ever taken without a flag config file.
+        debug_assert!(
+            has_flag_config,
+            "FlagOverride → CacheResolution is only valid on the \
+             VaultAndConfigSet path; has_flag_config should always be true \
+             here"
+        );
         let mut val = val;
         if has_flag_config {
             val.report.local_traversal_stop_reason =
                 LocalTraversalStopReason::ExplicitConfigFile;
         }
-        into_cache_resolution(val)
+        run_cache_resolution(val)
     }
 }
 
@@ -626,7 +646,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, EnvOverride>>
     for DiscoveryProcessor<'ctx, CacheResolution>
 {
     fn from(val: DiscoveryProcessor<'ctx, EnvOverride>) -> Self {
-        into_cache_resolution(val)
+        run_cache_resolution(val)
     }
 }
 
@@ -634,7 +654,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, AscendingTraversal>>
     for DiscoveryProcessor<'ctx, CacheResolution>
 {
     fn from(val: DiscoveryProcessor<'ctx, AscendingTraversal>) -> Self {
-        into_cache_resolution(val)
+        run_cache_resolution(val)
     }
 }
 
@@ -642,7 +662,7 @@ impl<'ctx> From<DiscoveryProcessor<'ctx, GlobalResolution>>
     for DiscoveryProcessor<'ctx, CacheResolution>
 {
     fn from(val: DiscoveryProcessor<'ctx, GlobalResolution>) -> Self {
-        into_cache_resolution(val)
+        run_cache_resolution(val)
     }
 }
 
@@ -738,33 +758,29 @@ fn run_global_resolution<P>(
 /// 3. OS platform user-cache directory: `dirs::cache_dir().join("lithos")`
 ///    (falls back to `.lithos/cache` if the platform provides no cache dir)
 fn resolve_cache_root(
-    env_cache_dir: Option<&PathBuf>,
+    env_cache_dir: Option<&std::path::Path>,
     vault_root: Option<&DirPath>,
 ) -> CacheRoot {
     if let Some(path) = env_cache_dir {
-        return CacheRoot {
-            location: CacheLocation::Global(
-                GlobalCacheLocation::EnvironmentOverride,
-            ),
-            path: path.clone(),
-        };
+        return CacheRoot::new(
+            CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride),
+            path.to_path_buf(),
+        );
     }
     if let Some(root) = vault_root {
-        return CacheRoot {
-            location: CacheLocation::Local(
-                LocalCacheLocation::ProjectCacheDirectory,
-            ),
-            path: root.as_path().join(".lithos/cache"),
-        };
+        return CacheRoot::new(
+            CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory),
+            root.as_path().join(".lithos/cache"),
+        );
     }
     // No env override and no vault root — use OS platform cache directory.
     // `.unwrap_or_else` covers pathological cases where the OS provides none.
     let path = dirs::cache_dir()
         .map_or_else(|| PathBuf::from(".lithos/cache"), |p| p.join("lithos"));
-    CacheRoot {
-        location: CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
+    CacheRoot::new(
+        CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
         path,
-    }
+    )
 }
 
 /// Parses a raw OS path-list of ceiling directories into validated
@@ -1596,8 +1612,8 @@ mod tests {
 
             assert!(result.vault().is_empty());
             assert_eq!(
-                result.cache_root().location,
-                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+                result.cache_root().location(),
+                &CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
             );
         }
 
@@ -1616,8 +1632,8 @@ mod tests {
 
             assert!(result.global().is_empty());
             assert_eq!(
-                result.cache_root().location,
-                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+                result.cache_root().location(),
+                &CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
             );
         }
 
@@ -2129,9 +2145,14 @@ mod tests {
             env.into()
         }
 
-        /// Helper: advance processor directly Init → `CacheResolution` (no
-        /// vault probing). Used for tests that only need `cache_dir`
-        /// env var logic.
+        /// Bypasses the production pipeline (`Init` → `FlagOverride` → … →
+        /// `CacheResolution`) and goes directly `Init` → `CacheResolution`
+        /// using the `#[cfg(test)]`-only `From<Init>` impl. This is
+        /// intentional: these tests exercise `resolve_cache_root` in
+        /// isolation with controlled `DiscoveryEnv` inputs,
+        /// not the full pipeline routing. Use
+        /// `advance_to_cache_resolution_with_vault` when vault probing
+        /// must occur before cache resolution.
         fn advance_to_cache_resolution<'a>(
             config: &'a DiscoveryServiceConfig,
             ctx: &'a DiscoveryContext<'a>,
@@ -2153,10 +2174,12 @@ mod tests {
 
             let cache_root = p.cache_root.expect("cache_root must be set");
             assert_eq!(
-                cache_root.location,
-                CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride)
+                cache_root.location(),
+                &CacheLocation::Global(
+                    GlobalCacheLocation::EnvironmentOverride
+                )
             );
-            assert_eq!(cache_root.path, cache_path);
+            assert_eq!(cache_root.path(), cache_path.as_path());
         }
 
         #[test]
@@ -2180,8 +2203,10 @@ mod tests {
 
             let cache_root = p.cache_root.expect("cache_root must be set");
             assert_eq!(
-                cache_root.location,
-                CacheLocation::Global(GlobalCacheLocation::EnvironmentOverride),
+                cache_root.location(),
+                &CacheLocation::Global(
+                    GlobalCacheLocation::EnvironmentOverride
+                ),
                 "env override wins even when vault is present"
             );
         }
@@ -2202,13 +2227,15 @@ mod tests {
 
             let cache_root = p.cache_root.expect("cache_root must be set");
             assert_eq!(
-                cache_root.location,
-                CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory)
+                cache_root.location(),
+                &CacheLocation::Local(
+                    LocalCacheLocation::ProjectCacheDirectory
+                )
             );
             assert!(
-                cache_root.path.ends_with(".lithos/cache"),
+                cache_root.path().ends_with(".lithos/cache"),
                 "path should end with .lithos/cache, got: {:?}",
-                cache_root.path
+                cache_root.path()
             );
         }
 
@@ -2222,8 +2249,8 @@ mod tests {
 
             let cache_root = p.cache_root.expect("cache_root must be set");
             assert_eq!(
-                cache_root.location,
-                CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
+                cache_root.location(),
+                &CacheLocation::Global(GlobalCacheLocation::PlatformUserCache)
             );
         }
 
@@ -2241,7 +2268,7 @@ mod tests {
             let p = advance_to_cache_resolution(&config, &ctx);
 
             let cache_root = p.cache_root.expect("cache_root must be set");
-            assert_eq!(cache_root.path, cache_path);
+            assert_eq!(cache_root.path(), cache_path.as_path());
         }
     }
 }
