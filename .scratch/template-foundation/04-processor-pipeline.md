@@ -600,3 +600,12 @@ Verification:
 - ADR validation: `mise run adr:validate` was up to date.
 - Whitespace: `git diff --check` passed.
 - GitNexus: `detect_changes(scope="all")` reported LOW risk and no affected processes.
+
+### Typestate Alignment and Corrupt Path Handling
+The processor was adjusted to ensure recoverable corrupt cache (entries with an ID but missing view) correctly traverse the typestate parsing phase.
+- `run_corrupt()` now transitions to `TemplateProcessor<Parsed, Corrupted>` and reads file content via `parse(source)`.
+- `TemplateProcessor<Construction, Changed>::update()` now correctly accepts `view: Option<RawTemplateView>` and constructs the missing view inline when writing.
+- `RawTemplateView`'s `HasContentHash` trait implementation was given an explicit `is_content_match` method to bypass the default reference-based comparison behavior, correctly utilizing the value semantics of `Blake3Hash`.
+
+### Typestate Dead Code Allowance Cleanup
+The original broad `#![allow(dead_code)]` logic was replaced, but individual typestate transition methods (`parse`, `check_metadata`, `create`, `update`, etc.) were temporarily annotated with `#[cfg_attr(test, allow(dead_code))]`. Now that `TemplateProcessor::run()` dynamically routes execution through all these methods via matching the `DiscoveredCacheState`, all `#[cfg_attr(test, allow(dead_code))]` statements have been removed from the typestate implementations.
