@@ -9,10 +9,7 @@
 //! - **Flag Errors**: Missing or invalid paths provided via explicit CLI flags.
 //! - **Environment Errors**: Missing or invalid paths provided via environment
 //!   variables.
-//! - **Filesystem Errors**: Issues canonicalizing paths, reading directories,
-//!   or permission failures.
-//! - **Current Directory Errors**: Failures when establishing the starting
-//!   point for ascending discovery.
+//! - **Filesystem Errors**: Issues canonicalizing paths or permission failures.
 
 use std::{io, path::PathBuf};
 
@@ -30,26 +27,13 @@ pub enum DiscoveryError {
     /// Fatal error while validating environment variable overrides.
     #[error(transparent)]
     Env(#[from] EnvironmentOverrideError),
-    /// Failed to canonicalize the current working directory.
-    #[error("Failed to canonicalize current directory {path}: {source}")]
-    CurrentDirectoryCanonicalize {
-        /// The path that failed canonicalization.
-        path: PathBuf,
-        /// The underlying I/O error.
-        source: io::Error,
-    },
+    /// Invalid discovery service configuration.
+    #[error(transparent)]
+    Config(#[from] ServiceConfigError),
     /// Failed to canonicalize a specific path during discovery.
     #[error("Failed to canonicalize path {path}: {source}")]
     CanonicalizePath {
         /// The path that failed canonicalization.
-        path: PathBuf,
-        /// The underlying I/O error.
-        source: io::Error,
-    },
-    /// Failed to read a directory during discovery.
-    #[error("Failed to read directory {path}: {source}")]
-    ReadDirectory {
-        /// The directory that could not be read.
         path: PathBuf,
         /// The underlying I/O error.
         source: io::Error,
@@ -63,9 +47,6 @@ pub enum DiscoveryError {
         #[source]
         source: PathError,
     },
-    /// Invalid discovery service configuration.
-    #[error(transparent)]
-    Config(#[from] ServiceConfigError),
 }
 
 /// Errors produced by [`DiscoveryServiceConfig`] validation.
@@ -197,38 +178,6 @@ mod tests {
             }
 
             #[test]
-            fn returns_canonicalize_current_directory_message_with_path() {
-                let err = DiscoveryError::CurrentDirectoryCanonicalize {
-                    path: PathBuf::from("/cwd"),
-                    source: io::Error::new(
-                        io::ErrorKind::NotFound,
-                        "not found",
-                    ),
-                };
-                assert!(
-                    err.to_string().starts_with(
-                        "Failed to canonicalize current directory /cwd"
-                    ),
-                    "unexpected message: {err}"
-                );
-            }
-
-            #[test]
-            fn returns_canonicalize_current_directory_message_with_cause() {
-                let err = DiscoveryError::CurrentDirectoryCanonicalize {
-                    path: PathBuf::from("/cwd"),
-                    source: io::Error::new(
-                        io::ErrorKind::NotFound,
-                        "not found",
-                    ),
-                };
-                assert!(
-                    err.to_string().contains("not found"),
-                    "missing cause in: {err}"
-                );
-            }
-
-            #[test]
             fn returns_canonicalize_path_message_with_path() {
                 let err = DiscoveryError::CanonicalizePath {
                     path: PathBuf::from("/some/path"),
@@ -248,37 +197,6 @@ mod tests {
             fn returns_canonicalize_path_message_with_cause() {
                 let err = DiscoveryError::CanonicalizePath {
                     path: PathBuf::from("/some/path"),
-                    source: io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "denied",
-                    ),
-                };
-                assert!(
-                    err.to_string().contains("denied"),
-                    "missing cause in: {err}"
-                );
-            }
-
-            #[test]
-            fn returns_read_directory_message_with_path() {
-                let err = DiscoveryError::ReadDirectory {
-                    path: PathBuf::from("/some/dir"),
-                    source: io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "denied",
-                    ),
-                };
-                assert!(
-                    err.to_string()
-                        .starts_with("Failed to read directory /some/dir"),
-                    "unexpected message: {err}"
-                );
-            }
-
-            #[test]
-            fn returns_read_directory_message_with_cause() {
-                let err = DiscoveryError::ReadDirectory {
-                    path: PathBuf::from("/some/dir"),
                     source: io::Error::new(
                         io::ErrorKind::PermissionDenied,
                         "denied",

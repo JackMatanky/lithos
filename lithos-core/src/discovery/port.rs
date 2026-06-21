@@ -12,11 +12,9 @@ use crate::discovery::{
 
 /// Inbound port for vault and global config candidate discovery.
 ///
-/// The application layer depends on this trait rather than on
-/// [`DiscoveryEngine`] directly, keeping orchestration testable and
-/// decoupled from the discovery implementation.
-///
-/// [`DiscoveryEngine`]: crate::discovery::engine::DiscoveryEngine
+/// The application layer depends on this trait rather than on the discovery
+/// orchestration directly, keeping it testable and decoupled from the
+/// filesystem traversal.
 pub trait DiscoveryPort {
     /// Runs discovery using the provided invocation context.
     ///

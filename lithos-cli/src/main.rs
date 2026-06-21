@@ -97,7 +97,7 @@ fn run_main() -> Result<(), CliError> {
     let anchor = std::env::current_dir().map_err(|source| {
         CliError::Bootstrap(
             lithos_core::app::bootstrap::BootstrapError::Discovery(
-                lithos_core::discovery::error::DiscoveryError::CurrentDirectoryCanonicalize {
+                lithos_core::discovery::error::DiscoveryError::CanonicalizePath {
                     path: std::path::PathBuf::from("."),
                     source,
                 },

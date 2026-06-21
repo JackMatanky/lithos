@@ -54,8 +54,6 @@ impl CliError {
     ///   [`DiscoveryError::InvalidAnchorDirectory`] → 1
     /// - [`BootstrapError::Discovery`] with [`DiscoveryError::Flag`] or
     ///   [`DiscoveryError::Env`] → 2
-    /// - [`BootstrapError::Discovery`] with [`DiscoveryError::ReadDirectory`] →
-    ///   3
     /// - [`BootstrapError::Discovery`] with
     ///   [`DiscoveryError::CanonicalizePath`] where `source.kind() ==
     ///   PermissionDenied` → 3
@@ -87,9 +85,6 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
             ..
         } => 1,
         DiscoveryError::Flag(_) | DiscoveryError::Env(_) => 2,
-        DiscoveryError::ReadDirectory {
-            ..
-        } => 3,
         DiscoveryError::CanonicalizePath {
             source,
             ..
@@ -223,25 +218,6 @@ mod tests {
                 3,
                 "CanonicalizePath with PermissionDenied must map to exit code \
                  3"
-            );
-        }
-
-        #[test]
-        fn returns_3_when_read_directory_fails() {
-            let source = std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "cannot read dir",
-            );
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
-                DiscoveryError::ReadDirectory {
-                    path: PathBuf::from("/locked/dir"),
-                    source,
-                },
-            ));
-            assert_eq!(
-                err.exit_code(),
-                3,
-                "ReadDirectory must map to exit code 3"
             );
         }
 

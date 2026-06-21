@@ -50,7 +50,6 @@
 //! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
 
 pub(crate) mod context;
-pub(crate) mod engine;
 pub mod error;
 pub mod location;
 pub(crate) mod policy;
@@ -58,7 +57,6 @@ pub mod port;
 pub(super) mod probe;
 pub(super) mod processor;
 pub mod report;
-pub(super) mod selector;
 pub mod service;
 pub(super) mod walk;
 
@@ -71,9 +69,6 @@ pub use report::{
     SkippedCeiling, SkippedCeilingReason,
 };
 pub use service::{CandidatePath, DiscoveryResult, DiscoveryService};
-
-/// Diagnostics and warnings during discovery.
-pub(super) mod diagnostics;
 
 #[cfg(test)]
 pub(crate) mod tests;
