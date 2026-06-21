@@ -291,50 +291,11 @@ impl TemplateProcessor<Init, Corrupted> {
     ) -> Result<TemplateProcessor<CompletedPhase, Completed>, TemplateError>
     {
         let (file, path_key, status) = self.into_parts();
-        let content =
-            source.read_to_string(file.path().as_ref()).map_err(|e| {
-                TemplateReadError::Read(crate::fs::ReadError::Io {
-                    path: file.path().as_ref().to_path_buf(),
-                    source: std::io::Error::other(e.to_string()),
-                })
-            })?;
-        let content_hash =
-            Blake3Hash::compute(HashInput::Text(content.clone()));
-        let name = TemplateName::try_new(file.path().as_ref(), template_root)?;
-        let template = Template::new(
-            status.id,
-            path_key.clone(),
-            name,
-            crate::template::aggregate::TemplateBody::try_new(content)?,
-        );
-        let view = match status.view {
-            Some(mut view) => {
-                view.set_content_hash(content_hash);
-                view.update_metadata(file.metadata().clone());
-                view
-            }
-            None => RawTemplateView::new(
-                path_key.clone(),
-                content_hash,
-                file.metadata().clone(),
-                std::time::SystemTime::now(),
-            ),
-        };
-
-        repository
-            .save_template(&template)
-            .map_err(TemplateError::Repository)?;
-        repository
-            .save_raw_template_view(&view)
-            .map_err(TemplateError::Repository)?;
-
-        Ok(TemplateProcessor::<Init, Corrupted>::transition_from_parts(
-            file,
-            path_key,
-            Completed {
-                template,
-            },
-        ))
+        TemplateProcessor::<Parsed, Corrupted>::transition_from_parts(
+            file, path_key, status,
+        )
+        .parse(source)?
+        .update(repository, template_root)
     }
 }
 
@@ -477,8 +438,33 @@ impl TemplateProcessor<Parsed, Stale> {
             id: status.id,
             content_hash: status.content_hash,
             raw: RawTemplate::new(status.content_str),
-            view: status.view,
+            view: Some(status.view),
         })
+    }
+}
+
+impl TemplateProcessor<Parsed, Corrupted> {
+    #[cfg_attr(test, allow(dead_code, reason = "test-only method"))]
+    pub(crate) fn parse(
+        self,
+        source: &FileReader,
+    ) -> Result<TemplateProcessor<Construction, Changed>, TemplateReadError>
+    {
+        let (file, path_key, status) = self.into_parts();
+        let content =
+            source.read_to_string(file.path().as_ref()).map_err(|e| {
+                TemplateReadError::Read(crate::fs::ReadError::Io {
+                    path: file.path().as_ref().to_path_buf(),
+                    source: std::io::Error::other(e.to_string()),
+                })
+            })?;
+        let hash = Blake3Hash::compute(HashInput::Text(content.clone()));
+        Ok(Self::transition_from_parts(file, path_key, Changed {
+            id: status.id,
+            content_hash: hash,
+            raw: RawTemplate::new(content),
+            view: status.view,
+        }))
     }
 }
 
@@ -527,7 +513,7 @@ pub(crate) struct Changed {
     pub(crate) id: TemplateId,
     pub(crate) content_hash: Blake3Hash,
     pub(crate) raw: RawTemplate,
-    pub(crate) view: RawTemplateView,
+    pub(crate) view: Option<RawTemplateView>,
 }
 #[derive(Debug)]
 pub(crate) struct Fresh {
@@ -580,7 +566,7 @@ impl TemplateProcessor<Construction, Changed> {
         template_root: &std::path::Path,
     ) -> Result<TemplateProcessor<CompletedPhase, Completed>, TemplateError>
     {
-        let (file, path_key, mut status) = self.into_parts();
+        let (file, path_key, status) = self.into_parts();
         let name = TemplateName::try_new(file.path().as_ref(), template_root)?;
         let template = Template::new(
             status.id,
@@ -590,14 +576,25 @@ impl TemplateProcessor<Construction, Changed> {
                 status.raw.into_inner(),
             )?,
         );
-        status.view.set_content_hash(status.content_hash);
-        status.view.update_metadata(file.metadata().clone());
+        let view = match status.view {
+            Some(mut view) => {
+                view.set_content_hash(status.content_hash);
+                view.update_metadata(file.metadata().clone());
+                view
+            }
+            None => RawTemplateView::new(
+                path_key.clone(),
+                status.content_hash,
+                file.metadata().clone(),
+                std::time::SystemTime::now(),
+            ),
+        };
 
         repository
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&status.view)
+            .save_raw_template_view(&view)
             .map_err(TemplateError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
@@ -1271,7 +1268,7 @@ mod tests {
                         "updated content".to_owned(),
                     )),
                     raw: RawTemplate::new("updated content".to_owned()),
-                    view: view.clone(),
+                    view: Some(view.clone()),
                 },
                 _phase: PhantomData,
             };
@@ -1309,7 +1306,7 @@ mod tests {
                     id,
                     content_hash: new_hash,
                     raw: RawTemplate::new("updated content".to_owned()),
-                    view: old_view,
+                    view: Some(old_view),
                 },
                 _phase: PhantomData,
             };
@@ -1472,6 +1469,41 @@ mod tests {
 
             assert_eq!(*template.id(), id);
             assert_eq!(template.body().as_str(), "rebuilt content");
+            assert!(view.is_content_match(&expected_hash));
+        }
+
+        #[test]
+        fn parsed_corrupt_processor_rebuilds_with_existing_id() {
+            let (file, path_key, _temp) =
+                fixtures::valid_file_node("test.md", "rebuilt content");
+            let id = TemplateId::new();
+            let processor = TemplateProcessor::<Parsed, Corrupted> {
+                file,
+                path_key: path_key.clone(),
+                status: Corrupted {
+                    id,
+                    view: None,
+                },
+                _phase: PhantomData,
+            };
+            let repo = InMemoryRepository::new();
+            let reader = FileReader::new(std::env::temp_dir());
+
+            let completed = processor
+                .parse(&reader)
+                .expect("corrupt source should parse")
+                .update(&repo, std::path::Path::new("/"))
+                .expect("corrupt path should rebuild");
+            let template = completed.into_template();
+            let view = repo
+                .find_raw_template_view(&path_key)
+                .unwrap()
+                .expect("raw view rebuilt");
+            let expected_hash = Blake3Hash::compute(HashInput::Text(
+                "rebuilt content".to_owned(),
+            ));
+
+            assert_eq!(*template.id(), id);
             assert!(view.is_content_match(&expected_hash));
         }
     }
