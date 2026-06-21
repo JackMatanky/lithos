@@ -25,7 +25,7 @@ Define the `TemplateEngine` port trait, the initial rendered artifact state, and
 
 Two methods, both accepting Lithos domain types and exposing no MiniJinja types:
 - `compile(&mut self, template: &Template)` — checks engine-level source validity and loads the supplied `Template` source into the configured engine. This is adapter-local engine state mutation, not service orchestration. Returns `Result<(), TemplateEngineError>`.
-- `render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>)` — renders an already-supplied `Template` with an already-supplied flat context. Returns `Result<TemplateArtifact<Rendered>, TemplateEngineError>`.
+- `render(&self, template: &Template, context: &HashMap<String, String>)` — renders an already-supplied `Template` with an already-supplied flat string context. Returns `Result<TemplateArtifact<Rendered>, TemplateEngineError>`.
 
 The port is Lithos-shaped: no MiniJinja types in method signatures. No `Clone + Send + Sync + 'static` bounds on the trait — this is a CLI tool, not a web server, and runtime injection pressure should drive future bounds.
 
@@ -52,17 +52,131 @@ Issue 06 owns only the post-render write pipeline transitions: `Rendered -> Targ
 
 ## Acceptance criteria
 
-- [ ] `TemplateEngine` trait is defined with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` (exact signatures may vary slightly per implementation pressure, but MiniJinja types must not appear)
+- [ ] `TemplateEngine` trait is defined with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &HashMap<String, String>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` (exact signatures may vary slightly per implementation pressure, but MiniJinja types must not appear)
 - [ ] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds
 - [ ] `TemplateArtifact<Rendered>` is defined as the rendered-output domain state with shared data needed by issue 06 (`TemplateName`, rendered content)
 - [ ] `MiniJinjaEngine::configured()` creates a strict/no-escape MiniJinja environment and keeps `Environment<'static>` behind the adapter boundary
 - [ ] `compile(&mut self, template: &Template)` registers/checks the supplied source using `template.name()` and `template.body()` and does not perform repository/filesystem lookup, target resolution, conflict checks, CLI context assembly, or artifact commit behavior
-- [ ] `render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>)` looks up the template by `template.name()` and does not add or replace `template.body()` at render time
+- [ ] `render(&self, template: &Template, context: &HashMap<String, String>)` looks up the template by `template.name()` and does not add or replace `template.body()` at render time
 - [ ] `MiniJinjaEngine` uses `UndefinedBehavior::Strict`
 - [ ] `MiniJinjaEngine` uses `AutoEscape::None`
 - [ ] `TemplateEngineError` preserves `minijinja::Error` as its source via `std::error::Error::source()`
 - [ ] MiniJinja types (`Environment`, `Value`, etc.) do not appear in the `TemplateEngine` trait or `TemplateEngineError` public API surface
 - [ ] Tests cover: compile success, compile failure (invalid syntax) with preserved source error, render success with variable substitution, render failure (undefined variable under strict mode), no auto-escape of Markdown characters, render returns `TemplateArtifact<Rendered>` with template name and content, and render does not re-register/replace source at render time
+
+## TDD implementation plan
+
+Follow vertical red-green-refactor cycles. Do not write all tests first. Each cycle below adds one behavior, proves it fails, then adds only enough implementation to pass before moving to the next behavior.
+
+### Public interface target
+
+```rust
+pub trait TemplateEngine {
+    fn compile(
+        &mut self,
+        template: &Template,
+    ) -> Result<(), TemplateEngineError>;
+
+    fn render(
+        &self,
+        template: &Template,
+        context: &HashMap<String, String>,
+    ) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>;
+}
+```
+
+### Planned files
+
+- `lithos-core/src/template/engine.rs` — `TemplateEngine`, `MiniJinjaEngine`, and `TemplateEngineError`.
+- `lithos-core/src/template/artifact.rs` — `TemplateArtifact<Rendered>` and accessors. Issue 06 extends this file with later states.
+- `lithos-core/src/template/mod.rs` — public exports and module declarations.
+- `lithos-core/src/template/error.rs` — add `TemplateError::Engine(#[from] TemplateEngineError)` only if implementation pressure or tests require top-level wrapping in this slice.
+
+### Cycle 1: compile succeeds for valid source
+
+- Test name: `compile::returns_ok_when_template_source_is_valid`.
+- Arrange a valid `Template` containing `Hello {{ name }}`.
+- Act through public API: `let mut engine = MiniJinjaEngine::configured(); let result = engine.compile(&template);`.
+- Assert `result.is_ok()` with diagnostic context.
+- Minimal implementation: define the trait, `MiniJinjaEngine::configured()`, and `compile(&mut self, &Template)` using `add_template_owned(template.name().as_ref().to_owned(), template.body().as_ref().to_owned())`.
+
+### Cycle 2: compile failure preserves source error
+
+- Test name: `compile::returns_error_with_source_when_template_syntax_is_invalid`.
+- Arrange a `Template` whose body contains invalid Jinja syntax.
+- Act through `engine.compile(&template)`.
+- Assert an error is returned and `std::error::Error::source(&err).is_some()`.
+- Minimal implementation: add `TemplateEngineError` with compile failure state that stores the MiniJinja source error privately and exposes it through `Error::source()`.
+
+### Cycle 3: render returns rendered artifact
+
+- Test name: `render::returns_rendered_artifact_when_context_provides_variable`.
+- Arrange a valid template, compile it, and pass `HashMap<String, String>` with `name = Alice`.
+- Act through `engine.render(&template, &context)`.
+- Assert returned `TemplateArtifact<Rendered>` has the source `TemplateName` and rendered content `Hello Alice`.
+- Minimal implementation: define `TemplateArtifact<State>`, `Rendered`, public accessors (`template()`, `content()`), and `render` returning the artifact.
+
+### Cycle 4: undefined variables fail under strict mode
+
+- Test name: `render::returns_error_when_variable_is_undefined`.
+- Arrange a compiled template containing `{{ name }}` and an empty `HashMap<String, String>`.
+- Act through `engine.render(&template, &context)`.
+- Assert an error is returned and `source()` is preserved.
+- Minimal implementation: configure `UndefinedBehavior::Strict` in `MiniJinjaEngine::configured()` and map render failures into `TemplateEngineError`.
+
+### Cycle 5: Markdown characters are not auto-escaped
+
+- Test name: `render::preserves_markdown_characters_when_auto_escape_is_disabled`.
+- Arrange a compiled template `{{ markdown }}` with context value `# Title *bold* [link]`.
+- Act through `engine.render(&template, &context)`.
+- Assert rendered content equals the original Markdown string.
+- Minimal implementation: configure `AutoEscape::None` in `MiniJinjaEngine::configured()`.
+
+### Cycle 6: render does not replace compiled source
+
+- Test name: `render::uses_compiled_source_instead_of_supplied_template_body`.
+- Arrange template A named `daily` with body `Hello {{ name }}` and compile it.
+- Arrange template B with the same name but different body, such as `Changed {{ name }}`.
+- Act by rendering template B after compiling template A.
+- Assert output still comes from the compiled source. This verifies behavior through the public API without inspecting MiniJinja internals.
+- Minimal implementation: keep source registration in `compile`; `render` must only call `env.get_template(template.name().as_ref())` and render the loaded template.
+
+### Cycle 7: render before compile returns an engine error
+
+- Test name: `render::returns_error_when_template_was_not_compiled`.
+- Arrange a valid `Template` but do not call `compile`.
+- Act through `engine.render(&template, &HashMap::new())`.
+- Assert an error is returned and `source()` is preserved.
+- Minimal implementation: map MiniJinja template lookup/load failure into `TemplateEngineError`.
+
+### Cycle 8: MiniJinja stays behind the adapter boundary
+
+- Test name: `policy::rendering_engine_imports_are_confined_to_engine_adapter`.
+- Extend or add a policy test that allows MiniJinja in `template/engine.rs` or `template/engine/minijinja.rs` but forbids it in domain, repository, service, raw, view, and artifact modules.
+- Assert the existing domain policy is not weakened: `aggregate.rs`, `raw.rs`, `views.rs`, `repository.rs`, and service-facing APIs do not import MiniJinja.
+- Minimal implementation: update module layout and exports without spreading MiniJinja imports.
+
+### Cycle 9: top-level TemplateError wraps engine errors only if needed
+
+- Test name, if added: `template_error::from_engine_error_wraps_correctly`.
+- Add only if the issue implementation needs `TemplateError::Engine` for public consistency with the existing template error hierarchy.
+- Assert conversion from `TemplateEngineError` produces `TemplateError::Engine` and preserves source chaining.
+- Minimal implementation: add `Engine(#[from] TemplateEngineError)` to `TemplateError`.
+
+### Rust implementation rules
+
+- Use `HashMap<String, String>` for the foundation render context; future typed contexts are out of scope.
+- Borrow inputs at the port boundary; clone only at the MiniJinja ownership boundary where `add_template_owned` needs owned name/source values.
+- Do not use `unwrap()` or `expect()` in production code.
+- Use `thiserror` or a manual `Error` impl for `TemplateEngineError`; keep MiniJinja types out of trait signatures and public constructors.
+- Add doc comments for every public type and method because workspace lints deny missing docs.
+- Do not add `Arc`, `Mutex`, `RwLock`, dynamic dispatch, extension registry hooks, path resolution, file writes, CLI behavior, or service orchestration in this issue.
+
+### Verification commands
+
+- During iteration: `mise run test:unit:template`.
+- Before completion: `mise run fmt`, `mise run lint`, and `mise run test`.
+- Before committing later: run GitNexus change detection for the final diff.
 
 ## Blocked by
 
@@ -85,7 +199,7 @@ Four artifacts are produced:
 
 **1. `TemplateEngine` trait** (lives in `lithos-core/src/template/engine.rs` or similar):
 - `fn compile(&mut self, template: &Template) -> Result<(), TemplateEngineError>` — checks engine-level source validity and loads the supplied template source into the configured engine; does not do repository lookup
-- `fn render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` — renders the loaded template selected by `template.name()` with the supplied context and returns rendered domain state
+- `fn render(&self, template: &Template, context: &HashMap<String, String>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` — renders the loaded template selected by `template.name()` with the supplied context and returns rendered domain state
 - `compile` intentionally accepts a `Template`. The service owns lookup; the engine owns engine-level source loading/checking for the supplied domain aggregate.
 - No `Clone + Send + Sync + 'static` bounds on the trait itself
 - No `minijinja` types in any method signature
@@ -97,7 +211,7 @@ Four artifacts are produced:
 - `compile` maps MiniJinja parse/load failures into `TemplateEngineError::Compile` (or equivalent opaque compile failure)
 - Configured with `UndefinedBehavior::Strict` and `AutoEscape::None`
 - MiniJinja built-ins only; no custom filters/globals/extensions
-- `render` calls `env.get_template(template.name().as_ref())` + `tmpl.render(context)`; it returns `TemplateArtifact<Rendered>` containing the template name and rendered content
+- `render` converts the flat `HashMap<String, String>` context internally and calls `env.get_template(template.name().as_ref())` + `tmpl.render(context)`; it returns `TemplateArtifact<Rendered>` containing the template name and rendered content
 - Implements `TemplateEngine`
 
 **3. `TemplateArtifact<Rendered>` type**:
@@ -121,7 +235,7 @@ Four artifacts are produced:
 - Architecture test (issue-09) will verify that `minijinja` does not appear outside the adapter module — design the module boundary accordingly
 
 **Acceptance criteria:**
-- [ ] `TemplateEngine` trait compiles with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &serde_json::Map<String, serde_json::Value>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` and no `minijinja` types in signatures
+- [ ] `TemplateEngine` trait compiles with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &HashMap<String, String>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` and no `minijinja` types in signatures
 - [ ] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds on the trait definition
 - [ ] `TemplateArtifact<Rendered>` exists and carries the source `TemplateName` plus rendered content
 - [ ] `MiniJinjaEngine::configured()` constructs a strict/no-escape environment with MiniJinja contained behind the adapter boundary
@@ -166,7 +280,7 @@ Four artifacts are produced:
 - `TemplateArtifact<Rendered>` belongs in this issue because rendering produces domain state. Issue 06 should extend that type with target resolution, conflict checks, and commit transitions.
 - `compile(&mut self, template: &Template)` intentionally mutates adapter-local engine state via MiniJinja source registration/checking; this is not service orchestration and does not violate the engine boundary.
 - `render(&Template, ...)` explicitly uses `template.name()` as the environment lookup key and does not re-register `template.body()` during rendering.
-- `serde_json::Map<String, serde_json::Value>` remains the foundation context type from `component-model.md`; the CLI can still assemble it from flat `--var key=value` inputs.
+- `HashMap<String, String>` is the foundation context type; it matches flat CLI `--var key=value` inputs and avoids introducing a broader typed context before there is concrete pressure.
 - No `Arc`, `Mutex`, or `RwLock` should be introduced unless implementation pressure proves shared mutable ownership is necessary.
 
 **Risk assessment:** LOW. This is a greenfield adapter/port addition with clear domain boundaries and focused tests. The main risk is accidentally leaking MiniJinja through public error types or expanding the engine into service/repository responsibilities.
