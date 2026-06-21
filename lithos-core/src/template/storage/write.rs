@@ -8,17 +8,18 @@
 //! - **Single transaction per method**: Each write method opens one transaction
 //!   via `Store::write()`. If any table operation fails, the entire transaction
 //!   rolls back automatically.
-//! - **Multi-table coordination**: [`save_template`] atomically updates both
-//!   the template aggregate and its name index ([`TEMPLATE_ID_BY_NAME`]).
+//! - **Multi-table coordination**: [`save_template`] atomically updates the
+//!   template aggregate, name index ([`TEMPLATE_ID_BY_NAME`]), and path index
+//!   ([`TEMPLATE_ID_BY_PATH`]).
 //! - **Batch operations**: [`save_many_raw_template_views`] wraps all saves in
 //!   a single transaction for atomicity.
 //!
 //! # Cross-Table Invariants
 //!
-//! - `save_template`: Maintains [`TEMPLATES`] ↔ [`TEMPLATE_ID_BY_NAME`]
-//!   consistency
-//! - `delete_template`: Removes template aggregate + name index in a single
-//!   transaction
+//! - `save_template`: Maintains [`TEMPLATES`], [`TEMPLATE_ID_BY_NAME`], and
+//!   [`TEMPLATE_ID_BY_PATH`] consistency.
+//! - `delete_template`: Removes template aggregate, name index, and path index
+//!   in a single transaction.
 //!
 //! # Rollback Behavior
 //!
@@ -29,6 +30,7 @@
 //! [`RedbRepository`]: crate::template::storage::RedbRepository
 //! [`TEMPLATES`]: crate::template::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::template::storage::tables::TEMPLATE_ID_BY_NAME
+//! [`TEMPLATE_ID_BY_PATH`]: crate::template::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`save_template`]: WriteRepository::save_template
 //! [`save_many_raw_template_views`]: WriteRepository::save_many_raw_template_views
 //! [`delete_template`]: WriteRepository::delete_template
@@ -43,7 +45,10 @@ use crate::{
         repository::WriteRepository,
         storage::{
             RedbRepository,
-            tables::{RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATES},
+            tables::{
+                RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATE_ID_BY_PATH,
+                TEMPLATES,
+            },
         },
         views::RawTemplateView,
     },
@@ -73,6 +78,10 @@ impl WriteRepository for RedbRepository {
                 name_table
                     .insert(template.name().as_str(), id_bytes.as_slice())?;
 
+                let mut path_table =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
+                path_table.insert(template.path(), template.id())?;
+
                 Ok(())
             })
             .map_err(crate::template::error::TemplateRepositoryError::from)
@@ -88,18 +97,24 @@ impl WriteRepository for RedbRepository {
                 let mut templates_table =
                     tx.try_open_table(TEMPLATES.definition())?;
 
-                let template_name: Option<String> = templates_table
-                    .get(id)?
-                    .map(|g| {
-                        Template::from_bytes(g.value())
-                            .map(|s| s.name().as_str().to_owned())
-                    })
-                    .transpose()?;
+                let template_indexes: Option<(String, PathKey)> =
+                    templates_table
+                        .get(id)?
+                        .map(|g| {
+                            Template::from_bytes(g.value()).map(|s| {
+                                (s.name().as_str().to_owned(), s.path().clone())
+                            })
+                        })
+                        .transpose()?;
 
-                if let Some(ref name) = template_name {
+                if let Some((ref name, ref path)) = template_indexes {
                     let mut name_index =
                         tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
                     let _ = name_index.remove(name.as_str())?;
+
+                    let mut path_index =
+                        tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
+                    let _ = path_index.remove(path)?;
                 }
 
                 let _ = templates_table.remove(id)?;
@@ -233,6 +248,8 @@ mod tests {
     }
 
     mod save_template {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -261,6 +278,20 @@ mod tests {
             assert!(found.is_some());
             let found = found.unwrap();
             assert_eq!(found.id(), template.id());
+        }
+
+        #[test]
+        fn updates_path_index() {
+            let (_, repo) = setup_repo();
+            let template = test_template("path-index-test");
+
+            repo.save_template(&template).unwrap();
+
+            let id = repo.find_template_id_by_path(template.path()).unwrap();
+            let found = repo.find_template_by_path(template.path()).unwrap();
+
+            assert_eq!(id, Some(*template.id()));
+            assert_eq!(found.as_ref().map(Template::id), Some(template.id()));
         }
 
         #[test]
@@ -326,6 +357,20 @@ mod tests {
             repo.delete_template(id).unwrap();
 
             assert!(repo.find_template_by_name(&name).unwrap().is_none());
+        }
+
+        #[test]
+        fn removes_path_index() {
+            let (_, repo) = setup_repo();
+            let template = test_template("delete-path");
+            let id = *template.id();
+            let path = template.path().clone();
+
+            repo.save_template(&template).unwrap();
+            repo.delete_template(id).unwrap();
+
+            assert!(repo.find_template_id_by_path(&path).unwrap().is_none());
+            assert!(repo.find_template_by_path(&path).unwrap().is_none());
         }
 
         #[test]

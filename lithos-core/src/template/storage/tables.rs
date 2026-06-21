@@ -6,7 +6,7 @@
 //! [`RedbRepository`]: super::RedbRepository
 
 use crate::{
-    db::{PathTable, Table, UuidTable},
+    db::{PathTable, PathUuidTable, Table, UuidTable},
     impl_redb_uuid,
     template::aggregate::TemplateId,
 };
@@ -34,6 +34,17 @@ pub(crate) const TEMPLATES: UuidTable<TemplateId, &[u8]> =
 #[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
 pub(crate) const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
     Table::new("template_id_by_name");
+
+/// Template path-to-ID index for fast path-based lookup.
+///
+/// Enables resolving template IDs by path without loading full template data.
+/// Maintained atomically with `TEMPLATES` during save operations.
+///
+/// Key: path string
+/// Value: serialized `TemplateId`
+#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
+pub(crate) const TEMPLATE_ID_BY_PATH: PathUuidTable<TemplateId> =
+    PathUuidTable::new("template_id_by_path");
 
 /// Raw template views for staleness detection.
 ///

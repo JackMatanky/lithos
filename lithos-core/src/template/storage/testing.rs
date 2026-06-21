@@ -81,6 +81,9 @@ pub(crate) struct InMemoryRepository {
     /// Name-to-ID lookup: `TemplateName` → `TemplateId`
     name_to_id: Arc<RwLock<HashMap<TemplateName, TemplateId>>>,
 
+    /// Path-to-ID lookup: `PathKey` → `TemplateId`
+    path_to_id: Arc<RwLock<HashMap<PathKey, TemplateId>>>,
+
     /// Raw template views for staleness detection: path → `RawTemplateView`
     raw_views: Arc<RwLock<HashMap<PathKey, RawTemplateView>>>,
 }
@@ -98,8 +101,28 @@ impl InMemoryRepository {
             harness: Arc::new(InMemoryHarness::new()),
             templates: Arc::new(RwLock::new(HashMap::new())),
             name_to_id: Arc::new(RwLock::new(HashMap::new())),
+            path_to_id: Arc::new(RwLock::new(HashMap::new())),
             raw_views: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Replaces the test harness with a custom one (test helper).
+    #[must_use]
+    pub(crate) fn with_harness(
+        mut self,
+        harness: Arc<InMemoryHarness>,
+    ) -> Self {
+        self.harness = harness;
+        self
+    }
+
+    /// Configures a failure injector for the repository (test helper).
+    #[must_use]
+    pub(crate) fn with_failure_injector(
+        self,
+        injector: Box<dyn crate::db::testing::FailureInjector + Send + Sync>,
+    ) -> Self {
+        self.with_harness(Arc::new(InMemoryHarness::with_injector(injector)))
     }
 
     /// Returns a reference to the test harness for instrumentation.
@@ -122,6 +145,7 @@ impl InMemoryRepository {
     pub(crate) fn clear(&self) {
         self.templates.write().expect("Lock poisoned").clear();
         self.name_to_id.write().expect("Lock poisoned").clear();
+        self.path_to_id.write().expect("Lock poisoned").clear();
         self.raw_views.write().expect("Lock poisoned").clear();
     }
 }
@@ -166,6 +190,38 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
+    fn find_template_id_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<TemplateId>, TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_template_id_by_path")?;
+        self.harness.counters().inc_read();
+
+        Ok(path_to_id.get(path).copied())
+    }
+
+    #[inline]
+    fn find_template_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<Template>, TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_template_by_path (path_to_id)")?;
+        self.harness.counters().inc_read();
+
+        let templates =
+            read_lock(&self.templates, "find_template_by_path (templates)")?;
+        self.harness.counters().inc_read();
+
+        Ok(path_to_id.get(path).and_then(|id| templates.get(id).cloned()))
+    }
+
+    #[inline]
     fn list_templates(&self) -> Result<Vec<Template>, TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
@@ -186,6 +242,18 @@ impl ReadRepository for InMemoryRepository {
         self.harness.counters().inc_read();
 
         Ok(views.get(path).cloned())
+    }
+
+    #[inline]
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let views = read_lock(&self.raw_views, "list_raw_template_view_paths")?;
+        self.harness.counters().inc_read();
+
+        Ok(views.keys().cloned().collect())
     }
 
     #[inline]
@@ -223,8 +291,13 @@ impl WriteRepository for InMemoryRepository {
             write_lock(&self.name_to_id, "save_template (name_to_id)")?;
         self.harness.counters().inc_write();
 
+        let mut path_to_id =
+            write_lock(&self.path_to_id, "save_template (path_to_id)")?;
+        self.harness.counters().inc_write();
+
         templates.insert(*template.id(), template.clone());
         name_to_id.insert(template.name().clone(), *template.id());
+        path_to_id.insert(template.path().clone(), *template.id());
         Ok(())
     }
 
@@ -243,8 +316,13 @@ impl WriteRepository for InMemoryRepository {
             write_lock(&self.name_to_id, "delete_template (name_to_id)")?;
         self.harness.counters().inc_write();
 
+        let mut path_to_id =
+            write_lock(&self.path_to_id, "delete_template (path_to_id)")?;
+        self.harness.counters().inc_write();
+
         if let Some(template) = templates.remove(&id) {
             name_to_id.remove(template.name());
+            path_to_id.remove(template.path());
         }
         Ok(())
     }
@@ -488,19 +566,16 @@ mod tests {
                 repo.save_template(&template).unwrap();
 
                 let snapshot = repo.harness().counters().snapshot();
-                assert_eq!(snapshot.writes, 2);
+                assert_eq!(snapshot.writes, 3);
             }
 
             #[test]
             fn returns_storage_error_when_before_write_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnWrite));
                 let template = test_template("failwrite");
 
-                let result = repo2.save_template(&template);
+                let result = repo.save_template(&template);
 
                 assert!(matches!(
                     result,
@@ -534,6 +609,52 @@ mod tests {
                     )
                     .unwrap();
                 assert!(result.is_none());
+            }
+
+            #[test]
+            fn find_template_id_by_path_returns_none_when_repository_is_empty()
+            {
+                let repo = InMemoryRepository::new();
+                let path = PathKey::try_new("templates/missing.md").unwrap();
+                let result = repo.find_template_id_by_path(&path).unwrap();
+                assert!(result.is_none());
+            }
+
+            #[test]
+            fn find_template_id_by_path_returns_some_id_after_saving_template()
+            {
+                let repo = InMemoryRepository::new();
+                let template = test_template("some-id-by-path");
+                repo.save_template(&template).unwrap();
+
+                let result =
+                    repo.find_template_id_by_path(template.path()).unwrap();
+                assert_eq!(result, Some(*template.id()));
+            }
+
+            #[test]
+            fn find_template_by_path_returns_none_for_unknown_path_after_saving_different_template()
+             {
+                let repo = InMemoryRepository::new();
+                let template = test_template("one-template");
+                repo.save_template(&template).unwrap();
+
+                let unknown_path =
+                    PathKey::try_new("templates/unknown.md").unwrap();
+                let result = repo.find_template_by_path(&unknown_path).unwrap();
+                assert!(result.is_none());
+            }
+
+            #[test]
+            fn find_template_by_path_returns_template_after_saving() {
+                let repo = InMemoryRepository::new();
+                let template = test_template("full-by-path");
+                repo.save_template(&template).unwrap();
+
+                let result =
+                    repo.find_template_by_path(template.path()).unwrap();
+                assert!(result.is_some());
+                assert_eq!(result.unwrap().id(), template.id());
             }
 
             #[test]
@@ -574,13 +695,10 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_read_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnRead));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnRead));
 
-                let result = repo2.find_template_by_id(TemplateId::new());
+                let result = repo.find_template_by_id(TemplateId::new());
 
                 assert!(matches!(
                     result,
@@ -688,14 +806,11 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_write_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnWrite));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnWrite));
                 let view = test_view("templates/fail.md");
 
-                let result = repo2.save_raw_template_view(&view);
+                let result = repo.save_raw_template_view(&view);
 
                 assert!(matches!(
                     result,
@@ -730,14 +845,11 @@ mod tests {
 
             #[test]
             fn returns_storage_error_when_before_read_failure_is_injected() {
-                let harness =
-                    InMemoryHarness::with_injector(Box::new(FailOnRead));
-                let repo = InMemoryRepository::new();
-                let mut repo2 = repo.clone();
-                repo2.harness = Arc::new(harness);
+                let repo = InMemoryRepository::new()
+                    .with_failure_injector(Box::new(FailOnRead));
 
                 let path = PathKey::try_new("templates/any.md").unwrap();
-                let result = repo2.find_raw_template_view(&path);
+                let result = repo.find_raw_template_view(&path);
 
                 assert!(matches!(
                     result,

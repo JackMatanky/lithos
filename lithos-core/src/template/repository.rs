@@ -58,6 +58,30 @@ pub trait ReadRepository {
         name: &TemplateName,
     ) -> Result<Option<Template>, TemplateRepositoryError>;
 
+    /// Find a template ID by its vault-relative path.
+    ///
+    /// Returns `None` if no template exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn find_template_id_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<TemplateId>, TemplateRepositoryError>;
+
+    /// Find a template by its vault-relative path.
+    ///
+    /// Returns `None` if no template exists at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn find_template_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<Template>, TemplateRepositoryError>;
+
     /// List all persisted template aggregates.
     ///
     /// # Errors
@@ -76,6 +100,15 @@ pub trait ReadRepository {
         &self,
         path: &PathKey,
     ) -> Result<Option<RawTemplateView>, TemplateRepositoryError>;
+
+    /// List all raw template view paths currently cached.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, TemplateRepositoryError>;
 
     /// Find raw template views by a set of paths in a single transaction.
     ///

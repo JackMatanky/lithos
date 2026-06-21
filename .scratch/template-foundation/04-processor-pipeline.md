@@ -2,8 +2,8 @@
 title: 04-processor-pipeline
 category: enhancement
 label: ready-for-agent
-status: open
-branch:
+status: in-review
+branch: feature/04-processor-pipeline
 merge_commit:
 date_created: 2026-06-11
 date_completed:
@@ -11,7 +11,7 @@ date_completed:
 
 # Template Processor Pipeline
 
-Status: ready-for-agent
+Status: in-review
 
 ## Parent
 
@@ -35,12 +35,70 @@ The processor stops at `Completed`. There is no `Compiled` or `Validated` stage 
 
 ## Acceptance criteria
 
-- [ ] Processor dual typestate phases are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
-- [ ] No `Compiled` or `Validated` stage exists
-- [ ] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
-- [ ] File reads use `FileReader`, not raw `std::fs`
-- [ ] Directory scanning uses `DirScanner`, scoped to `.md` files
-- [ ] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache entry (removal from repository), batch path comparison correctness
+- [x] Processor dual typestate phases are defined: `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed`
+- [x] No `Compiled` or `Validated` stage exists
+- [x] `TemplateId` is resolved exactly once (Construction stage) and not looked up again in `Completed`
+- [x] File reads use `FileReader`, not raw `std::fs`
+- [x] Directory scanning uses `DirScanner`, scoped to `.md` files
+- [x] Tests cover: fresh (no-op), new file (full construction path), stale content (refresh + re-construction), stale timestamp only (metadata-only refresh without re-construction), deleted-cache detection, batch path comparison correctness
+- [ ] Deleted-cache execution removes repository entries (deferred to issue-07)
+
+---
+
+## Implementation Notes
+
+### Stage-Based Typestate Pipeline
+The `TemplateProcessor` is implemented using a dual-typestate pattern: `TemplateProcessor<Phase, Status>`. This ensures that only valid transitions are possible at compile-time.
+
+- **Discovery**: Entry point, initializes the pipeline with discovered filesystem paths.
+- **Comparison**: Interacts with the repository to classify paths into `Missing`, `Present`, `Suspect`, or `Deleted`.
+- **Parsed**: Handles I/O via `FileReader` for `Missing` or `StaleContent` paths.
+- **Refresh**: Prepares `RawTemplateView` updates for `StaleTimestamps`.
+- **Construction**: Resolves `TemplateId` (one-time lookup) and constructs `Template` aggregates.
+- **Completed**: Terminal stage that persists changes (templates and views) back to the repository.
+
+### Static Dispatch
+Repository interactions use static dispatch (`<R: ReadRepository>`, `<R: WriteRepository>`) to avoid virtual call overhead and align with project performance patterns.
+
+### Failure Injection & Testing
+The `InMemoryRepository` in `testing.rs` was enhanced with a fluent API for failure injection:
+- `with_failure_injector(Box<dyn FailureInjector + Send + Sync>)`
+- `with_harness(Arc<InMemoryHarness>)`
+
+This allows for fine-grained control over repository errors in unit tests without exposing internal harness fields.
+
+### IO Failure Simulation
+Since `FilePath::try_new` validates file existence, simulating IO errors during read requires a "create-then-delete" strategy in tests to trigger `std::io::ErrorKind::NotFound` or similar at the point of `FileReader` usage.
+
+### Test Hygiene
+- Followed `unit-naming.md` (Structure A, verb-first naming).
+- Used `pretty_assertions` for all diff-based checks.
+- Zero `unwrap()`/`expect()` in production code; all errors are mapped to the domain-specific `TemplateError`.
+
+### Verification
+- `mise run test:unit -p template processor` (183 tests passed)
+- `mise run lint` (Passed)
+- `mise run fmt` (Passed)
+
+### Follow-up: TemplateService Integration
+
+The processor pipeline is now driven by `TemplateService::load` rather than only by processor unit tests. The service performs the batch orchestration that the processor intentionally does not own:
+
+- Scans the configured template directory with `DirScanner` and markdown filtering.
+- Batch-loads cached `RawTemplateView`s with `find_raw_template_views_by_paths`.
+- Resolves existing template IDs through the path index with `find_template_id_by_path`.
+- Drives the processor through fresh, new, stale-content, and stale-metadata branches.
+- Persists new and stale-content templates plus their fresh `RawTemplateView`s.
+- Persists metadata-only `RawTemplateView` refreshes without rewriting the aggregate.
+- Detects deleted cached paths by diffing `list_raw_template_view_paths()` against discovered paths; actual deletion remains deferred to issue-07.
+
+Service integration required the redb storage adapter to maintain the `TEMPLATE_ID_BY_PATH` index on save/delete so construction can resolve IDs by path without scanning all templates. It also added raw-view path listing for deletion detection and length validation around batch raw-view lookup so mismatched repository results fail as corruption instead of silently truncating work.
+
+### Remaining Dead-Code Allowances
+
+`lithos-core/src/template/processor.rs` still has a module-level `#![allow(dead_code, unused_imports)]`. The original reason string is stale: the processor is no longer completely unused because `TemplateService` exercises the main ingestion branches.
+
+The allowance remains because this issue introduced a compile-time typestate surface larger than the currently wired service path. Several marker/status types, branch wrappers, and test-facing accessors exist to document legal transitions or preserve forward-compatible states, but they are not all referenced as runtime values outside processor tests yet. Removing the broad allowance should be a cleanup task once issue-07 deletion execution and any remaining service-facing branches are wired, replacing it with narrower `#[cfg(test)]` or item-level allowances where needed.
 
 ## Blocked by
 
@@ -103,37 +161,38 @@ No `Compiled` or `Validated` stage is added — engine compilation is a live on-
 Today, Discovery is constructed from a `DirScanner` scan of `TemplateConfigSpec`. Design the input boundary so it accepts a description of discovered files rather than performing the scan internally. The natural unit is one entry per template file carrying: the filesystem path (`FilePath`), the storage key (`PathKey`), and file metadata (`FileMetadata`). This matches the shape that the in-progress `indexer/` context already produces (`FileIndexEntry` carrying `FileRecord { path, name, metadata }` plus `FilePath`). When the indexer is wired in, Discovery will receive `FileIndexEntry` slices instead of running its own `DirScanner` walk — no processor internals need to change. For now, the processor should own a thin constructor that runs `DirScanner` and converts results to this input shape, keeping the scan logic behind a clear seam.
 
 **Acceptance criteria:**
-- [ ] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
-- [ ] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
-- [ ] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
-- [ ] All transitions use the private `transition()` / `transition_from_parts()` helpers on `TemplateProcessor<P, S>`, mirroring the existing processor pattern; `impl From` is not used for stage transitions
-- [ ] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
-- [ ] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
-- [ ] No `Compiled` or `Validated` stage exists anywhere in the processor
-- [ ] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
-- [ ] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
-- [ ] `TemplateId` is resolved exactly once in the `Construction` stage; the `Completed` stage does not re-query the repository for IDs
-- [ ] Existing-template ID resolution uses a repository path lookup/index, not `list_templates()` scanning
-- [ ] Fresh files produce no repository write (no-op path)
-- [ ] New files go through full construction and are persisted
-- [ ] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
-- [ ] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
-- [ ] Deleted-cache entries (present in repository but not on disk) are removed from the repository
-- [ ] Tests use the in-memory test double from issue-03, not a real redb instance
-- [ ] Tests are written before implementation and use descriptive behavior-focused names
-- [ ] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, deleted-cache entry, batch path comparison correctness
-- [ ] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
-- [ ] Tests cover repository failure propagation for batch lookup, template persistence, raw view persistence, and deletion paths
-- [ ] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
-- [ ] `mise run fmt` passes
-- [ ] `mise run lint` passes
-- [ ] `mise run test` passes
+- [x] `TemplateProcessor<Phase, Status>` is the processor shape; it does not collapse phase and status into a single `State` parameter
+- [x] Processor phases `Discovery`, `Comparison`, `Parsed`, `Refresh`, `Construction`, `Completed` are defined as distinct typestate parameter types
+- [x] Branch/status types model the flow from the component model, including missing/new, present/fresh, suspect, stale-content, stale-timestamps, deleted, and completed outcomes as needed
+- [x] All transitions use the private `transition()` / `transition_from_parts()` helpers on `TemplateProcessor<P, S>`, mirroring the existing processor pattern; `impl From` is not used for stage transitions
+- [x] Discovery accepts a slice of pre-discovered entries (path + metadata) rather than running `DirScanner` internally; a thin constructor exists that produces this slice via `DirScanner` for the current direct-scan path
+- [x] The input entry shape for Discovery is compatible with `FileIndexEntry` from the `indexer/` context so the future wiring requires only a constructor change, not a processor redesign
+- [x] No `Compiled` or `Validated` stage exists anywhere in the processor
+- [x] Directory scanning uses `DirScanner` scoped to `.md` files; no raw `std::fs::read_dir`
+- [x] File reads use `FileReader`; no raw `std::fs::read_to_string` or `std::fs::read`
+- [x] `TemplateId` is resolved exactly once in the `Construction` stage; the `Completed` stage does not re-query the repository for IDs
+- [x] Existing-template ID resolution uses a repository path lookup/index, not `list_templates()` scanning
+- [x] Fresh files produce no repository write (no-op path)
+- [x] New files go through full construction and are persisted
+- [x] Stale-content files are re-read, re-hashed, re-constructed, and persisted with a new `RawTemplateView`
+- [x] Stale-timestamp-only files update `RawTemplateView` metadata without re-constructing the `Template`
+- [ ] Deleted-cache entries (present in repository but not on disk) are removed from the repository (DEFERRED to issue-07)
+- [x] Tests use the in-memory test double from issue-03, not a real redb instance
+- [x] Tests are written before implementation and use descriptive behavior-focused names
+- [x] Tests cover: fresh (no-op), new file, stale content, stale timestamp only, batch path comparison correctness, and deleted-cache detection (DELETED-CACHE REMOVAL DEFERRED)
+- [x] Tests cover compile-time typestate intent where practical (for example, stage-specific method availability through positive compileable examples or doc tests; avoid runtime boolean state assertions)
+- [x] Tests cover repository failure propagation for batch lookup, template persistence, and raw view persistence
+- [ ] Tests cover repository failure propagation for deletion paths (DEFERRED to issue-07)
+- [x] Production code contains no `unwrap()`/`expect()`/`panic!` for recoverable filesystem, repository, path conversion, or template validation failures
+- [x] `mise run fmt` passes
+- [x] `mise run lint` passes
+- [x] `mise run test` passes
 
 **Out of scope:**
 - redb storage adapter
 - `Compiled` or `Validated` processor stages
 - Engine compilation or rendering
-- Template service, artifact pipeline, CLI
+- Artifact pipeline and CLI
 - Frontmatter parsing or query semantics
 
 ---
@@ -259,9 +318,9 @@ Tests:
 - `stale_timestamp_only_does_not_call_save_template`
 - `stale_timestamp_only_fetches_existing_template_without_reconstruction`
 
-### Phase 6 — Deleted-cache entries
+### Phase 6 — Deleted-cache entries (DEFERRED to issue-07)
 
-Entries present in the repository's cached views but absent from the discovered set are deleted from both `Template` and `RawTemplateView` storage.
+Entries present in the repository's cached views but absent from the discovered set are deleted from both `Template` and `RawTemplateView` storage. Handling of these deletions is deferred to the `TemplateService` in issue-07.
 
 Tests:
 - `deleted_entry_removes_template_from_repository`
@@ -286,7 +345,267 @@ Examples to verify at compile time (via doc tests or `compile_fail` tests where 
 | New file               | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
 | Stale content          | Discovery → Comparison → Parsed → Construction → Completed         | `save_template` + `save_raw_template_view`     |
 | Stale timestamp only   | Discovery → Comparison → Refresh → Construction → Completed        | `save_raw_template_view` only                  |
-| Deleted-cache entry    | Detected in Comparison batch diff                                  | `delete_template` + `delete_raw_template_view` |
+| Deleted-cache entry    | Detected in Comparison batch diff (DEFERRED)                       | `delete_template` + `delete_raw_template_view` |
 | Batch path correctness | Mixed batch with all of the above                                  | Correct per-entry branching                    |
 | Repository failure     | Any write or delete path                                           | `Err` propagated, no panic                     |
 | File read failure      | New file or stale content path                                     | `Err(TemplateError::Read(...))`, no panic      |
+
+### TemplateService Orchestration
+
+To orchestrate the ingestion pipeline and avoid coupling `TemplateProcessor` to directory scanning or batch logic, a basic `TemplateService` acts as the coordinator:
+- **`scan_templates`**: Private method that uses `DirScanner` to discover `.md` files in the configured template directory.
+- **`fetch_cached_views`**: Private method that calls `ReadRepository::find_raw_template_views_by_paths` for all discovered files to retrieve existing `RawTemplateView`s.
+- **`load`**: Orchestration method that ties the scan, cached view fetching, and `TemplateProcessor` together, advancing each discovered file through its appropriate state transitions to the `Completed` stage.
+
+*Note: Identifying deleted templates (present in the repository but absent from the scan) is also managed by this orchestrator, but actual deletion processing is deferred to issue-07.*
+
+### Revised TDD Plan: `TemplateService` Orchestration
+
+Following the **vertical slicing** approach, we will first refactor the `TemplateProcessor` boundary, and then build out the `TemplateService` behaviors sequentially.
+
+#### Cycle 0: Refactor `TemplateProcessor` for Batch Pre-fetching
+**Goal:** Remove individual repository lookups from `TemplateProcessor::compare` to support batch processing.
+*   **Test:** Update existing processor tests in `lithos-core/src/template/processor.rs` to pass `Option<TemplateId>` and `Option<RawTemplateView>` directly to `compare` instead of passing the repository.
+*   **Implementation:**
+    *   Change the signature: `pub(crate) fn compare(self, id: Option<TemplateId>, view: Option<RawTemplateView>) -> DiscoveryBranch`
+    *   Remove `<R: ReadRepository>` generic from `compare`.
+
+#### Cycle 1: The Tracer Bullet (Empty Directory)
+**Goal:** Establish the basic struct, `scan_templates`, and the `load` entry point.
+*   **Test:** `load_should_return_empty_list_when_template_directory_is_empty`
+*   **Implementation:**
+    *   Create `TemplateService` struct.
+    *   Implement private `scan_templates` using `DirScanner::new().entries()` filtered to `.md` extensions and `recursive(true)`.
+    *   Implement public `load` that calls `scan_templates` and returns an empty vector.
+
+#### Cycle 2: Batch Cache Checking (`check_batch_existence`)
+**Goal:** Implement the batch fetching mechanism that powers the comparison stage.
+*   **Test:** `check_batch_existence_should_retrieve_views_and_ids_for_provided_paths`
+*   **Implementation:**
+    *   Implement `fn check_batch_existence<R: ReadRepository>(&self, repository: &R, paths: &[PathKey]) -> Result<Vec<(Option<TemplateId>, Option<RawTemplateView>)>, TemplateError>`
+    *   Perform a lookup using `repository.find_raw_template_views_by_paths(paths)` and loop over paths with `repository.find_template_id_by_path(path)` to zip the results together.
+
+#### Cycle 3: Discovering & Processing New Templates
+**Goal:** Orchestrate the pipeline for entirely new markdown files.
+*   **Test:** `load_should_process_new_markdown_files_and_ignore_other_extensions`
+*   **Implementation:**
+    *   In `load`, gather paths from `scan_templates`.
+    *   Pass paths to `check_batch_existence`.
+    *   Iterate over zipped `(file, path_key)` and `(id, view)`.
+    *   Instantiate `TemplateProcessor::new(file, path_key)`.
+    *   Drive the processor: `compare(id, view)` → `DiscoveryBranch::Missing` → `parse(file_reader)` → `create(repo, template_root)`.
+
+#### Cycle 4: Processing Fresh Templates (No-op)
+**Goal:** Ensure unmodified files skip parsing and reconstruction.
+*   **Test:** `load_should_fetch_existing_templates_without_repository_writes_when_fresh`
+*   **Implementation:**
+    *   In `load`, handle `DiscoveryBranch::Present`.
+    *   Call `check_metadata()` → matches `MetadataBranch::Match` → calls `fetch(repo)`.
+
+#### Cycle 5: Processing Stale Content
+**Goal:** Orchestrate the pipeline when file content has actually changed.
+*   **Test:** `load_should_reconstruct_and_update_template_when_content_hash_changes`
+*   **Implementation:**
+    *   In `load`, handle `MetadataBranch::Mismatch`.
+    *   Call `check_content(file_reader)` → `ContentBranch::Mismatch` → `parse()` → `update(repo, id, template_root)`.
+
+#### Cycle 6: Processing Stale Metadata (Timestamp-only refresh)
+**Goal:** Ensure files with changed timestamps but identical content hashes only sync metadata.
+*   **Test:** `load_should_sync_metadata_without_reconstruction_when_only_timestamps_change`
+*   **Implementation:**
+    *   In `load`, handle `ContentBranch::Match`.
+    *   Call `sync_metadata(repo)` → calls `fetch(repo)`.
+
+#### Cycle 7: Deletion Detection (Deferred execution)
+**Goal:** Ensure the orchestrator identifies deleted templates as requested by the handoff.
+*   **Test:** `load_should_identify_deleted_templates_for_deferred_processing`
+*   **Implementation:**
+    *   Add a `// TODO(#issue-07): Process deletions for paths in cache but absent from disk.` note where we would process the diff between discovered paths and cached paths.
+
+---
+
+## Approved Update Plan: Processor-Owned Execution
+
+### Goal
+
+Refactor the Template Processor integration so `TemplateService` owns only scan and cache prefetch orchestration while `TemplateProcessor<Init, Discovered>` owns per-template execution through `run()`, `run_present()`, `run_missing()`, and `run_corrupt()`.
+
+### Architecture
+
+`TemplateService::load()` scans markdown files, batch-loads cached raw views and template IDs, detects deferred deletions, and then hands one discovered template record at a time to `TemplateProcessor<Init, Discovered>::run()`. The processor classifies the discovered cache state into missing, present, or recoverably corrupt paths and returns a real terminal typestate carrying the completed `Template`.
+
+The processor must preserve the typestate pattern and use `self.into_parts()` / `transition_from_parts()` when moving state between phases. Content checks must use `status.view.is_content_match(&hash)` through `HasContentHash`; stale-content updates must mutate the carried `RawTemplateView` with `set_content_hash()` and `update_metadata()` instead of replacing it blindly.
+
+### Worktree Guardrail
+
+All implementation and verification work must run only under `/Users/jack/Documents/41_personal/lithos/.worktrees/04-processor-pipeline`. Agents and subagents must verify `pwd` before every command/read/edit and must not inspect or modify files outside `.worktrees/04-processor-pipeline`.
+
+### Files
+
+- Modify `lithos-core/src/template/service.rs`: scan output shape, cache-state classification, simplified `load()` loop.
+- Modify `lithos-core/src/template/processor.rs`: `Init`/`Discovered` entry, processor-owned `run()` methods, real terminal typestate, `into_parts()` cleanup, ID-based fresh fetch, recoverable corrupt rebuild.
+- Modify `lithos-core/src/template/views.rs` only if dead-code allowances become stale after `HasContentHash` use.
+- Modify `.scratch/template-foundation/04-processor-pipeline.md`: record this approved update plan and any final implementation notes.
+
+### Task 1: Service Scan Output
+
+- Introduce `ScannedTemplate { file: FileNode, path_key: PathKey }` in `service.rs`.
+- Change `scan_templates()` to return `Result<Vec<ScannedTemplate>, TemplateError>`.
+- Build `DirScanInput` with `.with_extensions(&["md"]).include_dirs(false).recursive(true)`.
+- Keep the `FsNode::File` match while using `DirScanner::entries()`, because the scanner API still returns `FsNode` even when directory output is disabled.
+- Update scan/load tests to assert only markdown files are processed.
+
+### Task 2: Service Builds Discovered Cache State
+
+- Replace `type CacheExistence = (Option<TemplateId>, Option<RawTemplateView>)` with processor input records.
+- Add processor-owned discovery input types:
+
+```rust
+pub(crate) struct Discovered {
+    file: FileNode,
+    path_key: PathKey,
+    cache: DiscoveredCacheState,
+}
+
+pub(crate) enum DiscoveredCacheState {
+    New(Missing),
+    Exists(Present),
+    Corrupt(Corrupted),
+}
+```
+
+- Change `check_batch_existence()` to accept `Vec<ScannedTemplate>` and return `Vec<Discovered>`.
+- Classify cache state as:
+  - `(None, None)` → `New(Missing)`
+  - `(Some(id), Some(view))` → `Exists(Present { id, view })`
+  - `(Some(id), None)` → recoverable `Corrupt(Corrupted { id, view: None })`
+  - `(None, Some(view))` → repository corruption error, because there is no stable `TemplateId` to preserve.
+- Preserve the existing batch length mismatch corruption check.
+
+### Task 3: Processor Owns Execution
+
+- Replace service-visible `DiscoveryBranch`, `MetadataBranch`, and `ContentBranch` orchestration with `TemplateProcessor<Init, Discovered>::run()`.
+- Add phases/statuses:
+
+```rust
+pub(crate) struct Init;
+pub(crate) struct CompletedPhase;
+pub(crate) struct Missing;
+pub(crate) struct Present { id: TemplateId, view: RawTemplateView }
+pub(crate) struct Corrupted { id: TemplateId, view: Option<RawTemplateView> }
+```
+
+- Add `TemplateProcessor::<Init, Discovered>::new(discovered: Discovered) -> Self`.
+- Add `run()`, `run_missing()`, `run_present()`, and `run_corrupt()`.
+- Keep internal branch enums where useful, but stop exposing branch handling to `TemplateService`.
+
+### Task 4: Real Terminal Typestate
+
+- Replace the marker-only `Completed` with a terminal status that carries the loaded or persisted template:
+
+```rust
+pub(crate) struct CompletedPhase;
+
+pub(crate) struct Completed {
+    template: Template,
+}
+
+impl TemplateProcessor<CompletedPhase, Completed> {
+    pub(crate) fn into_template(self) -> Template {
+        self.status.template
+    }
+}
+```
+
+- Change `create()`, `update()`, `fetch()`, and `run_corrupt()` to return `TemplateProcessor<CompletedPhase, Completed>`.
+- `TemplateService::load()` should call `.run(...)? .into_template()`.
+
+### Task 5: Fresh Fetch Uses TemplateId
+
+- Keep `Fresh { id }` meaningful.
+- Change `TemplateProcessor<Construction, Fresh>::fetch()` to call `ReadRepository::find_template_by_id(self.status.id)`.
+- Return `TemplateRepositoryError::NotFoundById(id)` or the nearest existing not-found error if `find_template_by_id()` returns `None`.
+- Do not fetch fresh templates by path.
+
+### Task 6: Stale Content Updates Existing View
+
+- In `TemplateProcessor<Construction, Changed>::update()`, destructure with `into_parts()`.
+- Build the updated `Template` using the existing `TemplateId`.
+- Mutate the carried `RawTemplateView`:
+
+```rust
+status.view.set_content_hash(status.content_hash);
+status.view.update_metadata(file.metadata().clone());
+```
+
+- Persist the template and the mutated view.
+- Return the terminal completed processor.
+
+### Task 7: Content Hash Trait And State Moves
+
+- Import `HasContentHash` and `HasContentHashMut` in `processor.rs`.
+- Replace `status.view.content_hash().is_match(&hash)` with `status.view.is_content_match(&hash)`.
+- Refactor `check_metadata()` and `check_content()` to destructure with `into_parts()` once and use `transition_from_parts()` for both branches.
+- Avoid cloning `RawTemplateView` when ownership can move through typestate status.
+
+### Task 8: Corrupt Rebuild Path
+
+- Implement `run_corrupt()` for recoverable `(Some(id), None)` cache state.
+- Read the file through `FileReader`.
+- Compute the hash.
+- Construct `Template` using the preserved `TemplateId`, current `PathKey`, derived `TemplateName`, and `TemplateBody`.
+- Build a new `RawTemplateView` when none exists, or update the carried view when present.
+- Persist both template and raw view.
+- Return the terminal completed processor.
+
+### Task 9: Service Simplification
+
+- Remove `process_branch()`, `process_present()`, and `process_suspect()` from `TemplateService`.
+- `load()` should:
+  1. scan templates;
+  2. derive `PathKey`s for deferred deletion detection;
+  3. call `check_batch_existence()`;
+  4. call `TemplateProcessor::<Init, Discovered>::new(discovered).run(...)?.into_template()` for each discovered record.
+
+### Task 10: Dead-Code Cleanup
+
+- Remove the module-level `#![allow(dead_code, unused_imports)]` in `processor.rs` after the refactor.
+- Remove obsolete test-only helpers and branch accessors that are no longer used.
+- Use narrow item-level `#[expect(dead_code, reason = "...")]` only for intentionally retained typestate markers.
+
+### TDD Checklist
+
+- Write failing tests before production changes for cache classification, terminal typestate return, fresh ID fetch, stale-content view mutation, recoverable corrupt rebuild, and view-without-ID corruption.
+- Run focused red tests before implementation.
+- Implement the minimum code to pass.
+- Run focused green tests after each slice.
+- Run `mise run fmt`, `mise run lint`, `mise run test`, `git diff --check`, and GitNexus `detect_changes()` before completion.
+
+### Implementation Result
+
+- `TemplateService` now scans into `ScannedTemplate` records, explicitly sets `DirScanInput::include_dirs(false)`, classifies cache state in `check_batch_existence()`, and delegates per-template execution to `TemplateProcessor<Init, Discovered>::run()`.
+- `check_batch_existence()` now maps discovered cache state to `New(Missing)`, `Exists(Present)`, or recoverable `Corrupt(Corrupted)` and treats `(None, Some(view))` as repository corruption because no stable `TemplateId` can be preserved.
+- `TemplateProcessor` now owns `run()`, `run_missing()`, `run_present()`, and `run_corrupt()` and returns `TemplateProcessor<CompletedPhase, Completed>` from all terminal paths.
+- Fresh templates fetch by `TemplateId` through `ReadRepository::find_template_by_id()`.
+- Stale-content updates mutate the carried `RawTemplateView` with `set_content_hash()` and `update_metadata()` before persistence.
+- Content comparison uses `status.view.is_content_match(&hash)` through `HasContentHash`.
+- `check_metadata()` and `check_content()` now destructure with `into_parts()` and move state through `transition_from_parts()` without cloning raw views.
+- The obsolete `Discovery`/`DiscoveryBranch`/`compare()` compatibility path and stale module-level dead-code allowance were removed.
+
+Verification:
+- Red check: `mise run test:unit:template` failed first with missing `DiscoveredTemplate`, `DiscoveredCacheState`, `Init`, `run()`, and terminal `into_template()` APIs.
+- Focused green check: `mise run test:unit:template` passed.
+- Lint: `mise run lint` passed.
+- Full tests: `mise run test` passed.
+- ADR validation: `mise run adr:validate` was up to date.
+- Whitespace: `git diff --check` passed.
+- GitNexus: `detect_changes(scope="all")` reported LOW risk and no affected processes.
+
+### Typestate Alignment and Corrupt Path Handling
+The processor was adjusted to ensure recoverable corrupt cache (entries with an ID but missing view) correctly traverse the typestate parsing phase.
+- `run_corrupt()` now transitions to `TemplateProcessor<Parsed, Corrupted>` and reads file content via `parse(source)`.
+- `TemplateProcessor<Construction, Changed>::update()` now correctly accepts `view: Option<RawTemplateView>` and constructs the missing view inline when writing.
+- `RawTemplateView`'s `HasContentHash` trait implementation was given an explicit `is_content_match` method to bypass the default reference-based comparison behavior, correctly utilizing the value semantics of `Blake3Hash`.
+
+### Typestate Dead Code Allowance Cleanup
+The original broad `#![allow(dead_code)]` logic was replaced, but individual typestate transition methods (`parse`, `check_metadata`, `create`, `update`, etc.) were temporarily annotated with `#[cfg_attr(test, allow(dead_code))]`. Now that `TemplateProcessor::run()` dynamically routes execution through all these methods via matching the `DiscoveredCacheState`, all `#[cfg_attr(test, allow(dead_code))]` statements have been removed from the typestate implementations.

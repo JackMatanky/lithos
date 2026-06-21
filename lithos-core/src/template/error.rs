@@ -28,9 +28,18 @@ pub enum TemplateError {
     /// A template body validation error.
     #[error("template body error: {0}")]
     Body(#[from] TemplateBodyError),
+    /// A template file read error.
+    #[error(transparent)]
+    Read(#[from] TemplateReadError),
     /// A template repository persistence error.
     #[error(transparent)]
     Repository(#[from] TemplateRepositoryError),
+    /// A path validation error.
+    #[error(transparent)]
+    Path(#[from] TemplatePathError),
+    /// A filesystem scanning error.
+    #[error(transparent)]
+    Scan(#[from] TemplateDirScanError),
 }
 
 // ============================================================================
@@ -63,6 +72,49 @@ pub enum TemplateBodyError {
     /// Template body must contain at least one character.
     #[error("template body must not be empty")]
     Empty,
+}
+
+// ============================================================================
+// TemplateReadError
+// ============================================================================
+
+/// Errors returned when reading a template file from the filesystem.
+///
+/// Wraps [`crate::fs::ReadError`] so file I/O failures surface through the
+/// template error hierarchy without leaking `fs` internals into call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateReadError {
+    #[error(transparent)]
+    Read(#[from] crate::fs::ReadError),
+}
+
+// ============================================================================
+// TemplatePathError
+// ============================================================================
+
+/// Errors returned during path validation or resolution.
+///
+/// Wraps [`crate::fs::error::PathError`] so path failures surface through the
+/// template error hierarchy without leaking `fs` internals into call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplatePathError {
+    #[error(transparent)]
+    Path(#[from] crate::fs::error::PathError),
+}
+
+// ============================================================================
+// TemplateDirScanError
+// ============================================================================
+
+/// Errors returned during directory scanning.
+///
+/// Wraps [`crate::fs::error::ScanError`] so file discovery failures surface
+/// through the template error hierarchy without leaking `fs` internals into
+/// call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateDirScanError {
+    #[error(transparent)]
+    Scan(#[from] crate::fs::error::ScanError),
 }
 
 // ============================================================================
@@ -136,6 +188,24 @@ mod tests {
         }
     }
 
+    mod template_read_error {
+        use std::io;
+
+        use super::*;
+
+        #[test]
+        fn template_read_error_wraps_fs_read_error_via_from() {
+            let io_err =
+                io::Error::new(io::ErrorKind::NotFound, "file not found");
+            let fs_err = crate::fs::ReadError::Io {
+                path: std::path::PathBuf::from("test.md"),
+                source: io_err,
+            };
+            let read_err: TemplateReadError = fs_err.into();
+            assert!(matches!(read_err, TemplateReadError::Read(_)));
+        }
+    }
+
     mod template_error {
         use super::*;
 
@@ -161,6 +231,20 @@ mod tests {
                 );
             let template_err: TemplateError = repo_err.into();
             assert!(matches!(template_err, TemplateError::Repository(_)));
+        }
+
+        #[test]
+        fn template_error_read_variant_wraps_template_read_error_via_from() {
+            use std::io;
+            let io_err =
+                io::Error::new(io::ErrorKind::NotFound, "file not found");
+            let fs_err = crate::fs::ReadError::Io {
+                path: std::path::PathBuf::from("test.md"),
+                source: io_err,
+            };
+            let read_err = TemplateReadError::from(fs_err);
+            let template_err: TemplateError = read_err.into();
+            assert!(matches!(template_err, TemplateError::Read(_)));
         }
 
         #[test]

@@ -15,6 +15,7 @@
 //! Uses table definitions from [`crate::template::storage::tables`]:
 //! - [`TEMPLATES`]: Template aggregates by ID
 //! - [`TEMPLATE_ID_BY_NAME`]: Name-to-ID index
+//! - [`TEMPLATE_ID_BY_PATH`]: Path-to-ID index
 //! - [`RAW_TEMPLATE_VIEWS`]: Raw template views by path
 //!
 //! [`ReadRepository`]: crate::template::repository::ReadRepository
@@ -22,6 +23,7 @@
 //! [`Store`]: crate::db::Store
 //! [`TEMPLATES`]: crate::template::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::template::storage::tables::TEMPLATE_ID_BY_NAME
+//! [`TEMPLATE_ID_BY_PATH`]: crate::template::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`RAW_TEMPLATE_VIEWS`]: crate::template::storage::tables::RAW_TEMPLATE_VIEWS
 
 use redb::ReadableTable;
@@ -101,6 +103,72 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
+    fn find_template_id_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<
+        Option<TemplateId>,
+        crate::template::error::TemplateRepositoryError,
+    > {
+        self.store
+            .read(|tx| {
+                let Some(path_table) = tx.try_open_table(
+                    crate::template::storage::tables::TEMPLATE_ID_BY_PATH
+                        .definition(),
+                )?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(id_guard) = path_table.get(path)? else {
+                    return Ok(None);
+                };
+
+                let id = id_guard.value();
+                Ok(Some(id))
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
+    fn find_template_by_path(
+        &self,
+        path: &PathKey,
+    ) -> Result<Option<Template>, crate::template::error::TemplateRepositoryError>
+    {
+        self.store
+            .read(|tx| {
+                let Some(path_table) = tx.try_open_table(
+                    crate::template::storage::tables::TEMPLATE_ID_BY_PATH
+                        .definition(),
+                )?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(id_guard) = path_table.get(path)? else {
+                    return Ok(None);
+                };
+
+                let id = id_guard.value();
+
+                let Some(template_table) =
+                    tx.try_open_table(TEMPLATES.definition())?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(template_guard) = template_table.get(id)? else {
+                    return Ok(None);
+                };
+
+                let template = Template::from_bytes(template_guard.value())?;
+                Ok(Some(template))
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
     fn list_templates(
         &self,
     ) -> Result<Vec<Template>, crate::template::error::TemplateRepositoryError>
@@ -146,6 +214,30 @@ impl ReadRepository for RedbRepository {
 
                 let view = RawTemplateView::from_bytes(guard.value())?;
                 Ok(Some(view))
+            })
+            .map_err(crate::template::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
+    fn list_raw_template_view_paths(
+        &self,
+    ) -> Result<Vec<PathKey>, crate::template::error::TemplateRepositoryError>
+    {
+        self.store
+            .read(|tx| {
+                let Some(table) =
+                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?
+                else {
+                    return Ok(Vec::new());
+                };
+
+                let mut paths = Vec::new();
+                for result in table.iter()? {
+                    let (path_guard, _) = result?;
+                    paths.push(path_guard.value());
+                }
+
+                Ok(paths)
             })
             .map_err(crate::template::error::TemplateRepositoryError::from)
     }

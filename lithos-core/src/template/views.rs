@@ -50,7 +50,6 @@ impl RawTemplateView {
     /// and recorded timestamp.
     #[inline]
     #[must_use]
-    #[allow(dead_code, reason = "used by Template Processor (Issue 04)")]
     pub(crate) fn new(
         path: PathKey,
         content_hash: Blake3Hash,
@@ -75,10 +74,7 @@ impl RawTemplateView {
     /// Returns a reference to the content hash.
     #[inline]
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "used by staleness detection in Template Processor (Issue 04)"
-    )]
+    #[cfg(test)]
     pub(crate) const fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
     }
@@ -96,12 +92,25 @@ impl RawTemplateView {
     pub const fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
+
+    /// Updates the view metadata to the provided new metadata and records the
+    /// update time.
+    #[inline]
+    pub(crate) fn update_metadata(&mut self, metadata: FileMetadata) {
+        self.metadata = metadata;
+        self.recorded_at = SystemTime::now();
+    }
 }
 
 impl HasContentHash for RawTemplateView {
     #[inline]
     fn content_hash(&self) -> &Blake3Hash {
         &self.content_hash
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.content_hash.is_match(hash)
     }
 }
 
