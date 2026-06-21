@@ -6,35 +6,39 @@ status: draft
 date_created: 2026-06-21
 ---
 
-# Env/Dirs Centralization — `EnvVars`, `PlatformDirs`, and `AppDirs`
+# Env/Dirs Centralization — `EnvVars`, Platform XDG Statics, and `AppDirs`
 
-Centralise all environment variable reading and directory resolution into three
-structs at the crate root (`lithos-core/src/`), replacing ad-hoc `std::env` calls
-scattered across `bootstrap.rs`, `processor.rs`, and `DiscoveryEnv`.
+Centralise all environment variable reading and platform directory resolution
+into `env.rs` and `dirs.rs` at the crate root (`lithos-core/src/`), replacing
+ad-hoc `std::env` calls scattered across `bootstrap.rs`, `processor.rs`, and
+`DiscoveryEnv`.
 
 ## Motivation
 
-Current state:
-- `env.rs` has 7 top-level `LazyLock` statics mixing platform dirs (`HOME`,
-  `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`) with LITHOS_* env vars. No struct
-  abstraction, no test-only construction without env mutation.
-- `bootstrap.rs` reads `LITHOS_CACHE_DIR` via `env::var_os()` directly (two
-  call sites) and owns `platform_global_directory_candidates()` which reads
+Current state (before this ADR was implemented):
+- `env.rs` had a mix of top-level `LazyLock` statics and loose env reads; no
+  struct for capturing `LITHOS_*` vars together.
+- `bootstrap.rs` read `LITHOS_CACHE_DIR` via `env::var_os()` directly (two
+  call sites) and owned `platform_global_directory_candidates()` which read
   `XDG_CONFIG_HOME`, `HOME`, `APPDATA` directly.
-- `processor.rs` calls `dirs::cache_dir()` directly at the third fallback
+- `processor.rs` called `dirs::cache_dir()` directly at the third fallback
   level in `resolve_cache_root()`.
-- `DiscoveryEnv` in `context.rs` receives raw path params — there's no shared
-  "these are the captured env vars" type.
+- `DiscoveryEnv` received raw path params — no shared "these are the captured
+  env vars" type.
 
-## Architecture — Three-Layer Split
+## Architecture — Two-Layer + Platform Statics
 
 ```
 EnvVars (LITHOS_* only, pure capture from env, no fallbacks)
-     │
-PlatformDirs (HOME + XDG_* + dirs crate, platform-native defaults)
-     │
-     ▼
-AppDirs (merge: PlatformDirs + "lithos" suffix + EnvVars overrides)
+   │
+   ├── config_file / vault_dir → DiscoveryEnv::from_env()
+   ├── cache_dir → AppDirs::new()
+   ├── ceiling_dirs → (consumed directly from EnvVars by callers)
+   └── suppress_global → DiscoveryFlags
+
+Platform XDG statics (HOME, XDG_CACHE/XDG_CONFIG/XDG_DATA/XDG_STATE)
+   │
+   └── AppDirs::new()  (merge with EnvVars overrides + "lithos" suffix)
 ```
 
 ### Layer 1: `EnvVars` — "what the user set" (`env.rs`)
@@ -55,69 +59,83 @@ impl EnvVars {
     pub fn capture() -> Self { ... }
     pub fn new(...) -> Self { ... }
 
-    pub fn vault_dir(&self) -> Option<&PathBuf> { self.vault_dir.as_ref() }
-    pub fn config_file(&self) -> Option<&PathBuf> { self.config_file.as_ref() }
-    pub fn cache_dir(&self) -> Option<&PathBuf> { self.cache_dir.as_ref() }
-    pub fn ceiling_dirs(&self) -> Option<&[PathBuf]> { self.ceiling_dirs.as_deref() }
-    pub fn suppress_global(&self) -> bool { self.suppress_global }
+    pub fn vault_dir(&self) -> Option<&PathBuf> { ... }
+    pub fn config_file(&self) -> Option<&PathBuf> { ... }
+    pub fn cache_dir(&self) -> Option<&PathBuf> { ... }
+    pub fn ceiling_dirs(&self) -> Option<&[PathBuf]> { ... }
+    pub fn suppress_global(&self) -> bool { ... }
 }
 ```
 
 **Consumers:**
-- `vault_dir` → `DiscoveryEnv::from_env()` or passed directly
+- `vault_dir` → `DiscoveryEnv::from_env()`
 - `config_file` → `DiscoveryEnv::from_env()`
 - `cache_dir` → `AppDirs::new()`
-- `ceiling_dirs` → `DiscoveryEnv::from_env()`
-- `suppress_global` → `DiscoveryFlags::from_env()`
+- `ceiling_dirs` → consumed directly by callers (not stored in `DiscoveryEnv`
+  because `DiscoveryEnv` borrows the raw `&OsStr` which `EnvVars` already parsed)
+- `suppress_global` → passed alongside `DiscoveryFlags`
 
-### Layer 2: `PlatformDirs` — OS-native directory defaults (`dirs.rs`)
+### Platform XDG Statics — mise-style lazy statics (`env.rs`)
 
-Reads HOME + XDG_* + calls `dirs` crate. Owns platform-specific path logic
-(macOS, Linux, Windows). No `"lithos"` suffix applied.
+Instead of a `PlatformDirs` struct, the implementation follows **mise
+convention**: platform-specific `#[cfg]` lazy statics at module level, each
+with per-platform (macOS / Windows / other) separate definitions.
 
 ```rust
-pub struct PlatformDirs {
-    config: PathBuf,   // Linux: XDG_CONFIG_HOME → ~/.config
-                       // macOS: ~/Library/Application Support
-                       // Win:   %APPDATA% (Roaming)
-    cache: PathBuf,    // Linux: XDG_CACHE_HOME → ~/.cache
-                       // macOS: ~/Library/Caches
-                       // Win:   %LOCALAPPDATA%
-}
+// macOS
+#[cfg(target_os = "macos")]
+pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
+    var_path("XDG_CONFIG_HOME")
+        .unwrap_or_else(|| HOME.join("Library/Application Support"))
+});
 
-impl PlatformDirs {
-    pub fn capture() -> Self { ... }
-    pub fn new(config: PathBuf, cache: PathBuf) -> Self { ... }
+// Windows
+#[cfg(windows)]
+pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
+    var_path("XDG_CONFIG_HOME")
+        .or_else(|| var_path("APPDATA"))
+        .unwrap_or_else(|| HOME.join("AppData/Roaming"))
+});
 
-    pub fn config(&self) -> &PathBuf { &self.config }
-    pub fn cache(&self) -> &PathBuf { &self.cache }
-}
+// Other (Linux, BSD, etc.)
+#[cfg(not(any(target_os = "macos", windows)))]
+pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
+    var_path("XDG_CONFIG_HOME").unwrap_or_else(|| HOME.join(".config"))
+});
 ```
 
-Design notes:
-- XDG_* vars checked on **all platforms**, not just Linux.
-- `dirs` crate v6 handles the platform-native fallbacks; XDG_* checked first.
-- `PlatformDirs::capture()` reads env directly. `PlatformDirs::new()` takes
-  explicit paths for testing.
+Five statics defined this way: `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
+`XDG_DATA_HOME`, `XDG_STATE_HOME`. Each has exactly three `#[cfg]` blocks
+(macOS / Windows / other) — no shared helpers, no `cfg_aliases` crate.
+
+For platform fallback conventions, see `env.rs` source.
+
+**Why statics over `PlatformDirs` struct:**
+- Matches mise's approach (`~/.local/share/mise`, `~/.cache/mise`)
+- Simpler API — no struct to construct/borrow, callers import the static they
+  need directly
+- `LazyLock` initializes once, avoids repeated `std::env::var` calls
+- Test mode redirects `HOME` to a fixture directory via `#[cfg(test)]`
 
 ### Layer 3: `AppDirs` — resolved lithos directories (`dirs.rs`)
 
-Thin merge layer. Takes `(&EnvVars, &PlatformDirs)`. Produces the final
-application-level paths that lithos uses for cache, global config, etc.
+Thin merge layer. Takes `&EnvVars`, reads XDG statics from `crate::env`.
+Produces the final application-level paths that lithos uses for cache, global
+config, etc.
 
 ```rust
 pub struct AppDirs {
-    cache: PathBuf,         // env.cache_dir ?→ platform.cache / "lithos"
-    config: PathBuf,        // platform.config / "lithos" (global config probe dir)
+    cache: PathBuf,         // vars.cache_dir ?→ XDG_CACHE_HOME / "lithos"
+    config: PathBuf,        // XDG_CONFIG_HOME / "lithos"
     system_config: Option<PathBuf>, // /etc/lithos (unix), None (win)
 }
 
 impl AppDirs {
-    pub fn new(vars: &EnvVars, platform: &PlatformDirs) -> Self { ... }
+    pub fn new(vars: &EnvVars) -> Self { ... }
 
     pub fn cache(&self) -> &PathBuf { &self.cache }
     pub fn config(&self) -> &PathBuf { &self.config }
-    pub fn system_config(&self) -> Option<&PathBuf> { self.system_config.as_ref() }
+    pub fn system_config(&self) -> Option<&PathBuf> { ... }
 }
 ```
 
@@ -125,36 +143,45 @@ Vault root is **not** in `AppDirs`. The vault root is resolved by the discovery
 layer (from `LITHOS_VAULT_DIR`, CLI `--vault`, or ascending walk). It is a
 discovery concern, not a platform-dir concern.
 
-## Impact on existing code
+## What changed
+
+### `env.rs`
+
+- Added `EnvVars` struct with `capture()`, `new()`, and typed accessors.
+- Renamed from `envs.rs` (was briefly `envs` for consistency with `context.rs`,
+  `processor.rs` naming — reverted).
+- Moved `HOME` + all four XDG statics into `env.rs` from `dirs.rs`.
+- Each XDG static has explicit per-platform cfg blocks (macOS / Windows / other)
+  with appropriate native fallbacks.
+- Test `HOME` redirects to `<CARGO_MANIFEST_DIR>/tests/fixtures/`.
+- Added `var_is_true` helper for boolean env vars (`LITHOS_SUPPRESS_GLOBAL`).
+
+### `dirs.rs`
+
+- Removed `HOME`, XDG statics, `var_path` helper — all moved to `env.rs`.
+- `AppDirs::new()` now takes only `&EnvVars` (reads XDG statics from
+  `crate::env` internally).
+- `platform_system_config()` stays in `dirs.rs` (unix vs windows logic).
 
 ### `bootstrap.rs`
 
 - `platform_global_directory_candidates()` and
   `platform_global_directories()` deleted → caller uses `AppDirs::config()`
-  and `AppDirs::system_config()` directly to build probe dirs.
+  and `AppDirs::system_config()` directly.
 - `env::var_os("LITHOS_CACHE_DIR")` → `EnvVars::capture().cache_dir()`
-- `build_context()` cache_dir param stays (passthrough to `DiscoveryEnv`),
-  but its source becomes `EnvVars::capture().cache_dir()`
+- `build_context()` cache_dir param stays, sourced from `EnvVars::capture()`
 
 ### `processor.rs`
 
-- `resolve_cache_root()` third fallback `dirs::cache_dir().join("lithos")` →
-  passed `AppDirs::cache` or computed from `PlatformDirs::cache`
+- `resolve_cache_root()` third fallback uses `crate::env::XDG_CACHE_HOME`
+  static instead of inline platform chain.
 
 ### `DiscoveryEnv` (context.rs)
 
-- Constructor still takes individual params (config_file, vault_dir, etc.) but
-  adds a `from_env(&EnvVars)` convenience that extracts them.
-- `LITHOS_CACHE_DIR` source changes from `env::var_os` in bootstrap.rs to
-  `EnvVars::capture().cache_dir`.
-
-### `env.rs` statics
-
-- `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` statics removed → part of
-  `PlatformDirs`.
-- `LITHOS_*` statics removed → part of `EnvVars` struct.
-- No more top-level `LazyLock` statics — `EnvVars::capture()` is the one
-  env-read seam.
+- Constructor still takes individual params (config_file, vault_dir, etc.),
+  plus a new `from_env(&EnvVars)` convenience that extracts `config_file`,
+  `vault_dir`, and `cache_dir`. `ceiling_dirs_raw` is set to `None` (not
+  reconstructable from the already-parsed `EnvVars`).
 
 ## What stays in `DiscoveryEnv`
 
@@ -169,3 +196,5 @@ discovery concern, not a platform-dir concern.
 - Removing `DiscoveryEnv` entirely — it still owns ceiling parsing and
   path validation.
 - Vault root resolution — vault stays a discovery concept.
+- `DiscoveryFlags::from_env()` — suppress_global is passed alongside flags
+  at the call site; no dedicated constructor needed.

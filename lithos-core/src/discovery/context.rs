@@ -9,6 +9,7 @@ use crate::{
     discovery::error::{
         DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
     },
+    env::EnvVars,
     fs::{DirPath, FilePath},
 };
 
@@ -258,6 +259,33 @@ impl<'a> DiscoveryEnv<'a> {
             ceiling_dirs_raw,
             cache_dir,
         })
+    }
+
+    /// Convenience constructor that extracts discovery-relevant fields from an
+    /// [`EnvVars`] struct.
+    ///
+    /// Delegates to [`DiscoveryEnv::new()`], performing the same filesystem
+    /// validation on `config_file` and `vault_dir`.
+    ///
+    /// # Limitations
+    ///
+    /// `ceiling_dirs_raw` is set to `None` because [`EnvVars`] already parses
+    /// the raw env string during capture and cannot reconstruct the original
+    /// `&OsStr`. Callers that need ceiling dirs should set them separately via
+    /// [`DiscoveryEnv::new()`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::Env`] if `config_file` or `vault_dir` fails
+    /// filesystem validation (same semantics as [`DiscoveryEnv::new()`]).
+    #[inline]
+    pub fn from_env(vars: &EnvVars) -> Result<Self, DiscoveryError> {
+        Self::new(
+            vars.config_file().map(std::path::PathBuf::as_path),
+            vars.vault_dir().map(std::path::PathBuf::as_path),
+            None,
+            vars.cache_dir().cloned(),
+        )
     }
 
     /// Validates a config file path for an environment variable override.
@@ -630,6 +658,93 @@ mod tests {
                     .expect("env with no cache dir");
 
                 assert!(env.cache_dir().is_none(), "cache_dir should be None");
+            }
+        }
+
+        mod from_env {
+            use pretty_assertions::assert_eq;
+
+            use super::*;
+
+            #[test]
+            fn constructs_env_from_vars_with_all_fields() {
+                let root = tempfile::tempdir().expect("root dir");
+                let config = fixtures::valid_config_file(&root);
+                let vault = root.path().to_path_buf();
+
+                let vars = EnvVars::new(
+                    Some(vault.clone()),
+                    Some(config.clone()),
+                    Some(PathBuf::from("/cache")),
+                    Some(vec![PathBuf::from("/c1")]),
+                    true,
+                );
+                let env = DiscoveryEnv::from_env(&vars).expect("from_env");
+
+                assert_eq!(
+                    env.config_file().map(FilePath::as_path),
+                    Some(config.as_path()),
+                );
+                assert_eq!(
+                    env.vault_dir().map(DirPath::as_path),
+                    Some(vault.as_path()),
+                );
+                assert_eq!(
+                    env.cache_dir(),
+                    Some(std::path::Path::new("/cache")),
+                );
+                assert!(
+                    env.ceiling_dirs_raw().is_none(),
+                    "ceiling_dirs_raw should be None (limitation of from_env)"
+                );
+            }
+
+            #[test]
+            fn constructs_env_from_empty_vars() {
+                let vars = EnvVars::new(None, None, None, None, false);
+                let env =
+                    DiscoveryEnv::from_env(&vars).expect("from_env empty");
+
+                assert!(env.config_file().is_none());
+                assert!(env.vault_dir().is_none());
+                assert!(env.cache_dir().is_none());
+                assert!(env.ceiling_dirs_raw().is_none());
+            }
+
+            #[test]
+            fn propagates_validation_error_for_missing_config_file() {
+                let vars = EnvVars::new(
+                    None,
+                    Some(PathBuf::from("/nonexistent/lithos.toml")),
+                    None,
+                    None,
+                    false,
+                );
+                let err =
+                    DiscoveryEnv::from_env(&vars).expect_err("should fail");
+
+                assert!(
+                    err.to_string().contains("not found"),
+                    "error should mention 'not found': {err}",
+                );
+            }
+
+            #[test]
+            fn propagates_validation_error_for_missing_vault_dir() {
+                let vars = EnvVars::new(
+                    Some(PathBuf::from("/nonexistent/vault")),
+                    None,
+                    None,
+                    None,
+                    false,
+                );
+                let err =
+                    DiscoveryEnv::from_env(&vars).expect_err("should fail");
+
+                assert!(
+                    err.to_string().contains("not found"),
+                    "error should mention 'not found': {err}",
+                );
             }
         }
 
