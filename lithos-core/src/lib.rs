@@ -16,8 +16,18 @@ pub mod app;
 pub mod bounds;
 pub mod config;
 pub mod db;
+
+/// Centralised environment variable registry. All `LITHOS_*` and platform
+/// environment variables are read once through lazy statics here. No other
+/// module should call `std::env::var` or `std::env::var_os` for these keys.
+pub mod dirs;
+
 /// Vault discovery and boundary resolution.
 pub mod discovery;
+/// Resolved platform and application directories. Combines environment
+/// overrides with platform defaults. Prefer this over calling the `dirs`
+/// crate directly.
+pub mod env;
 pub mod fs;
 pub mod graph;
 pub mod indexer;
