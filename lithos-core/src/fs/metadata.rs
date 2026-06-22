@@ -10,6 +10,8 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
+use super::error::PathError;
+
 /// Unified filesystem metadata for files or directories.
 ///
 /// Provides type-safe access to metadata with variants for files and
@@ -30,7 +32,11 @@ impl FsMetadata {
     ///
     /// Reads metadata from the given path and constructs the appropriate
     /// variant (`File` or `Dir`) based on the filesystem entry type.
-    /// Follows symlinks like [`std::fs::metadata`].
+    /// Follows symlinks to report the target's metadata, but correctly
+    /// captures whether the path itself is a symlink.
+    ///
+    /// Uses a single `symlink_metadata` syscall for non-symlinks (the common
+    /// case), adding a second `metadata` call only when a symlink is detected.
     ///
     /// # Errors
     ///
@@ -57,9 +63,29 @@ impl FsMetadata {
     /// ```
     #[inline]
     pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let std_meta = std::fs::metadata(path.as_ref())?;
-        Self::try_from(std_meta)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        let path = path.as_ref();
+        let sym_meta = std::fs::symlink_metadata(path)?;
+
+        if !sym_meta.is_symlink() {
+            return Self::try_from(sym_meta)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
+        }
+
+        let target = std::fs::metadata(path)?;
+        if target.is_file() {
+            Ok(Self::File(FileMetadata::new(
+                FsTimes::from(&target),
+                target.len(),
+                true,
+            )))
+        } else if target.is_dir() {
+            Ok(Self::Dir(DirMetadata::new(FsTimes::from(&target), true)))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "metadata is neither file nor directory",
+            ))
+        }
     }
 
     /// Check if this metadata is for a file.
@@ -178,6 +204,59 @@ impl FileMetadata {
         self.is_symlink
     }
 
+    /// Create `FileMetadata` directly from a filesystem path.
+    ///
+    /// Reads target metadata (following symlinks) while correctly detecting
+    /// whether the path itself is a symlink. Uses a single syscall for
+    /// non-symlinks, two for symlinks.
+    ///
+    /// Returns `InvalidData` if the resolved path is not a regular file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the path does not exist, `InvalidData` if the path
+    /// is not a regular file, or another `io::Error` if permission is denied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::fs;
+    ///
+    /// use lithos_core::fs::metadata::FileMetadata;
+    /// use tempfile::tempdir;
+    ///
+    /// let temp_dir = tempdir().unwrap();
+    /// let file_path = temp_dir.path().join("test.txt");
+    /// fs::write(&file_path, b"content").unwrap();
+    ///
+    /// let meta = FileMetadata::from_path(&file_path).unwrap();
+    /// assert_eq!(meta.size(), 7);
+    /// ```
+    #[inline]
+    pub fn from_path(path: &Path) -> io::Result<Self> {
+        let sym_meta = std::fs::symlink_metadata(path)?;
+
+        if !sym_meta.is_symlink() {
+            if !sym_meta.is_file() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    PathError::NotAFile(path.to_path_buf()),
+                ));
+            }
+            return Ok(Self::from(&sym_meta));
+        }
+
+        let target = std::fs::metadata(path)?;
+        if target.is_file() {
+            Ok(Self::new(FsTimes::from(&target), target.len(), true))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                PathError::NotAFile(path.to_path_buf()),
+            ))
+        }
+    }
+
     /// Check if the provided size matches this file's size.
     ///
     /// Used for fast staleness detection before performing more expensive
@@ -243,6 +322,57 @@ impl DirMetadata {
         Self {
             times,
             is_symlink,
+        }
+    }
+
+    /// Create `DirMetadata` directly from a filesystem path.
+    ///
+    /// Reads target metadata (following symlinks) while correctly detecting
+    /// whether the path itself is a symlink. Uses a single syscall for
+    /// non-symlinks, two for symlinks.
+    ///
+    /// Returns `InvalidData` if the resolved path is not a directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the path does not exist, `InvalidData` if the path
+    /// is not a directory, or another `io::Error` if permission is denied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::fs;
+    ///
+    /// use lithos_core::fs::metadata::DirMetadata;
+    /// use tempfile::tempdir;
+    ///
+    /// let temp_dir = tempdir().unwrap();
+    ///
+    /// let meta = DirMetadata::from_path(temp_dir.path()).unwrap();
+    /// assert!(!meta.is_symlink());
+    /// ```
+    #[inline]
+    pub fn from_path(path: &Path) -> io::Result<Self> {
+        let sym_meta = std::fs::symlink_metadata(path)?;
+
+        if !sym_meta.is_symlink() {
+            if !sym_meta.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    PathError::NotADirectory(path.to_path_buf()),
+                ));
+            }
+            return Ok(Self::from(&sym_meta));
+        }
+
+        let target = std::fs::metadata(path)?;
+        if target.is_dir() {
+            Ok(Self::new(FsTimes::from(&target), true))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                PathError::NotADirectory(path.to_path_buf()),
+            ))
         }
     }
 
@@ -657,6 +787,64 @@ mod tests {
             assert!(!metadata.is_timestamp_match(None, Some(now)));
         }
 
+        mod from_path {
+            use super::*;
+
+            #[test]
+            fn constructs_metadata_for_file() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let file_path = temp_dir.path().join("test.txt");
+                fs::write(&file_path, b"hello").unwrap();
+
+                let meta = FileMetadata::from_path(&file_path).unwrap();
+
+                assert_eq!(meta.size(), 5);
+                assert!(!meta.is_symlink());
+            }
+
+            #[test]
+            fn returns_error_for_directory() {
+                let temp_dir = tempfile::tempdir().unwrap();
+
+                let result = FileMetadata::from_path(temp_dir.path());
+
+                assert!(result.is_err());
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    io::ErrorKind::InvalidData
+                );
+            }
+
+            #[test]
+            fn returns_error_for_nonexistent_path() {
+                let temp_dir = tempfile::tempdir().unwrap();
+                let missing = temp_dir.path().join("missing.txt");
+
+                let result = FileMetadata::from_path(&missing);
+
+                assert!(result.is_err());
+                assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+            }
+
+            #[test]
+            fn detects_symlink_file() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let target = temp_dir.path().join("target.txt");
+                let link = temp_dir.path().join("link.txt");
+                fs::write(&target, b"symlink target").unwrap();
+                std::os::unix::fs::symlink(&target, &link).unwrap();
+
+                let meta = FileMetadata::from_path(&link).unwrap();
+
+                assert!(meta.is_symlink());
+                assert_eq!(meta.size(), 14);
+            }
+        }
+
         mod archived {
             use super::*;
 
@@ -730,6 +918,62 @@ mod tests {
             let dir_meta = DirMetadata::from(&std_meta);
 
             assert!(dir_meta.times().created_at().is_some());
+        }
+
+        mod from_path {
+            use super::*;
+
+            #[test]
+            fn constructs_metadata_for_directory() {
+                let temp_dir = tempfile::tempdir().unwrap();
+
+                let meta = DirMetadata::from_path(temp_dir.path()).unwrap();
+
+                assert!(!meta.is_symlink());
+            }
+
+            #[test]
+            fn returns_error_for_file() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let file_path = temp_dir.path().join("test.txt");
+                fs::write(&file_path, b"hello").unwrap();
+
+                let result = DirMetadata::from_path(&file_path);
+
+                assert!(result.is_err());
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    io::ErrorKind::InvalidData
+                );
+            }
+
+            #[test]
+            fn returns_error_for_nonexistent_path() {
+                let temp_dir = tempfile::tempdir().unwrap();
+                let missing = temp_dir.path().join("missing");
+
+                let result = DirMetadata::from_path(&missing);
+
+                assert!(result.is_err());
+                assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+            }
+
+            #[test]
+            fn detects_symlink_directory() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let target = temp_dir.path().join("target_dir");
+                let link = temp_dir.path().join("link_dir");
+                fs::create_dir(&target).unwrap();
+                std::os::unix::fs::symlink(&target, &link).unwrap();
+
+                let meta = DirMetadata::from_path(&link).unwrap();
+
+                assert!(meta.is_symlink());
+            }
         }
     }
 
@@ -880,6 +1124,53 @@ mod tests {
                 assert!(result.is_err());
                 let err = result.unwrap_err();
                 assert_eq!(err.kind(), io::ErrorKind::NotFound);
+            }
+
+            #[test]
+            fn reports_symlink_for_file_symlink() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let target = temp_dir.path().join("target.txt");
+                let link = temp_dir.path().join("link.txt");
+                fs::write(&target, b"symlink target").unwrap();
+                std::os::unix::fs::symlink(&target, &link).unwrap();
+
+                let fs_meta = FsMetadata::from_path(&link).unwrap();
+
+                assert!(fs_meta.is_file());
+                assert!(fs_meta.as_file().unwrap().is_symlink());
+                assert_eq!(fs_meta.as_file().unwrap().size(), 14);
+            }
+
+            #[test]
+            fn reports_nonsymlink_for_regular_file() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let file_path = temp_dir.path().join("regular.txt");
+                fs::write(&file_path, b"regular").unwrap();
+
+                let fs_meta = FsMetadata::from_path(&file_path).unwrap();
+
+                assert!(fs_meta.is_file());
+                assert!(!fs_meta.as_file().unwrap().is_symlink());
+            }
+
+            #[test]
+            fn reports_symlink_for_directory_symlink() {
+                use std::fs;
+
+                let temp_dir = tempfile::tempdir().unwrap();
+                let target = temp_dir.path().join("target_dir");
+                let link = temp_dir.path().join("link_dir");
+                fs::create_dir(&target).unwrap();
+                std::os::unix::fs::symlink(&target, &link).unwrap();
+
+                let fs_meta = FsMetadata::from_path(&link).unwrap();
+
+                assert!(fs_meta.is_dir());
+                assert!(fs_meta.as_dir().unwrap().is_symlink());
             }
         }
     }
