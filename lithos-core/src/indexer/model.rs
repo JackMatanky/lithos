@@ -73,12 +73,18 @@ pub(crate) enum FsRecordType {
     Dir,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FsRecord {
+    File(FileRecord),
+    Dir(DirRecord),
+}
+
 /// An indexed file record with identity, path, and metadata.
 ///
 /// Represents a discovered file within the index scope, capturing all
 /// information needed for downstream indexing and staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 pub(crate) struct FileRecord {
     id: FsRecordId,
     parent_id: FsParentId,

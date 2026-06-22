@@ -1,9 +1,9 @@
 //! Indexer application service — orchestrates the index scan pipeline.
 //!
-//! Uses the `EntryBuilder<F, S>` typestate builder (see `builder.rs`) to
-//! ensure every entry resolves its `PathKey` before consumption — a
-//! compile-time guarantee scoped to the service's scan loop — without a
-//! runtime `IndexedEntry` tagged union or duplicated file/dir match arms.
+//! Uses `ScannedEntry::new` (see `builder.rs`) to dispatch each `ScanEntry`
+//! to the appropriate `EntryBuilder<IsFile, Scanned>` or
+//! `EntryBuilder<IsDir, Scanned>`, deriving `parent_id` from the accumulated
+//! `dir_ids` map via `FilePath::parent()` / `DirPath::parent()`.
 
 #![expect(
     clippy::arithmetic_side_effects,
@@ -15,48 +15,17 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     fs::{DirPath, path::PathKey},
     indexer::{
-        builder::{Dir, EntryBuilder, File},
+        builder::{CompletionKind, EntryBranch, EntryBuilder, Init},
         entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
         error::IndexerError,
-        model::FsParentId,
-        port::{ScanEntry, ScannerPort, WalkIter},
+        model::FsRecordId,
+        port::{ScannerPort, WalkIter},
         report::IndexReport,
         repository::{ReadRepository, Repository, WriteRepository},
         scan::{IndexOptions, IndexScope, ScanFilters},
         summary::{DeletedNodes, IndexResult, IndexedNodes},
     },
 };
-
-// ─── Helper functions ──────────────────────────────────────────────
-
-/// Derive the parent for an entry at `key`. Root-level entries return
-/// `FsParentId::Root`. Subdirectory entries look up their parent from the
-/// `dir_ids` map. Panics if the parent has not been classified yet (walkdir
-/// guarantees parents before children, so this is a programmer error).
-#[expect(
-    clippy::expect_used,
-    reason = "parent prefix of valid path is always valid; parent dir \
-              guaranteed classified before child"
-)]
-fn derive_parent_id(
-    key: &PathKey,
-    dir_ids: &HashMap<PathKey, crate::indexer::model::FsRecordId>,
-) -> FsParentId {
-    let s = key.as_str();
-    let parent_key = s.rfind('/').map(|pos| {
-        PathKey::try_new(&s[..pos])
-            .expect("parent of valid path is a valid path")
-    });
-    match parent_key {
-        None => FsParentId::Root,
-        Some(pk) => FsParentId::Id(
-            dir_ids
-                .get(&pk)
-                .copied()
-                .expect("parent directory must be classified before child"),
-        ),
-    }
-}
 
 // ─── Indexer service ───────────────────────────────────────────────
 
@@ -106,67 +75,64 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         let mut indexed_files: Vec<FileIndexEntry> = Vec::new();
         let mut indexed_dirs: Vec<DirIndexEntry> = Vec::new();
         let mut seen_paths: HashSet<PathKey> = HashSet::new();
-        let mut dir_ids: HashMap<PathKey, crate::indexer::model::FsRecordId> =
-            HashMap::new();
+        let mut dir_ids: HashMap<PathKey, FsRecordId> = HashMap::new();
         let mut skipped: Vec<crate::indexer::report::SkippedEntry> = Vec::new();
         let mut new_count = 0usize;
         let mut fresh_count = 0usize;
         let mut stale_count = 0usize;
+        for result in self.scanner.walk(root, filters)? {
+            let scan_entry = result?;
+            let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
+                .transition(&self.vault_root)?;
 
-        for entry in self.scanner.walk(root, filters)? {
-            match entry {
-                Ok(ScanEntry::Skipped(s)) => skipped.push(s),
-                Ok(ScanEntry::File(node)) => {
-                    let key = node.path().as_key(&self.vault_root)?;
-                    let parent_id = derive_parent_id(&key, &dir_ids);
-                    let builder = EntryBuilder::<File, _>::new(
-                        node,
-                        self.vault_root.clone(),
-                        parent_id,
-                    );
-                    let classified = builder.classify(&self.repo)?;
-                    seen_paths.insert(classified.path_key().clone());
-                    let status = classified.status();
-                    match status {
+            let completion = match branch {
+                EntryBranch::File(b) => b
+                    .transition(&self.repo)?
+                    .transition(&self.repo, &dir_ids, opts.dry_run())?
+                    .transition()
+                    .into_parts(),
+                EntryBranch::Dir(b) => b
+                    .transition(&self.repo)?
+                    .transition(&self.repo, &dir_ids, opts.dry_run())?
+                    .transition()
+                    .into_parts(),
+                EntryBranch::Completion(b) => b.into_parts(),
+            };
+
+            match completion.1.kind {
+                CompletionKind::File {
+                    entry,
+                    path_key,
+                } => {
+                    seen_paths.insert(path_key);
+                    match entry.status() {
                         IndexStatus::New => new_count += 1,
                         IndexStatus::Fresh => fresh_count += 1,
                         IndexStatus::Stale => stale_count += 1,
                     }
-                    indexed_files.push(classified.build());
+                    indexed_files.push(entry);
                 }
-                Ok(ScanEntry::Dir(node)) => {
-                    let key = node.path().as_key(&self.vault_root)?;
-                    let parent_id = derive_parent_id(&key, &dir_ids);
-                    let builder = EntryBuilder::<Dir, _>::new(
-                        node,
-                        self.vault_root.clone(),
-                        parent_id,
-                    );
-                    let classified = builder.classify(&self.repo)?;
-                    let id = classified.entry_id();
-                    let pk = classified.path_key().clone();
-                    seen_paths.insert(pk.clone());
-                    let status = classified.status();
-                    match status {
+                CompletionKind::Dir {
+                    entry,
+                    path_key,
+                    id,
+                } => {
+                    seen_paths.insert(path_key.clone());
+                    dir_ids.insert(path_key, id);
+                    match entry.status() {
                         IndexStatus::New => new_count += 1,
                         IndexStatus::Fresh => fresh_count += 1,
                         IndexStatus::Stale => stale_count += 1,
                     }
-                    dir_ids.insert(pk, id);
-                    indexed_dirs.push(classified.build());
+                    indexed_dirs.push(entry);
                 }
-                Err(e) => return Err(e.into()),
+                CompletionKind::Skipped(s) => skipped.push(s),
             }
         }
-
         let deleted = self.detect_deletions(&seen_paths)?;
 
         if !opts.dry_run() {
-            let indexed = IndexedNodes::new(
-                indexed_files.clone().into_boxed_slice(),
-                indexed_dirs.clone().into_boxed_slice(),
-            );
-            self.persist(&indexed, &deleted)?;
+            self.repo.delete_many_records(deleted.files(), deleted.dirs())?;
         }
 
         let scanned_count =
@@ -218,22 +184,6 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             dir_ids.into_boxed_slice(),
         ))
     }
-
-    /// Persist indexed entries and remove deleted records.
-    fn persist(
-        &self,
-        indexed: &IndexedNodes,
-        deleted: &DeletedNodes,
-    ) -> Result<(), IndexerError> {
-        let file_records: Vec<_> =
-            indexed.files().iter().map(|f| f.node().clone()).collect();
-        let dir_records: Vec<_> =
-            indexed.dirs().iter().map(|d| d.node().clone()).collect();
-
-        self.repo.save_many_records(&file_records, &dir_records)?;
-        self.repo.delete_many_records(deleted.files(), deleted.dirs())?;
-        Ok(())
-    }
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────
@@ -246,7 +196,7 @@ mod tests {
         time::SystemTime,
     };
 
-    use super::{IndexerService, derive_parent_id};
+    use super::IndexerService;
     use crate::{
         fs::{
             DirPath, FileFormat, FilePath,
@@ -402,38 +352,6 @@ mod tests {
         ) -> Result<WalkIter, crate::indexer::error::ScannerError> {
             let entries = std::mem::take(&mut *self.entries.borrow_mut());
             Ok(Box::new(entries.into_iter()))
-        }
-    }
-
-    // ─── Helper tests ──────────────────────────────────────────
-
-    mod helpers {
-        use super::*;
-
-        #[test]
-        fn derive_parent_id_root_level() {
-            let key = PathKey::try_new("doc.md").unwrap();
-            let dir_ids = HashMap::new();
-            let parent = derive_parent_id(&key, &dir_ids);
-            assert_eq!(parent, FsParentId::Root);
-        }
-
-        #[test]
-        fn derive_parent_id_subdirectory() {
-            let key = PathKey::try_new("notes/doc.md").unwrap();
-            let dir_id = FsRecordId::new();
-            let mut dir_ids = HashMap::new();
-            dir_ids.insert(PathKey::try_new("notes").unwrap(), dir_id);
-            let parent = derive_parent_id(&key, &dir_ids);
-            assert_eq!(parent, FsParentId::Id(dir_id));
-        }
-
-        #[test]
-        #[should_panic(expected = "parent directory must be classified")]
-        fn derive_parent_id_panics_on_missing_parent() {
-            let key = PathKey::try_new("notes/doc.md").unwrap();
-            let dir_ids = HashMap::new();
-            let _ = derive_parent_id(&key, &dir_ids);
         }
     }
 
