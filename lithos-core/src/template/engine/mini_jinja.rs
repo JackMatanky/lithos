@@ -1,4 +1,9 @@
 //! MiniJinja-backed template engine adapter.
+//!
+//! This module confines `MiniJinja` setup and rendering mechanics behind the
+//! [`TemplateEngine`] port. The adapter owns the `MiniJinja` environment and
+//! uses template names as lookup keys after `compile` registers supplied
+//! source.
 
 #![allow(dead_code, reason = "template service wiring lands in a later slice")]
 
@@ -13,12 +18,19 @@ use crate::template::{
 };
 
 /// MiniJinja-backed implementation of the template engine port.
+///
+/// The environment is owned directly because foundation rendering is
+/// single-process and does not need shared mutable ownership or
+/// synchronization.
 pub(crate) struct MiniJinjaEngine {
     env: Environment<'static>,
 }
 
 impl MiniJinjaEngine {
     /// Creates a `MiniJinja` engine with Lithos foundation rendering settings.
+    ///
+    /// The configured engine rejects undefined variables and disables escaping
+    /// so Markdown characters render unchanged.
     #[inline]
     #[must_use]
     pub(crate) fn configured() -> Self {

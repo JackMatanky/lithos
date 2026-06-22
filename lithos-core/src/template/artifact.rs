@@ -1,4 +1,9 @@
-//! Template artifact domain state.
+//! Rendered template artifact state.
+//!
+//! This module starts the template artifact type-state pipeline. Issue 05 owns
+//! only the initial [`Rendered`] state: rendered content tied back to the
+//! source [`TemplateName`]. Later write-pipeline slices extend
+//! [`TemplateArtifact`] with target resolution and commit states.
 
 #![allow(dead_code, reason = "rendered artifacts are wired by issue-06")]
 
@@ -6,11 +11,14 @@ use std::marker::PhantomData;
 
 use super::TemplateName;
 
-/// Rendered artifact state produced by a template engine.
+/// Marker state for an artifact that has rendered text but no output target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Rendered;
 
 /// Template output artifact in a typed pipeline state.
+///
+/// The generic state marker makes invalid write-pipeline transitions
+/// unrepresentable as later artifact states are added.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TemplateArtifact<State> {
     template: TemplateName,

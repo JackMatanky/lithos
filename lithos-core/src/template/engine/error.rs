@@ -1,6 +1,12 @@
 //! Template engine error type.
+//!
+//! Engine errors preserve the underlying `MiniJinja` source error for
+//! diagnostics while keeping the Template engine port signatures Lithos-shaped.
 
 /// Error returned by template engine operations.
+///
+/// Each variant stores the template name for user-facing diagnostics and keeps
+/// the `MiniJinja` error in the standard source chain.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplateEngineError {
     /// The engine rejected template source during compile/load.

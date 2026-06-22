@@ -66,6 +66,10 @@ use crate::{
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
+/// Typestate processor for one discovered template file.
+///
+/// `Phase` selects the pipeline stage and `Status` carries only the data that
+/// stage is allowed to use.
 pub(crate) struct TemplateProcessor<Phase, Status> {
     file: FileNode,
     path_key: PathKey,
@@ -104,11 +108,13 @@ impl<Phase, Status> TemplateProcessor<Phase, Status> {
     }
 
     #[cfg(test)]
+    /// Returns the scanned file for state-transition tests.
     pub(crate) fn file(&self) -> &FileNode {
         &self.file
     }
 
     #[cfg(test)]
+    /// Returns the vault-relative path key for state-transition tests.
     pub(crate) fn path_key(&self) -> &PathKey {
         &self.path_key
     }
@@ -118,19 +124,26 @@ impl<Phase, Status> TemplateProcessor<Phase, Status> {
 //  Init Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Initial pipeline phase before cache state is expanded.
 pub(crate) struct Init;
 #[derive(Debug)]
+/// Initial status carrying discovered cache state for one scanned file.
 pub(crate) struct Discovered {
     cache: DiscoveredCacheState,
 }
 #[derive(Debug)]
+/// Cache state found for a discovered template path.
 pub(crate) enum DiscoveredCacheState {
+    /// No cached template or raw view exists for the path.
     New(Missing),
+    /// Both cached template ID and raw view exist for the path.
     Exists(Present),
+    /// Cache state is recoverably inconsistent and should be rebuilt.
     Corrupt(Corrupted),
 }
 
 #[derive(Debug)]
+/// Scanned template file plus repository cache state.
 pub(crate) struct DiscoveredTemplate {
     file: FileNode,
     path_key: PathKey,
@@ -138,6 +151,7 @@ pub(crate) struct DiscoveredTemplate {
 }
 
 impl DiscoveredTemplate {
+    /// Creates a discovered template with no cached repository state.
     pub(crate) fn new_missing(file: FileNode, path_key: PathKey) -> Self {
         Self {
             file,
@@ -146,6 +160,7 @@ impl DiscoveredTemplate {
         }
     }
 
+    /// Creates a discovered template with a cached ID and raw view.
     pub(crate) fn new_present(
         file: FileNode,
         path_key: PathKey,
@@ -162,6 +177,7 @@ impl DiscoveredTemplate {
         }
     }
 
+    /// Creates a discovered template with recoverably corrupt cache state.
     pub(crate) fn new_corrupt(
         file: FileNode,
         path_key: PathKey,
@@ -179,20 +195,24 @@ impl DiscoveredTemplate {
     }
 
     #[cfg(test)]
+    /// Returns the cache state for tests that verify discovery classification.
     pub(crate) const fn cache(&self) -> &DiscoveredCacheState {
         &self.cache
     }
 }
 
 #[derive(Debug)]
+/// Status for a discovered template with no cached state.
 pub(crate) struct Missing;
 #[derive(Debug)]
+/// Status for a discovered template with cached identity and raw view.
 pub(crate) struct Present {
     pub(crate) id: TemplateId,
     pub(crate) view: RawTemplateView,
 }
 
 impl TemplateProcessor<Init, Discovered> {
+    /// Starts processing for one discovered template file.
     pub(crate) fn new(discovered: DiscoveredTemplate) -> Self {
         Self {
             file: discovered.file,
@@ -204,6 +224,8 @@ impl TemplateProcessor<Init, Discovered> {
         }
     }
 
+    /// Runs the full processor pipeline from discovered state to completed
+    /// template.
     pub(crate) fn run<R: ReadRepository + WriteRepository>(
         self,
         repository: &R,
@@ -230,6 +252,7 @@ impl TemplateProcessor<Init, Discovered> {
 }
 
 #[derive(Debug)]
+/// Status for a path whose cache is missing either the template or raw view.
 pub(crate) struct Corrupted {
     pub(crate) id: TemplateId,
     pub(crate) view: Option<RawTemplateView>,
@@ -302,18 +325,24 @@ impl TemplateProcessor<Init, Corrupted> {
 //  Comparison Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Phase that compares cached metadata and content against the scanned file.
 pub(crate) struct Comparison;
 #[derive(Debug)]
+/// Status for a present cache entry whose metadata did not match.
 pub(crate) struct Suspect {
     pub(crate) id: TemplateId,
     pub(crate) view: RawTemplateView,
 }
+/// Result of cheap metadata comparison.
 pub(crate) enum MetadataBranch {
+    /// Metadata matched, so the cached template can be fetched directly.
     Match(TemplateProcessor<Construction, Fresh>),
+    /// Metadata differed, so content hash comparison is required.
     Mismatch(TemplateProcessor<Comparison, Suspect>),
 }
 
 impl TemplateProcessor<Comparison, Present> {
+    /// Compares file metadata against the cached raw view.
     pub(crate) fn check_metadata(self) -> MetadataBranch {
         let (file, path_key, status) = self.into_parts();
         let metadata = file.metadata();
@@ -346,6 +375,7 @@ impl TemplateProcessor<Comparison, Present> {
 }
 
 #[derive(Debug)]
+/// Status for changed content that must rebuild the template aggregate.
 pub(crate) struct Stale {
     pub(crate) id: TemplateId,
     pub(crate) content_str: String,
@@ -353,12 +383,20 @@ pub(crate) struct Stale {
     pub(crate) view: RawTemplateView,
 }
 
+/// Result of content-hash comparison after metadata mismatch.
 pub(crate) enum ContentBranch {
+    /// Content matched, so only metadata must be refreshed.
     Match(TemplateProcessor<Refresh, StaleMetadata>),
+    /// Content changed, so raw content must be parsed into a new aggregate.
     Mismatch(TemplateProcessor<Parsed, Stale>),
 }
 
 impl TemplateProcessor<Comparison, Suspect> {
+    /// Reads file content and compares its hash with the cached raw view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateReadError`] when source content cannot be read.
     pub(crate) fn check_content(
         self,
         source: &FileReader,
@@ -401,9 +439,15 @@ impl TemplateProcessor<Comparison, Suspect> {
 //  Parsed Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Phase after raw template source has been read or selected.
 pub(crate) struct Parsed;
 
 impl TemplateProcessor<Parsed, Missing> {
+    /// Reads missing source content and prepares a new template aggregate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateReadError`] when source content cannot be read.
     pub(crate) fn parse(
         self,
         source: &FileReader,
@@ -425,6 +469,7 @@ impl TemplateProcessor<Parsed, Missing> {
 }
 
 impl TemplateProcessor<Parsed, Stale> {
+    /// Converts already-read stale source content into a changed status.
     pub(crate) fn parse(self) -> TemplateProcessor<Construction, Changed> {
         let (file, path_key, status) = self.into_parts();
         Self::transition_from_parts(file, path_key, Changed {
@@ -437,6 +482,11 @@ impl TemplateProcessor<Parsed, Stale> {
 }
 
 impl TemplateProcessor<Parsed, Corrupted> {
+    /// Reads source content for a recoverably corrupt cache entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateReadError`] when source content cannot be read.
     pub(crate) fn parse(
         self,
         source: &FileReader,
@@ -464,14 +514,21 @@ impl TemplateProcessor<Parsed, Corrupted> {
 //  Refresh Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Phase that refreshes cache metadata without rebuilding content.
 pub(crate) struct Refresh;
 #[derive(Debug)]
+/// Status for unchanged content whose raw-view metadata is stale.
 pub(crate) struct StaleMetadata {
     pub(crate) id: TemplateId,
     pub(crate) view: RawTemplateView,
 }
 
 impl TemplateProcessor<Refresh, StaleMetadata> {
+    /// Persists updated metadata for unchanged template content.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when repository persistence fails.
     pub(crate) fn sync_metadata<R: WriteRepository>(
         self,
         repository: &R,
@@ -491,15 +548,18 @@ impl TemplateProcessor<Refresh, StaleMetadata> {
 //  Construction Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Phase that constructs, updates, or fetches the final template aggregate.
 pub(crate) struct Construction;
 
 #[derive(Debug)]
+/// Status for a new template that must be created.
 pub(crate) struct New {
     pub(crate) id: TemplateId,
     pub(crate) content_hash: Blake3Hash,
     pub(crate) raw: RawTemplate,
 }
 #[derive(Debug)]
+/// Status for an existing template whose source content changed.
 pub(crate) struct Changed {
     pub(crate) id: TemplateId,
     pub(crate) content_hash: Blake3Hash,
@@ -507,11 +567,18 @@ pub(crate) struct Changed {
     pub(crate) view: Option<RawTemplateView>,
 }
 #[derive(Debug)]
+/// Status for a cached template that can be fetched unchanged.
 pub(crate) struct Fresh {
     pub(crate) id: TemplateId,
 }
 
 impl TemplateProcessor<Construction, New> {
+    /// Constructs and persists a new template plus raw view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when name/body validation or repository writes
+    /// fail.
     pub(crate) fn create<R: WriteRepository>(
         self,
         repository: &R,
@@ -549,6 +616,12 @@ impl TemplateProcessor<Construction, New> {
 }
 
 impl TemplateProcessor<Construction, Changed> {
+    /// Rebuilds and persists an existing template plus raw view.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when name/body validation or repository writes
+    /// fail.
     pub(crate) fn update<R: WriteRepository>(
         self,
         repository: &R,
@@ -593,6 +666,12 @@ impl TemplateProcessor<Construction, Changed> {
 }
 
 impl TemplateProcessor<Construction, Fresh> {
+    /// Fetches an unchanged template from the repository by cached ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when repository lookup fails or the cached ID
+    /// no longer resolves.
     pub(crate) fn fetch<R: ReadRepository>(
         self,
         repository: &R,
@@ -617,14 +696,17 @@ impl TemplateProcessor<Construction, Fresh> {
 //  Completed Stage
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug)]
+/// Terminal phase after a template has been produced.
 pub(crate) struct CompletedPhase;
 
 #[derive(Debug)]
+/// Terminal status carrying the produced template aggregate.
 pub(crate) struct Completed {
     template: Template,
 }
 
 impl TemplateProcessor<CompletedPhase, Completed> {
+    /// Consumes the completed processor and returns the template aggregate.
     pub(crate) fn into_template(self) -> Template {
         self.status.template
     }
@@ -1010,7 +1092,7 @@ mod tests {
     }
 
     mod parse {
-        use pretty_assertions::assert_eq;
+        use pretty_assertions::{assert_eq, assert_ne};
 
         use super::{fixtures, *};
 

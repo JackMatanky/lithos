@@ -1,4 +1,9 @@
-//! Template rendering port.
+//! Template rendering engine port.
+//!
+//! The port accepts already-loaded Template domain values and already-supplied
+//! render context data. It owns only engine-level source checking/loading and
+//! rendering, leaving repository lookup, target resolution, conflict checks,
+//! and file commits to the Template service/write pipeline.
 
 #![allow(dead_code, reason = "template service wiring lands in a later slice")]
 
@@ -15,6 +20,9 @@ pub(crate) mod mini_jinja;
 pub use error::TemplateEngineError;
 
 /// Rendering-engine boundary for checking and rendering supplied templates.
+///
+/// The trait intentionally has no `Clone`, `Send`, `Sync`, or `'static` bounds;
+/// concrete orchestration needs should drive future bounds.
 pub(crate) trait TemplateEngine {
     /// Registers and checks the supplied template source in the engine.
     ///

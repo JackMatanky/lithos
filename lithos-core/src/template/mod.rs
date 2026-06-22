@@ -8,10 +8,12 @@
 //! - [`RawTemplateView`] — flat freshness/cache struct
 //! - [`Template`] — primary renderable aggregate
 //! - [`TemplateError`], [`TemplateNameError`], [`TemplateBodyError`],
-//!   [`TemplateRepositoryError`] — domain and repository errors
+//!   [`TemplateRepositoryError`], [`TemplateEngineError`] — domain, repository,
+//!   and engine errors
 //!
-//! All types are free of `MiniJinja` imports — Jinja syntax validation is the
-//! engine's responsibility.
+//! Domain and service-facing APIs stay free of `MiniJinja` imports. Rendering
+//! mechanics are confined to the engine adapter, while engine errors preserve
+//! their source chain for diagnostics.
 
 pub(crate) mod aggregate;
 pub(crate) mod artifact;

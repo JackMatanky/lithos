@@ -491,6 +491,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use super::*;
 
             #[test]
@@ -525,6 +527,8 @@ mod tests {
         }
 
         mod defaults {
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use super::*;
 
             #[test]
@@ -545,6 +549,8 @@ mod tests {
         }
 
         mod formatting {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -566,6 +572,8 @@ mod tests {
         }
 
         mod conversions {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -599,6 +607,8 @@ mod tests {
         }
 
         mod serialization {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -621,6 +631,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -717,6 +729,8 @@ mod tests {
         }
 
         mod serialization {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -745,6 +759,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -776,6 +792,8 @@ mod tests {
         }
 
         mod validation {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -832,6 +850,8 @@ mod tests {
         }
 
         mod accessors {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -889,6 +909,8 @@ mod tests {
         }
 
         mod serialization {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
