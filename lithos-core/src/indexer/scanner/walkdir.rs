@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use walkdir::WalkDir;
 
 use crate::{
-    fs::{DirPath, FsNode},
+    fs::{DirPath, FsNode, error::ScanError},
     indexer::{
         error::ScannerError,
         port::{ScanEntry, ScannerPort, WalkIter},
@@ -34,39 +34,6 @@ impl WalkdirAdapter {
         filters.is_included_extension(ext)
     }
 
-    fn try_map_entry(
-        entry: walkdir::DirEntry,
-        scan_root: &std::path::Path,
-    ) -> Option<Result<ScanEntry, ScannerError>> {
-        let file_type = entry.file_type();
-        if !file_type.is_file()
-            && !file_type.is_dir()
-            && !file_type.is_symlink()
-        {
-            return Some(Ok(ScanEntry::Skipped(SkippedEntry {
-                path: entry.path().to_path_buf(),
-                reason: SkipReason::UnsupportedEntryType,
-            })));
-        }
-
-        let entry_path = entry.path().to_path_buf();
-        match FsNode::try_from(entry) {
-            Ok(FsNode::File(node)) => Some(Ok(ScanEntry::File(node))),
-            Ok(FsNode::Dir(node)) => {
-                if node.path().as_path() == scan_root {
-                    // Skip the root directory itself
-                    None
-                } else {
-                    Some(Ok(ScanEntry::Dir(node)))
-                }
-            }
-            Err(_) => Some(Ok(ScanEntry::Skipped(SkippedEntry {
-                path: entry_path,
-                reason: SkipReason::PermissionDenied,
-            }))),
-        }
-    }
-
     fn map_error(e: walkdir::Error) -> Result<ScanEntry, ScannerError> {
         let path =
             e.path().map(std::path::Path::to_path_buf).unwrap_or_default();
@@ -89,24 +56,47 @@ impl WalkdirAdapter {
     }
 }
 
+impl TryFrom<walkdir::DirEntry> for ScanEntry {
+    type Error = ScannerError;
+
+    fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
+        match FsNode::try_from(entry) {
+            Ok(FsNode::File(n)) => Ok(ScanEntry::File(n)),
+            Ok(FsNode::Dir(n)) => Ok(ScanEntry::Dir(n)),
+            Err(e) => {
+                let (path, reason) = match e {
+                    ScanError::UnsupportedEntryType(p) => {
+                        (p, SkipReason::UnsupportedEntryType)
+                    }
+                    ScanError::Traversal {
+                        path,
+                        ..
+                    } => (path, SkipReason::PermissionDenied),
+                    _ => (PathBuf::new(), SkipReason::PermissionDenied),
+                };
+                Ok(ScanEntry::Skipped(SkippedEntry {
+                    path,
+                    reason,
+                }))
+            }
+        }
+    }
+}
+
 impl ScannerPort for WalkdirAdapter {
     fn walk(
         &self,
         root: &DirPath,
         filters: &ScanFilters,
     ) -> Result<WalkIter, ScannerError> {
-        let scan_root: PathBuf = root.as_path().to_path_buf();
         let filters = filters.clone();
         let walker = WalkDir::new(root.as_path()).into_iter();
         let filtered =
             walker.filter_entry(move |e| Self::filter_entry(e, &filters));
 
-        Ok(Box::new(filtered.filter_map(move |result| match result {
-            Ok(entry) => Self::try_map_entry(entry, &scan_root),
-            Err(e) => {
-                let mapped = Self::map_error(e);
-                Some(mapped)
-            }
+        Ok(Box::new(filtered.map(move |result| match result {
+            Ok(entry) => ScanEntry::try_from(entry),
+            Err(e) => Self::map_error(e),
         })))
     }
 }
