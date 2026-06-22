@@ -3,8 +3,8 @@ title: 05-engine-port-adapter
 category: enhancement
 label: ready-for-human
 status: completed
-branch:
-merge_commit:
+branch: template-engine-port-adapter
+merge_commit: 75a6557a
 date_created: 2026-06-11
 date_completed: 2026-06-22
 ---
