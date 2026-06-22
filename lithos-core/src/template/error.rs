@@ -9,6 +9,7 @@
 
 use thiserror::Error;
 
+use super::TemplateEngineError;
 use crate::{db::DbError, fs::PathKey};
 
 // ============================================================================
@@ -40,6 +41,9 @@ pub enum TemplateError {
     /// A filesystem scanning error.
     #[error(transparent)]
     Scan(#[from] TemplateDirScanError),
+    /// A template engine error.
+    #[error(transparent)]
+    Engine(#[from] TemplateEngineError),
 }
 
 // ============================================================================
@@ -245,6 +249,44 @@ mod tests {
             let read_err = TemplateReadError::from(fs_err);
             let template_err: TemplateError = read_err.into();
             assert!(matches!(template_err, TemplateError::Read(_)));
+        }
+
+        #[test]
+        fn from_engine_error_wraps_correctly() {
+            let engine_err = template_engine_error();
+
+            let template_err: TemplateError = engine_err.into();
+
+            assert!(matches!(template_err, TemplateError::Engine(_)));
+        }
+
+        #[test]
+        fn source_returns_inner_error_for_engine_variant() {
+            use std::error::Error;
+
+            let engine_err = template_engine_error();
+
+            let template_err: TemplateError = engine_err.into();
+
+            assert!(
+                template_err.source().is_some(),
+                "expected TemplateError::Engine to preserve source chain"
+            );
+        }
+
+        fn template_engine_error() -> TemplateEngineError {
+            let mut env = minijinja::Environment::new();
+            let source = env
+                .add_template_owned(
+                    "invalid".to_owned(),
+                    "Hello {{ name".to_owned(),
+                )
+                .expect_err("expected invalid template syntax to fail");
+
+            TemplateEngineError::Compile {
+                name: "invalid".to_owned(),
+                source,
+            }
         }
 
         #[test]
