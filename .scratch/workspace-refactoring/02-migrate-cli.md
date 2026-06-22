@@ -1,5 +1,5 @@
 ---
-labels: ["ready-for-agent"]
+labels: ["done"]
 ---
 
 ## Parent
@@ -14,11 +14,11 @@ Move the existing `lithos-cli` directory into `crates/cli`. Update its `Cargo.to
 
 ## Acceptance criteria
 
-- [ ] `lithos-cli` has been successfully moved to `crates/cli`.
-- [ ] `crates/cli/Cargo.toml` package name is `trace-cli`.
-- [ ] The CLI relies on `trace-app` for its orchestration and domain logic.
-- [ ] The CLI builds successfully (`cargo build --bin trace-cli` or similar).
-- [ ] Any CLI-specific tests pass.
+- [x] `lithos-cli` has been successfully moved to `crates/cli`.
+- [x] `crates/cli/Cargo.toml` package name is `trace-cli`.
+- [x] The CLI relies on `trace-app` for its orchestration and domain logic.
+- [x] The CLI builds successfully (`cargo build --bin trace-cli` or similar).
+- [x] Any CLI-specific tests pass.
 
 ## Blocked by
 
@@ -39,11 +39,11 @@ The CLI lives at `crates/cli`, uses the package name `trace-cli`, and strictly c
 - `trace-app` initialization facade — the CLI should only interact with the system via `trace-app`.
 
 **Acceptance criteria:**
-- [ ] `lithos-cli` has been successfully moved to `crates/cli`.
-- [ ] `crates/cli/Cargo.toml` package name is `trace-cli`.
-- [ ] The CLI relies on `trace-app` for its orchestration and domain logic.
-- [ ] The CLI builds successfully (`cargo build --bin trace-cli` or similar).
-- [ ] Any CLI-specific tests pass.
+- [x] `lithos-cli` has been successfully moved to `crates/cli`.
+- [x] `crates/cli/Cargo.toml` package name is `trace-cli`.
+- [x] The CLI relies on `trace-app` for its orchestration and domain logic.
+- [x] The CLI builds successfully (`cargo build --bin trace-cli` or similar).
+- [x] Any CLI-specific tests pass.
 
 **Out of scope:**
 - Adding new CLI commands or changing the user experience.
