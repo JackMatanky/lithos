@@ -2,17 +2,17 @@
 
 ## Contexts
 
-- [Config](./lithos-core/src/config/CONTEXT.md) - defines configuration sources, precedence, and validated runtime settings
-- [Discovery](./lithos-core/src/discovery/CONTEXT.md) - locates the vault root and config file paths before configuration is loaded
-- [Indexer](./lithos-core/src/indexer/CONTEXT.md) _(planned)_ - filesystem node scanning and indexing, classifying nodes by type and tracking index status
-- [Note](./lithos-core/src/note/CONTEXT.md) - parses and models notes, tasks, links, tags, and note metadata
-- [Schema](./lithos-core/src/schema/CONTEXT.md) - defines and resolves schema rules used for metadata validation
-- [Template](./lithos-core/src/template/CONTEXT.md) _(planned)_ - defines template assets and rendering constraints for note generation
-- [DB](./lithos-core/src/db/CONTEXT.md) - infrastructure context for persistence, transactions, and zero-copy data access
-- [FS](./lithos-core/src/fs/CONTEXT.md) - infrastructure context for safe file discovery, reads, and writes
-- [Utils](./lithos-core/src/utils/CONTEXT.md) - outward-facing utility contracts and dependency governance for reusable primitives
-- [Support](./lithos-core/src/support/CONTEXT.md) - crate-private implementation internals and internal support facade
-- [CLI](./lithos-cli/src/CONTEXT.md) - command-line entrypoints and user-facing orchestration of core contexts
+- [Config](./crates/config/CONTEXT.md) - defines configuration sources, precedence, and validated runtime settings
+- [Discovery](./crates/discovery/CONTEXT.md) - locates the vault root and config file paths before configuration is loaded
+- [Indexer](./crates/indexer/CONTEXT.md) _(planned)_ - filesystem node scanning and indexing, classifying nodes by type and tracking index status
+- [Note](./crates/note/CONTEXT.md) - parses and models notes, tasks, links, tags, and note metadata
+- [Schema](./crates/schema/CONTEXT.md) - defines and resolves schema rules used for metadata validation
+- [Template](./crates/template/CONTEXT.md) _(planned)_ - defines template assets and rendering constraints for note generation
+- [DB](./crates/db/CONTEXT.md) - infrastructure context for persistence, transactions, and zero-copy data access
+- [FS](./crates/fs/CONTEXT.md) - infrastructure context for safe file discovery, reads, and writes
+- [Utils](./crates/utils/CONTEXT.md) - outward-facing utility contracts and dependency governance for reusable primitives
+- [Support](./crates/support/CONTEXT.md) - crate-private implementation internals and internal support facade
+- [CLI](./crates/cli/src/CONTEXT.md) - command-line entrypoints and user-facing orchestration of core contexts
 
 ## Relationships
 
