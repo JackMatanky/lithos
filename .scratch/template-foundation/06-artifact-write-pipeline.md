@@ -22,9 +22,9 @@ Status: ready-for-agent
 Implement `TemplateArtifact<State>` — a typestate write pipeline that enforces ordering of target resolution, conflict checking, and file commit using the hoverbear generic state machine pattern.
 
 States and valid transitions:
-- `TemplateArtifact<Rendered>` → `TemplateArtifact<TargetResolved>` via `From` impl (path validation: rejects absolute paths and traversal paths using `PathValidator`)
-- `TemplateArtifact<TargetResolved>` → `TemplateArtifact<ReadyToCommit>` via `From` impl (conflict check)
-- `TemplateArtifact<ReadyToCommit>` → `TemplateArtifact<Committed>` via `From`/commit method (file write)
+- `TemplateArtifact<Rendered>` → `TemplateArtifact<TargetResolved>` via `try_resolve_target` (fallible; path validation via `RelativeFilePath::try_new`, which rejects absolute paths and `..` traversal)
+- `TemplateArtifact<TargetResolved>` → `TemplateArtifact<ReadyToCommit>` via `try_check_conflict` (fallible; conflict check)
+- `TemplateArtifact<ReadyToCommit>` → `TemplateArtifact<Committed>` via `commit` (file write; uses `File::create_new`)
 
 The outer struct carries shared data (rendered content, template name, etc.); the `state: S` field carries per-state data. Invalid transitions (e.g. `Rendered → Committed` directly) are impossible by type construction — no runtime guard needed.
 
@@ -36,7 +36,7 @@ Commit behavior:
 Path validation (in `Rendered → TargetResolved` transition):
 - Rejects absolute paths
 - Rejects paths containing `..` traversal components
-- Wraps existing `PathValidator` logic
+- Uses `RelativeFilePath::try_new` (construction is the validation — `PathError::NotRelative` is absolute path, `PathError::ParentTraversal` is `..` traversal)
 
 `TemplateArtifact<Committed>` is the terminal state; no further transitions are defined.
 
@@ -45,8 +45,8 @@ Path validation (in `Rendered → TargetResolved` transition):
 ## Acceptance criteria
 
 - [ ] `TemplateArtifact<S>` is generic over a state type parameter, with shared fields in the outer struct and per-state data in `state: S`
-- [ ] `From<TemplateArtifact<Rendered>> for TemplateArtifact<TargetResolved>` is implemented and performs path validation
-- [ ] `From<TemplateArtifact<TargetResolved>> for TemplateArtifact<ReadyToCommit>` is implemented and performs conflict/existence check
+- [ ] `try_resolve_target` converts `TemplateArtifact<Rendered>` → `Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>`; path validation uses `RelativeFilePath::try_new` (no separate `PathValidator` call)
+- [ ] `try_check_conflict` converts `TemplateArtifact<TargetResolved>` → `Result<TemplateArtifact<ReadyToCommit>, TemplateArtifactError>` and performs conflict/existence check
 - [ ] Commit from `ReadyToCommit` to `Committed` uses `File::create_new` (not a pre-check + create sequence)
 - [ ] Absolute target paths are rejected at the `Rendered → TargetResolved` transition
 - [ ] Traversal paths (`..` components) are rejected at the `Rendered → TargetResolved` transition
@@ -72,7 +72,7 @@ Path validation (in `Rendered → TargetResolved` transition):
 No artifact write pipeline exists. There is no type-safe mechanism to enforce that rendered template content passes path validation and conflict checking before being committed to disk.
 
 **Desired behavior:**
-A `TemplateArtifact<S>` generic struct enforces the write pipeline using the hoverbear generic state machine pattern (`impl From<TemplateArtifact<S1>> for TemplateArtifact<S2>`):
+A `TemplateArtifact<S>` generic struct enforces the write pipeline using the hoverbear generic state machine pattern (named fallible methods for state transitions since validation can fail):
 
 **Shared outer fields** (present in all states):
 - Rendered content (`String`)
@@ -80,8 +80,8 @@ A `TemplateArtifact<S>` generic struct enforces the write pipeline using the hov
 
 **State types and valid transitions:**
 - `Rendered` — initial state; carries the rendered content; no target path yet
-- `TargetResolved` — carries the vault-safe resolved target `PathBuf` or equivalent; produced by `From<TemplateArtifact<Rendered>>`; this transition validates the output path using `PathValidator`: rejects absolute paths and paths containing `..` traversal components; returns `Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>` (note: `From` may need to become a fallible method `try_resolve_target` if `From` cannot be fallible — adapt to fit the pattern)
-- `ReadyToCommit` — carries the resolved path; produced by `From<TemplateArtifact<TargetResolved>>`; this transition does a conflict/existence pre-check (optional, since `File::create_new` is the true guard) — if implemented, it returns an error early rather than waiting for the commit; the conflict check should not introduce TOCTOU risk
+- `TargetResolved` — carries the vault-safe resolved target `RelativeFilePath`; produced by `try_resolve_target`; this transition validates the output path via `RelativeFilePath::try_new`, which rejects absolute paths (`PathError::NotRelative`) and `..` traversal (`PathError::ParentTraversal`); returns `Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>`
+- `ReadyToCommit` — carries the resolved path; produced by `try_check_conflict`; this transition does a conflict/existence pre-check (optional, since `File::create_new` is the true guard) — if implemented, it returns an error early rather than waiting for the commit; the conflict check should not introduce TOCTOU risk
 - `Committed` — terminal state; produced by committing `TemplateArtifact<ReadyToCommit>`; uses `File::create_new` (stable since Rust 1.77.0) via the FS context (`FileWriter` / `fs::Writer`) which atomically fails with `ErrorKind::AlreadyExists` if the destination already exists; no separate existence pre-check before `create_new`
 
 Invalid transitions (e.g. `Rendered → Committed` directly) must be impossible at compile time — they should not compile, not just return an error.
@@ -90,17 +90,18 @@ Invalid transitions (e.g. `Rendered → Committed` directly) must be impossible 
 
 **Key interfaces:**
 - `TemplateArtifact<S>` — generic struct; outer fields hold shared data; `state: S` holds per-state data; hoverbear pattern documented at the PRD reference URL
-- `PathValidator` — existing FS context type in `lithos-core/src/fs/validator.rs`; inspect it for absolute-path and traversal rejection APIs
+- `RelativeFilePath` — existing validated path type in `lithos-core/src/fs/path.rs`; its constructor `try_new` rejects absolute paths and `..` traversal at construction time — no separate `PathValidator` call needed
 - `FileWriter` / `fs::Writer` — existing FS context type for file writes; renamed to `FileWriter` for consistency; must be used instead of raw `std::fs`; `File::create_new` behavior is required — inspect `fs::writer.rs` or equivalent
+  - **Note**: `Writer` does not yet have a `create_new` method. This issue adds one: wraps `std::fs::File::create_new` at the resolved path, returning `io::ErrorKind::AlreadyExists` on conflict. No raw `std::fs` in the pipeline itself — all I/O delegates to this new `Writer::create_new`.
 - `TemplateArtifactError` — new error type for this pipeline; covers: `AbsolutePathRejected`, `TraversalRejected`, `AlreadyExists`, `WriteError`
 - Architecture test (issue-09) will verify no `std::fs` in this pipeline — design accordingly
 
 **Acceptance criteria:**
 - [ ] `TemplateArtifact<S>` is generic over state with shared outer fields and `state: S` per-state field
-- [ ] Path validation (absolute rejection and `..` traversal rejection) happens in the `Rendered → TargetResolved` transition and uses `PathValidator`
+- [ ] Path validation (absolute rejection and `..` traversal rejection) happens in the `Rendered → TargetResolved` transition via `RelativeFilePath::try_new` (no separate `PathValidator` call)
 - [ ] The `ReadyToCommit → Committed` commit uses `File::create_new` (not a pre-check + create sequence) via the FS context
-- [ ] Absolute path input is rejected with `TemplateArtifactError::AbsolutePathRejected` (or equivalent)
-- [ ] Traversal path input (`..` components) is rejected with `TemplateArtifactError::TraversalRejected` (or equivalent)
+- [ ] Absolute path input maps `PathError::NotRelative` → `TemplateArtifactError::AbsolutePathRejected` (or equivalent)
+- [ ] Traversal path input (`..` components) maps `PathError::ParentTraversal` → `TemplateArtifactError::TraversalRejected` (or equivalent)
 - [ ] A destination that already exists causes `AlreadyExists` error from `File::create_new`
 - [ ] No raw `std::fs` — all I/O goes through the FS context
 - [ ] `TemplateArtifact<Committed>` is the terminal state; no further transitions compile
