@@ -16,7 +16,12 @@ path = "src/main.rs"
 bench = false
 
 [dependencies]
-lithos-core.workspace = true
+
+trace-app.workspace = true
+trace-discovery.workspace = true
+trace-config = { workspace = true, features = ["testing"] }
+trace-fs.workspace = true
+
 clap.workspace = true
 miette.workspace = true
 thiserror.workspace = true

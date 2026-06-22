@@ -12,11 +12,9 @@
 
 use std::{io::Write, path::Path};
 
-use lithos_core::{
-    app::bootstrap::Bootstrapper,
-    config::InMemoryRepository,
-    discovery::{DiscoveryFlags, port::DiscoveryPort},
-};
+use trace_app::bootstrap::Bootstrapper;
+use trace_config::InMemoryRepository;
+use trace_discovery::{DiscoveryFlags, port::DiscoveryPort};
 
 use crate::{cli::OutputFormat, error::CliError, output};
 
@@ -113,7 +111,7 @@ fn write_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &lithos_core::discovery::report::DiscoveryReport,
+    report: &trace_discovery::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     match format {
@@ -151,7 +149,7 @@ fn write_human_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &lithos_core::discovery::report::DiscoveryReport,
+    report: &trace_discovery::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let vault_root_str = vault_root
@@ -224,7 +222,7 @@ fn write_json_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &lithos_core::discovery::report::DiscoveryReport,
+    report: &trace_discovery::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let payload = DoctorOutput {
@@ -278,10 +276,8 @@ fn write_json_failure(
 #[cfg(test)]
 mod doctor_handler {
     use clap::Parser;
-    use lithos_core::{
-        app::bootstrap::Bootstrapper,
-        discovery::{DiscoveryFlags, service::DiscoveryService},
-    };
+    use trace_app::bootstrap::Bootstrapper;
+    use trace_discovery::{DiscoveryFlags, service::DiscoveryService};
 
     use super::run_doctor;
     use crate::{

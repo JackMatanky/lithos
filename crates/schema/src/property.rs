@@ -1,0 +1,1235 @@
+//! Property domain entities and value objects.
+//!
+//! This module is the canonical domain boundary for properties in the schema
+//! context. It defines the value types that make property metadata safe and
+//! explicit (`Property`, `PropertyId`, `PropertyName`, `Optionality`,
+//! `Multiplicity`) and the primary collection surface (`PropertyMap`) that the
+//! rest of the schema pipeline uses.
+//!
+//! ## Design constraints
+//! - **Names live in the map key**: `PropertyMap` stores the property name as
+//!   its key, and `Property` values are intentionally name-agnostic. This keeps
+//!   a single source of truth for names and prevents accidental desync.
+//! - **Validation by construction**: `PropertyName` and `PropertySpec` enforce
+//!   syntax and shape constraints at creation time, so `Property::new` is
+//!   infallible once inputs are validated.
+//! - **Raw → domain conversion is fallible**: conversions from
+//!   `RawPropertyMap<T>` validate specs and can return `SchemaError`.
+//!
+//! ## How to use
+//! 1. Convert raw properties into a `PropertyMap` for domain use.
+//! 2. Read or merge via `PropertyMap` in the schema pipeline.
+//! 3. Use `Property::validate_value` when validating values against specs.
+
+#![expect(
+    clippy::module_name_repetitions,
+    clippy::exhaustive_enums,
+    reason = "Property* types are descriptive and namespaced intentionally \
+              and rkyv Archive derive generates exhaustive archived enums"
+)]
+
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    fmt::{Debug, Display},
+    sync::LazyLock,
+};
+
+use regex::Regex;
+use rkyv::{Archive, Deserialize, Serialize};
+use trace_utils::UuidV7;
+use uuid::Uuid;
+
+use super::{
+    error::{PropertyNameError, PropertyValueError, SchemaError},
+    property_spec::PropertySpec,
+    raw::property::{RawPropertyBankEntry, RawPropertyInline, RawPropertyMap},
+};
+
+/// Map of properties keyed by name.
+///
+/// This wrapper preserves the invariant that a property's name is stored only
+/// in the map key, not inside the `Property` value.
+///
+/// Conversions from raw property maps can fail if the underlying property
+/// specification is invalid.
+///
+/// # Examples
+/// ```
+/// use trace_schema::{
+///     property::{
+///         Multiplicity, Optionality, Property, PropertyId, PropertyMap,
+///         PropertyName,
+///     },
+///     property_spec::{BoolSpec, PropertySpec},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::try_new("status")?;
+/// let property = Property::new(
+///     PropertyId::new(),
+///     Optionality::Required,
+///     Multiplicity::Single,
+///     PropertySpec::Bool(BoolSpec::default()),
+/// );
+/// let mut map = PropertyMap::new();
+/// map.insert(name, property);
+/// assert_eq!(map.len(), 1);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Archive, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct PropertyMap(HashMap<PropertyName, Property>);
+
+impl PropertyMap {
+    /// Creates an empty property map.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    /// Returns true if the map is empty.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the number of properties in the map.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns a property by name.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, name: &PropertyName) -> Option<&Property> {
+        self.0.get(name)
+    }
+
+    /// Returns true if the map contains the given name.
+    #[inline]
+    #[must_use]
+    pub fn has(&self, name: &PropertyName) -> bool {
+        self.0.contains_key(name)
+    }
+
+    /// Inserts a property with the given name.
+    #[inline]
+    pub fn insert(
+        &mut self,
+        name: PropertyName,
+        property: Property,
+    ) -> Option<Property> {
+        self.0.insert(name, property)
+    }
+
+    /// Removes a property by name.
+    #[inline]
+    pub fn remove(&mut self, name: &PropertyName) -> Option<Property> {
+        self.0.remove(name)
+    }
+
+    /// Returns an iterator that consumes the map and yields keys.
+    #[inline]
+    pub fn into_keys(self) -> impl Iterator<Item = PropertyName> {
+        self.0.into_keys()
+    }
+
+    /// Returns an iterator over property values.
+    #[inline]
+    pub fn values(&self) -> impl Iterator<Item = &Property> {
+        self.0.values()
+    }
+
+    /// Extends the map with entries from another `PropertyMap`.
+    ///
+    /// Entries from `other` overwrite entries with the same name.
+    #[inline]
+    pub fn extend(&mut self, other: PropertyMap) {
+        for (name, property) in other {
+            self.insert(name, property);
+        }
+    }
+
+    /// Returns a copy of this map with IDs preserved from an existing map.
+    ///
+    /// For any property name present in `existing`, the returned map uses the
+    /// existing property's ID. New names keep their generated IDs.
+    #[inline]
+    #[must_use]
+    pub fn with_ids(self, existing: &PropertyMap) -> Self {
+        let mut map = PropertyMap::new();
+        for (name, property) in self {
+            let property = if let Some(current) = existing.get(&name) {
+                property.with_id(current.id())
+            } else {
+                property
+            };
+            map.insert(name, property);
+        }
+        map
+    }
+
+    /// Returns an iterator over property names.
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = &PropertyName> {
+        self.0.keys()
+    }
+
+    /// Returns an iterator over named properties.
+    #[inline]
+    #[must_use]
+    pub fn iter(
+        &self,
+    ) -> std::collections::hash_map::Iter<'_, PropertyName, Property> {
+        self.0.iter()
+    }
+}
+
+impl AsRef<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn as_ref(&self) -> &HashMap<PropertyName, Property> {
+        &self.0
+    }
+}
+
+impl From<HashMap<PropertyName, Property>> for PropertyMap {
+    #[inline]
+    fn from(map: HashMap<PropertyName, Property>) -> Self {
+        Self(map)
+    }
+}
+
+impl<'map> IntoIterator for &'map PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::Iter<'map, PropertyName, Property>;
+    type Item = (&'map PropertyName, &'map Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for PropertyMap {
+    type IntoIter =
+        std::collections::hash_map::IntoIter<PropertyName, Property>;
+    type Item = (PropertyName, Property);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl TryFrom<RawPropertyMap<RawPropertyInline>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: RawPropertyMap<RawPropertyInline>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        for (name, raw) in &value {
+            let spec = PropertySpec::try_from(raw.clone())?;
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::from(inline_required(raw)),
+                Multiplicity::from(inline_multi(raw)),
+                spec,
+            );
+            map.insert(name.clone(), property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<RawPropertyMap<RawPropertyBankEntry>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: RawPropertyMap<RawPropertyBankEntry>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        for (name, raw) in &value {
+            if inline_required(&raw.0) {
+                tracing::warn!(
+                    property = name.as_str(),
+                    context = "property_bank",
+                    "property bank entry cannot be required; overriding to \
+                     false"
+                );
+            }
+            let spec = PropertySpec::try_from(raw.0.clone())?;
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::default(),
+                Multiplicity::from(inline_multi(&raw.0)),
+                spec,
+            );
+            map.insert(name.clone(), property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<HashMap<PropertyName, RawPropertyInline>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: HashMap<PropertyName, RawPropertyInline>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property map construction preserves key/value pairs"
+        )]
+        for (name, raw) in value {
+            let spec = PropertySpec::try_from(raw.clone())?;
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::from(inline_required(&raw)),
+                Multiplicity::from(inline_multi(&raw)),
+                spec,
+            );
+            map.insert(name, property);
+        }
+        Ok(map)
+    }
+}
+
+impl TryFrom<HashMap<PropertyName, RawPropertyBankEntry>> for PropertyMap {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        value: HashMap<PropertyName, RawPropertyBankEntry>,
+    ) -> Result<Self, Self::Error> {
+        let mut map = PropertyMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Property map construction preserves key/value pairs"
+        )]
+        for (name, raw) in value {
+            if inline_required(&raw.0) {
+                tracing::warn!(
+                    property = name.as_str(),
+                    context = "property_bank",
+                    "property bank entry cannot be required; overriding to \
+                     false"
+                );
+            }
+            let spec = PropertySpec::try_from(raw.0.clone())?;
+            let property = Property::new(
+                PropertyId::new(),
+                Optionality::default(),
+                Multiplicity::from(inline_multi(&raw.0)),
+                spec,
+            );
+            map.insert(name, property);
+        }
+        Ok(map)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Raw Inline Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[inline]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
+)]
+fn inline_required(raw: &RawPropertyInline) -> bool {
+    match raw {
+        RawPropertyInline::Bool(def) => def.required,
+        RawPropertyInline::Date(def) => def.required,
+        RawPropertyInline::File(def) => def.required,
+        RawPropertyInline::Number(def) => def.required,
+        RawPropertyInline::String(def) => def.required,
+    }
+}
+
+#[inline]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &RawPropertyInline with value patterns is idiomatic"
+)]
+fn inline_multi(raw: &RawPropertyInline) -> bool {
+    match raw {
+        RawPropertyInline::Bool(def) => def.multi,
+        RawPropertyInline::Date(def) => def.multi,
+        RawPropertyInline::File(def) => def.multi,
+        RawPropertyInline::Number(def) => def.multi,
+        RawPropertyInline::String(def) => def.multi,
+    }
+}
+
+/// Reusable property definition with type-specific validation.
+///
+/// This is the resolved entity used in the Domain layer.
+///
+/// # Examples
+/// ```
+/// use trace_schema::{
+///     property::{
+///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
+///     },
+///     property_spec::{BoolSpec, PropertySpec},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let spec = PropertySpec::Bool(BoolSpec::default());
+/// let property = Property::new(
+///     PropertyId::new(),
+///     Optionality::Required,
+///     Multiplicity::Single,
+///     spec,
+/// );
+/// assert!(property.is_required_scalar());
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, PartialEq, Archive, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct Property {
+    /// Unique identity (UUID v7).
+    id: PropertyId,
+    /// Whether property is required.
+    optionality: Optionality,
+    /// Whether property accepts array of values.
+    multiplicity: Multiplicity,
+    /// Type-specific validation specification.
+    spec: PropertySpec,
+}
+
+impl Property {
+    /// Create a new property.
+    ///
+    /// All validation is done at the component level (`PropertyName`,
+    /// `PropertySpec`), so this constructor is infallible.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        id: PropertyId,
+        optionality: Optionality,
+        multiplicity: Multiplicity,
+        spec: PropertySpec,
+    ) -> Self {
+        Self {
+            id,
+            optionality,
+            multiplicity,
+            spec,
+        }
+    }
+
+    /// Returns the property's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> PropertyId {
+        self.id
+    }
+
+    /// Returns the property's optionality.
+    #[inline]
+    #[must_use]
+    pub const fn optionality(&self) -> Optionality {
+        self.optionality
+    }
+
+    /// Returns the property's multiplicity.
+    #[inline]
+    #[must_use]
+    pub const fn multiplicity(&self) -> Multiplicity {
+        self.multiplicity
+    }
+
+    /// Returns the type-specific validation specification.
+    #[inline]
+    #[must_use]
+    pub const fn spec(&self) -> &PropertySpec {
+        &self.spec
+    }
+
+    /// Returns true if this property is required.
+    #[inline]
+    #[must_use]
+    pub fn is_required_scalar(&self) -> bool {
+        self.optionality == Optionality::Required
+            && self.multiplicity == Multiplicity::Single
+    }
+
+    /// Validate a value against this property's specification.
+    ///
+    /// This method uses `serde_json::Value` as a universal Intermediate
+    /// Representation (IR) for metadata values, allowing validation of data
+    /// loaded from JSON, YAML, or TOML.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use trace_schema::{
+    ///     property::{Multiplicity, Optionality, Property, PropertyId},
+    ///     property_spec::{BoolSpec, PropertySpec},
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     Optionality::Required,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec::default()),
+    /// );
+    /// property.validate_value(&serde_json::json!(true))?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn validate_value(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<(), SchemaError> {
+        if self.multiplicity == Multiplicity::Many {
+            let arr = value.as_array().ok_or_else(|| {
+                SchemaError::PropertyValue(
+                    PropertyValueError::IncorrectPrimitiveType {
+                        value: value.to_string(),
+                        expected: "array".into(),
+                    },
+                )
+            })?;
+            for item in arr {
+                self.spec.validate(item)?;
+            }
+            Ok(())
+        } else {
+            self.spec.validate(value)
+        }
+    }
+
+    /// Returns a copy of this property with a new id.
+    #[inline]
+    #[must_use]
+    pub fn with_id(self, id: PropertyId) -> Self {
+        Self {
+            id,
+            ..self
+        }
+    }
+}
+
+/// Unique identity for a property.
+///
+/// # Examples
+/// ```
+/// use trace_schema::property::PropertyId;
+///
+/// let id = PropertyId::new();
+/// let _ = id.as_uuid_v7();
+/// ```
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Archive,
+    Deserialize,
+    Serialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
+#[non_exhaustive]
+pub struct PropertyId(UuidV7);
+
+impl PropertyId {
+    /// Creates a new UUID v7-based `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(UuidV7::new())
+    }
+
+    /// Returns the inner `UuidV7` reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid_v7(&self) -> &UuidV7 {
+        &self.0
+    }
+}
+
+impl From<UuidV7> for PropertyId {
+    #[inline]
+    fn from(value: UuidV7) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<Uuid> for PropertyId {
+    type Error = trace_utils::UuidV7Error;
+
+    #[inline]
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Ok(Self(UuidV7::try_from(value)?))
+    }
+}
+
+impl Default for PropertyId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for PropertyId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Validated property name value object.
+///
+/// Enforces invariants:
+/// - Non-empty
+/// - Max 64 characters
+/// - Matches regex `^[A-Za-z_][A-Za-z0-9_-]*$` (must start with letter or
+///   underscore, may contain letters, digits, underscores, hyphens)
+///
+/// # Examples
+/// ```
+/// # use trace_schema::property::PropertyName;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::try_new("status")?;
+/// assert_eq!(name.as_str(), "status", "Name should match input");
+/// assert!(
+///     PropertyName::try_new("").is_err(),
+///     "Empty name should be rejected"
+/// );
+/// # Ok(())
+/// # }
+/// ```
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Archive,
+    Deserialize,
+    Serialize,
+    serde::Serialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
+#[non_exhaustive]
+pub struct PropertyName(String);
+
+impl PropertyName {
+    const MAX_LEN: usize = 64;
+    /// Property name validation pattern: mixed-case letters, underscores, and
+    /// hyphens.
+    ///
+    /// Pattern: `^[A-Za-z_][A-Za-z0-9_-]*$`.
+    ///
+    /// Must start with a letter (uppercase or lowercase) or underscore.
+    /// May contain letters, digits, underscores, and hyphens.
+    ///
+    /// # Examples
+    /// - Valid: `status`, `MyProperty`, `_internal`, `tag-name`, `Priority1`
+    /// - Invalid: `123prop`, `-prop`, `prop!`, `my prop`
+    const PATTERN: &'static str = "^[A-Za-z_][A-Za-z0-9_-]*$";
+
+    /// Create a new `PropertyName` with validation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use trace_schema::property::PropertyName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::try_new("status")?;
+    /// assert_eq!(name.as_str(), "status");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn try_new(name: &str) -> Result<Self, SchemaError> {
+        Self::validate(name)?;
+        Ok(Self(name.into()))
+    }
+
+    /// Returns the inner string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[inline]
+    fn validate(name: &str) -> Result<(), SchemaError> {
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(PropertyName::PATTERN));
+
+        if name.is_empty() {
+            return Err(PropertyNameError::NameIsEmpty.into());
+        }
+        if name.len() > Self::MAX_LEN {
+            return Err(PropertyNameError::NameExceedsMaxLength {
+                len: name.len(),
+                max: Self::MAX_LEN,
+            }
+            .into());
+        }
+
+        let re = RE.as_ref().map_err(|error| {
+            PropertyNameError::RegexCompilationFailed {
+                reason: error.to_string(),
+            }
+        })?;
+
+        if !re.is_match(name) {
+            return Err(PropertyNameError::ContainsInvalidCharacters {
+                name: name.into(),
+            }
+            .into());
+        }
+        Ok(())
+    }
+}
+
+impl AsRef<str> for PropertyName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for PropertyName {
+    #[inline]
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for PropertyName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<PropertyName> for String {
+    #[inline]
+    fn from(val: PropertyName) -> Self {
+        val.0
+    }
+}
+
+impl TryFrom<&str> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl TryFrom<String> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(&value)
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "deserialize_in_place is not applicable for this wrapper"
+)]
+impl<'de> serde::Deserialize<'de> for PropertyName {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::try_from(s).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Whether a property is required or optional.
+///
+/// # Examples
+/// ```
+/// use trace_schema::property::Optionality;
+///
+/// let optional = Optionality::from(false);
+/// let required = Optionality::from(true);
+/// assert!(matches!(optional, Optionality::Optional));
+/// assert!(matches!(required, Optionality::Required));
+/// ```
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Eq,
+    Hash,
+    PartialEq,
+    Archive,
+    Deserialize,
+    Serialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Optionality {
+    /// Optional property.
+    #[default]
+    Optional,
+    /// Required property.
+    Required,
+}
+
+impl From<bool> for Optionality {
+    #[inline]
+    fn from(required: bool) -> Self {
+        if required {
+            Self::Required
+        } else {
+            Self::Optional
+        }
+    }
+}
+
+/// Whether a property accepts a single value or multiple values.
+///
+/// # Examples
+/// ```
+/// use trace_schema::property::Multiplicity;
+///
+/// let single = Multiplicity::from(false);
+/// let many = Multiplicity::from(true);
+/// assert!(matches!(single, Multiplicity::Single));
+/// assert!(matches!(many, Multiplicity::Many));
+/// ```
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Eq,
+    Hash,
+    PartialEq,
+    Archive,
+    Deserialize,
+    Serialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Multiplicity {
+    /// Single scalar value.
+    #[default]
+    Single,
+    /// Multiple values (array).
+    Many,
+}
+
+impl From<bool> for Multiplicity {
+    #[inline]
+    fn from(multi: bool) -> Self {
+        if multi {
+            Self::Many
+        } else {
+            Self::Single
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test fixtures and builders for `Property`.
+    mod fixtures {
+        use super::super::{super::property_spec::StringSpec, *};
+
+        /// `PropertyBuilder` for flexible test data generation.
+        pub struct PropertyBuilder {
+            optionality: Optionality,
+            multiplicity: Multiplicity,
+            name: String,
+            spec: PropertySpec,
+        }
+
+        impl Default for PropertyBuilder {
+            #[inline]
+            fn default() -> Self {
+                Self {
+                    optionality: Optionality::default(),
+                    multiplicity: Multiplicity::default(),
+                    name: "test_property".to_owned(),
+                    spec: PropertySpec::String(StringSpec::default()),
+                }
+            }
+        }
+
+        impl PropertyBuilder {
+            /// Sets whether the property is an array.
+            #[inline]
+            #[must_use]
+            pub fn array(mut self, array: bool) -> Self {
+                self.multiplicity = if array {
+                    Multiplicity::Many
+                } else {
+                    Multiplicity::Single
+                };
+                self
+            }
+
+            /// Builds the `Property` entity.
+            ///
+            /// # Errors
+            /// Returns `SchemaError` if the property name is invalid.
+            #[inline]
+            pub fn build(self) -> Result<Property, SchemaError> {
+                let _name = PropertyName::try_new(&self.name)?;
+                Ok(Property::new(
+                    PropertyId::new(),
+                    self.optionality,
+                    self.multiplicity,
+                    self.spec,
+                ))
+            }
+
+            /// Sets the name of the property.
+            #[inline]
+            #[must_use]
+            pub fn name(mut self, name: &str) -> Self {
+                self.name = name.to_owned();
+                self
+            }
+
+            /// Creates a new `PropertyBuilder` with default values.
+            #[inline]
+            #[must_use]
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            /// Sets the property to required.
+            #[inline]
+            #[must_use]
+            pub fn required(mut self) -> Self {
+                self.optionality = Optionality::Required;
+                self
+            }
+
+            /// Sets the specification for the property.
+            #[inline]
+            #[must_use]
+            pub fn spec(mut self, spec: PropertySpec) -> Self {
+                self.spec = spec;
+                self
+            }
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            fn build_property() -> Property {
+                PropertyBuilder::new()
+                    .name("priority")
+                    .required()
+                    .array(true)
+                    .spec(PropertySpec::String(StringSpec::default()))
+                    .build()
+                    .expect("Expected builder to produce a valid Property")
+            }
+
+            #[test]
+            fn builder_sets_required_flag() {
+                let property = build_property();
+
+                assert!(
+                    property.optionality() == Optionality::Required,
+                    "Builder should set required flag to true"
+                );
+            }
+
+            #[test]
+            fn builder_sets_array_flag() {
+                let property = build_property();
+
+                assert!(
+                    property.multiplicity() == Multiplicity::Many,
+                    "Builder should set array flag to true"
+                );
+            }
+        }
+    }
+
+    mod property {
+        use rstest::rstest;
+
+        use super::super::{super::property_spec::StringSpec, *};
+
+        fn required_scalar_property() -> Property {
+            let spec = PropertySpec::String(StringSpec::default());
+            Property::new(
+                PropertyId::new(),
+                Optionality::Required,
+                Multiplicity::Single,
+                spec,
+            )
+        }
+
+        #[test]
+        fn returns_required_flag_when_required_true() {
+            let property = required_scalar_property();
+
+            assert!(
+                property.optionality() == Optionality::Required,
+                "Property should be required when required flag is true"
+            );
+        }
+
+        #[test]
+        fn returns_required_scalar_when_required_and_not_array() {
+            let property = required_scalar_property();
+
+            assert!(
+                property.is_required_scalar(),
+                "Property should be a required scalar (not array)"
+            );
+        }
+
+        #[test]
+        fn returns_array_flag_false_when_not_array() {
+            let property = required_scalar_property();
+
+            assert!(
+                property.multiplicity() == Multiplicity::Single,
+                "Property should not be an array when array flag is false"
+            );
+        }
+
+        /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
+        /// Priority: P1.
+        #[rstest]
+        #[case("Invalid Name")]
+        #[case("invalid.name")]
+        #[case("")]
+        #[case("123prop")]
+        #[case("-prop")]
+        #[case("my prop")]
+        #[case("prop!")]
+        fn returns_error_when_property_name_format_is_invalid(
+            #[case] name: &str,
+        ) {
+            assert!(
+                PropertyName::try_new(name).is_err(),
+                "Should reject invalid name: {name}"
+            );
+        }
+    }
+
+    mod property_map_from_raw {
+        use super::super::{
+            super::raw::{
+                RawPropertyBankEntry, RawPropertyInline, RawPropertyMap,
+            },
+            *,
+        };
+
+        #[test]
+        fn bank_required_is_overridden_to_optional() {
+            let json = r#"{"flag": {"type": "bool", "required": true}}"#;
+            let raw: RawPropertyMap<RawPropertyBankEntry> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("flag").unwrap();
+            let prop = map.get(&name).expect("property exists");
+            assert_eq!(prop.optionality(), Optionality::Optional);
+        }
+
+        #[test]
+        fn empty_string_options_are_accepted_as_unspecified() {
+            let json = r#"{"status": {"type": "string", "options": []}}"#;
+            let raw: RawPropertyMap<RawPropertyInline> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("status").unwrap();
+            let prop = map.get(&name).expect("property exists");
+            #[expect(
+                clippy::panic,
+                reason = "test asserts specific spec variant"
+            )]
+            #[expect(
+                clippy::pattern_type_mismatch,
+                reason = "matching on &PropertySpec in tests"
+            )]
+            {
+                match prop.spec() {
+                    PropertySpec::String(spec) => {
+                        assert!(spec.options().is_none());
+                    }
+                    PropertySpec::Bool(_)
+                    | PropertySpec::Date(_)
+                    | PropertySpec::File(_)
+                    | PropertySpec::Number(_) => {
+                        panic!("expected string spec")
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn duplicate_string_options_do_not_error() {
+            let json =
+                r#"{"status": {"type": "string", "options": ["a", "a"]}}"#;
+            let raw: RawPropertyMap<RawPropertyInline> =
+                serde_json::from_str(json).unwrap();
+            let map = PropertyMap::try_from(raw).unwrap();
+            let name = PropertyName::try_new("status").unwrap();
+            assert!(map.get(&name).is_some());
+        }
+    }
+
+    mod property_name {
+        use rstest::rstest;
+
+        use super::super::*;
+
+        /// 3.3-UNIT-007: `property_name_validates_regex_and_length`.
+        /// Priority: P1.
+        #[rstest]
+        #[case("valid_name")]
+        #[case("valid-name-123")]
+        #[case("MyProperty")]
+        #[case("_internal")]
+        #[case("Status")]
+        #[case("tag-name")]
+        #[case("Priority1")]
+        fn property_name_validates_regex_and_length(#[case] name: &str) {
+            let result = PropertyName::try_new(name);
+
+            assert!(result.is_ok(), "Expected {name} to pass, got: {result:?}");
+        }
+
+        /// 3.3-UNIT-008: `property_name_validates_format`.
+        /// Priority: P1.
+        #[test]
+        fn property_name_validates_format() {
+            let invalid = PropertyName::try_new("invalid_name!");
+            assert!(
+                invalid.is_err(),
+                "Expected invalid_name! to fail, got: {invalid:?}"
+            );
+        }
+
+        /// 3.3-UNIT-009: `property_name_validates_length`.
+        /// Priority: P2.
+        #[test]
+        fn property_name_validates_length() {
+            // GIVEN: a name exceeding the 64 character limit
+            let long_name = "a".repeat(65);
+
+            // WHEN: creating a PropertyName
+            let res = PropertyName::try_new(&long_name);
+
+            // THEN: it should return a PropertyNameError::NameExceedsMaxLength
+            // error
+            assert!(
+                matches!(
+                    res,
+                    Err(SchemaError::PropertyName(
+                        crate::error::PropertyNameError::NameExceedsMaxLength { .. }
+                    ))
+                ),
+                "Property name >64 chars should be rejected, got: {res:?}"
+            );
+        }
+
+        /// 3.3-UNIT-010: `property_name_validates_non_empty`.
+        /// Priority: P2.
+        #[test]
+        fn property_name_validates_non_empty() {
+            // GIVEN: an empty name string
+            // WHEN: creating a PropertyName
+            let res = PropertyName::try_new("");
+
+            // THEN: it should return a PropertyNameError::NameIsEmpty error
+            assert!(
+                matches!(
+                    res,
+                    Err(SchemaError::PropertyName(
+                        crate::error::PropertyNameError::NameIsEmpty
+                    ))
+                ),
+                "Empty property name should be rejected, got: {res:?}"
+            );
+        }
+    }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::super::*;
+
+        // 3.3-UNIT-015: `validates_property_name_format_proptest`.
+        // Priority: P2.
+        proptest! {
+            #[test]
+            fn validates_property_name_format_proptest(name in "[A-Za-z_][A-Za-z0-9_-]{0,63}") {
+                // GIVEN an arbitrary valid property name
+                // WHEN creating a PropertyName
+                // THEN it must succeed
+                prop_assert!(
+                    PropertyName::try_new(&name).is_ok(),
+                    "Expected valid name, got error"
+                );
+            }
+        }
+
+        // 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
+        // Priority: P2.
+        proptest! {
+            #[test]
+            fn rejects_invalid_property_name_characters_proptest(name in ".*[^A-Za-z0-9_-].*") {
+                prop_assume!(!name.is_empty() && name.len() <= 64);
+
+                // GIVEN an arbitrary string containing invalid characters
+                // WHEN creating a PropertyName (filtering for correct length)
+                // THEN it must fail
+                prop_assert!(
+                    PropertyName::try_new(&name).is_err(),
+                    "Expected invalid name to be rejected"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn property_id_exposes_uuid_v7_view() {
+        let id = PropertyId::new();
+        assert_eq!(
+            id.as_uuid_v7().as_uuid().get_version(),
+            Some(uuid::Version::SortRand)
+        );
+    }
+}

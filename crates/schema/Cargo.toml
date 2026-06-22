@@ -1,0 +1,57 @@
+[package]
+name = "trace-schema"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+miette.workspace = true
+serde.workspace = true
+redb.workspace = true
+rkyv.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+minijinja.workspace = true
+base64.workspace = true
+dirs.workspace = true
+trace-db = { path = "../db" }
+trace-config = { path = "../config" }
+trace-utils = { path = "../utils" }
+trace-support = { path = "../support" }
+trace-fs = { path = "../fs" }
+regex = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["html_reports"] }
+itoa.workspace = true
+proptest.workspace = true
+ryu.workspace = true
+rstest.workspace = true
+serde_yaml.workspace = true
+tempfile.workspace = true
+trace-db = { path = "../db", features = ["testing"] }
+trace-support = { path = "../support", features = ["testing"] }
+
+# [[bench]]
+# name = "schema_loader"
+# harness = false
+# path = "benches/schema_loader.rs.disabled"
+# DISABLED: Pending migration to Repository pattern - see INTEGRATION_TESTS_TODO.md
+
+[[bench]]
+name = "string_construction"
+harness = false
+path = "benches/string_construction.rs"
