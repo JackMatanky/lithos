@@ -2,11 +2,11 @@
 title: 04-indexer-application-service
 category: enhancement
 label: ready-for-agent
-status: open
+status: completed
 branch: 04-application-service
-merge_commit:
+merge_commit: e392d140
 date_created: 2026-06-09
-date_completed:
+date_completed: 2026-06-22
 ---
 
 # Issue 04: Indexer application service
