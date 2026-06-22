@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 
 [workspace]
-members = ["lithos-cli", "crates/*"]
+members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
