@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 
 [workspace]
-members = ["lithos-core", "lithos-cli"]
+members = ["lithos-cli", "crates/*"]
 resolver = "2"
 
 [workspace.package]
@@ -63,6 +63,8 @@ dirs = "6"
 glob = "0.3"
 regex = "1.12"
 walkdir = "2.5"
+itoa = "1"
+ryu = "1"
 
 # Testing
 mockall = "0.13"
@@ -75,7 +77,18 @@ tempfile = "3.27"
 criterion = { version = "0.8.2", features = ["html_reports", "async_tokio"] }
 
 # Internal Workspace Crates
-lithos-core = { path = "lithos-core" }
+trace-note = { path = "crates/note" }
+trace-app = { path = "crates/app" }
+trace-config = { path = "crates/config" }
+trace-discovery = { path = "crates/discovery" }
+trace-template = { path = "crates/template" }
+trace-utils = { path = "crates/utils" }
+trace-schema = { path = "crates/schema" }
+trace-support = { path = "crates/support" }
+trace-db = { path = "crates/db" }
+trace-fs = { path = "crates/fs" }
+trace-indexer = { path = "crates/indexer" }
+trace-vault = { path = "crates/vault" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

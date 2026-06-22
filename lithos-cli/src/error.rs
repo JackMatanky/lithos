@@ -9,9 +9,8 @@
 //! - `2` — invalid explicit path or configuration error (user error)
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
-use lithos_core::{
-    app::bootstrap::BootstrapError, discovery::error::DiscoveryError,
-};
+use trace_app::bootstrap::BootstrapError;
+use trace_discovery::error::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
 ///
@@ -97,15 +96,13 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
 mod tests {
     use std::path::PathBuf;
 
-    use lithos_core::{
-        app::bootstrap::BootstrapError,
-        config::error::ConfigError,
-        discovery::error::{
-            DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
-            ServiceConfigError,
-        },
-        fs::PathError,
+    use trace_app::bootstrap::BootstrapError;
+    use trace_config::error::ConfigError;
+    use trace_discovery::error::{
+        DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
+        ServiceConfigError,
     };
+    use trace_fs::PathError;
 
     use super::CliError;
 

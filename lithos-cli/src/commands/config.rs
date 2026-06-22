@@ -12,14 +12,12 @@
 
 use std::{io::Write, path::Path};
 
-use lithos_core::{
-    app::bootstrap::Bootstrapper,
-    config::InMemoryRepository,
-    discovery::{
-        DiscoveryFlags,
-        port::DiscoveryPort,
-        report::{DiscoveryReport, SkippedCeilingReason},
-    },
+use trace_app::bootstrap::Bootstrapper;
+use trace_config::InMemoryRepository;
+use trace_discovery::{
+    DiscoveryFlags,
+    port::DiscoveryPort,
+    report::{DiscoveryReport, SkippedCeilingReason},
 };
 
 use crate::{cli::OutputFormat, error::CliError, output};
@@ -119,9 +117,9 @@ fn write_diagnostics(
 
 /// Formats the local traversal stop reason as a short string.
 fn format_stop_reason(
-    reason: &lithos_core::discovery::report::LocalTraversalStopReason,
+    reason: &trace_discovery::report::LocalTraversalStopReason,
 ) -> &'static str {
-    use lithos_core::discovery::report::LocalTraversalStopReason;
+    use trace_discovery::report::LocalTraversalStopReason;
     match reason {
         LocalTraversalStopReason::FilesystemRoot => "filesystem root",
         LocalTraversalStopReason::ExplicitConfigFile => "explicit config file",
@@ -240,10 +238,8 @@ fn write_json(
 
 #[cfg(test)]
 mod config_handler {
-    use lithos_core::{
-        app::bootstrap::Bootstrapper,
-        discovery::{DiscoveryFlags, service::DiscoveryService},
-    };
+    use trace_app::bootstrap::Bootstrapper;
+    use trace_discovery::{DiscoveryFlags, service::DiscoveryService};
 
     use super::run_config;
     use crate::cli::OutputFormat;

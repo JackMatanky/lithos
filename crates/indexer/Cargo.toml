@@ -1,0 +1,38 @@
+[package]
+name = "trace-indexer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+miette.workspace = true
+serde.workspace = true
+redb.workspace = true
+rkyv.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+minijinja.workspace = true
+base64.workspace = true
+dirs.workspace = true
+trace-db = { path = "../db" }
+trace-fs = { path = "../fs" }
+trace-utils = { path = "../utils" }
+walkdir.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+mockall.workspace = true
+tempfile.workspace = true
+trace-db = { path = "../db", features = ["testing"] }

@@ -37,7 +37,8 @@ mod output;
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use lithos_core::{app::bootstrap::Bootstrapper, discovery::DiscoveryFlags};
+use trace_app::bootstrap::Bootstrapper;
+use trace_discovery::DiscoveryFlags;
 
 use crate::{
     cli::{Command, ConfigSubcommand},
@@ -95,14 +96,12 @@ fn run_main() -> Result<(), CliError> {
 
     // Resolve the current working directory as the discovery anchor.
     let anchor = std::env::current_dir().map_err(|source| {
-        CliError::Bootstrap(
-            lithos_core::app::bootstrap::BootstrapError::Discovery(
-                lithos_core::discovery::error::DiscoveryError::CanonicalizePath {
-                    path: std::path::PathBuf::from("."),
-                    source,
-                },
-            ),
-        )
+        CliError::Bootstrap(trace_app::bootstrap::BootstrapError::Discovery(
+            trace_discovery::error::DiscoveryError::CanonicalizePath {
+                path: std::path::PathBuf::from("."),
+                source,
+            },
+        ))
     })?;
 
     // Create the bootstrapper from platform-specific global config directories.
@@ -186,9 +185,7 @@ fn build_discovery_flags(
         cli.bootstrap.no_global_config,
     )
     .map_err(|e| {
-        CliError::Bootstrap(
-            lithos_core::app::bootstrap::BootstrapError::Discovery(e),
-        )
+        CliError::Bootstrap(trace_app::bootstrap::BootstrapError::Discovery(e))
     })?;
 
     Ok(Some(flags))

@@ -1,5 +1,5 @@
 ---
-labels: ["ready-for-agent"]
+labels: ["done"]
 ---
 
 ## Parent
@@ -33,12 +33,12 @@ Initialize a true multi-crate Rust workspace by extracting the contexts currentl
 
 ## Acceptance criteria
 
-- [ ] The `crates/` folder contains all contexts extracted from `lithos-core`, each with a working `Cargo.toml` using the `trace-` prefix.
-- [ ] `trace-support` types are `pub` but marked `#[doc(hidden)]`.
-- [ ] Tests and benches are successfully moved to their specific domain crates or `trace-app/tests/`.
-- [ ] `TestDb` is available in `trace-db::testing` for other crates to consume in their tests.
-- [ ] The workspace compiles (`cargo check`).
-- [ ] All unit and integration tests pass (`cargo test`).
+- [x] The `crates/` folder contains all contexts extracted from `lithos-core`, each with a working `Cargo.toml` using the `trace-` prefix.
+- [x] `trace-support` types are `pub` but marked `#[doc(hidden)]`.
+- [x] Tests and benches are successfully moved to their specific domain crates or `trace-app/tests/`.
+- [x] `TestDb` is available in `trace-db::testing` for other crates to consume in their tests.
+- [x] The workspace compiles (`cargo check`).
+- [x] All unit and integration tests pass (`cargo test`).
 
 ## Blocked by
 
@@ -61,12 +61,12 @@ Every context becomes a standalone Cargo crate under `crates/` prefixed with `tr
 - `setup_repository` — must be pushed down into specific domain tests (e.g. `trace-schema/tests/common/mod.rs`).
 
 **Acceptance criteria:**
-- [ ] The `crates/` folder contains all contexts extracted from `lithos-core`, each with a working `Cargo.toml` using the `trace-` prefix.
-- [ ] `trace-support` types are `pub` but marked `#[doc(hidden)]`.
-- [ ] Tests and benches are successfully moved to their specific domain crates or `trace-app/tests/`.
-- [ ] `TestDb` is available in `trace-db::testing` for other crates to consume in their tests.
-- [ ] The workspace compiles (`cargo check`).
-- [ ] All unit and integration tests pass (`cargo test`).
+- [x] The `crates/` folder contains all contexts extracted from `lithos-core`, each with a working `Cargo.toml` using the `trace-` prefix.
+- [x] `trace-support` types are `pub` but marked `#[doc(hidden)]`.
+- [x] Tests and benches are successfully moved to their specific domain crates or `trace-app/tests/`.
+- [x] `TestDb` is available in `trace-db::testing` for other crates to consume in their tests.
+- [x] The workspace compiles (`cargo check`).
+- [x] All unit and integration tests pass (`cargo test`).
 
 **Out of scope:**
 - Merging `config` and `discovery` (handled in a separate slice).

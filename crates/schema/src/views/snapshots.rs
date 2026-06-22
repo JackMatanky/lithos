@@ -1,0 +1,602 @@
+//! Typed version snapshots for zero-copy storage.
+//!
+//! Provides the [`SchemaVersion`] and [`PropertyBankVersion`] types which
+//! capture validated snapshots of domain objects. These types are optimized
+//! for fast staleness detection and efficient topological graph construction
+//! without requiring full deserialization of the underlying raw data.
+
+use std::{
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
+
+use rkyv::{Archive, Deserialize, Serialize};
+use trace_fs::FileMetadata;
+use trace_support::Blake3Hash;
+
+use crate::{
+    error::SchemaError,
+    identifier::SchemaName,
+    property::{PropertyMap, PropertyName},
+    raw::{RawPropertyBank, RawSchema},
+    views::{
+        contracts::{Version, VersionRead},
+        hashes::HashRecord,
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SchemaVersion
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Represents a single version of a schema file with validated, typed metadata.
+///
+/// Stores:
+/// - File and hash metadata for staleness detection.
+/// - Inheritance metadata (`extends`, `excludes`) for graph construction.
+/// - Bank property references for impact analysis.
+/// - Cached expanded properties to optimize resolution.
+///
+/// ## Design Rationale
+///
+/// This structure acts as a "View" optimized for storage and frequent queries.
+/// By storing inheritance and bank references as typed fields, we can perform
+/// topological sorts and staleness detection with zero-copy reads, avoiding
+/// the overhead of full JSON/YAML/TOML deserialization.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct SchemaVersion {
+    /// File statistics metadata for staleness detection.
+    metadata: FileMetadata,
+
+    /// Hash metadata for staleness and incremental resolution.
+    hashes: HashRecord,
+
+    /// Schema format version as simple string (e.g., `"1.0"`).
+    ///
+    /// Stored as `String` instead of `RawSchemaVersion` to avoid requiring
+    /// rkyv derives on Raw* types.
+    version: String,
+
+    /// Parent schema names from the `extends` field.
+    ///
+    /// Validated and stored as typed field for efficient querying.
+    extends: Vec<SchemaName>,
+
+    /// Property names excluded from the parent (from `excludes` field).
+    ///
+    /// Validated and stored as typed field for efficient querying.
+    excludes: Vec<PropertyName>,
+
+    /// Map of schema property name to property bank target name.
+    ///
+    /// Extracted from `$ref` entries during ingestion.
+    bank_references: HashMap<PropertyName, PropertyName>,
+
+    /// Cached expanded properties from `RefExpander`.
+    ///
+    /// Enables skipping expansion when [`PropertyBank`] is fresh.
+    expanded_properties: Option<PropertyMap>,
+
+    /// When this version was recorded in storage.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,
+}
+
+impl SchemaVersion {
+    /// Creates a new schema version from a parsed [`RawSchema`].
+    ///
+    /// Extracts inheritance metadata (`extends`, `excludes`) and bank
+    /// references from the parsed schema.
+    ///
+    /// # Errors
+    ///
+    /// This constructor is currently infallible; the [`Result`] is retained for
+    /// pipeline compatibility if future validation is added.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use trace_schema::views::SchemaVersion;
+    /// # use trace_schema::raw::RawSchema;
+    /// # use trace_fs::metadata::FileMetadata;
+    /// # use trace_schema::views::HashRecord;
+    /// #
+    /// # let raw: RawSchema = todo!();
+    /// # let metadata: FileMetadata = todo!();
+    /// # let hashes: HashRecord = todo!();
+    /// let version = SchemaVersion::new(metadata, hashes, &raw).unwrap();
+    /// ```
+    #[inline]
+    pub fn new(
+        metadata: FileMetadata,
+        hashes: HashRecord,
+        raw: &RawSchema,
+    ) -> Result<Self, SchemaError> {
+        // extends and excludes are already validated during deserialization
+        // (custom Deserialize impls ensure type safety)
+        let extends = raw.extends().to_vec();
+        let excludes = raw.excludes().to_vec();
+
+        // Property names are already validated via RawPropertyMap
+        // deserialization No need to validate them again here
+
+        // Extract bank references from properties map
+        let mut bank_references = HashMap::new();
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is irrelevant for bank reference extraction"
+        )]
+        for (prop_name, ref_entry) in raw.properties().ref_entries() {
+            bank_references
+                .insert(prop_name, ref_entry.ref_path.target_name().clone());
+        }
+
+        Ok(Self {
+            metadata,
+            hashes,
+            version: raw.version().as_str().into(),
+            extends,
+            excludes,
+            bank_references,
+            expanded_properties: None,
+            recorded_at: SystemTime::now(),
+        })
+    }
+
+    /// Returns file statistics metadata for this version.
+    #[inline]
+    #[must_use]
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
+
+    /// Returns parent schema names from `extends`.
+    #[inline]
+    #[must_use]
+    pub fn extends(&self) -> &[SchemaName] {
+        &self.extends
+    }
+
+    /// Returns excluded property names from the `excludes` field.
+    #[inline]
+    #[must_use]
+    pub fn excludes(&self) -> &[PropertyName] {
+        &self.excludes
+    }
+
+    /// Returns bank property references.
+    ///
+    /// Returns a map of schema property name to target bank property name.
+    #[inline]
+    #[must_use]
+    pub fn bank_references(&self) -> &HashMap<PropertyName, PropertyName> {
+        &self.bank_references
+    }
+
+    /// Returns schema properties affected by property bank changes.
+    ///
+    /// Returns property names that refer to any of the changed property names
+    /// in the provided `bank_delta`.
+    #[inline]
+    #[must_use]
+    pub fn changed_bank_references(
+        &self,
+        bank_delta: &HashSet<PropertyName>,
+    ) -> Vec<PropertyName> {
+        let mut changed = Vec::new();
+
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Ordering is irrelevant for detecting affected references"
+        )]
+        for (prop_name, bank_name) in &self.bank_references {
+            if bank_delta.contains(bank_name) {
+                changed.push(prop_name.clone());
+            }
+        }
+
+        changed
+    }
+
+    /// Returns cached expanded properties, if available.
+    #[inline]
+    #[must_use]
+    pub fn expanded_properties(&self) -> Option<&PropertyMap> {
+        self.expanded_properties.as_ref()
+    }
+
+    /// Caches expanded properties after [`RefExpander`] runs.
+    #[inline]
+    pub fn set_expanded_properties(&mut self, properties: PropertyMap) {
+        self.expanded_properties = Some(properties);
+    }
+}
+
+/// Implements [`Version`] for [`SchemaVersion`].
+impl Version for SchemaVersion {
+    #[inline]
+    fn metadata(&self) -> &FileMetadata {
+        self.metadata()
+    }
+
+    #[inline]
+    fn recorded_at(&self) -> SystemTime {
+        self.recorded_at
+    }
+
+    #[inline]
+    fn hashes(&self) -> &HashRecord {
+        &self.hashes
+    }
+
+    #[inline]
+    fn set_metadata(&mut self, metadata: FileMetadata) {
+        self.metadata = metadata;
+        self.recorded_at = SystemTime::now();
+    }
+
+    #[inline]
+    fn with_metadata(
+        &self,
+        metadata: FileMetadata,
+        hashes: HashRecord,
+    ) -> Self {
+        Self {
+            metadata,
+            hashes,
+            version: self.version.clone(),
+            extends: self.extends.clone(),
+            excludes: self.excludes.clone(),
+            bank_references: self.bank_references.clone(),
+            expanded_properties: None,
+            recorded_at: SystemTime::now(),
+        }
+    }
+}
+
+/// Implements [`VersionRead`] for [`SchemaVersion`].
+impl VersionRead for SchemaVersion {
+    #[inline]
+    fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.metadata.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+/// Implements [`VersionRead`] for [`ArchivedSchemaVersion`] (zero-copy).
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "file_info() default panics - archived types use \
+              is_timestamp_match() directly"
+)]
+impl VersionRead for ArchivedSchemaVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.metadata.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PropertyBankVersion
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Represents a single version of the property bank file with validated, typed
+/// data.
+///
+/// Stores:
+/// - File and hash metadata for staleness detection.
+/// - Property bank format version as simple string.
+///
+/// ## Design Rationale
+///
+/// Similar to [`SchemaVersion`], this uses a hybrid approach: metadata fields
+/// are stored as validated types, while the complex property tree remains in
+/// the Raw* parsing layer to avoid adding rkyv derives.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct PropertyBankVersion {
+    /// File statistics metadata for staleness detection.
+    metadata: FileMetadata,
+
+    /// Hash metadata for staleness and incremental resolution.
+    hashes: HashRecord,
+
+    /// Property bank format version as simple string (e.g., `"1.0"`).
+    version: String,
+
+    /// When this version was recorded in storage.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    recorded_at: SystemTime,
+}
+
+impl PropertyBankVersion {
+    /// Creates a new property bank version from a parsed [`RawPropertyBank`].
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible, but returns `Result` for future validation.
+    #[inline]
+    pub fn new(
+        metadata: FileMetadata,
+        hashes: HashRecord,
+        raw: &RawPropertyBank,
+    ) -> Result<Self, SchemaError> {
+        Ok(Self {
+            metadata,
+            hashes,
+            version: raw.version().as_str().into(),
+            recorded_at: SystemTime::now(),
+        })
+    }
+
+    /// Returns file statistics metadata for this version.
+    #[inline]
+    #[must_use]
+    pub fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
+}
+
+/// Implements [`Version`] for [`PropertyBankVersion`].
+impl Version for PropertyBankVersion {
+    #[inline]
+    fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
+
+    #[inline]
+    fn recorded_at(&self) -> SystemTime {
+        self.recorded_at
+    }
+
+    #[inline]
+    fn hashes(&self) -> &HashRecord {
+        &self.hashes
+    }
+
+    #[inline]
+    fn set_metadata(&mut self, metadata: FileMetadata) {
+        self.metadata = metadata;
+        self.recorded_at = SystemTime::now();
+    }
+
+    #[inline]
+    fn with_metadata(
+        &self,
+        metadata: FileMetadata,
+        hashes: HashRecord,
+    ) -> Self {
+        Self {
+            metadata,
+            hashes,
+            version: self.version.clone(),
+            recorded_at: SystemTime::now(),
+        }
+    }
+}
+
+/// Implements [`VersionRead`] for [`PropertyBankVersion`].
+impl VersionRead for PropertyBankVersion {
+    #[inline]
+    fn metadata(&self) -> &FileMetadata {
+        &self.metadata
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.metadata.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+/// Implements [`VersionRead`] for [`ArchivedPropertyBankVersion`] (zero-copy).
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "file_info() default panics - archived types use \
+              is_timestamp_match() directly"
+)]
+impl VersionRead for ArchivedPropertyBankVersion {
+    #[inline]
+    fn is_content_match(&self, hash: &Blake3Hash) -> bool {
+        self.hashes.is_content_match(hash)
+    }
+
+    #[inline]
+    fn is_timestamp_match(
+        &self,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> bool {
+        self.metadata.is_timestamp_match(created_at, modified_at)
+    }
+
+    #[inline]
+    fn version(&self) -> &str {
+        self.version.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod schema_version {
+        use super::*;
+
+        #[test]
+        fn new_extracts_metadata_correctly() {
+            let ref_path: crate::raw::property::RawPropertyRefPath =
+                serde_json::from_str(r##""#property_bank/target""##).unwrap();
+
+            let raw = RawSchema {
+                version: crate::raw::RawSchemaVersion::default(),
+                name: "Test".into(),
+                extends: vec![],
+                excludes: vec![],
+                properties: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert(
+                        "prop1".try_into().unwrap(),
+                        crate::raw::property::RawProperty::Ref(
+                            crate::raw::property::RawPropertyRef {
+                                ref_path,
+                                required: None,
+                                multi: None,
+                                options: None,
+                                pattern: None,
+                                min: None,
+                                max: None,
+                                step: None,
+                                format: None,
+                                directory: None,
+                                file_class: None,
+                            },
+                        ),
+                    );
+                    crate::raw::property::RawPropertyMap::from_map(map)
+                },
+                metadata: trace_fs::metadata::FileMetadata::new(
+                    trace_fs::metadata::FsTimes::new(None, None),
+                    0,
+                    false,
+                ),
+            };
+
+            let metadata = trace_fs::metadata::FileMetadata::new(
+                trace_fs::metadata::FsTimes::new(None, None),
+                100,
+                false,
+            );
+            let hashes = crate::views::hashes::HashRecord::new(
+                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                crate::views::RawPropertyHashIndex::default(),
+            );
+
+            let version =
+                SchemaVersion::new(metadata, hashes.clone(), &raw).unwrap();
+
+            assert_eq!(version.version(), "1.0");
+            assert_eq!(version.metadata().size(), 100);
+            assert_eq!(version.hashes().content(), hashes.content());
+            assert!(version.extends().is_empty());
+
+            let prop_name: crate::property::PropertyName =
+                "prop1".try_into().unwrap();
+            let target_name: crate::property::PropertyName =
+                "target".try_into().unwrap();
+            assert_eq!(
+                version.bank_references().get(&prop_name),
+                Some(&target_name)
+            );
+        }
+
+        #[test]
+        fn new_preserves_all_parent_names_from_raw_schema() {
+            let raw: RawSchema = serde_json::from_str(
+                r#"{"extends":["base","shared"],"properties":{},"excludes":[]}"#,
+            )
+            .unwrap();
+
+            let metadata = trace_fs::metadata::FileMetadata::new(
+                trace_fs::metadata::FsTimes::new(None, None),
+                100,
+                false,
+            );
+            let hashes = crate::views::hashes::HashRecord::new(
+                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                crate::views::RawPropertyHashIndex::default(),
+            );
+
+            let version = SchemaVersion::new(metadata, hashes, &raw).unwrap();
+
+            assert_eq!(version.extends().len(), 2);
+            assert_eq!(
+                version.extends().first().map(SchemaName::as_str),
+                Some("base")
+            );
+            assert_eq!(
+                version.extends().get(1).map(SchemaName::as_str),
+                Some("shared")
+            );
+        }
+    }
+
+    mod property_bank_version {
+        use super::*;
+
+        #[test]
+        fn new_extracts_metadata_correctly() {
+            let raw = RawPropertyBank {
+                version: crate::raw::RawSchemaVersion::default(),
+                properties: crate::raw::property::RawPropertyMap::new(),
+                metadata: trace_fs::metadata::FileMetadata::new(
+                    trace_fs::metadata::FsTimes::new(None, None),
+                    0,
+                    false,
+                ),
+            };
+
+            let metadata = trace_fs::metadata::FileMetadata::new(
+                trace_fs::metadata::FsTimes::new(None, None),
+                100,
+                false,
+            );
+            let hashes = crate::views::hashes::HashRecord::new(
+                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                crate::views::RawPropertyHashIndex::default(),
+            );
+
+            let version =
+                PropertyBankVersion::new(metadata, hashes.clone(), &raw)
+                    .unwrap();
+
+            assert_eq!(version.version(), "1.0");
+            assert_eq!(version.metadata().size(), 100);
+            assert_eq!(version.hashes().content(), hashes.content());
+        }
+    }
+}
