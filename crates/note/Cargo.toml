@@ -29,7 +29,7 @@ trace-config = { path = "../config" }
 trace-fs = { path = "../fs" }
 trace-utils = { path = "../utils" }
 trace-support = { path = "../support" }
-pulldown-cmark.workspace = true
+pulldown-cmark = "0.13"
 regex.workspace = true
 serde_yaml.workspace = true
 

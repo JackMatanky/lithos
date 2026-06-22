@@ -22,9 +22,6 @@ keywords = ["cli", "templating", "obsidian", "schema"]
 categories = ["command-line-utilities", "template-engine"]
 
 [workspace.dependencies]
-# Core Runtime
-rayon = "1.12"
-
 # Persistence
 redb = "4.1"
 
@@ -41,9 +38,6 @@ serde_yaml = "0.9"
 toml = "1.1"
 uuid = { version = "1.23", features = ["v7", "v5", "serde"] }
 
-# Parsing
-pulldown-cmark = "0.13"
-
 # Template Engine
 minijinja = "2.20"
 
@@ -56,14 +50,11 @@ tracing = "0.1"
 
 # Utilities
 base64 = "0.22"
-blake3 = "1.8"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 glob = "0.3"
 regex = "1.12"
 walkdir = "2.5"
-itoa = "1"
-ryu = "1"
 
 # Testing
 mockall = "0.13"
