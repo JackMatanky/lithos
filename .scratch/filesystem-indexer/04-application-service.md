@@ -406,8 +406,10 @@ transitions.
 
 | File                       | Change                                                               |
 | -------------------------- | -------------------------------------------------------------------- |
-| `indexer/service.rs`       | NEW — IndexerService, IndexCollector, 16 tests (run, deletions, persist, integration) |
+| `indexer/service.rs`       | NEW — IndexerService, IndexCollector, 20 tests (run, scope delegation, deletions, persist, integration) |
 | `indexer/builder.rs`       | NEW — EntryBuilder<S> 5-state typestate, ComparisonBranch enums, 3 tests |
+| `indexer/scanner/walkdir.rs`| MODIFIED — TryFrom<walkdir::DirEntry> for ScanEntry (replaces try_map_entry); root-dir skip removed |
+| `fs/entry.rs`              | MODIFIED — FsNode::try_from consolidated (file_type check, symlink handling, early-return pattern) |
 | `indexer/error.rs`         | Add `Path(#[from] PathError)` variant to `IndexerError`              |
 | `indexer/scan.rs`          | Add `IndexScope::root()` and `IndexScope::filters()`                 |
 | `indexer/repository.rs`    | Add `FsParentId` to trait signatures, `WriteRepository::clear()`     |
@@ -437,9 +439,8 @@ transitions.
       `Persistence → Indexed`. `dry_run` skips save calls in `into_indexed`.
 - [x] `ScanEntry::Skipped` entries are accumulated into `ctx.skipped` via `CompletionKind::Skipped`
       without aborting the run. Appear in `IndexReport::skipped()`.
-- [ ] Scope tests: `Full` and `Partial` scans delegate the correct `root: DirPath` and
-      `filters` to `scanner.walk()`. — **No dedicated delegation test; covered indirectly
-      by integration tests.**
+- [x] Scope tests: `Full` and `Partial` scans delegate the correct `root: DirPath` and
+      `filters` to `scanner.walk()`. — Verified via `CapturingMockScanner` (shared `Arc<Mutex<..>>`).
 - [x] `reindex: true` calls `repo.clear()` before scanning, yielding all entries as `New`.
 - [x] All application-service tests use `MockScanner` (mock `ScannerPort`) and
       `InMemoryRepository` — no real disk or redb dependency.
@@ -458,7 +459,7 @@ transitions.
 | `test_init_to_comparison_dir` | `Init::into_branch` wraps `DirNode` in `DirComparison` |
 | `test_full_pipeline_file_new` | New file: `Init→FileComparison→Mismatch→FilePersistence→FileIndexed→Completion`, report matches |
 
-### Service tests (`lithos-core/src/indexer/service.rs`)
+### Service tests (`lithos-core/src/indexer/service.rs`) — 20 tests
 
 **Cycle 1 — `IndexerService::run()` basic:**
 
@@ -470,7 +471,14 @@ transitions.
 | `reindex_clears_repo_before_scan` | `reindex: true` → `repo.clear()` called before `walk()`; all entries New |
 | `skipped_entries_do_not_abort` | Stream with `ScanEntry::Skipped` → loop continues, skipped in report |
 
-**Cycle 2 — detect_deletions:**
+**Cycle 2 — Scope delegation:**
+
+| Test name | What it verifies |
+|---|---|
+| `full_scope_delegates_root_and_filters` | Full scope passes `root: DirPath` and `filters` to `scanner.walk()` |
+| `partial_scope_delegates_root_and_filters` | Partial scope passes `root: DirPath` and `filters` to `scanner.walk()` |
+
+**Cycle 3 — detect_deletions:**
 
 | Test name | What it verifies |
 |---|---|
@@ -479,15 +487,16 @@ transitions.
 | `empty_repo_no_deletions` | No persisted paths → empty `DeletedNodes` |
 | `mixed_files_and_dirs_deleted` | Both file and dir paths missing → both IDs in `DeletedNodes` |
 
-**Cycle 3 — persist:**
+**Cycle 4 — persist:**
 
 | Test name | What it verifies |
 |---|---|
 | `persists_indexed_entries` | After `run()`, repo has saved file record |
 | `dry_run_skips_persistence` | `dry_run: true` → repo state unchanged |
 | `reindex_no_deletions` | `reindex: true` → repo empty after clear → no deletions detected |
+| `deletes_deleted_entries` | Deleted IDs are removed from repo's backing state |
 
-**Cycle 4 — Integration:**
+**Cycle 5 — Integration:**
 
 | Test name | What it verifies |
 |---|---|
@@ -495,15 +504,16 @@ transitions.
 | `dry_run_no_side_effects` | Full scan with `dry_run` → result populated, repo unchanged |
 | `report_counts_are_accurate` | New/fresh/stale/deleted/skipped counts match actual entries |
 | `partial_scope_and_reindex` | Partial scope + reindex → clear all, scan only partial root |
+| `scan_classify_persist_roundtrip` | Second run with matching metadata produces Fresh (not New) |
 
-### Missing from original TDD plan
+### Missing from original TDD plan (all resolved)
 
 | Planned test | Status | Notes |
 |---|---|---|
-| `full_scope_delegates_root_and_filters` | ❌ Not implemented | Coverage gap AC-8 |
-| `partial_scope_delegates_root_and_filters` | ❌ Not implemented | Coverage gap AC-8 |
-| `deletes_deleted_entries` | ❌ Not implemented | No test asserting deleted IDs removed from repo |
-| `scan_classify_persist_roundtrip` | ❌ Not implemented | No test asserting second run shows Fresh |
+| `full_scope_delegates_root_and_filters` | ✅ Implemented in Session 10 | CapturingMockScanner with `Arc<Mutex<..>>` |
+| `partial_scope_delegates_root_and_filters` | ✅ Implemented in Session 10 | Same mechanism |
+| `deletes_deleted_entries` | ✅ Implemented in Session 10 | Verifies records removed from repo |
+| `scan_classify_persist_roundtrip` | ✅ Implemented in Session 10 | Second run shows Fresh via pre-seeded repo |
 | IndexNode-specific tests (14) | N/A | Replaced by EntryBuilder in builder.rs |
 
 ## Blocked by
@@ -513,6 +523,47 @@ transitions.
 ---
 
 ## Changelog
+
+### 2026-06-22 — Session 11: TryFrom chain consolidation (e73aab97)
+
+**Commit**: `e73aab97` on `04-application-service`
+
+**Implemented:**
+1. `FsNode::try_from` now owns the full `walkdir::DirEntry` conversion: rejects non-file/dir/symlink
+   entries before IO via `entry.file_type()`, uses `file_type()` for Dir vs File classification
+   (vs the prior `metadata().is_dir()`), with a symlink fallback that follows `metadata()`.
+   Early-return pattern: fast common cases first (`ft.is_dir()` → DirNode, `ft.is_file()` → FileNode),
+   symlink special case via metadata, catch-all `UnsupportedEntryType`.
+2. `ScanEntry::try_from(walkdir::DirEntry)` replaces `WalkdirAdapter::try_map_entry` — maps
+   FsNode errors to `SkippedEntry` (UnsupportedEntryType / PermissionDenied). Path extracted
+   from error variants (no `path().to_path_buf()` clone needed).
+3. Root-dir skip removed from `walkdir.rs` — the scan root now flows through the builder pipeline,
+   gets a `DirRecord` with path_key `""` (relative to vault). Children get `FsParentId::Id(parent_id)`
+   instead of `FsParentId::Root`.
+4. `match (is_dir, is_file)` → early-return pattern: sequential `if ft.is_dir()`, `if ft.is_file()`,
+   `if ft.is_symlink() { ... }`, trailing `Err(UnsupportedEntryType(path))`. Symlinks to
+   sockets/FIFOs now correctly produce `UnsupportedEntryType` (previously silently became FileNode).
+5. No duplicate file-type check between `try_map_entry` and `FsNode::try_from` (the original
+   motivation for the refactor).
+
+**Files changed:**
+- `lithos-core/src/fs/entry.rs` — `FsNode::try_from` restructured (23 insertions, 22 deletions)
+- `lithos-core/src/indexer/scanner/walkdir.rs` — `TryFrom` impl replaces `try_map_entry`; root-dir
+  skip removed; `filter_map` → `map` (41 insertions, 37 deletions)
+
+**Scan pipeline is now:**
+```
+walkdir::DirEntry → FsNode::try_from (type check + metadata)
+                  → ScanEntry::try_from (error mapping)
+                  → EntryBuilder::from_scan_entry → typestate pipeline
+```
+
+**Test infrastructure:**
+- `CapturingMockScanner` uses `Arc<Mutex<...>>` (replaced `RefCell`) so assertions
+  can read captured values after scanner is moved into service.
+
+**Quality:**
+- 2006 tests (was 2002), zero clippy warnings, all hooks green.
 
 ### 2026-06-22 — Session 10: Short-circuit + IndexCollector + builder refinements
 
@@ -542,7 +593,7 @@ transitions.
 - `IndexedEntry` enum removed entirely — `CompletionKind` serves the same role.
 - No separate `persist()` method — deletions handled via
   `repo.delete_many_records()` in `run()`, saves happen per-entry in `into_indexed`.
-- 16 service tests + 3 builder tests (original spec planned 36+).
+- 20 service tests + 3 builder tests (original spec planned 36+).
 
 **Test infrastructure:**
 - `MockScanner` uses `RefCell<Vec<...>>` for interior mutability.
@@ -554,11 +605,11 @@ transitions.
 - Zero clippy warnings (all targets).
 - All pre-commit hooks pass (gitleaks, conventional-commits, fmt, clippy, tests).
 
-**Coverage gaps:**
-- `full_scope_delegates_root_and_filters` / `partial_scope_delegates_root_and_filters` —
-  no test directly verifies scope→walk parameter delegation (AC-8).
-- `deletes_deleted_entries` — no test asserting deleted IDs are removed from repo.
-- `scan_classify_persist_roundtrip` — no test asserting second run shows Fresh.
+**Coverage gaps (all resolved in Session 11):**
+- ~~`full_scope_delegates_root_and_filters` / `partial_scope_delegates_root_and_filters` —
+  no test directly verifies scope→walk parameter delegation (AC-8).~~
+- ~~`deletes_deleted_entries` — no test asserting deleted IDs are removed from repo.~~
+- ~~`scan_classify_persist_roundtrip` — no test asserting second run shows Fresh.~~
 
 ### 2026-06-18 — Session 7: Implementation (committed)
 
@@ -663,7 +714,5 @@ before issue 04 can proceed.
 - **New**: `IndexResult` carries `IndexReport` for downstream consumers.
 
 **Known gaps (deferred):**
-- The vault root itself has no persisted `DirRecord`. `FsParentId::Root` maps
-  to `FsRecordId::new()` for `FileRecord.parent_id` and `None` for
-  `DirRecord.parent_id` — these values are transient per run. A future
-  enhancement could persist a root `DirRecord` for consistency.
+- (none — root dir is now indexed like any other directory; children get proper
+  `FsParentId::Id(parent_id)`)
