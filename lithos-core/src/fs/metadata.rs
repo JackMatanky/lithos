@@ -233,7 +233,8 @@ impl FileMetadata {
     /// assert_eq!(meta.size(), 7);
     /// ```
     #[inline]
-    pub fn from_path(path: &Path) -> io::Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let path = path.as_ref();
         let sym_meta = std::fs::symlink_metadata(path)?;
 
         if !sym_meta.is_symlink() {
@@ -352,7 +353,8 @@ impl DirMetadata {
     /// assert!(!meta.is_symlink());
     /// ```
     #[inline]
-    pub fn from_path(path: &Path) -> io::Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let path = path.as_ref();
         let sym_meta = std::fs::symlink_metadata(path)?;
 
         if !sym_meta.is_symlink() {
