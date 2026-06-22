@@ -11,7 +11,7 @@ PRD: `.scratch/workspace-refactoring/PRD.md`
 Merge the isolated configuration and discovery mechanisms into a single, cohesive Settings adapter.
 
 1. Create a new crate: `crates/settings` (Package name: `trace-settings`).
-2. Move the contents of `crates/config`, `crates/discovery`, `crates/dirs.rs`, and `crates/env.rs` into this unified `trace-settings` crate.
+2. Move the contents of `crates/config` and `crates/discovery` (which now includes `dirs.rs` and `env.rs`) into this unified `trace-settings` crate.
 3. Update `trace-settings` internal modules to expose the necessary APIs.
 4. Update `trace-app` and any other dependent crates to use `trace-settings` instead of the disparate config/discovery crates.
 5. Update `crates/settings/tests/architecture.rs` to ensure any internal module boundaries between the config parser and the discovery engine are maintained.

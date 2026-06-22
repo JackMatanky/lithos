@@ -11,7 +11,11 @@ PRD: `.scratch/workspace-refactoring/PRD.md`
 Initialize a true multi-crate Rust workspace by extracting the contexts currently housed inside `lithos-core` into their own separate crates.
 
 1. **Workspace Setup**: Create a `crates/` directory and a top-level workspace `Cargo.toml`.
-2. **Context Extraction**: Move the contexts (`note`, `schema`, `template`, `indexer`, `db`, `fs`, `utils`, `support`, `app`) from `lithos-core/src/` into their own crate directories (e.g., `crates/note`).
+2. **Context Extraction**: Move the contexts (`note`, `schema`, `template`, `indexer`, `db`, `fs`, `utils`, `support`, `app`, `config`, `discovery`, `vault`) from `lithos-core/src/` into their own crate directories (e.g., `crates/note`).
+   - *Note:* The `graph` module should be moved *inside* the `schema` crate (e.g., `crates/schema/src/graph`).
+   - *Note:* `dirs.rs` and `env.rs` should be moved *inside* the `discovery` crate (e.g., `crates/discovery/src/dirs.rs`).
+   - *Note:* `patterns.rs` and `bounds.rs` should be moved *inside* the `utils` crate (e.g., `crates/utils/src/patterns.rs`).
+   - *Note:* `prelude.rs` is completely unused and should be **deleted**.
 3. **Cargo Configuration**: Give each extracted crate a `Cargo.toml` with the package name prefixed with `trace-` (e.g., `name = "trace-note"`). Ensure dependencies point correctly between them locally.
 4. **Visibility Fixes**: Because contexts are now physical crates, `trace-support` must expose its internals as `pub`. Annotate these with `#[doc(hidden)]` and set `publish = false` in `trace-support/Cargo.toml`. Domain crates using these types should keep their usage hidden via `pub(crate)` where necessary.
 5. **Test Infrastructure Splitting (Crucial Step)**:
