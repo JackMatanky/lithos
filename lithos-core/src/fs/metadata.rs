@@ -95,6 +95,21 @@ impl FsMetadata {
             Self::Dir(meta) => Some(meta),
         }
     }
+
+    /// Determine if two metadata instances describe the same on-disk state.
+    ///
+    /// Returns `true` when both variants match (file vs file, dir vs dir) and
+    /// their inner metadata compares as equal. Returns `false` when comparing
+    /// a file against a directory, since they cannot represent the same state.
+    #[inline]
+    #[must_use]
+    pub fn is_match(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::File(a), Self::File(b)) => a == b,
+            (Self::Dir(a), Self::Dir(b)) => a == b,
+            _ => false,
+        }
+    }
 }
 
 impl TryFrom<std::fs::Metadata> for FsMetadata {

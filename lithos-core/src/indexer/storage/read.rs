@@ -19,7 +19,7 @@ use crate::{
     fs::path::PathKey,
     indexer::{
         error::IndexerRepositoryError,
-        model::{DirRecord, FileRecord, FsRecordId},
+        model::{DirRecord, FileRecord, FsParentId, FsRecordId},
         repository::ReadRepository,
         storage::{
             RedbRepository,
@@ -113,7 +113,7 @@ impl ReadRepository for RedbRepository {
 
     fn list_files_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
         self.store
             .read(|tx| {
@@ -123,7 +123,7 @@ impl ReadRepository for RedbRepository {
                 let file_table = tx.inner.open_table(FILES.definition())?;
 
                 let mut records = Vec::new();
-                let iter = id_table.get(parent_id)?;
+                let iter = id_table.get(parent_id.to_storage_key())?;
                 for id in iter {
                     if let Some(record) = file_table.get(id?.value())? {
                         records.push(deserialize_file(record.value())?);
@@ -137,7 +137,7 @@ impl ReadRepository for RedbRepository {
 
     fn list_dirs_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
         self.store
             .read(|tx| {
@@ -147,7 +147,7 @@ impl ReadRepository for RedbRepository {
                 let dir_table = tx.inner.open_table(DIRS.definition())?;
 
                 let mut records = Vec::new();
-                let iter = id_table.get(parent_id)?;
+                let iter = id_table.get(parent_id.to_storage_key())?;
                 for id in iter {
                     if let Some(record) = dir_table.get(id?.value())? {
                         records.push(deserialize_dir(record.value())?);
@@ -243,7 +243,7 @@ mod tests {
             path::PathKey,
         },
         indexer::{
-            model::{DirRecord, FileRecord, FsRecordId},
+            model::{DirRecord, FileRecord, FsParentId, FsRecordId},
             repository::ReadRepository,
             storage::tables::FILES,
         },
@@ -277,7 +277,7 @@ mod tests {
         fn find_file_returns_record_when_present() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("test").unwrap();
             let name = FileName::new("test".into());
             let format = FileFormat::Unknown;
@@ -324,8 +324,14 @@ mod tests {
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
-            let record =
-                DirRecord::new(id, None, path, name, metadata, recorded_at);
+            let record = DirRecord::new(
+                id,
+                FsParentId::Root,
+                path,
+                name,
+                metadata,
+                recorded_at,
+            );
             // Need to insert record using write tx
             repo.store
                 .write(|tx| {
@@ -343,7 +349,7 @@ mod tests {
         fn find_file_by_path_returns_record_when_path_exists() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("test").unwrap();
             let name = FileName::new("test".into());
             let format = FileFormat::Unknown;
@@ -390,12 +396,13 @@ mod tests {
 
             let record = DirRecord::new(
                 id,
-                None,
+                FsParentId::Root,
                 path.clone(),
                 name,
                 metadata,
                 recorded_at,
             );
+
             // Seed both primary and secondary tables
             repo.store
                 .write(|tx| {
@@ -422,7 +429,7 @@ mod tests {
             let file1_id = FsRecordId::new();
             let file1 = FileRecord::new(
                 file1_id,
-                FsRecordId::new(),
+                FsParentId::Id(FsRecordId::new()),
                 PathKey::try_new("dir1/target.txt").unwrap(),
                 FileName::new("target.txt".into()),
                 FileFormat::Unknown,
@@ -433,7 +440,7 @@ mod tests {
             let file2_id = FsRecordId::new();
             let file2 = FileRecord::new(
                 file2_id,
-                FsRecordId::new(),
+                FsParentId::Id(FsRecordId::new()),
                 PathKey::try_new("dir2/target.txt").unwrap(),
                 FileName::new("target.txt".into()),
                 FileFormat::Unknown,
@@ -478,7 +485,8 @@ mod tests {
         #[test]
         fn returns_files_for_parent() {
             let (_tempdir, repo) = setup_repo();
-            let parent_id = FsRecordId::new();
+            let parent_key = FsRecordId::new();
+            let parent_id = FsParentId::Id(parent_key);
 
             let file1_id = FsRecordId::new();
             let file1 = FileRecord::new(
@@ -505,7 +513,7 @@ mod tests {
             let other_id = FsRecordId::new();
             let other_file = FileRecord::new(
                 other_id,
-                FsRecordId::new(),
+                FsParentId::Id(FsRecordId::new()),
                 PathKey::try_new("other/file").unwrap(),
                 FileName::new("file".into()),
                 FileFormat::Unknown,
@@ -531,8 +539,8 @@ mod tests {
                         .inner
                         .open_multimap_table(FILE_IDS_BY_PARENT.definition())
                         .unwrap();
-                    p_table.insert(parent_id, file1_id).unwrap();
-                    p_table.insert(parent_id, file2_id).unwrap();
+                    p_table.insert(parent_key, file1_id).unwrap();
+                    p_table.insert(parent_key, file2_id).unwrap();
                     Ok(())
                 })
                 .unwrap();
@@ -546,12 +554,13 @@ mod tests {
         #[test]
         fn returns_dirs_for_parent() {
             let (_tempdir, repo) = setup_repo();
-            let parent_id = FsRecordId::new();
+            let parent_key = FsRecordId::new();
+            let parent_id = FsParentId::Id(parent_key);
 
             let dir1_id = FsRecordId::new();
             let dir1 = DirRecord::new(
                 dir1_id,
-                Some(parent_id),
+                parent_id,
                 PathKey::try_new("parent/dir1").unwrap(),
                 crate::fs::name::DirName::new("dir1".into()),
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
@@ -561,7 +570,7 @@ mod tests {
             let dir2_id = FsRecordId::new();
             let dir2 = DirRecord::new(
                 dir2_id,
-                Some(parent_id),
+                parent_id,
                 PathKey::try_new("parent/dir2").unwrap(),
                 crate::fs::name::DirName::new("dir2".into()),
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
@@ -571,7 +580,7 @@ mod tests {
             let other_id = FsRecordId::new();
             let other_dir = DirRecord::new(
                 other_id,
-                None,
+                FsParentId::Root,
                 PathKey::try_new("root_dir").unwrap(),
                 crate::fs::name::DirName::new("root_dir".into()),
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
@@ -596,8 +605,8 @@ mod tests {
                         .inner
                         .open_multimap_table(DIR_IDS_BY_PARENT.definition())
                         .unwrap();
-                    p_table.insert(parent_id, dir1_id).unwrap();
-                    p_table.insert(parent_id, dir2_id).unwrap();
+                    p_table.insert(parent_key, dir1_id).unwrap();
+                    p_table.insert(parent_key, dir2_id).unwrap();
                     Ok(())
                 })
                 .unwrap();
@@ -651,7 +660,7 @@ mod tests {
             let file1_id = FsRecordId::new();
             let file1 = FileRecord::new(
                 file1_id,
-                FsRecordId::new(),
+                FsParentId::Id(FsRecordId::new()),
                 PathKey::try_new("file1.md").unwrap(),
                 FileName::new("file1.md".into()),
                 format,
@@ -663,7 +672,7 @@ mod tests {
             let file2_id = FsRecordId::new();
             let file2 = FileRecord::new(
                 file2_id,
-                FsRecordId::new(),
+                FsParentId::Id(FsRecordId::new()),
                 PathKey::try_new("file2.txt").unwrap(),
                 FileName::new("file2.txt".into()),
                 other_format,

@@ -13,6 +13,7 @@ use redb::{ReadableMultimapTable, ReadableTable, WriteTransaction};
 
 use crate::{
     db::DbError,
+    fs::path::PathKey,
     indexer::{
         error::IndexerRepositoryError,
         model::{DirRecord, FileRecord, FsRecordId},
@@ -75,7 +76,8 @@ impl RedbRepository {
 
         let mut parent_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
-        parent_table.remove(record.parent_id(), record.id())?;
+        parent_table
+            .remove(record.parent_id().to_storage_key(), record.id())?;
 
         let mut format_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
@@ -95,11 +97,10 @@ impl RedbRepository {
             tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
         path_table.remove(record.path())?;
 
-        if let Some(parent_id) = record.parent_id() {
-            let mut parent_table =
-                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
-            parent_table.remove(parent_id, record.id())?;
-        }
+        let mut parent_table =
+            tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+        parent_table
+            .remove(record.parent_id().to_storage_key(), record.id())?;
 
         let mut dirs_table = tx.inner.open_table(DIRS.definition())?;
         dirs_table.remove(record.id())?;
@@ -132,7 +133,8 @@ impl RedbRepository {
 
         let mut parent_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
-        parent_table.insert(record.parent_id(), record.id())?;
+        parent_table
+            .insert(record.parent_id().to_storage_key(), record.id())?;
 
         let mut format_table =
             tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
@@ -160,11 +162,10 @@ impl RedbRepository {
             tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
         path_table.insert(record.path(), record.id())?;
 
-        if let Some(parent_id) = record.parent_id() {
-            let mut parent_table =
-                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
-            parent_table.insert(parent_id, record.id())?;
-        }
+        let mut parent_table =
+            tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+        parent_table
+            .insert(record.parent_id().to_storage_key(), record.id())?;
 
         Ok(())
     }
@@ -195,7 +196,6 @@ impl RedbRepository {
         Ok(())
     }
 }
-
 impl WriteRepository for RedbRepository {
     fn save_file(
         &self,
@@ -280,6 +280,35 @@ impl WriteRepository for RedbRepository {
             })
             .map_err(Into::into)
     }
+
+    fn clear(&self) -> Result<(), IndexerRepositoryError> {
+        self.store
+            .write(|tx| {
+                tx.inner.delete_table(FILES.definition())?;
+                tx.inner.delete_table(DIRS.definition())?;
+                tx.inner.delete_table(FILE_ID_BY_PATH.definition())?;
+                tx.inner.delete_table(DIR_ID_BY_PATH.definition())?;
+                tx.inner.delete_multimap_table(FILE_IDS_BY_BASENAME)?;
+                tx.inner
+                    .delete_multimap_table(FILE_IDS_BY_PARENT.definition())?;
+                tx.inner
+                    .delete_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+                tx.inner.delete_multimap_table(FILE_IDS_BY_FORMAT)?;
+
+                tx.inner.open_table(FILES.definition())?;
+                tx.inner.open_table(DIRS.definition())?;
+                tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+                tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
+                tx.inner.open_multimap_table(FILE_IDS_BY_BASENAME)?;
+                tx.inner
+                    .open_multimap_table(FILE_IDS_BY_PARENT.definition())?;
+                tx.inner.open_multimap_table(DIR_IDS_BY_PARENT.definition())?;
+                tx.inner.open_multimap_table(FILE_IDS_BY_FORMAT)?;
+
+                Ok(())
+            })
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -293,7 +322,7 @@ mod tests {
             path::PathKey,
         },
         indexer::{
-            model::{DirRecord, FileRecord, FsRecordId},
+            model::{DirRecord, FileRecord, FsParentId, FsRecordId},
             repository::{ReadRepository, WriteRepository},
             storage::RedbRepository,
         },
@@ -311,7 +340,7 @@ mod tests {
         fn save_file_persists_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("dir/file.txt").unwrap();
             let name = FileName::new("file.txt".into());
             let format = FileFormat::Markdown;
@@ -361,8 +390,8 @@ mod tests {
         fn save_dir_persists_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
-            let path = PathKey::try_new("dir/subdir").unwrap();
+            let parent_id = FsParentId::Id(FsRecordId::new());
+            let path = PathKey::try_new("subdir").unwrap();
             let name = crate::fs::name::DirName::new("subdir".into());
             let metadata =
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false);
@@ -370,7 +399,7 @@ mod tests {
 
             let record = DirRecord::new(
                 id,
-                Some(parent_id),
+                parent_id,
                 path.clone(),
                 name,
                 metadata,
@@ -405,7 +434,7 @@ mod tests {
         fn delete_file_removes_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("dir/file.txt").unwrap();
             let name = FileName::new("file.txt".into());
             let format = FileFormat::Markdown;
@@ -456,7 +485,7 @@ mod tests {
         fn delete_dir_removes_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("dir/subdir").unwrap();
             let name = crate::fs::name::DirName::new("subdir".into());
             let metadata =
@@ -465,7 +494,7 @@ mod tests {
 
             let record = DirRecord::new(
                 id,
-                Some(parent_id),
+                parent_id,
                 path.clone(),
                 name,
                 metadata,
@@ -504,7 +533,7 @@ mod tests {
         fn save_file_cleans_stale_indexes_when_record_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let old_path = PathKey::try_new("old/file.txt").unwrap();
             let old_name = FileName::new("file.txt".into());
             let old_format = FileFormat::Markdown;
@@ -570,7 +599,7 @@ mod tests {
         fn save_dir_cleans_stale_path_index_when_path_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
-            let parent_id = FsRecordId::new();
+            let parent_id = FsParentId::Id(FsRecordId::new());
             let old_path = PathKey::try_new("old/dir").unwrap();
             let name = crate::fs::name::DirName::new("dir".into());
             let metadata =
@@ -579,7 +608,7 @@ mod tests {
 
             let old_record = DirRecord::new(
                 id,
-                Some(parent_id),
+                parent_id,
                 old_path.clone(),
                 name.clone(),
                 metadata.clone(),
@@ -592,7 +621,7 @@ mod tests {
             let new_path = PathKey::try_new("new/dir").unwrap();
             let new_record = DirRecord::new(
                 id,
-                Some(parent_id),
+                parent_id,
                 new_path.clone(),
                 name,
                 metadata,
@@ -626,7 +655,7 @@ mod tests {
             let f_path = PathKey::try_new("file.txt").unwrap();
             let file = FileRecord::new(
                 f_id,
-                FsRecordId::new(),
+                FsParentId::Root,
                 f_path.clone(),
                 FileName::new("file.txt".into()),
                 FileFormat::Markdown,
@@ -638,7 +667,7 @@ mod tests {
             let d_path = PathKey::try_new("subdir").unwrap();
             let dir = DirRecord::new(
                 d_id,
-                None,
+                FsParentId::Root,
                 d_path.clone(),
                 crate::fs::name::DirName::new("subdir".into()),
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false),
@@ -669,7 +698,7 @@ mod tests {
             let f_path = PathKey::try_new("file.txt").unwrap();
             let file = FileRecord::new(
                 f_id,
-                FsRecordId::new(),
+                FsParentId::Root,
                 f_path.clone(),
                 FileName::new("file.txt".into()),
                 FileFormat::Markdown,
@@ -681,7 +710,7 @@ mod tests {
             let d_path = PathKey::try_new("subdir").unwrap();
             let dir = DirRecord::new(
                 d_id,
-                None,
+                FsParentId::Root,
                 d_path.clone(),
                 crate::fs::name::DirName::new("subdir".into()),
                 crate::fs::DirMetadata::new(FsTimes::new(None, None), false),

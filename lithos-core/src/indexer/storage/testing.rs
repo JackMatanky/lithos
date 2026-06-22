@@ -9,12 +9,13 @@ use crate::{
     fs::{FileFormat, path::PathKey},
     indexer::{
         error::IndexerRepositoryError,
-        model::{DirRecord, FileRecord, FsRecordId},
+        model::{DirRecord, FileRecord, FsParentId, FsRecordId},
         repository::{ReadRepository, Repository, WriteRepository},
     },
 };
 
 /// A test-only in-memory repository implementation.
+#[derive(Clone)]
 pub(crate) struct InMemoryRepository {
     state: Arc<RwLock<RepositoryState>>,
 }
@@ -91,10 +92,11 @@ impl ReadRepository for InMemoryRepository {
 
     fn list_files_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
         let state = self.state.read().unwrap();
-        if let Some(ids) = state.files_by_parent.get(&parent_id) {
+        let key = parent_id.to_storage_key();
+        if let Some(ids) = state.files_by_parent.get(&key) {
             Ok(ids
                 .iter()
                 .filter_map(|id| state.files.get(id))
@@ -107,10 +109,11 @@ impl ReadRepository for InMemoryRepository {
 
     fn list_dirs_by_parent(
         &self,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
     ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
         let state = self.state.read().unwrap();
-        if let Some(ids) = state.dirs_by_parent.get(&parent_id) {
+        let key = parent_id.to_storage_key();
+        if let Some(ids) = state.dirs_by_parent.get(&key) {
             Ok(ids
                 .iter()
                 .filter_map(|id| state.dirs.get(id))
@@ -224,9 +227,26 @@ impl WriteRepository for InMemoryRepository {
         }
         Ok(())
     }
+
+    fn clear(&self) -> Result<(), IndexerRepositoryError> {
+        let mut state = self.state.write().unwrap();
+        Self::clear_internal(&mut state);
+        Ok(())
+    }
 }
 
 impl InMemoryRepository {
+    fn clear_internal(state: &mut RepositoryState) {
+        state.files.clear();
+        state.dirs.clear();
+        state.file_path_to_id.clear();
+        state.dir_path_to_id.clear();
+        state.files_by_basename.clear();
+        state.files_by_parent.clear();
+        state.files_by_format.clear();
+        state.dirs_by_parent.clear();
+    }
+
     fn save_file_internal(state: &mut RepositoryState, record: &FileRecord) {
         let id = record.id();
 
@@ -238,7 +258,9 @@ impl InMemoryRepository {
             {
                 ids.retain(|x| x != &id);
             }
-            if let Some(ids) = state.files_by_parent.get_mut(&old.parent_id()) {
+            if let Some(ids) =
+                state.files_by_parent.get_mut(&old.parent_id().to_storage_key())
+            {
                 ids.retain(|x| x != &id);
             }
             if let Some(ids) = state.files_by_format.get_mut(&old.format()) {
@@ -256,7 +278,11 @@ impl InMemoryRepository {
             .entry(record.name().as_str().to_owned())
             .or_default()
             .push(id);
-        state.files_by_parent.entry(record.parent_id()).or_default().push(id);
+        state
+            .files_by_parent
+            .entry(record.parent_id().to_storage_key())
+            .or_default()
+            .push(id);
         state.files_by_format.entry(record.format()).or_default().push(id);
     }
 
@@ -266,9 +292,8 @@ impl InMemoryRepository {
         // Cleanup old indexes
         if let Some(old) = state.dirs.get(&id) {
             state.dir_path_to_id.remove(old.path());
-            if let Some(parent_id) = old.parent_id()
-                && let Some(ids) = state.dirs_by_parent.get_mut(&parent_id)
-            {
+            let pkey = old.parent_id().to_storage_key();
+            if let Some(ids) = state.dirs_by_parent.get_mut(&pkey) {
                 ids.retain(|x| x != &id);
             }
         }
@@ -278,9 +303,11 @@ impl InMemoryRepository {
 
         // Indexes
         state.dir_path_to_id.insert(record.path().clone(), id);
-        if let Some(parent_id) = record.parent_id() {
-            state.dirs_by_parent.entry(parent_id).or_default().push(id);
-        }
+        state
+            .dirs_by_parent
+            .entry(record.parent_id().to_storage_key())
+            .or_default()
+            .push(id);
     }
 
     fn delete_file_internal(state: &mut RepositoryState, id: FsRecordId) {
@@ -291,7 +318,9 @@ impl InMemoryRepository {
             {
                 ids.retain(|x| x != &id);
             }
-            if let Some(ids) = state.files_by_parent.get_mut(&old.parent_id()) {
+            if let Some(ids) =
+                state.files_by_parent.get_mut(&old.parent_id().to_storage_key())
+            {
                 ids.retain(|x| x != &id);
             }
             if let Some(ids) = state.files_by_format.get_mut(&old.format()) {
@@ -303,9 +332,8 @@ impl InMemoryRepository {
     fn delete_dir_internal(state: &mut RepositoryState, id: FsRecordId) {
         if let Some(old) = state.dirs.remove(&id) {
             state.dir_path_to_id.remove(old.path());
-            if let Some(parent_id) = old.parent_id()
-                && let Some(ids) = state.dirs_by_parent.get_mut(&parent_id)
-            {
+            let pkey = old.parent_id().to_storage_key();
+            if let Some(ids) = state.dirs_by_parent.get_mut(&pkey) {
                 ids.retain(|x| x != &id);
             }
         }
@@ -326,7 +354,7 @@ mod tests {
         let path = PathKey::try_new("test.txt").unwrap();
         let record = FileRecord::new(
             id,
-            FsRecordId::new(),
+            FsParentId::Root,
             path.clone(),
             FileName::new("test.txt".into()),
             FileFormat::Markdown,

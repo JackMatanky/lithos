@@ -7,6 +7,7 @@
 use super::{
     entry::{DirIndexEntry, FileIndexEntry},
     model::FsRecordId,
+    report::IndexReport,
 };
 
 /// The aggregate result of a single indexing run.
@@ -16,16 +17,22 @@ use super::{
 pub(crate) struct IndexResult {
     indexed: IndexedNodes,
     deleted: DeletedNodes,
+    report: IndexReport,
 }
 
 impl IndexResult {
     /// Creates a new index result.
     #[inline]
     #[must_use]
-    pub(crate) fn new(indexed: IndexedNodes, deleted: DeletedNodes) -> Self {
+    pub(crate) fn new(
+        indexed: IndexedNodes,
+        deleted: DeletedNodes,
+        report: IndexReport,
+    ) -> Self {
         Self {
             indexed,
             deleted,
+            report,
         }
     }
 
@@ -41,6 +48,13 @@ impl IndexResult {
     #[must_use]
     pub(crate) fn deleted(&self) -> &DeletedNodes {
         &self.deleted
+    }
+
+    /// Returns the index report.
+    #[inline]
+    #[must_use]
+    pub(crate) fn report(&self) -> &IndexReport {
+        &self.report
     }
 }
 
@@ -139,7 +153,7 @@ mod tests {
                 },
                 indexer::{
                     entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
-                    model::{DirRecord, FileRecord, FsRecordId},
+                    model::{DirRecord, FileRecord, FsParentId, FsRecordId},
                     summary::IndexedNodes,
                 },
             };
@@ -150,7 +164,7 @@ mod tests {
                 std::fs::File::create(&file_path_buf).unwrap();
 
                 let id = FsRecordId::new();
-                let parent_id = FsRecordId::new();
+                let parent_id = FsParentId::Id(FsRecordId::new());
                 let key = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
@@ -181,7 +195,7 @@ mod tests {
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let node = DirRecord::new(
                     id,
-                    None,
+                    FsParentId::Root,
                     key,
                     name,
                     metadata,
@@ -246,9 +260,12 @@ mod tests {
 
             #[test]
             fn stores_indexed_and_deleted() {
+                use crate::indexer::report::IndexReport;
                 let indexed = IndexedNodes::new(Box::new([]), Box::new([]));
                 let deleted = DeletedNodes::default();
-                let result = IndexResult::new(indexed, deleted);
+                let report =
+                    IndexReport::new(0, 0, 0, 0, 0, Box::new([]), Box::new([]));
+                let result = IndexResult::new(indexed, deleted, report);
                 assert_eq!(result.indexed().files().len(), 0);
                 assert_eq!(result.deleted().count(), 0);
             }

@@ -125,29 +125,49 @@ impl TryFrom<walkdir::DirEntry> for FsNode {
     fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
         use super::error::ScanError;
 
-        // Get metadata first (before consuming entry)
-        let std_metadata = entry.metadata().map_err(|e| {
-            let io_err = std::io::Error::other(format!("walkdir error: {e}"));
-            ScanError::Traversal {
-                path: entry.path().to_path_buf(),
-                source: io_err,
-            }
-        })?;
+        let ft = entry.file_type();
 
-        // Now take ownership of the path
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(ScanError::Traversal {
+                    path: entry.into_path(),
+                    source: std::io::Error::other(format!(
+                        "walkdir error: {e}"
+                    )),
+                });
+            }
+        };
+
         let path = entry.into_path();
 
-        if std_metadata.is_dir() {
-            let dir_path =
-                DirPath::try_new(path.clone()).map_err(ScanError::from)?;
-            let dir_metadata = DirMetadata::from(&std_metadata);
-            Ok(Self::Dir(DirNode::new(dir_path, dir_metadata)))
-        } else {
-            let file_path =
-                FilePath::try_new(path.clone()).map_err(ScanError::from)?;
-            let file_metadata = FileMetadata::from(&std_metadata);
-            Ok(Self::File(FileNode::new(file_path, file_metadata)))
+        if ft.is_dir() {
+            let dir_path = DirPath::try_new(path)?;
+            let dir_metadata = DirMetadata::from(&metadata);
+            return Ok(Self::Dir(DirNode::new(dir_path, dir_metadata)));
         }
+
+        if ft.is_file() {
+            let file_path = FilePath::try_new(path)?;
+            let file_metadata = FileMetadata::from(&metadata);
+            return Ok(Self::File(FileNode::new(file_path, file_metadata)));
+        }
+
+        if ft.is_symlink() {
+            if metadata.is_dir() {
+                let dir_path = DirPath::try_new(path)?;
+                let dir_metadata = DirMetadata::from(&metadata);
+                return Ok(Self::Dir(DirNode::new(dir_path, dir_metadata)));
+            }
+
+            if metadata.is_file() {
+                let file_path = FilePath::try_new(path)?;
+                let file_metadata = FileMetadata::from(&metadata);
+                return Ok(Self::File(FileNode::new(file_path, file_metadata)));
+            }
+        }
+
+        Err(ScanError::UnsupportedEntryType(path))
     }
 }
 

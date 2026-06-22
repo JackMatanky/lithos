@@ -122,6 +122,16 @@ impl FsPath {
         }
     }
 
+    /// Returns the parent directory, or [`ParentDir::Root`] if none exists.
+    #[inline]
+    #[must_use]
+    pub fn parent(&self) -> ParentDir<'_> {
+        match self {
+            Self::File(p) => p.parent(),
+            Self::Dir(p) => p.parent(),
+        }
+    }
+
     /// Convert to vault-relative path by stripping the base prefix.
     ///
     /// # Errors
@@ -226,6 +236,16 @@ impl<'a> FsPathRef<'a> {
         match self {
             Self::Dir(p) => Some(p),
             Self::File(_) => None,
+        }
+    }
+
+    /// Returns the parent directory, or [`ParentDir::Root`] if none exists.
+    #[inline]
+    #[must_use]
+    pub fn parent(&self) -> ParentDir<'a> {
+        match self {
+            Self::File(p) => p.parent(),
+            Self::Dir(p) => p.parent(),
         }
     }
 
@@ -1001,6 +1021,18 @@ impl PathKey {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Returns the parent path key, or `None` if this is at the root level.
+    #[inline]
+    #[must_use]
+    pub fn parent(&self) -> Option<PathKey> {
+        let s = self.as_str();
+        s.rfind('/').map(|pos| {
+            // Because the path is already validated and normalized, the prefix
+            // up to the last '/' is guaranteed to be a valid PathKey.
+            Self(s[..pos].into())
+        })
     }
 }
 

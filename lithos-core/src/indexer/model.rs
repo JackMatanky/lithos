@@ -37,6 +37,11 @@ use crate::{
 pub(crate) struct FsRecordId(pub(crate) UuidV7);
 
 impl FsRecordId {
+    /// Zero sentinel for storage keys — deterministic UUID (nil, not v7).
+    /// Never represents a real record; used only as the `Root` parent sentinel
+    /// in index tables.
+    pub(crate) const ZERO: Self = Self(UuidV7::ZERO);
+
     /// Creates a new random filesystem record identifier (UUID v7).
     #[inline]
     #[must_use]
@@ -48,7 +53,7 @@ impl FsRecordId {
 impl Default for FsRecordId {
     #[inline]
     fn default() -> Self {
-        Self::new()
+        Self::ZERO
     }
 }
 
@@ -68,15 +73,21 @@ pub(crate) enum FsRecordType {
     Dir,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FsRecord {
+    File(FileRecord),
+    Dir(DirRecord),
+}
+
 /// An indexed file record with identity, path, and metadata.
 ///
 /// Represents a discovered file within the index scope, capturing all
 /// information needed for downstream indexing and staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 pub(crate) struct FileRecord {
     id: FsRecordId,
-    parent_id: FsRecordId,
+    parent_id: FsParentId,
     path: PathKey,
     name: FileName,
     format: FileFormat,
@@ -96,7 +107,7 @@ impl FileRecord {
     #[must_use]
     pub(crate) fn new(
         id: FsRecordId,
-        parent_id: FsRecordId,
+        parent_id: FsParentId,
         path: PathKey,
         name: FileName,
         format: FileFormat,
@@ -124,7 +135,7 @@ impl FileRecord {
     /// Returns the parent directory's record identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn parent_id(&self) -> FsRecordId {
+    pub(crate) fn parent_id(&self) -> FsParentId {
         self.parent_id
     }
 
@@ -171,7 +182,7 @@ impl FileRecord {
 #[rkyv(derive(Debug))]
 pub(crate) struct DirRecord {
     id: FsRecordId,
-    parent_id: Option<FsRecordId>,
+    parent_id: FsParentId,
     path: PathKey,
     name: DirName,
     metadata: DirMetadata,
@@ -182,7 +193,7 @@ pub(crate) struct DirRecord {
 impl DirRecord {
     /// Creates a new directory record.
     ///
-    /// `parent_id` is `None` for the vault root directory.
+    /// `parent_id` is [`FsParentId::Root`] for the vault root directory.
     #[inline]
     #[expect(
         clippy::too_many_arguments,
@@ -192,7 +203,7 @@ impl DirRecord {
     #[must_use]
     pub(crate) fn new(
         id: FsRecordId,
-        parent_id: Option<FsRecordId>,
+        parent_id: FsParentId,
         path: PathKey,
         name: DirName,
         metadata: DirMetadata,
@@ -215,10 +226,11 @@ impl DirRecord {
         self.id
     }
 
-    /// Returns the parent directory's record identifier, or `None` for root.
+    /// Returns the parent directory's record identifier, or
+    /// [`FsParentId::Root`] for the vault root.
     #[inline]
     #[must_use]
-    pub(crate) fn parent_id(&self) -> Option<FsRecordId> {
+    pub(crate) fn parent_id(&self) -> FsParentId {
         self.parent_id
     }
 
@@ -251,6 +263,38 @@ impl DirRecord {
     }
 }
 
+/// Identifies the parent of a filesystem node during indexing.
+///
+/// `Root` represents the vault root itself — used when an entry is directly
+/// in the vault root (no parent directory exists). `Id(id)` represents a
+/// specific indexed directory that contains this entry.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub(crate) enum FsParentId {
+    /// Entry is directly under the vault root.
+    Root,
+    /// Entry is inside a known indexed directory.
+    Id(FsRecordId),
+}
+
+impl FsParentId {
+    /// Converts this parent ID to a storage key suitable for index tables.
+    ///
+    /// `Root` maps to the zero sentinel (nobody can collide with it since
+    /// [`FsRecordId::new`] generates random `UUIDv7` values). `Id(id)` returns
+    /// the inner `FsRecordId` directly.
+    #[inline]
+    #[must_use]
+    pub(crate) fn to_storage_key(self) -> FsRecordId {
+        match self {
+            Self::Root => FsRecordId::default(),
+            Self::Id(id) => id,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod id {
@@ -280,10 +324,14 @@ mod tests {
             use crate::indexer::model::FsRecordId;
 
             #[test]
-            fn default_creates_valid_id() {
+            fn default_returns_zero_sentinel() {
                 let id = FsRecordId::default();
                 let id2 = FsRecordId::default();
-                assert_ne!(id, id2, "default should create unique IDs");
+                assert_eq!(
+                    id, id2,
+                    "default should return deterministic sentinel"
+                );
+                assert_eq!(id, FsRecordId::ZERO);
             }
         }
 
@@ -327,12 +375,12 @@ mod tests {
                     name::FileName,
                     path::PathKey,
                 },
-                indexer::model::{FileRecord, FsRecordId},
+                indexer::model::{FileRecord, FsParentId, FsRecordId},
             };
 
             fn make_file_record() -> FileRecord {
                 let id = FsRecordId::new();
-                let parent_id = FsRecordId::new();
+                let parent_id = FsParentId::Id(FsRecordId::new());
                 let path = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
@@ -353,7 +401,7 @@ mod tests {
             #[test]
             fn returns_stored_id() {
                 let id = FsRecordId::new();
-                let parent_id = FsRecordId::new();
+                let parent_id = FsParentId::Id(FsRecordId::new());
                 let path = PathKey::try_new("notes/file.md").unwrap();
                 let name = FileName::new("file.md".into());
                 let format = FileFormat::Markdown;
@@ -397,7 +445,7 @@ mod tests {
                     name::DirName,
                     path::PathKey,
                 },
-                indexer::model::{DirRecord, FsRecordId},
+                indexer::model::{DirRecord, FsParentId, FsRecordId},
             };
 
             #[test]
@@ -408,10 +456,16 @@ mod tests {
                 let metadata =
                     DirMetadata::new(FsTimes::new(None, None), false);
                 let recorded_at = SystemTime::now();
-                let node =
-                    DirRecord::new(id, None, path, name, metadata, recorded_at);
+                let node = DirRecord::new(
+                    id,
+                    FsParentId::Root,
+                    path,
+                    name,
+                    metadata,
+                    recorded_at,
+                );
                 assert_eq!(node.id(), id);
-                assert_eq!(node.parent_id(), None);
+                assert_eq!(node.parent_id(), FsParentId::Root);
             }
 
             #[test]
@@ -425,14 +479,33 @@ mod tests {
                 let recorded_at = SystemTime::now();
                 let node = DirRecord::new(
                     id,
-                    Some(parent_id),
+                    FsParentId::Id(parent_id),
                     path,
                     name,
                     metadata,
                     recorded_at,
                 );
-                assert_eq!(node.parent_id(), Some(parent_id));
+                assert_eq!(node.parent_id(), FsParentId::Id(parent_id));
             }
+        }
+    }
+
+    mod fs_parent_id {
+        use crate::indexer::model::{FsParentId, FsRecordId};
+
+        #[test]
+        fn root_to_storage_key_is_deterministic() {
+            let k1 = FsParentId::Root.to_storage_key();
+            let k2 = FsParentId::Root.to_storage_key();
+            assert_eq!(k1, k2, "Root sentinel must be deterministic");
+            assert_eq!(k1, FsRecordId::ZERO);
+        }
+
+        #[test]
+        fn id_to_storage_key_returns_inner_id() {
+            let inner = FsRecordId::new();
+            let key = FsParentId::Id(inner).to_storage_key();
+            assert_eq!(key, inner);
         }
     }
 
