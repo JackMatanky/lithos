@@ -1,17 +1,17 @@
 ---
 title: 05-engine-port-adapter
 category: enhancement
-label: ready-for-agent
-status: open
+label: ready-for-human
+status: completed
 branch:
 merge_commit:
 date_created: 2026-06-11
-date_completed:
+date_completed: 2026-06-22
 ---
 
 # Template Engine Port + MiniJinja Adapter
 
-Status: ready-for-agent
+Status: completed
 
 ## Parent
 
@@ -52,17 +52,17 @@ Issue 06 owns only the post-render write pipeline transitions: `Rendered -> Targ
 
 ## Acceptance criteria
 
-- [ ] `TemplateEngine` trait is defined with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &HashMap<String, String>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` (exact signatures may vary slightly per implementation pressure, but MiniJinja types must not appear)
-- [ ] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds
-- [ ] `TemplateArtifact<Rendered>` is defined as the rendered-output domain state with shared data needed by issue 06 (`TemplateName`, rendered content)
-- [ ] `MiniJinjaEngine::configured()` creates a strict/no-escape MiniJinja environment and keeps `Environment<'static>` behind the adapter boundary
-- [ ] `compile(&mut self, template: &Template)` registers/checks the supplied source using `template.name()` and `template.body()` and does not perform repository/filesystem lookup, target resolution, conflict checks, CLI context assembly, or artifact commit behavior
-- [ ] `render(&self, template: &Template, context: &HashMap<String, String>)` looks up the template by `template.name()` and does not add or replace `template.body()` at render time
-- [ ] `MiniJinjaEngine` uses `UndefinedBehavior::Strict`
-- [ ] `MiniJinjaEngine` uses `AutoEscape::None`
-- [ ] `TemplateEngineError` preserves `minijinja::Error` as its source via `std::error::Error::source()`
-- [ ] MiniJinja types (`Environment`, `Value`, etc.) do not appear in the `TemplateEngine` trait or `TemplateEngineError` public API surface
-- [ ] Tests cover: compile success, compile failure (invalid syntax) with preserved source error, render success with variable substitution, render failure (undefined variable under strict mode), no auto-escape of Markdown characters, render returns `TemplateArtifact<Rendered>` with template name and content, and render does not re-register/replace source at render time
+- [x] `TemplateEngine` trait is defined with `compile(&mut self, template: &Template)` and `render(&self, template: &Template, context: &HashMap<String, String>) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>` (exact signatures may vary slightly per implementation pressure, but MiniJinja types must not appear)
+- [x] `TemplateEngine` has no `Clone + Send + Sync + 'static` bounds
+- [x] `TemplateArtifact<Rendered>` is defined as the rendered-output domain state with shared data needed by issue 06 (`TemplateName`, rendered content)
+- [x] `MiniJinjaEngine::configured()` creates a strict/no-escape MiniJinja environment and keeps `Environment<'static>` behind the adapter boundary
+- [x] `compile(&mut self, template: &Template)` registers/checks the supplied source using `template.name()` and `template.body()` and does not perform repository/filesystem lookup, target resolution, conflict checks, CLI context assembly, or artifact commit behavior
+- [x] `render(&self, template: &Template, context: &HashMap<String, String>)` looks up the template by `template.name()` and does not add or replace `template.body()` at render time
+- [x] `MiniJinjaEngine` uses `UndefinedBehavior::Strict`
+- [x] `MiniJinjaEngine` uses `AutoEscape::None`
+- [x] `TemplateEngineError` preserves `minijinja::Error` as its source via `std::error::Error::source()`
+- [x] MiniJinja types (`Environment`, `Value`, etc.) do not appear in the `TemplateEngine` trait public API surface. `TemplateEngineError` stores `minijinja::Error` as the source error by design, after review accepted this as adapter/error internals rather than a trait signature leak.
+- [x] Tests cover: compile success, compile failure (invalid syntax) with preserved source error, render success with variable substitution, render failure (undefined variable under strict mode), no auto-escape of Markdown characters, render returns `TemplateArtifact<Rendered>` with template name and content, and render does not re-register/replace source at render time
 
 ## TDD implementation plan
 
@@ -284,3 +284,28 @@ Four artifacts are produced:
 - No `Arc`, `Mutex`, or `RwLock` should be introduced unless implementation pressure proves shared mutable ownership is necessary.
 
 **Risk assessment:** LOW. This is a greenfield adapter/port addition with clear domain boundaries and focused tests. The main risk is accidentally leaking MiniJinja through public error types or expanding the engine into service/repository responsibilities.
+
+## Implementation Notes
+
+Completed in worktree `.worktrees/template-engine-port-adapter`.
+
+Implemented files:
+- `lithos-core/src/template/engine/mod.rs`: crate-visible `TemplateEngine` port with borrowed `Template` and flat `HashMap<String, String>` context signatures.
+- `lithos-core/src/template/engine/mini_jinja.rs`: crate-visible `MiniJinjaEngine` adapter with owned `Environment<'static>`, `UndefinedBehavior::Strict`, `AutoEscape::None`, `add_template_owned` compile registration, and name-only render lookup.
+- `lithos-core/src/template/engine/error.rs`: public `TemplateEngineError` with compile/render variants preserving `minijinja::Error` as the source chain.
+- `lithos-core/src/template/artifact.rs`: staged type-state `TemplateArtifact<Rendered>` carrying source `TemplateName` and rendered content only.
+- `lithos-core/src/template/error.rs`: added `TemplateError::Engine(#[from] TemplateEngineError)` with focused conversion/source tests.
+- `lithos-core/src/template/mod.rs`: declared engine/artifact modules, exported `TemplateEngineError`, and added a policy test to keep rendering-engine imports confined to the adapter.
+
+Design notes:
+- `TemplateEngine`, `MiniJinjaEngine`, `TemplateArtifact`, and `Rendered` start at `pub(crate)` visibility. Only `TemplateEngineError` is public because it is part of public `TemplateError`.
+- `TemplateEngineError` intentionally stores `minijinja::Error`; the public port trait remains Lithos-shaped and does not expose MiniJinja types in method signatures.
+- No repository lookup, filesystem lookup, target resolution, conflict checking, CLI context assembly, file writes, dynamic dispatch, locks, or extension registry hooks were added.
+- Staged modules use reasoned `allow(dead_code)` attributes because service/write-pipeline wiring is intentionally deferred to later slices while raw Cargo test runs should remain warning-clean.
+
+Verification:
+- `mise run fmt`: passed.
+- `mise run lint`: passed.
+- `cargo test --package lithos-core template::engine --no-fail-fast`: passed, 14 engine tests, warning-clean.
+- `mise run test`: passed, including 2017 unit tests, 41 e2e tests, 48 integration tests, and doc tests.
+- GitNexus `detect_changes`: LOW risk, 0 affected execution flows for indexed tracked changes. New untracked files are not fully represented in the stale index until reanalysis catches them.

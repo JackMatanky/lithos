@@ -142,6 +142,8 @@ mod tests {
         use super::*;
 
         mod constructor {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -176,6 +178,8 @@ mod tests {
         }
 
         mod has_content_hash {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -207,6 +211,8 @@ mod tests {
         }
 
         mod has_content_hash_mut {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -236,6 +242,8 @@ mod tests {
         }
 
         mod serialization {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]

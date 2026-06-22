@@ -8,12 +8,16 @@
 //! - [`RawTemplateView`] — flat freshness/cache struct
 //! - [`Template`] — primary renderable aggregate
 //! - [`TemplateError`], [`TemplateNameError`], [`TemplateBodyError`],
-//!   [`TemplateRepositoryError`] — domain and repository errors
+//!   [`TemplateRepositoryError`], [`TemplateEngineError`] — domain, repository,
+//!   and engine errors
 //!
-//! All types are free of `MiniJinja` imports — Jinja syntax validation is the
-//! engine's responsibility.
+//! Domain and service-facing APIs stay free of `MiniJinja` imports. Rendering
+//! mechanics are confined to the engine adapter, while engine errors preserve
+//! their source chain for diagnostics.
 
 pub(crate) mod aggregate;
+pub(crate) mod artifact;
+pub(crate) mod engine;
 pub(crate) mod error;
 pub(crate) mod processor;
 pub(crate) mod raw;
@@ -23,6 +27,7 @@ pub(crate) mod storage;
 pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
+pub use engine::TemplateEngineError;
 pub use error::{
     TemplateBodyError, TemplateError, TemplateNameError,
     TemplateRepositoryError,
@@ -52,9 +57,13 @@ mod policy {
 
         let source_files = [
             template_dir.join("mod.rs"),
+            template_dir.join("artifact.rs"),
             template_dir.join("aggregate.rs"),
+            template_dir.join("engine").join("mod.rs"),
             template_dir.join("error.rs"),
             template_dir.join("raw.rs"),
+            template_dir.join("repository.rs"),
+            template_dir.join("service.rs"),
             template_dir.join("views.rs"),
         ];
 
@@ -83,5 +92,59 @@ mod policy {
                 );
             }
         }
+    }
+
+    /// Verifies that rendering-engine imports stay inside the engine adapter
+    /// rather than leaking into template domain or service-facing modules.
+    #[test]
+    fn rendering_engine_imports_are_confined_to_engine_adapter() {
+        let template_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("template");
+
+        let engine_crate = ["mini", "j", "inja"].concat();
+        let forbidden_patterns = [
+            format!("use {engine_crate}"),
+            format!("extern crate {engine_crate}"),
+            format!("::{engine_crate}::"),
+        ];
+
+        let forbidden_files = [
+            template_dir.join("mod.rs"),
+            template_dir.join("artifact.rs"),
+            template_dir.join("aggregate.rs"),
+            template_dir.join("engine").join("mod.rs"),
+            template_dir.join("error.rs"),
+            template_dir.join("raw.rs"),
+            template_dir.join("repository.rs"),
+            template_dir.join("service.rs"),
+            template_dir.join("views.rs"),
+        ];
+
+        for path in &forbidden_files {
+            let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                panic!("Could not read {}: {e}", path.display())
+            });
+            for pattern in &forbidden_patterns {
+                assert!(
+                    !content.contains(pattern.as_str()),
+                    "Found '{}' import in {}. Rendering-engine imports must \
+                     stay confined to the engine adapter.",
+                    engine_crate,
+                    path.display()
+                );
+            }
+        }
+
+        let engine_adapter = template_dir.join("engine").join("mini_jinja.rs");
+        let content =
+            std::fs::read_to_string(&engine_adapter).unwrap_or_else(|e| {
+                panic!("Could not read {}: {e}", engine_adapter.display())
+            });
+        assert!(
+            content.contains(&format!("use {engine_crate}")),
+            "Expected rendering-engine import in {}",
+            engine_adapter.display()
+        );
     }
 }
