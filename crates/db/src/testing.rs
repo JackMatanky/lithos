@@ -27,7 +27,7 @@
 )]
 
 use std::sync::{
-    Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -344,6 +344,98 @@ pub fn mutex_lock<'a, T>(
     lock.lock().map_err(|_| InMemoryDbError::LockPoisoned {
         context: ctx,
     })
+}
+
+// ============================================================================
+// Test Database Fixture
+// ============================================================================
+
+/// A temporary, self-cleaning [`Store`](crate::Store) for use in integration
+/// tests.
+///
+/// Creates an isolated database backed by a `tempfile::TempDir`. The
+/// temporary directory and all its contents are automatically removed when
+/// `TestDb` is dropped.
+///
+/// Useful when tests need both a filesystem root and a database co-located in
+/// the same temporary directory:
+///
+/// ```rust,no_run
+/// use trace_db::testing::TestDb;
+///
+/// let db = TestDb::new().unwrap();
+/// let vault_root = db.dir_path().to_path_buf();
+/// let store = db.store();
+/// ```
+pub struct TestDb {
+    tempdir: tempfile::TempDir,
+    db_path: std::path::PathBuf,
+    store: Option<Arc<crate::Store>>,
+}
+
+impl TestDb {
+    /// Creates a new `TestDb` with a fresh temporary directory and an open
+    /// [`Store`](crate::Store).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the temporary directory or the store cannot be
+    /// created.
+    #[inline]
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let tempdir = tempfile::tempdir()?;
+        let db_path = tempdir.path().join("test.redb");
+        let store = crate::Store::open(&db_path)?;
+        Ok(Self {
+            tempdir,
+            db_path,
+            store: Some(Arc::new(store)),
+        })
+    }
+
+    /// Returns the root path of the temporary directory.
+    ///
+    /// Use this when the test also needs a filesystem root, for example to
+    /// co-locate vault files with the database.
+    #[inline]
+    #[must_use]
+    pub fn dir_path(&self) -> &std::path::Path {
+        self.tempdir.path()
+    }
+
+    /// Returns a reference to the open [`Store`](crate::Store).
+    ///
+    /// # Panics
+    ///
+    /// Panics if called after `reopen` fails partway through (store was
+    /// dropped but the new open failed). Under normal use this cannot occur.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "TestDb always holds a store between reopen calls"
+    )]
+    pub fn store(&self) -> &Arc<crate::Store> {
+        self.store.as_ref().expect("test database store is open")
+    }
+
+    /// Drops and reopens the [`Store`](crate::Store) at the same path.
+    ///
+    /// Use this to simulate a process restart and verify data survives a
+    /// reopen cycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the store cannot be reopened.
+    #[inline]
+    pub fn reopen(
+        &mut self,
+    ) -> Result<Arc<crate::Store>, Box<dyn std::error::Error>> {
+        drop(self.store.take());
+        let store = Arc::new(crate::Store::open(&self.db_path)?);
+        self.store = Some(Arc::clone(&store));
+        Ok(store)
+    }
 }
 
 // ============================================================================

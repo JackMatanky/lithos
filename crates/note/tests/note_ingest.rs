@@ -7,7 +7,6 @@ use trace_config::{
     builder,
     vault::{VaultId, VaultRoot},
 };
-use trace_db::Store;
 use trace_fs::metadata::{FileMetadata, FsTimes};
 use trace_note::{
     paths::NotePath,
@@ -18,12 +17,14 @@ use trace_note::{
 
 #[cfg(test)]
 mod tests {
+    use trace_db::testing::TestDb;
+
     use super::*;
 
     #[test]
     fn ingest_markdown_promotes_tasks_and_tracks_lists() {
-        let unique = format!("lithos_note_ingest_{}", std::process::id());
-        let root = std::env::temp_dir().join(unique);
+        let db = TestDb::new().expect("test db");
+        let root = db.dir_path().to_path_buf();
         std::fs::create_dir_all(root.join("notes")).expect("create notes dir");
         let config = builder::build_from_layers(
             None,
@@ -44,8 +45,7 @@ mod tests {
         std::fs::write(root.join("notes/ingest.md"), markdown)
             .expect("write markdown");
 
-        let db_path = root.join("notes.redb");
-        let store = Arc::new(Store::open(&db_path).expect("open store"));
+        let store = Arc::clone(db.store());
         let repository = RedbRepository::new(Arc::clone(&store));
         let source = trace_fs::FileReader::new(root.as_path());
 

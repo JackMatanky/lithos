@@ -13,7 +13,9 @@
 mod content_hash;
 mod hash_index;
 
+#[doc(hidden)]
 pub use content_hash::{
     Blake3Hash, HasContentHash, HasContentHashMut, HashInput, hash_structured,
 };
+#[doc(hidden)]
 pub use hash_index::{Blake3HashIndex, HasHashIndex, HasHashIndexMut};
