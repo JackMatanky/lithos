@@ -2,8 +2,7 @@
 
 ## Contexts
 
-- [Config](./crates/config/CONTEXT.md) - defines configuration sources, precedence, and validated runtime settings
-- [Discovery](./crates/discovery/CONTEXT.md) - locates the vault root and config file paths before configuration is loaded
+- [Settings](./crates/settings/CONTEXT.md) - locates vault root, configuration sources, precedence, and validated runtime settings
 - [Indexer](./crates/indexer/CONTEXT.md) _(planned)_ - filesystem node scanning and indexing, classifying nodes by type and tracking index status
 - [Note](./crates/note/CONTEXT.md) - parses and models notes, tasks, links, tags, and note metadata
 - [Schema](./crates/schema/CONTEXT.md) - defines and resolves schema rules used for metadata validation
@@ -12,26 +11,26 @@
 - [FS](./crates/fs/CONTEXT.md) - infrastructure context for safe file discovery, reads, and writes
 - [Utils](./crates/utils/CONTEXT.md) - outward-facing utility contracts and dependency governance for reusable primitives
 - [Support](./crates/support/CONTEXT.md) - crate-private implementation internals and internal support facade
+- [App](./crates/app/CONTEXT.md) - composition root, orchestrator, and unified facade
 - [CLI](./crates/cli/src/CONTEXT.md) - command-line entrypoints and user-facing orchestration of core contexts
 
 ## Relationships
 
 - **Note -> Schema**: Note metadata is validated against schema definitions selected via File Class schema-name reference
 - **Template -> Schema** _(planned)_: Template inputs and generated structures align with schema-defined property semantics
-- **Discovery -> Config**: Discovery locates vault root and config file paths; Config loads and resolves the selected files
-- **Config -> Note**: Configuration controls note ingestion and interpretation behavior
-- **Config -> Schema**: Configuration controls schema loading and validation behavior
-- **Config -> Template** _(planned)_: Configuration controls template lookup and rendering behavior
-- **Config -> Indexer** _(planned)_: Configuration provides index scope specs that define which filesystem nodes are eligible for scanning
-- **CLI -> Config, Note, Schema, Template** _(Template planned)_: CLI coordinates end-user workflows across business contexts
+- **Settings -> Note**: Configuration controls note ingestion and interpretation behavior
+- **Settings -> Schema**: Configuration controls schema loading and validation behavior
+- **Settings -> Template** _(planned)_: Configuration controls template lookup and rendering behavior
+- **Settings -> Indexer** _(planned)_: Configuration provides index scope specs that define which filesystem nodes are eligible for scanning
+- **App -> Settings, Note, Schema, Template, DB, FS**: App orchestrates end-user workflows across contexts
+- **CLI -> App**: CLI coordinates with the App facade
 - **Schema (shared semantics)**: Schema uses a global Property Bank for reusable property definitions and resolves parent-child inheritance with explicit excludes
 - **Note, Schema, Template -> DB (infrastructure)** _(Template planned)_: Business contexts persist/query through repository contracts backed by DB infrastructure
 - **Note, Schema, Template -> FS (infrastructure)** _(Template planned)_: Business contexts ingest and materialize file-backed state through FS abstractions
 - **Indexer -> Schema, Note, Template** _(planned)_: Indexer feeds classified filesystem nodes to downstream business contexts for content processing
-- **Discovery -> FS (infrastructure)**: Discovery depends on filesystem sources and path rules to locate vault root and config files
-- **Config -> FS (infrastructure)**: Configuration loading depends on filesystem reads for selected config paths
-- **Note, Schema, Template, Config, DB -> Utils** _(Template planned)_: Contexts consume stable outward-facing utility contracts
-- **DB, Schema, Config -> Support (internal)**: Internal modules consume crate-private support internals
+- **Settings -> FS (infrastructure)**: Configuration loading depends on filesystem reads for vault root and selected config paths
+- **Note, Schema, Template, Settings, DB -> Utils** _(Template planned)_: Contexts consume stable outward-facing utility contracts
+- **DB, Schema, Settings -> Support (internal)**: Internal modules consume crate-private support internals
 - **Support -> Utils (promotion path)**: Stabilized, outward-facing internals move from support into utils by explicit governance decisions
 
 ## Global Invariants
