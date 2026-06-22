@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// A test-only in-memory repository implementation.
+#[derive(Clone)]
 pub(crate) struct InMemoryRepository {
     state: Arc<RwLock<RepositoryState>>,
 }

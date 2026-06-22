@@ -15,12 +15,15 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     fs::{DirPath, path::PathKey},
     indexer::{
-        builder::{CompletionKind, EntryBranch, EntryBuilder, Init},
+        builder::{
+            Completion, CompletionKind, DirComparisonBranch, EntryBranch,
+            EntryBuilder, FileComparisonBranch, Init,
+        },
         entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
         error::IndexerError,
         model::FsRecordId,
         port::{ScannerPort, WalkIter},
-        report::IndexReport,
+        report::{IndexReport, SkippedEntry},
         repository::{ReadRepository, Repository, WriteRepository},
         scan::{IndexOptions, IndexScope, ScanFilters},
         summary::{DeletedNodes, IndexResult, IndexedNodes},
@@ -72,85 +75,63 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             self.repo.clear()?;
         }
 
-        let mut indexed_files: Vec<FileIndexEntry> = Vec::new();
-        let mut indexed_dirs: Vec<DirIndexEntry> = Vec::new();
-        let mut seen_paths: HashSet<PathKey> = HashSet::new();
-        let mut dir_ids: HashMap<PathKey, FsRecordId> = HashMap::new();
-        let mut skipped: Vec<crate::indexer::report::SkippedEntry> = Vec::new();
-        let mut new_count = 0usize;
-        let mut fresh_count = 0usize;
-        let mut stale_count = 0usize;
+        let mut ctx = IndexCollector::default();
         for result in self.scanner.walk(root, filters)? {
             let scan_entry = result?;
             let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
-                .transition(&self.vault_root)?;
+                .into_branch(&self.vault_root)?;
 
             let completion = match branch {
-                EntryBranch::File(b) => b
-                    .transition(&self.repo)?
-                    .transition(&self.repo, &dir_ids, opts.dry_run())?
-                    .transition()
-                    .into_parts(),
-                EntryBranch::Dir(b) => b
-                    .transition(&self.repo)?
-                    .transition(&self.repo, &dir_ids, opts.dry_run())?
-                    .transition()
-                    .into_parts(),
-                EntryBranch::Completion(b) => b.into_parts(),
+                EntryBranch::File(b) => match b
+                    .into_comparison_branch(&self.repo)?
+                {
+                    FileComparisonBranch::Match(b) => {
+                        b.into_completion().into_state()
+                    }
+                    FileComparisonBranch::Mismatch(b) => b
+                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
+                        .into_completion()
+                        .into_state(),
+                },
+                EntryBranch::Dir(b) => match b
+                    .into_comparison_branch(&self.repo)?
+                {
+                    DirComparisonBranch::Match(b) => {
+                        b.into_completion().into_state()
+                    }
+                    DirComparisonBranch::Mismatch(b) => b
+                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
+                        .into_completion()
+                        .into_state(),
+                },
+                EntryBranch::Completion(b) => b.into_state(),
             };
 
-            match completion.1.kind {
-                CompletionKind::File {
-                    entry,
-                    path_key,
-                } => {
-                    seen_paths.insert(path_key);
-                    match entry.status() {
-                        IndexStatus::New => new_count += 1,
-                        IndexStatus::Fresh => fresh_count += 1,
-                        IndexStatus::Stale => stale_count += 1,
-                    }
-                    indexed_files.push(entry);
-                }
-                CompletionKind::Dir {
-                    entry,
-                    path_key,
-                    id,
-                } => {
-                    seen_paths.insert(path_key.clone());
-                    dir_ids.insert(path_key, id);
-                    match entry.status() {
-                        IndexStatus::New => new_count += 1,
-                        IndexStatus::Fresh => fresh_count += 1,
-                        IndexStatus::Stale => stale_count += 1,
-                    }
-                    indexed_dirs.push(entry);
-                }
-                CompletionKind::Skipped(s) => skipped.push(s),
-            }
+            ctx.record(completion);
         }
-        let deleted = self.detect_deletions(&seen_paths)?;
+        let deleted = self.detect_deletions(&ctx.seen_paths)?;
 
         if !opts.dry_run() {
             self.repo.delete_many_records(deleted.files(), deleted.dirs())?;
         }
 
-        let scanned_count =
-            indexed_files.len() + indexed_dirs.len() + skipped.len();
+        let scanned_count = ctx.indexed_files.len()
+            + ctx.indexed_dirs.len()
+            + ctx.skipped.len();
         let report = IndexReport::new(
             scanned_count,
-            new_count,
-            fresh_count,
-            stale_count,
+            ctx.new_count,
+            ctx.fresh_count,
+            ctx.stale_count,
             deleted.count(),
-            skipped.into_boxed_slice(),
+            ctx.skipped.into_boxed_slice(),
             Box::new([]),
         );
 
         Ok(IndexResult::new(
             IndexedNodes::new(
-                indexed_files.into_boxed_slice(),
-                indexed_dirs.into_boxed_slice(),
+                ctx.indexed_files.into_boxed_slice(),
+                ctx.indexed_dirs.into_boxed_slice(),
             ),
             deleted,
             report,
@@ -186,6 +167,58 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     }
 }
 
+// ─── Scan accumulator ──────────────────────────────────────────────
+
+/// Accumulates scan results during an indexer run.
+///
+/// Collects indexed entries, path tracking data, and counters over the
+/// streaming scan loop. Consumed at the end to build `IndexResult`.
+#[derive(Debug, Default)]
+pub(super) struct IndexCollector {
+    pub(super) indexed_files: Vec<FileIndexEntry>,
+    pub(super) indexed_dirs: Vec<DirIndexEntry>,
+    pub(super) seen_paths: HashSet<PathKey>,
+    pub(super) dir_ids: HashMap<PathKey, FsRecordId>,
+    pub(super) skipped: Vec<SkippedEntry>,
+    pub(super) new_count: usize,
+    pub(super) fresh_count: usize,
+    pub(super) stale_count: usize,
+}
+
+impl IndexCollector {
+    fn record(&mut self, completion: Completion) {
+        match completion.kind {
+            CompletionKind::File {
+                entry,
+                path_key,
+            } => {
+                self.seen_paths.insert(path_key);
+                match entry.status() {
+                    IndexStatus::New => self.new_count += 1,
+                    IndexStatus::Fresh => self.fresh_count += 1,
+                    IndexStatus::Stale => self.stale_count += 1,
+                }
+                self.indexed_files.push(entry);
+            }
+            CompletionKind::Dir {
+                entry,
+                path_key,
+                id,
+            } => {
+                self.seen_paths.insert(path_key.clone());
+                self.dir_ids.insert(path_key, id);
+                match entry.status() {
+                    IndexStatus::New => self.new_count += 1,
+                    IndexStatus::Fresh => self.fresh_count += 1,
+                    IndexStatus::Stale => self.stale_count += 1,
+                }
+                self.indexed_dirs.push(entry);
+            }
+            CompletionKind::Skipped(s) => self.skipped.push(s),
+        }
+    }
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -193,6 +226,7 @@ mod tests {
     use std::{
         cell::RefCell,
         collections::{HashMap, HashSet},
+        sync::Arc,
         time::SystemTime,
     };
 
@@ -455,6 +489,91 @@ mod tests {
             let result = service.run(&scope, opts).expect("run should succeed");
             assert_eq!(result.report().skipped().len(), 1);
         }
+
+        // ─── Capturing mock for scope delegation tests ──────
+
+        struct CapturingMockScanner {
+            root: Arc<std::sync::Mutex<Option<DirPath>>>,
+            filters: Arc<std::sync::Mutex<Option<ScanFilters>>>,
+        }
+
+        impl CapturingMockScanner {
+            #[allow(
+                clippy::type_complexity,
+                reason = "test helper returns shared-arc pairs"
+            )]
+            fn new() -> (
+                Self,
+                Arc<std::sync::Mutex<Option<DirPath>>>,
+                Arc<std::sync::Mutex<Option<ScanFilters>>>,
+            ) {
+                let root = Arc::new(std::sync::Mutex::new(None));
+                let filters = Arc::new(std::sync::Mutex::new(None));
+                (
+                    Self {
+                        root: Arc::clone(&root),
+                        filters: Arc::clone(&filters),
+                    },
+                    root,
+                    filters,
+                )
+            }
+        }
+
+        impl ScannerPort for CapturingMockScanner {
+            fn walk(
+                &self,
+                root: &DirPath,
+                filters: &ScanFilters,
+            ) -> Result<WalkIter, crate::indexer::error::ScannerError>
+            {
+                *self.root.lock().unwrap() = Some(root.clone());
+                *self.filters.lock().unwrap() = Some(filters.clone());
+                Ok(Box::new(std::iter::empty::<
+                    Result<ScanEntry, crate::indexer::error::ScannerError>,
+                >()))
+            }
+        }
+
+        #[test]
+        fn full_scope_delegates_root_and_filters() {
+            let vault = make_vault_root();
+            let (scanner, captured_root, captured_filters) =
+                CapturingMockScanner::new();
+            let repo = empty_repo();
+            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let scope = IndexScope::Full {
+                root: vault.clone(),
+                filters: ScanFilters::default(),
+            };
+            let opts = IndexOptions::new(false, false);
+            let _ = service.run(&scope, opts).expect("run should succeed");
+            assert_eq!(captured_root.lock().unwrap().as_ref(), Some(&vault));
+            assert_eq!(
+                captured_filters.lock().unwrap().as_ref(),
+                Some(&ScanFilters::default())
+            );
+        }
+
+        #[test]
+        fn partial_scope_delegates_root_and_filters() {
+            let vault = make_vault_root();
+            let (scanner, captured_root, captured_filters) =
+                CapturingMockScanner::new();
+            let repo = empty_repo();
+            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let scope = IndexScope::Partial {
+                root: vault.clone(),
+                filters: ScanFilters::default(),
+            };
+            let opts = IndexOptions::new(false, false);
+            let _ = service.run(&scope, opts).expect("run should succeed");
+            assert_eq!(captured_root.lock().unwrap().as_ref(), Some(&vault));
+            assert_eq!(
+                captured_filters.lock().unwrap().as_ref(),
+                Some(&ScanFilters::default())
+            );
+        }
     }
 
     // ─── Cycle 3 — detect_deletions ─────────────────────────────
@@ -585,6 +704,36 @@ mod tests {
             assert_eq!(result.report().new_count(), 1);
             assert_eq!(result.report().deleted_count(), 0);
         }
+
+        #[test]
+        fn deletes_deleted_entries() {
+            let vault = make_vault_root();
+            let file_key = PathKey::try_new("doc.md").unwrap();
+            let dir_key = PathKey::try_new("sub").unwrap();
+            let repo = repo_with_file(&file_key);
+            repo.save_dir(&DirRecord::new(
+                FsRecordId::new(),
+                FsParentId::Root,
+                dir_key.clone(),
+                DirName::new("sub".into()),
+                DirMetadata::new(FsTimes::new(None, None), false),
+                SystemTime::now(),
+            ))
+            .unwrap();
+            let repo_check = repo.clone();
+            let scanner = MockScanner::empty();
+            let service = IndexerService::new(vault, scanner, repo);
+            let scope = IndexScope::Full {
+                root: make_vault_root(),
+                filters: ScanFilters::default(),
+            };
+            let opts = IndexOptions::new(false, false);
+            let result = service.run(&scope, opts).expect("run should succeed");
+            assert_eq!(result.report().deleted_count(), 2);
+            // Verify actual removal from repo
+            assert!(repo_check.find_file_by_path(&file_key).unwrap().is_none());
+            assert!(repo_check.find_dir_by_path(&dir_key).unwrap().is_none());
+        }
     }
 
     // ─── Cycle 5 — Integration ──────────────────────────────────
@@ -714,6 +863,37 @@ mod tests {
 
             // Reindex after clear: dir + file are New
             assert_eq!(result.report().new_count(), 2);
+        }
+
+        #[test]
+        fn scan_classify_persist_roundtrip() {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let vault = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+            let file_node = make_file_node_at(&vault, "doc.md");
+            let meta = file_node.metadata().clone();
+            let file_key = PathKey::try_new("doc.md").unwrap();
+            let repo = empty_repo();
+            repo.save_file(&FileRecord::new(
+                FsRecordId::new(),
+                FsParentId::Root,
+                file_key,
+                FileName::new("doc.md".into()),
+                FileFormat::Unknown,
+                meta,
+                SystemTime::now(),
+            ))
+            .unwrap();
+            let scanner = MockScanner::single_file(file_node);
+            let service = IndexerService::new(vault, scanner, repo);
+            let scope = IndexScope::Full {
+                root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
+                filters: ScanFilters::default(),
+            };
+            let opts = IndexOptions::new(false, false);
+            let result = service.run(&scope, opts).expect("run should succeed");
+            assert_eq!(result.report().new_count(), 0);
+            assert_eq!(result.report().fresh_count(), 1);
+            assert_eq!(result.indexed().files().len(), 1);
         }
     }
 }
