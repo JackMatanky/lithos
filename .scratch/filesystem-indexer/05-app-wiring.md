@@ -307,3 +307,14 @@ mise run verify    # fmt + lint + test
 | `crates/app/src/index.rs` | `run_index` | `returns_app_error_when_store_fails` |
 | `crates/app/tests/index.rs` | — | `run_index_with_temp_vault_returns_correct_counts` |
 | `crates/app/tests/index.rs` | — | `run_index_handles_empty_vault` |
+
+## Implementation Notes
+
+**1. `trace_fs` validation and future files**
+During implementation of `run_index`, it was noted that we cannot use `trace_fs` methods like `DirPath::append_filename()` to construct the path for `index.redb`. `trace_fs` enforces strict runtime validations against the filesystem state, meaning it will return a `PathError::NotAFile` if the database does not exist yet. Consequently, `Store::open()` accepts a standard `&std::path::Path`, and standard library `.join()` operations are structurally correct for constructing the path to a file that is about to be created.
+
+**2. Vault root indexing and empty vaults**
+The original acceptance criteria assumed an empty vault would result in `dirs=1` (accounting for the vault root). However, `trace_fs::path::PathKey` (which is required by `DirRecord` and `FileRecord` to represent vault-relative paths) explicitly disallows empty paths. Because the relative path of the vault root to itself is empty, it cannot be represented as a `PathKey` and is therefore mathematically not indexed as a `DirRecord`. An empty vault correctly yields `0` directories and `0` files. The integration test was updated to assert this reality.
+
+**3. Visibility uplift and `private_interfaces`**
+To adhere perfectly to Hexagonal Architecture, the Ports (`ReadRepository`, `WriteRepository`) were made `pub`. However, to honor the constraint that domain models (`FileRecord`, `DirRecord`) remain `pub(crate)`, we utilized `#![allow(private_interfaces, private_bounds)]` at the crate root. This satisfies the compiler while preventing the composition root from coupling to the internal data representations of the bounded context.
