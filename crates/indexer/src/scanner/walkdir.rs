@@ -57,6 +57,7 @@ impl WalkdirAdapter {
 impl TryFrom<walkdir::DirEntry> for ScanEntry {
     type Error = ScannerError;
 
+    #[inline]
     fn try_from(entry: walkdir::DirEntry) -> Result<Self, Self::Error> {
         match FsNode::try_from(entry) {
             Ok(FsNode::File(n)) => Ok(ScanEntry::File(n)),
@@ -86,13 +87,14 @@ impl TryFrom<walkdir::DirEntry> for ScanEntry {
 }
 
 impl ScannerPort for WalkdirAdapter {
+    #[inline]
     fn walk(
         &self,
         root: &DirPath,
         filters: &ScanFilters,
     ) -> Result<WalkIter, ScannerError> {
         let filters = filters.clone();
-        let walker = WalkDir::new(root.as_path()).into_iter();
+        let walker = WalkDir::new(root.as_path()).min_depth(1).into_iter();
         let filtered =
             walker.filter_entry(move |e| Self::filter_entry(e, &filters));
 
@@ -110,7 +112,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn returns_file_and_dir_nodes_for_full_scope() {
+    fn returns_nodes_when_scope_is_full() {
         let temp_dir = TempDir::new().unwrap();
         let root = DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
 
@@ -160,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn excludes_files_when_extension_does_not_match() {
+    fn rejects_file_when_extension_mismatches() {
         let temp_dir = TempDir::new().unwrap();
         let root = DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
 
@@ -191,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn excludes_entries_when_name_is_excluded() {
+    fn rejects_entry_when_name_is_excluded() {
         let temp_dir = TempDir::new().unwrap();
         let root = DirPath::try_new(temp_dir.path().to_path_buf()).unwrap();
 
@@ -218,7 +220,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn yields_permission_denied_as_skipped_in_stream() {
+    fn returns_skipped_entry_when_permission_denied() {
         use std::os::unix::fs::PermissionsExt;
 
         let temp = TempDir::new().unwrap();
@@ -252,7 +254,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn yields_unsupported_entry_type_as_skipped_in_stream() {
+    fn returns_skipped_entry_when_unsupported_type() {
         use std::os::unix::net::UnixListener;
 
         let temp = TempDir::new().unwrap();

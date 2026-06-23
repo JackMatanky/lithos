@@ -17,10 +17,17 @@
 //! [`ReadRepository`]: crate::repository::ReadRepository
 //! [`WriteRepository`]: crate::repository::WriteRepository
 
+pub(crate) mod read;
+pub(crate) mod tables;
+pub(crate) mod write;
+
+#[cfg(test)]
+pub(crate) mod testing;
+
 use std::sync::Arc;
 
-use trace_db::DbError;
-
+#[cfg(test)]
+pub(crate) use self::testing::InMemoryRepository;
 use crate::{
     IndexerRepositoryError,
     storage::tables::{
@@ -28,6 +35,9 @@ use crate::{
         FILE_IDS_BY_BASENAME, FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILES,
     },
 };
+
+/// The filename of the Redb database.
+pub const INDEX_DB_FILENAME: &str = "index.redb";
 
 /// Redb-backed repository implementing [`ReadRepository`] and
 /// [`WriteRepository`] for the indexer context.
@@ -38,7 +48,7 @@ use crate::{
 /// [`ReadRepository`]: crate::repository::ReadRepository
 /// [`WriteRepository`]: crate::repository::WriteRepository
 /// [`Store`]: trace_db::Store
-pub(crate) struct RedbRepository {
+pub struct RedbRepository {
     pub(crate) store: Arc<trace_db::Store>,
 }
 
@@ -49,7 +59,8 @@ impl RedbRepository {
     ///
     /// Returns [`IndexerRepositoryError`] if any table cannot be created
     /// or opened.
-    pub(crate) fn try_new(
+    #[inline]
+    pub fn try_new(
         store: Arc<trace_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
@@ -70,16 +81,6 @@ impl RedbRepository {
         })
     }
 }
-
-pub(crate) mod read;
-pub(crate) mod tables;
-pub(crate) mod write;
-
-#[cfg(test)]
-pub(crate) mod testing;
-
-#[cfg(test)]
-pub(crate) use self::testing::InMemoryRepository;
 
 #[cfg(test)]
 mod tests {

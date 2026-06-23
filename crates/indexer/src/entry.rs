@@ -11,7 +11,7 @@ use super::model::{DirRecord, FileRecord, FsRecordId};
 ///
 /// Drives staleness detection and incremental re-indexing logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum IndexStatus {
+pub enum IndexStatus {
     /// The record has not been seen before; needs full indexing.
     New,
     /// The record is known and its metadata matches; no action required.
@@ -23,7 +23,7 @@ pub(crate) enum IndexStatus {
 /// An indexed file entry pairing a [`FileRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub(crate) struct FileIndexEntry {
+pub struct FileIndexEntry {
     id: FsRecordId,
     node: FileRecord,
     path: FilePath,
@@ -51,21 +51,21 @@ impl FileIndexEntry {
     /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
+    pub fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the file domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &FileRecord {
+    pub fn node(&self) -> &FileRecord {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub(crate) fn path(&self) -> &FilePath {
+    pub fn path(&self) -> &FilePath {
         &self.path
     }
 
@@ -80,7 +80,7 @@ impl FileIndexEntry {
 /// An indexed directory entry pairing a [`DirRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub(crate) struct DirIndexEntry {
+pub struct DirIndexEntry {
     id: FsRecordId,
     node: DirRecord,
     path: DirPath,
@@ -108,21 +108,21 @@ impl DirIndexEntry {
     /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
+    pub fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the directory domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &DirRecord {
+    pub fn node(&self) -> &DirRecord {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub(crate) fn path(&self) -> &DirPath {
+    pub fn path(&self) -> &DirPath {
         &self.path
     }
 

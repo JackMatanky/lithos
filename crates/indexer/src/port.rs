@@ -13,8 +13,7 @@ use crate::{error::ScannerError, report::SkippedEntry, scan::ScanFilters};
 /// Uses `'static` so mockall can store the expectation closure without
 /// invariance issues — the adapter clones `DirPath` and `ScanFilters`
 /// internally.
-pub(crate) type WalkIter =
-    Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>;
+pub type WalkIter = Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>;
 
 /// A single item yielded by the scanner's lazy walk iterator.
 ///
@@ -22,9 +21,12 @@ pub(crate) type WalkIter =
 /// appear in the stream. Entries that match filters but can't be read yield
 /// the `Skipped` variant — the caller accumulates these into `IndexReport`.
 #[derive(Debug)]
-pub(crate) enum ScanEntry {
+pub enum ScanEntry {
+    /// Discovered a standard file node.
     File(FileNode),
+    /// Discovered a standard directory node.
     Dir(DirNode),
+    /// The entry was skipped (e.g., due to filters or permissions).
     Skipped(SkippedEntry),
 }
 
@@ -38,7 +40,11 @@ pub(crate) enum ScanEntry {
 /// The returned iterator is `'static` — it owns all captured state. The
 /// adapter clones `DirPath` and `ScanFilters` internally when building the
 /// iterator, so the caller's references are not borrowed by the stream.
-pub(crate) trait ScannerPort {
+pub trait ScannerPort {
+    /// Traverses the root and yields scan entries.
+    ///
+    /// # Errors
+    /// Returns a `ScannerError` if traversal initialization fails.
     fn walk(
         &self,
         root: &trace_fs::DirPath,

@@ -7,7 +7,7 @@ use trace_fs::DirPath;
 
 /// Filters applied during a filesystem scan to include or exclude nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ScanFilters {
+pub struct ScanFilters {
     /// File extensions to include, without a leading dot. Empty means all
     /// files.
     included_extensions: Box<[Box<str>]>,
@@ -21,7 +21,7 @@ impl ScanFilters {
     /// lists.
     #[inline]
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         included_extensions: Vec<Box<str>>,
         excluded_names: Vec<Box<str>>,
     ) -> Self {
@@ -49,7 +49,7 @@ impl ScanFilters {
 /// `Full` covers the entire vault from its root. `Partial` restricts scanning
 /// to a specific subtree identified by a vault-relative path key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum IndexScope {
+pub enum IndexScope {
     /// Scan the full vault, applying the given filters.
     Full {
         /// The root directory of the vault.
@@ -68,7 +68,7 @@ pub(crate) enum IndexScope {
 
 /// Options that control the behaviour of a single indexing run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct IndexOptions {
+pub struct IndexOptions {
     /// Re-index all nodes even if they appear current.
     reindex: bool,
     /// Perform a dry run: discover nodes but do not persist index changes.
@@ -79,7 +79,7 @@ impl IndexOptions {
     /// Creates a new `IndexOptions`.
     #[inline]
     #[must_use]
-    pub(crate) fn new(reindex: bool, dry_run: bool) -> Self {
+    pub fn new(reindex: bool, dry_run: bool) -> Self {
         Self {
             reindex,
             dry_run,

@@ -14,7 +14,7 @@ use trace_settings::{
     service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
 
-pub use crate::error::BootstrapError;
+pub use crate::error::AppError;
 
 /// The outcome of a successful full bootstrap run.
 ///
@@ -93,7 +93,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     pub fn discover(
         &self,
         context: &DiscoveryContext<'_>,
-    ) -> Result<DiscoveryResult, BootstrapError> {
+    ) -> Result<DiscoveryResult, AppError> {
         self.port.discover(context).map_err(Into::into)
     }
 
@@ -114,15 +114,15 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///
     /// # Errors
     ///
-    /// - [`BootstrapError::Discovery`] if `anchor` does not exist, or if
-    ///   discovery setup or execution fails.
+    /// - [`AppError::Discovery`] if `anchor` does not exist, or if discovery
+    ///   setup or execution fails.
     #[inline]
     pub fn run_discovery_only(
         &self,
         flags: Option<DiscoveryFlags>,
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
-    ) -> Result<DiscoveryResult, BootstrapError> {
+    ) -> Result<DiscoveryResult, AppError> {
         let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
@@ -143,15 +143,15 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///   ceiling dirs). Pass `None` when no env overrides are present.
     /// - `anchor`: The working directory to use as the starting point for
     ///   ascending vault discovery. Must refer to an existing directory on the
-    ///   filesystem — [`BootstrapError::Discovery`] is returned otherwise.
+    ///   filesystem — [`AppError::Discovery`] is returned otherwise.
     /// - `repository`: The persistence repository for reading and writing
     ///   config views and built configs. Consumed by this call.
     ///
     /// # Errors
     ///
-    /// - [`BootstrapError::Discovery`] if `anchor` does not exist, or if
-    ///   discovery setup or execution fails.
-    /// - [`BootstrapError::Config`] if configuration ingestion, validation, or
+    /// - [`AppError::Discovery`] if `anchor` does not exist, or if discovery
+    ///   setup or execution fails.
+    /// - [`AppError::Config`] if configuration ingestion, validation, or
     ///   database operations fail.
     #[inline]
     pub fn run<R: Repository>(
@@ -160,7 +160,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
         repository: R,
-    ) -> Result<BootstrapResult, BootstrapError> {
+    ) -> Result<BootstrapResult, AppError> {
         let cache_dir = EnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         let discovery = self.discover(&context)?;
@@ -184,10 +184,10 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// # Errors
     ///
-    /// Returns [`BootstrapError`] if the concrete discovery service rejects
+    /// Returns [`AppError`] if the concrete discovery service rejects
     /// its stable configuration.
     #[inline]
-    pub fn from_platform() -> Result<Self, BootstrapError> {
+    pub fn from_platform() -> Result<Self, AppError> {
         let app = AppDirs::new(&EnvVars::capture());
         let mut global_dirs: Vec<DirPath> = Vec::new();
         if let Ok(dir) = DirPath::try_new(app.config().clone()) {
@@ -208,12 +208,12 @@ impl Bootstrapper<DiscoveryService> {
     ///
     /// # Errors
     ///
-    /// Returns [`BootstrapError`] if the concrete discovery service rejects
+    /// Returns [`AppError`] if the concrete discovery service rejects
     /// its stable configuration.
     #[inline]
     pub fn with_global_directories(
         global_directories: Vec<DirPath>,
-    ) -> Result<Self, BootstrapError> {
+    ) -> Result<Self, AppError> {
         let config =
             DiscoveryServiceConfig::with_global_directories(global_directories);
         let service = DiscoveryService::new(config)?;
@@ -548,7 +548,7 @@ mod tests {
             assert!(
                 matches!(
                     err,
-                    BootstrapError::Discovery(
+                    AppError::Discovery(
                         DiscoveryError::InvalidAnchorDirectory { .. }
                     )
                 ),
@@ -609,8 +609,8 @@ mod tests {
 
         #[test]
         fn includes_config_variant() {
-            let e = BootstrapError::Config(ConfigError::Ingestion("x".into()));
-            assert!(matches!(e, BootstrapError::Config(_)));
+            let e = AppError::Config(ConfigError::Ingestion("x".into()));
+            assert!(matches!(e, AppError::Config(_)));
         }
     }
 
@@ -703,7 +703,7 @@ mod tests {
                 .expect_err("expected error");
 
             assert!(
-                matches!(err, BootstrapError::Discovery(_)),
+                matches!(err, AppError::Discovery(_)),
                 "expected Discovery error, got: {err:?}"
             );
         }
@@ -715,7 +715,7 @@ mod tests {
             // "not = [toml" is an unclosed array literal — invalid TOML.
             // The parser returns a `TomlParse` error which is converted via
             // `ConfigIngestError → ConfigError::Ingestion` and then wrapped as
-            // `BootstrapError::Config`.  Any TOML parse failure exercises this
+            // `AppError::Config`.  Any TOML parse failure exercises this
             // path; invalid array syntax is the simplest trigger.
             std::fs::write(&config_path, "not = [toml").expect("write config");
             let vault_candidate = CandidatePath::new(
@@ -755,7 +755,7 @@ mod tests {
                 .expect_err("expected error");
 
             assert!(
-                matches!(err, BootstrapError::Config(_)),
+                matches!(err, AppError::Config(_)),
                 "expected Config error, got: {err:?}"
             );
         }
@@ -824,7 +824,7 @@ mod tests {
 
         #[test]
         fn propagates_discovery_error_from_invalid_anchor() {
-            // Verifies that run() returns BootstrapError::Discovery when the
+            // Verifies that run() returns AppError::Discovery when the
             // anchor directory does not exist.  build_context() calls
             // DiscoveryContext::new() which validates the anchor, so the error
             // surfaces before the port is ever called.
@@ -847,7 +847,7 @@ mod tests {
                 .expect_err("expected error for non-existent anchor");
 
             assert!(
-                matches!(err, BootstrapError::Discovery(_)),
+                matches!(err, AppError::Discovery(_)),
                 "expected Discovery error, got: {err:?}"
             );
         }
@@ -1007,7 +1007,7 @@ mod tests {
             assert!(
                 matches!(
                     err,
-                    BootstrapError::Discovery(
+                    AppError::Discovery(
                         DiscoveryError::InvalidAnchorDirectory { .. }
                     )
                 ),
@@ -1030,7 +1030,7 @@ mod tests {
                 .expect_err("expected error for non-existent anchor");
 
             assert!(
-                matches!(err, BootstrapError::Discovery(_)),
+                matches!(err, AppError::Discovery(_)),
                 "expected Discovery error, got: {err:?}"
             );
         }
@@ -1038,7 +1038,7 @@ mod tests {
         #[test]
         fn does_not_return_config_error_when_discovery_result_contains_invalid_toml()
          {
-            // run() would return BootstrapError::Config for invalid TOML
+            // run() would return AppError::Config for invalid TOML
             // because Builder parses it.  run_discovery_only() must
             // NOT call Builder, so it must succeed even when the
             // discovered candidate path points to invalid TOML.

@@ -3,22 +3,22 @@
 //!
 //! This module is the single place where core ports and adapters are wired
 //! together and execution flows are exposed to executable adapters (e.g.
-//! `lithos-cli`). It does not contain business logic; it composes the pieces
+//! `trace-cli`). It does not contain business logic; it composes the pieces
 //! that own that logic.
 //!
-//! `lithos-core` remains a library crate — no `main.rs` lives here. The
-//! process entrypoint remains `lithos-cli`, which calls into this module to
+//! `trace-app` remains a library crate — no `main.rs` lives here. The
+//! process entrypoint remains `trace-cli`, which calls into this module to
 //! run any named execution flow.
 //!
-//! # Planned submodules
+//! # Architecture
 //!
-//! - `commands`: typed app-level command structs (e.g. `IndexCommand`).
-//! - `flows` (or `services`): execution flows such as `run_index` that
-//!   orchestrate Discovery → Config → Indexer → routing.
-//! - `composition`: construction of concrete adapters from runtime resources
-//!   (database handle, filesystem root, etc.).
-//! - `diagnostics`: app-level result summaries returned to executable adapters
-//!   for rendering; not CLI-formatted output.
+//! - `index`: typed app-level commands (e.g. `IndexCommand`) and execution
+//!   flows such as `run_index`. Composition is inline, orchestrating ports and
+//!   concrete adapters from runtime resources (database handle, filesystem
+//!   root, etc.).
+//! - `bootstrap`: configuration and discovery pipeline setup.
+//! - `error`: app-level error boundary.
 
 pub mod bootstrap;
 pub mod error;
+pub mod index;

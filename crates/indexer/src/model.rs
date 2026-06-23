@@ -29,7 +29,7 @@ use trace_utils::UuidV7;
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub(crate) struct FsRecordId(pub(crate) UuidV7);
+pub struct FsRecordId(pub(crate) UuidV7);
 
 impl FsRecordId {
     /// Zero sentinel for storage keys — deterministic UUID (nil, not v7).
@@ -61,7 +61,11 @@ impl fmt::Display for FsRecordId {
 
 /// Classification of an indexed filesystem record as either file or directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FsRecordType {
+#[allow(
+    dead_code,
+    reason = "Model structure implemented ahead of next execution flow"
+)]
+pub enum FsRecordType {
     /// A regular file.
     File,
     /// A directory.
@@ -69,7 +73,11 @@ pub(crate) enum FsRecordType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FsRecord {
+#[allow(
+    dead_code,
+    reason = "Model structure implemented ahead of next execution flow"
+)]
+pub enum FsRecord {
     File(FileRecord),
     Dir(DirRecord),
 }
@@ -80,7 +88,7 @@ pub(crate) enum FsRecord {
 /// information needed for downstream indexing and staleness detection.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
-pub(crate) struct FileRecord {
+pub struct FileRecord {
     id: FsRecordId,
     parent_id: FsParentId,
     path: PathKey,
@@ -144,7 +152,7 @@ impl FileRecord {
     /// Returns the file's name component.
     #[inline]
     #[must_use]
-    pub(crate) fn name(&self) -> &FileName {
+    pub fn name(&self) -> &FileName {
         &self.name
     }
 
@@ -165,7 +173,7 @@ impl FileRecord {
     /// Returns the time at which this record was written to the index.
     #[inline]
     #[must_use]
-    pub(crate) fn recorded_at(&self) -> SystemTime {
+    pub fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 }
@@ -175,7 +183,7 @@ impl FileRecord {
 /// Represents a discovered directory within the index scope.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub(crate) struct DirRecord {
+pub struct DirRecord {
     id: FsRecordId,
     parent_id: FsParentId,
     path: PathKey,
@@ -239,7 +247,7 @@ impl DirRecord {
     /// Returns the directory's name component.
     #[inline]
     #[must_use]
-    pub(crate) fn name(&self) -> &DirName {
+    pub fn name(&self) -> &DirName {
         &self.name
     }
 
@@ -253,7 +261,7 @@ impl DirRecord {
     /// Returns the time at which this record was written to the index.
     #[inline]
     #[must_use]
-    pub(crate) fn recorded_at(&self) -> SystemTime {
+    pub fn recorded_at(&self) -> SystemTime {
         self.recorded_at
     }
 }
@@ -267,7 +275,7 @@ impl DirRecord {
     Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub(crate) enum FsParentId {
+pub enum FsParentId {
     /// Entry is directly under the vault root.
     Root,
     /// Entry is inside a known indexed directory.

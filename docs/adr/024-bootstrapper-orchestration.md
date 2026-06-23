@@ -12,7 +12,7 @@ stakeholders: [lithos-core maintainers, lithos-cli maintainers]
 
 ## Context
 
-ADR 021 established `lithos-core::app` as the composition root but left the
+ADR 021 established `crates/app` as the composition root but left the
 internal shape of orchestration undesign. Three concerns needed a home:
 
 1. **Discovery** — locating the vault root and config file paths (owned by

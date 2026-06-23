@@ -96,7 +96,7 @@ fn run_main() -> Result<(), CliError> {
 
     // Resolve the current working directory as the discovery anchor.
     let anchor = std::env::current_dir().map_err(|source| {
-        CliError::Bootstrap(trace_app::bootstrap::BootstrapError::Discovery(
+        CliError::Bootstrap(trace_app::error::AppError::Discovery(
             trace_settings::DiscoveryError::CanonicalizePath {
                 path: std::path::PathBuf::from("."),
                 source,
@@ -185,7 +185,7 @@ fn build_discovery_flags(
         cli.bootstrap.no_global_config,
     )
     .map_err(|e| {
-        CliError::Bootstrap(trace_app::bootstrap::BootstrapError::Discovery(e))
+        CliError::Bootstrap(trace_app::error::AppError::Discovery(e))
     })?;
 
     Ok(Some(flags))

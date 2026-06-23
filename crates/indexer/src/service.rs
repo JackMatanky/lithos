@@ -22,10 +22,10 @@ use crate::{
     entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
     error::IndexerError,
     model::FsRecordId,
-    port::{ScannerPort, WalkIter},
+    port::ScannerPort,
     report::{IndexReport, SkippedEntry},
-    repository::{ReadRepository, Repository, WriteRepository},
-    scan::{IndexOptions, IndexScope, ScanFilters},
+    repository::Repository,
+    scan::{IndexOptions, IndexScope},
     summary::{DeletedNodes, IndexResult, IndexedNodes},
 };
 
@@ -36,7 +36,7 @@ use crate::{
 /// Wires a `ScannerPort` and `Repository` into a single indexing run.
 /// Call `run()` with an `IndexScope` and `IndexOptions` to produce an
 /// `IndexResult`.
-pub(crate) struct IndexerService<S: ScannerPort, R: Repository> {
+pub struct IndexerService<S: ScannerPort, R: Repository> {
     vault_root: DirPath,
     scanner: S,
     repo: R,
@@ -46,7 +46,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// Create a new indexer service.
     #[inline]
     #[must_use]
-    pub(crate) fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
+    pub fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
         Self {
             vault_root,
             scanner,
@@ -62,7 +62,10 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// 4. Detect deletions (diff `all_paths()` vs `seen_paths`).
     /// 5. Persist indexed and deleted records (skip if `dry_run`).
     /// 6. Build `IndexReport` and return `IndexResult`.
-    pub(crate) fn run(
+    /// # Errors
+    /// Returns `IndexerError` if traversal or database operations fail.
+    #[inline]
+    pub fn run(
         &self,
         scope: &IndexScope,
         opts: IndexOptions,
@@ -223,10 +226,7 @@ impl IndexCollector {
 #[cfg(test)]
 mod tests {
     use std::{
-        cell::RefCell,
-        collections::{HashMap, HashSet},
-        sync::Arc,
-        time::SystemTime,
+        cell::RefCell, collections::HashSet, sync::Arc, time::SystemTime,
     };
 
     use trace_fs::{
@@ -237,17 +237,7 @@ mod tests {
     };
 
     use super::IndexerService;
-    use crate::{
-        entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
-        error::IndexerError,
-        model::{DirRecord, FileRecord, FsParentId, FsRecordId},
-        port::{ScanEntry, ScannerPort, WalkIter},
-        report::{IndexReport, SkipReason, SkippedEntry},
-        repository::{ReadRepository, Repository, WriteRepository},
-        scan::{IndexOptions, IndexScope, ScanFilters},
-        storage::InMemoryRepository,
-        summary::{DeletedNodes, IndexResult, IndexedNodes},
-    };
+    use crate::*;
 
     // ─── Helpers ────────────────────────────────────────────────
 
@@ -304,6 +294,7 @@ mod tests {
         repo
     }
 
+    #[allow(dead_code, reason = "Test helper currently uncalled")]
     fn repo_with_dir(path: &PathKey) -> InMemoryRepository {
         let repo = InMemoryRepository::new();
         let id = FsRecordId::new();
