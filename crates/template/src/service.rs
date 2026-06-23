@@ -13,9 +13,9 @@
 
 use std::collections::HashSet;
 
-use trace_config::template::TemplateConfigSpec;
 use trace_db::DbError;
 use trace_fs::{DirScanner, FileNode, PathKey};
+use trace_settings::template::TemplateConfigSpec;
 
 use crate::{
     aggregate::Template,

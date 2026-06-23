@@ -10,7 +10,7 @@
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
 use trace_app::bootstrap::BootstrapError;
-use trace_discovery::error::DiscoveryError;
+use trace_settings::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
 ///
@@ -97,12 +97,14 @@ mod tests {
     use std::path::PathBuf;
 
     use trace_app::bootstrap::BootstrapError;
-    use trace_config::error::ConfigError;
-    use trace_discovery::error::{
-        DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
-        ServiceConfigError,
-    };
     use trace_fs::PathError;
+    use trace_settings::{
+        DiscoveryError,
+        discovery::error::{
+            EnvironmentOverrideError, FlagOverrideError, ServiceConfigError,
+        },
+        error::ConfigError,
+    };
 
     use super::CliError;
 

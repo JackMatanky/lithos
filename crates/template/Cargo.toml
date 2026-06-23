@@ -28,7 +28,7 @@ trace-db = { path = "../db" }
 trace-support = { path = "../support" }
 trace-fs = { path = "../fs" }
 trace-utils = { path = "../utils" }
-trace-config = { path = "../config" }
+trace-settings = { path = "../settings" }
 
 [lints]
 workspace = true

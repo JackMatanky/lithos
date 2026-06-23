@@ -2,17 +2,17 @@
 
 use std::sync::Arc;
 
-use trace_config::{
-    aggregate::Version,
-    builder,
-    vault::{VaultId, VaultRoot},
-};
 use trace_fs::metadata::{FileMetadata, FsTimes};
 use trace_note::{
     paths::NotePath,
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository::ReadRepository,
     storage::RedbRepository,
+};
+use trace_settings::{
+    aggregate::Version,
+    builder,
+    vault::{VaultId, VaultRoot},
 };
 
 #[cfg(test)]

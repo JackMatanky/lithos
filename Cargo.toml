@@ -66,8 +66,7 @@ criterion = { version = "0.8.2", features = ["html_reports", "async_tokio"] }
 # Internal Workspace Crates
 trace-note = { path = "crates/note" }
 trace-app = { path = "crates/app" }
-trace-config = { path = "crates/config" }
-trace-discovery = { path = "crates/discovery" }
+trace-settings = { path = "crates/settings" }
 trace-template = { path = "crates/template" }
 trace-utils = { path = "crates/utils" }
 trace-schema = { path = "crates/schema" }

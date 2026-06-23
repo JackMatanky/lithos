@@ -12,8 +12,10 @@
 use std::{collections::HashSet, fmt, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_config::{frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec};
 use trace_fs::metadata::FileMetadata;
+use trace_settings::{
+    frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec,
+};
 use trace_utils::UuidV7;
 use uuid::Uuid;
 
@@ -548,7 +550,7 @@ impl Note {
     }
 
     fn should_promote_task(
-        spec: &trace_config::task::TaskConfigSpec,
+        spec: &trace_settings::task::TaskConfigSpec,
         tags: &[Tag],
     ) -> bool {
         if !spec.enabled {
@@ -739,7 +741,7 @@ impl<'source>
 )]
 mod tests {
     use chrono::NaiveDate;
-    use trace_config::{
+    use trace_settings::{
         aggregate::Config,
         raw::RawVaultConfig,
         task::TaskConfigSpec,
@@ -979,12 +981,12 @@ mod tests {
         )
         .expect("valid test config");
 
-        trace_config::builder::build_from_layers(
+        trace_settings::builder::build_from_layers(
             None,
             Some(&raw),
             VaultId::new(),
             test_vault_root(),
-            trace_config::aggregate::Version::initial(),
+            trace_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }
@@ -1005,12 +1007,12 @@ mod tests {
         )
         .expect("valid test config");
 
-        trace_config::builder::build_from_layers(
+        trace_settings::builder::build_from_layers(
             None,
             Some(&raw),
             VaultId::new(),
             test_vault_root(),
-            trace_config::aggregate::Version::initial(),
+            trace_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }

@@ -2,18 +2,17 @@
 
 use std::path::PathBuf;
 
-use trace_config::{
-    aggregate::Config, builder::Builder, repository::Repository,
-};
-use trace_discovery::{
-    DiscoveryContext, DiscoveryEnv, DiscoveryFlags, EnvVars,
+use trace_fs::DirPath;
+use trace_settings::{
+    DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags, EnvVars,
+    aggregate::Config,
+    builder::Builder,
     dirs::AppDirs,
-    error::DiscoveryError,
     port::DiscoveryPort,
     report::DiscoveryReport,
+    repository::Repository,
     service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
-use trace_fs::DirPath;
 
 pub use crate::error::BootstrapError;
 
@@ -102,7 +101,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///
     /// Builds the [`DiscoveryContext`] from the provided runtime inputs and
     /// runs discovery through the port, returning the raw discovery result and
-    /// report.  The [`trace_config::builder::Builder`] is never invoked, so
+    /// report.  The [`trace_settings::builder::Builder`] is never invoked, so
     /// invalid TOML in candidate files does not cause an error.
     ///
     /// # Parameters
@@ -227,22 +226,21 @@ mod tests {
     use std::ffi::OsStr;
 
     use mockall::{mock, predicate::always};
-    use trace_discovery::{
-        DiscoveryContext,
-        error::DiscoveryError,
+    use trace_fs::{DirPath, FilePath, PathError};
+    use trace_settings::{
+        DiscoveryContext, DiscoveryError,
         report::{
             DiscoveryReport, GlobalResolutionSkipReason,
             LocalTraversalStopReason, SkippedCeiling, SkippedCeilingReason,
         },
         service::{CandidatePath, DiscoveryResult, DiscoveryService},
     };
-    use trace_fs::{DirPath, FilePath, PathError};
 
     use super::*;
 
     mock! {
         DiscoveryPort {}
-        impl trace_discovery::port::DiscoveryPort for DiscoveryPort {
+        impl trace_settings::port::DiscoveryPort for DiscoveryPort {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
@@ -310,8 +308,8 @@ mod tests {
         }
     }
 
-    fn placeholder_cache_root() -> trace_discovery::location::CacheRoot {
-        use trace_discovery::location::{
+    fn placeholder_cache_root() -> trace_settings::location::CacheRoot {
+        use trace_settings::location::{
             CacheLocation, CacheRoot, GlobalCacheLocation,
         };
         CacheRoot::new(
@@ -605,7 +603,7 @@ mod tests {
     }
 
     mod bootstrap_error {
-        use trace_config::error::ConfigError;
+        use trace_settings::error::ConfigError;
 
         use super::*;
 
@@ -618,9 +616,11 @@ mod tests {
 
     mod run {
         use mockall::predicate::always;
-        use trace_config::storage::testing::InMemoryRepository;
-        use trace_discovery::service::{CandidatePath, DiscoveryResult};
         use trace_fs::{DirPath, FilePath};
+        use trace_settings::{
+            service::{CandidatePath, DiscoveryResult},
+            storage::testing::InMemoryRepository,
+        };
 
         use super::*;
 
@@ -1131,7 +1131,7 @@ mod tests {
 
         #[test]
         fn run_builds_config_from_vault_with_platform_bootstrapper() {
-            use trace_config::storage::testing::InMemoryRepository;
+            use trace_settings::storage::testing::InMemoryRepository;
 
             let root = tempfile::tempdir().expect("vault root");
             let config_path = root.path().join("lithos.toml");

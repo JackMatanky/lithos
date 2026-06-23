@@ -21,8 +21,8 @@
 
 use std::marker::PhantomData;
 
-use trace_config::aggregate::Config;
 use trace_fs::{FileReader, metadata::FileMetadata};
+use trace_settings::aggregate::Config;
 
 use crate::{
     aggregate::{Note, NoteId},
@@ -414,8 +414,8 @@ impl NoteProcessor<Comparison, Missing> {
         self,
         repository: &impl Repository,
         source: &FileReader,
-        task_spec: &trace_config::task::TaskConfigSpec,
-        frontmatter_spec: &trace_config::frontmatter::FrontmatterConfigSpec,
+        task_spec: &trace_settings::task::TaskConfigSpec,
+        frontmatter_spec: &trace_settings::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         read_and_persist(
             self.status.info,
@@ -434,8 +434,8 @@ impl NoteProcessor<Analysis, Suspect> {
         self,
         repository: &impl Repository,
         source: &FileReader,
-        task_spec: &trace_config::task::TaskConfigSpec,
-        frontmatter_spec: &trace_config::frontmatter::FrontmatterConfigSpec,
+        task_spec: &trace_settings::task::TaskConfigSpec,
+        frontmatter_spec: &trace_settings::frontmatter::FrontmatterConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         read_and_persist(
             self.status.info,
@@ -450,7 +450,7 @@ impl NoteProcessor<Analysis, Suspect> {
     #[inline]
     fn parse(
         self,
-        task_spec: &trace_config::task::TaskConfigSpec,
+        task_spec: &trace_settings::task::TaskConfigSpec,
     ) -> Result<AnalysisBranch, NoteProcessError> {
         let raw = MarkdownParser::parse(&self.status.content, task_spec)
             .map(RawNote::into_owned)?;
@@ -484,8 +484,8 @@ impl NoteProcessor<Construction, New> {
     fn persist<R: Repository>(
         self,
         repository: &R,
-        frontmatter_spec: &trace_config::frontmatter::FrontmatterConfigSpec,
-        task_spec: &trace_config::task::TaskConfigSpec,
+        frontmatter_spec: &trace_settings::frontmatter::FrontmatterConfigSpec,
+        task_spec: &trace_settings::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let path = self.status.path;
         let note_id = repository
@@ -524,8 +524,8 @@ impl NoteProcessor<Construction, Changed> {
     fn persist<R: Repository>(
         self,
         repository: &R,
-        frontmatter_spec: &trace_config::frontmatter::FrontmatterConfigSpec,
-        task_spec: &trace_config::task::TaskConfigSpec,
+        frontmatter_spec: &trace_settings::frontmatter::FrontmatterConfigSpec,
+        task_spec: &trace_settings::task::TaskConfigSpec,
     ) -> Result<NoteProcessReport, NoteProcessError> {
         let path = self.status.path;
         let note_id = repository
@@ -586,8 +586,8 @@ fn read_and_persist(
     is_new: bool,
     repository: &impl Repository,
     source: &FileReader,
-    task_spec: &trace_config::task::TaskConfigSpec,
-    frontmatter_spec: &trace_config::frontmatter::FrontmatterConfigSpec,
+    task_spec: &trace_settings::task::TaskConfigSpec,
+    frontmatter_spec: &trace_settings::frontmatter::FrontmatterConfigSpec,
 ) -> Result<NoteProcessReport, NoteProcessError> {
     let content = source
         .read_to_string(std::path::Path::new(info.path.as_str()))

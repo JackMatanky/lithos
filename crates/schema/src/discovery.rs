@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use trace_config::schema::SchemaConfigSpec;
 use trace_fs::{
     DirScanInput, DirScanner, FileNode, FsNode, PathKey, StructuredFileFormat,
 };
+use trace_settings::schema::SchemaConfigSpec;
 
 use crate::{
     error::{SchemaBuilderError, SchemaError, SchemaReadError},
