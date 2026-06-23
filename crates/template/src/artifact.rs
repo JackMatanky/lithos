@@ -163,6 +163,40 @@ impl TemplateArtifact<TargetResolved> {
     }
 }
 
+impl TemplateArtifact<ReadyToCommit> {
+    /// Atomically writes the rendered content to the resolved target,
+    /// advancing the artifact from [`ReadyToCommit`] to the terminal
+    /// [`Committed`] state.
+    ///
+    /// Uses `File::create_new` via the FS writer, which fails with
+    /// [`trace_fs::error::WriteError::AlreadyExists`] if the destination
+    /// already exists. Performing the existence check and creation in one
+    /// atomic operation eliminates the TOCTOU race a separate pre-check would
+    /// introduce.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateArtifactError::Write`] if the destination already
+    /// exists or the file cannot be written.
+    pub(crate) fn commit(
+        &self,
+        fs_writer: &FsWriter,
+    ) -> Result<TemplateArtifact<Committed>, TemplateArtifactError> {
+        let target = self.state.path();
+        fs_writer
+            .create_new(Path::new(target.as_str()), self.content.as_bytes())
+            .map_err(|source| {
+                TemplateArtifactError::Write(TemplateWriteError::from(source))
+            })?;
+
+        Ok(TemplateArtifact {
+            template: self.template.clone(),
+            content: self.content.clone(),
+            state: Committed,
+        })
+    }
+}
+
 /// Maps a directory-creation [`std::io::Error`] into the template error
 /// hierarchy via [`trace_fs::error::WriteError::Io`].
 fn write_io_error(
@@ -398,6 +432,74 @@ mod tests {
                 .expect("expected top-level target to skip directory creation");
 
             assert_eq!(ready.state.path().as_str(), "x.md");
+        }
+    }
+
+    mod commit {
+        use pretty_assertions::assert_eq;
+        use tempfile::TempDir;
+        use trace_fs::FsWriter;
+
+        use super::{
+            super::super::error::{TemplateArtifactError, TemplateWriteError},
+            TemplateArtifact, template_name,
+        };
+
+        #[test]
+        fn creates_file_with_content() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let writer = FsWriter::new(dir.path());
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("resolve")
+            .try_check_conflict(&writer)
+            .expect("check");
+
+            artifact.commit(&writer).expect("expected commit to succeed");
+
+            let written = dir.path().join("sub/x.md");
+            assert!(written.exists(), "expected committed file on disk");
+            assert_eq!(
+                std::fs::read_to_string(&written)
+                    .expect("expected to read committed file"),
+                "Hello"
+            );
+        }
+
+        #[test]
+        fn rejects_existing_file() {
+            let dir = TempDir::new().expect("expected temp dir");
+            std::fs::create_dir_all(dir.path().join("sub"))
+                .expect("expected pre-created parent directory");
+            std::fs::write(dir.path().join("sub/x.md"), b"existing")
+                .expect("expected pre-created destination file");
+            let writer = FsWriter::new(dir.path());
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("resolve")
+            .try_check_conflict(&writer)
+            .expect("check");
+
+            let result = artifact.commit(&writer);
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                    trace_fs::error::WriteError::AlreadyExists { .. }
+                )))
+            ));
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("sub/x.md"))
+                    .expect("expected to read original file"),
+                "existing",
+                "expected create_new to leave the original file unchanged"
+            );
         }
     }
 
