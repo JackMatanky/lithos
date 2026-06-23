@@ -11,43 +11,114 @@ PRD: `.scratch/workspace-refactoring/PRD.md`
 Execute the final, global project rename from "Lithos" to "Trace".
 
 The crate structures and imports have already been updated to `trace-`, but many text references remain. Search the codebase for "lithos", "Lithos", and "LITHOS" and replace them with their "Trace" equivalents. This includes:
-- `README.md` and `ROADMAP.md`
-- `CONTEXT.md` and `CONTEXT-MAP.md` files
+- Markdown documentation (`README.md`, `CLAUDE.md`, `AGENTS.md`)
+- CONTEXT.md and CONTEXT-MAP.md files
 - Error messages, logs, tracing spans, and terminal output.
-- Environment variable prefixes (e.g., if there is a `LITHOS_VAULT_PATH`, it should become `TRACE_VAULT_PATH`).
+- Environment variable prefixes (`LITHOS_*` → `TRACE_*`).
 - Binary names or clap CLI descriptions.
+- Config file paths (`lithos.toml` → `trace.toml`).
+- Marker prefixes (`policy.rs`: `"lithos"`, `".lithos"`, `".lithos/config"`).
+- Cache directory paths (`location.rs` doc comments: `~/.cache/lithos/`, etc.).
+- Cargo metadata (`Cargo.toml`: `repository = ".../jack/lithos"`).
+- CI/crate badges (`README.md`: GitHub, crates.io, docs.rs URLs).
+
+## Project name constants
+
+Before doing global replacement, add three case-variant constants to the public
+utils crate so every capitalization is defined in one place and no caller needs
+to compute one case from another:
+
+**File**: `crates/utils/src/project_name.rs` (new)
+
+```rust
+/// Canonical project name (lowercase) — config files, cache dirs, marker prefixes.
+pub const PROJECT_NAME_LOWER: &str = "trace";
+
+/// Canonical project name (uppercase) — environment variable prefix.
+pub const PROJECT_NAME_UPPER: &str = "TRACE";
+
+/// Canonical project name (title case) — user-facing display, docs, binary help strings.
+pub const PROJECT_NAME_TITLE: &str = "Trace";
+```
+
+**Re-export**: Add `pub mod project_name;` to `crates/utils/src/lib.rs`.
+
+These constants become the single source of truth — the rename is done by
+importing `trace_utils::project_name::{PROJECT_NAME_LOWER, PROJECT_NAME_UPPER, PROJECT_NAME_TITLE}`
+wherever the respective case variant would be hardcoded (env var names in
+`env.rs`, marker prefixes in `policy.rs`, cache path docs, config file path
+construction in tests, output labels). The binary `name` attribute in `cli.rs`
+still uses the literal `"trace"` since clap requires a compile-time constant.
 
 ## Acceptance criteria
 
+- [ ] `PROJECT_NAME` and `ENV_PREFIX` exist in `crates/utils/src/project.rs`
+      and are re-exported from `trace-utils`.
+- [ ] All user-facing text uses the constants where feasible, or the correct
+      literal where not.
 - [ ] No references to "Lithos" remain in user-facing documentation or output.
 - [ ] No references to "lithos" remain in environment variables or configuration keys.
-- [ ] The project successfully compiles and runs under its new identity.
+- [ ] UUID v5 namespace `b"trace"` (was `b"lithos"`) — note: this is a semantic
+      change; existing deterministic UUIDs will differ. Acceptable for a pre-1.0 rename.
+- [ ] `clippy.toml:doc-valid-idents` updated to include `"Trace"`.
+- [ ] The project successfully compiles and runs under its new identity
+      (`mise run verify`).
 
 ## Blocked by
 
 - `.scratch/workspace-refactoring/02-migrate-cli.md`
 - `.scratch/workspace-refactoring/03-consolidate-settings.md`
+
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Perform a global text replacement to rebrand "Lithos" to "Trace" across all documents and strings.
+**Summary:** Perform a global text replacement to rebrand "Lithos" to "Trace" across all documents, strings, and configuration values, using `PROJECT_NAME_LOWER`/`PROJECT_NAME_UPPER`/`PROJECT_NAME_TITLE` constants from `trace_utils::project_name` as the canonical source.
 
 **Current behavior:**
-The project name "Lithos" appears extensively in user-facing documentation (`README.md`, `CONTEXT.md`), logs, terminal output, error messages, and environment variables.
+The project name "Lithos" appears extensively in user-facing documentation (`README.md`), CLI output, logs, error messages, environment variables, config file paths, marker prefixes, cache directory paths, and Cargo metadata. The binary is still named `lithos`. The crate names have already been migrated to `trace-*`.
 
 **Desired behavior:**
-All textual instances of "Lithos", "lithos", and "LITHOS" are correctly replaced with "Trace", "trace", and "TRACE", respectively. The rename is semantically correct and does not accidentally break standard Rust keywords or syntax.
+All textual instances of "Lithos", "lithos", and "LITHOS" are correctly replaced with "Trace", "trace", and "TRACE", respectively. The rename is semantically correct and does not accidentally break standard Rust keywords or syntax. The project compiles under its new identity.
 
 **Key interfaces:**
-- Markdown documentation files (`README.md`, `ROADMAP.md`, `CONTEXT.md` files).
-- CLI output descriptions (e.g., `clap` documentation strings).
-- Tracing spans, log output, and environment variable prefixes.
+- `crates/utils/src/project_name.rs` — new constants (`PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE`).
+- Markdown documentation files (`README.md`, `CLAUDE.md`, `AGENTS.md`, `CONTEXT.md` files).
+- CLI binary name (`cli.rs`: `#[command(name = ...)]`, all test `try_parse_from(&["trace", ...])`).
+- Environment variables (`env.rs`: var name strings `LITHOS_*` → use `PROJECT_NAME_UPPER`).
+- Marker prefix constants (`policy.rs`: `VAULT_MARKER_PATTERNS`, `GLOBAL_MARKER_PATTERNS`).
+- Cache directory doc comments (`location.rs`).
+- Config file paths in test fixtures (`lithos.toml` → `trace.toml`).
+- UUID v5 namespace (`template/src/aggregate.rs`, `utils/src/uuid.rs`: `b"lithos"` → `b"trace"`).
+- Cargo metadata + CI badge URLs in `README.md`.
 
 **Acceptance criteria:**
+- [ ] `PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE` constants exist in `trace_utils::project_name`.
 - [ ] No references to "Lithos" remain in user-facing documentation or output.
 - [ ] No references to "lithos" remain in environment variables or configuration keys.
-- [ ] The project successfully compiles and runs under its new identity.
+- [ ] UUID v5 namespace updated (semantic change, acceptable pre-1.0).
+- [ ] `clippy.toml:doc-valid-idents` updated.
+- [ ] `mise run verify` passes.
 
 **Out of scope:**
 - Structural crate renaming (already handled in previous slices).
 - Changing domain behavior or functionality.
+- Renaming historical artifacts in `.scratch/` files (those are consumed by agents, not shipped).
+
+## Blast radius (GitNexus)
+
+~100+ references across ~30+ files, grouped by area:
+
+| Area | Risk | Details |
+|------|------|---------|
+| CLI binary name | ~20 refs | `cli.rs:14` + 15+ test `&["lithos", ...]` assertions |
+| Env vars | 5 refs | `env.rs:176-184`: `LITHOS_VAULT_DIR`, `LITHOS_CONFIG_FILE`, `LITHOS_CACHE_DIR`, `LITHOS_CEILING_DIRS`, `LITHOS_SUPPRESS_GLOBAL` |
+| Marker prefixes | 6+ refs | `policy.rs:18-41`: `"lithos"`, `".lithos"`, `".lithos/config"` + tests |
+| Cache path docs | 4 refs | `location.rs:68-89` |
+| Config file paths | ~20 refs | `lithos.toml` in test fixtures, error messages, doc examples |
+| Docs | heavy | `README.md`, `CLAUDE.md`, `AGENTS.md` |
+| Cargo metadata | 1 ref | `Cargo.toml:19` |
+| CI/badges | 4+ refs | `README.md`: GitHub, crates.io, docs.rs URLs |
+| UUID namespace | 2 refs | `utils/src/uuid.rs:191`, `template/src/aggregate.rs:586` |
+| clippy.toml | 1 ref | `doc-valid-idents: ["Lithos", ...]` |
+
+**Risk: HIGH** — but mechanical (search-and-replace with verification).
