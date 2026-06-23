@@ -381,6 +381,24 @@ mod tests {
 
             assert_eq!(ready.state.path().as_str(), "sub/x.md");
         }
+
+        #[test]
+        fn returns_ready_to_commit_for_top_level_target() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let fs_writer = FsWriter::new(dir.path());
+            let resolved = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "body".to_owned(),
+            )
+            .try_resolve_target("x.md")
+            .expect("expected valid relative path to resolve");
+
+            let ready = resolved
+                .try_check_conflict(&fs_writer)
+                .expect("expected top-level target to skip directory creation");
+
+            assert_eq!(ready.state.path().as_str(), "x.md");
+        }
     }
 
     mod accessors {
