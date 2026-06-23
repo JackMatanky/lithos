@@ -21,7 +21,7 @@ uuid.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 toml.workspace = true
-minijinja.workspace = true
+minijinja = "2.20"
 base64.workspace = true
 dirs.workspace = true
 trace-db = { path = "../db" }

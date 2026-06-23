@@ -38,11 +38,8 @@ serde_yaml = "0.9"
 toml = "1.1"
 uuid = { version = "1.23", features = ["v7", "v5", "serde"] }
 
-# Template Engine
-minijinja = "2.20"
-
 # Error Handling
-miette = { version = "7.6", features = ["fancy"] }
+miette = "7.6"
 thiserror = "2.0"
 
 # CLI and Observability
