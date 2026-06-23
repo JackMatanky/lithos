@@ -17,8 +17,15 @@ scope: "Unit test boundaries and patterns"
 
 ## Placement
 
-- Place unit tests in `#[cfg(test)] mod tests` within `lithos-core/src/**/*.rs`.
+- Place unit tests in `#[cfg(test)] mod tests` within the source file or module that owns the implementation under test.
+- In a `crates/` workspace, place unit tests under each crate’s `src/**/*.rs` files.
 - Unit tests may access private functions/items through module scope.
+
+## Dependencies
+
+- Use `pretty_assertions` for equality assertions in all unit tests.
+- Import `pretty_assertions::{assert_eq, assert_ne}` within test modules that perform equality comparisons.
+- Use `rstest` and `proptest` only when they materially improve readability, coverage, or maintainability.
 
 ## Execution
 
@@ -91,14 +98,19 @@ mod tests {
 ## Assertion guidance
 
 - Include context in assertion messages.
-- Prefer:
+
+Prefer:
 
 ```rust
-assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
+assert!(
+    result.is_ok(),
+    "Expected success, got: {:?}",
+    result.err()
+);
 ```
 
 - For enum errors, prefer `matches!`-based checks.
-- For richer comparisons, prefer `assert_eq!` (or `pretty_assertions::assert_eq!` where already used).
+- Use `assert_eq!` and `assert_ne!` from `pretty_assertions` for equality comparisons.
 - Prefer returning `Result<(), E>` from tests only when `?` materially improves readability.
 - For panic contracts, use `#[should_panic(expected = "...")]` only when panic is intentional API behavior.
 
@@ -133,6 +145,7 @@ assert!(result.is_ok(), "Expected success, got: {:?}", result.err());
 ## Definition of done for a unit test suite
 
 - Test names follow [Unit Test Naming](./unit-naming.md).
+- Equality assertions use `pretty_assertions`.
 - Happy path and key failures are covered.
 - Assertions are explicit and diagnostic.
 - Tests pass via `mise run test:unit`.
