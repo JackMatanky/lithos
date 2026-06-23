@@ -92,7 +92,7 @@ pub(crate) mod types;
 mod context_integration_test;
 
 use pulldown_cmark::Options;
-use trace_config::task::TaskConfigSpec;
+use trace_settings::task::TaskConfigSpec;
 
 use crate::{
     error::NoteIngestError,
@@ -153,7 +153,7 @@ impl MarkdownParser {
     reason = "Tests prioritize readability with assertions"
 )]
 mod tests {
-    use trace_config::task::TaskConfigSpec;
+    use trace_settings::task::TaskConfigSpec;
 
     use super::*;
     use crate::{error::NoteError, raw::RawListDepth};

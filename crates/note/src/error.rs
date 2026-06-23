@@ -112,7 +112,7 @@ pub enum NoteError {
 
     /// Global or vault-specific configuration violation.
     #[error(transparent)]
-    Config(#[from] trace_config::error::ConfigError),
+    Config(#[from] trace_settings::error::ConfigError),
 
     /// Filesystem-level error or vault path boundary violation.
     #[error(transparent)]

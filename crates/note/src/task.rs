@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone as _};
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_config::task::TaskConfigSpec;
+use trace_settings::task::TaskConfigSpec;
 
 use super::{
     error::{NoteError, TaskError},
@@ -472,8 +472,8 @@ impl TaskDates {
     fn match_date_spec(
         spec: &TaskConfigSpec,
         keyword: &str,
-    ) -> Option<(TaskDateKind, Arc<trace_config::value::DateSpec>)> {
-        use trace_config::task::TemporalSlot;
+    ) -> Option<(TaskDateKind, Arc<trace_settings::value::DateSpec>)> {
+        use trace_settings::task::TemporalSlot;
 
         #[expect(
             clippy::pattern_type_mismatch,
@@ -509,7 +509,7 @@ impl Default for TaskDates {
 #[rkyv(derive(Debug))]
 pub struct TaskDateValue {
     value: FieldValue,
-    spec: Option<Arc<trace_config::value::DateSpec>>,
+    spec: Option<Arc<trace_settings::value::DateSpec>>,
 }
 
 impl TaskDateValue {
@@ -521,7 +521,7 @@ impl TaskDateValue {
     #[inline]
     pub fn new(
         value: FieldValue,
-        spec: Option<Arc<trace_config::value::DateSpec>>,
+        spec: Option<Arc<trace_settings::value::DateSpec>>,
     ) -> Result<Self, TaskError> {
         if !value.is_temporal() {
             return Err(TaskError::InvalidDate {
@@ -546,7 +546,7 @@ impl TaskDateValue {
     /// Returns the configured format spec if available.
     #[inline]
     #[must_use]
-    pub fn spec(&self) -> Option<&trace_config::value::DateSpec> {
+    pub fn spec(&self) -> Option<&trace_settings::value::DateSpec> {
         self.spec.as_deref()
     }
 
@@ -583,7 +583,7 @@ impl TaskDateValue {
     fn from_field_value(
         value: &FieldValue,
         key: &str,
-        spec: Option<Arc<trace_config::value::DateSpec>>,
+        spec: Option<Arc<trace_settings::value::DateSpec>>,
     ) -> Result<Self, TaskError> {
         match value {
             FieldValue::Date(_) | FieldValue::DateTime(_) => {
@@ -608,7 +608,7 @@ impl TaskDateValue {
     fn parse_heuristic(
         s: &str,
         key: &str,
-        spec: Option<Arc<trace_config::value::DateSpec>>,
+        spec: Option<Arc<trace_settings::value::DateSpec>>,
     ) -> Result<Self, TaskError> {
         // Try spec format first
         if let Some(date_spec) = &spec {

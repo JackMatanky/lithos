@@ -51,14 +51,14 @@ use std::path::Path;
 
 use common::*;
 use tempfile::TempDir;
-use trace_config::{
-    aggregate::{Config, Version},
-    builder,
-    vault::{VaultId, VaultRoot},
-};
 use trace_fs::{DirPath, FileReader};
 use trace_schema::{
     builder::Builder, property::PropertyName, repository::ReadRepository as _,
+};
+use trace_settings::{
+    aggregate::{Config, Version},
+    builder,
+    vault::{VaultId, VaultRoot},
 };
 
 /// Write a file to the test directory.

@@ -18,8 +18,7 @@ bench = false
 [dependencies]
 
 trace-app.workspace = true
-trace-discovery.workspace = true
-trace-config = { workspace = true, features = ["testing"] }
+trace-settings = { workspace = true, features = ["testing"] }
 trace-fs.workspace = true
 
 clap = { version = "4.6", features = ["env", "derive"] }

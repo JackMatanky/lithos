@@ -1,7 +1,7 @@
 //! Integration tests for parser lexical policy invariants.
 
-use trace_config::task::TaskConfigSpec;
 use trace_note::parser::MarkdownParser;
+use trace_settings::task::TaskConfigSpec;
 
 fn task_spec_fixture() -> TaskConfigSpec {
     TaskConfigSpec::new(

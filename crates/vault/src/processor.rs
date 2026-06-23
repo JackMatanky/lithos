@@ -12,7 +12,6 @@ use std::{
     sync::Arc,
 };
 
-use trace_config::aggregate::Config;
 use trace_db::Store;
 use trace_fs::{
     DirName, DirScanInput, DirScanner, FileFormat, FileName, FileReader,
@@ -24,6 +23,7 @@ use trace_note::{
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository as note_repository, storage as note_storage,
 };
+use trace_settings::aggregate::Config;
 
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{

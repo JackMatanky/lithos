@@ -26,7 +26,7 @@
 
 use std::fmt;
 
-use trace_config::task::TaskConfigSpec;
+use trace_settings::task::TaskConfigSpec;
 use trace_utils::UuidV7;
 
 use super::{

@@ -24,7 +24,7 @@ toml.workspace = true
 base64.workspace = true
 dirs.workspace = true
 trace-db = { path = "../db" }
-trace-config = { path = "../config" }
+trace-settings = { path = "../settings" }
 trace-fs = { path = "../fs" }
 trace-utils = { path = "../utils" }
 trace-support = { path = "../support" }

@@ -1656,9 +1656,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-config",
- "trace-discovery",
  "trace-fs",
+ "trace-settings",
  "tracing",
  "uuid",
 ]
@@ -1675,36 +1674,9 @@ dependencies = [
  "tempfile",
  "thiserror",
  "trace-app",
- "trace-config",
- "trace-discovery",
  "trace-fs",
+ "trace-settings",
  "tracing",
-]
-
-[[package]]
-name = "trace-config"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "dirs",
- "miette",
- "redb",
- "regex",
- "rkyv",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
- "trace-db",
- "trace-discovery",
- "trace-fs",
- "trace-support",
- "trace-utils",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1725,29 +1697,6 @@ dependencies = [
  "toml",
  "trace-fs",
  "trace-utils",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "trace-discovery"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "dirs",
- "miette",
- "mockall",
- "pretty_assertions",
- "redb",
- "rkyv",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
- "trace-fs",
  "tracing",
  "uuid",
 ]
@@ -1821,9 +1770,9 @@ dependencies = [
  "thiserror",
  "toml",
  "trace-app",
- "trace-config",
  "trace-db",
  "trace-fs",
+ "trace-settings",
  "trace-support",
  "trace-utils",
  "trace-vault",
@@ -1853,7 +1802,35 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-config",
+ "trace-db",
+ "trace-fs",
+ "trace-settings",
+ "trace-support",
+ "trace-utils",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "trace-settings"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "dirs",
+ "glob",
+ "miette",
+ "mockall",
+ "pretty_assertions",
+ "redb",
+ "regex",
+ "rkyv",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
  "trace-db",
  "trace-fs",
  "trace-support",
@@ -1898,9 +1875,9 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-config",
  "trace-db",
  "trace-fs",
+ "trace-settings",
  "trace-support",
  "trace-utils",
  "tracing",
@@ -1940,10 +1917,10 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-config",
  "trace-db",
  "trace-fs",
  "trace-note",
+ "trace-settings",
  "trace-support",
  "trace-utils",
  "tracing",

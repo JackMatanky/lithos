@@ -1,7 +1,6 @@
 //! App-layer error types.
 
-use trace_config::error::ConfigError;
-use trace_discovery::error::DiscoveryError;
+use trace_settings::{DiscoveryError, error::ConfigError};
 
 /// App-owned bootstrap error boundary.
 #[derive(Debug, thiserror::Error)]

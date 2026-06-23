@@ -29,16 +29,16 @@ mod tests {
         sync::Arc,
     };
 
-    use trace_config::{
-        aggregate::{Config, Version},
-        builder,
-        task::StatusSymbol,
-        vault::{VaultId, VaultRoot},
-    };
     use trace_db::testing::TestDb;
     use trace_note::{
         aggregate::Note, repository::ReadRepository as _,
         storage::RedbRepository, tag::Tag as NoteTag, task::Task,
+    };
+    use trace_settings::{
+        aggregate::{Config, Version},
+        builder,
+        task::StatusSymbol,
+        vault::{VaultId, VaultRoot},
     };
     use trace_vault::VaultProcessor;
 

@@ -18,7 +18,7 @@
 use std::{collections::HashMap, fmt};
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
-use trace_config::frontmatter::FrontmatterConfigSpec;
+use trace_settings::frontmatter::FrontmatterConfigSpec;
 
 use super::{
     error::{FrontmatterError, NoteError},
