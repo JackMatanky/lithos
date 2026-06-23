@@ -503,6 +503,110 @@ mod tests {
         }
     }
 
+    mod pipeline {
+        use pretty_assertions::assert_eq;
+        use tempfile::TempDir;
+        use trace_fs::FsWriter;
+
+        use super::{
+            super::super::error::{TemplateArtifactError, TemplateWriteError},
+            TemplateArtifact, template_name,
+        };
+
+        #[test]
+        fn writes_file_end_to_end() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let writer = FsWriter::new(dir.path());
+
+            TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello, world!".to_owned(),
+            )
+            .try_resolve_target("notes/out.md")
+            .expect("expected valid relative path to resolve")
+            .try_check_conflict(&writer)
+            .expect("expected parent directory creation to succeed")
+            .commit(&writer)
+            .expect("expected commit to succeed");
+
+            let written = dir.path().join("notes/out.md");
+            assert!(written.exists(), "expected committed file on disk");
+            assert_eq!(
+                std::fs::read_to_string(&written)
+                    .expect("expected to read committed file"),
+                "Hello, world!"
+            );
+        }
+
+        #[test]
+        fn rejects_absolute_path() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello, world!".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("/etc/passwd");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::AbsolutePathRejected(_))
+            ));
+            assert!(
+                !dir.path().join("etc/passwd").exists(),
+                "expected no file to be written on rejection"
+            );
+        }
+
+        #[test]
+        fn rejects_traversal_path() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello, world!".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("../escape.md");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::TraversalRejected(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_existing_file() {
+            let dir = TempDir::new().expect("expected temp dir");
+            std::fs::create_dir_all(dir.path().join("notes"))
+                .expect("expected pre-created parent directory");
+            std::fs::write(dir.path().join("notes/out.md"), b"existing")
+                .expect("expected pre-created destination file");
+            let writer = FsWriter::new(dir.path());
+
+            let result = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello, world!".to_owned(),
+            )
+            .try_resolve_target("notes/out.md")
+            .expect("expected valid relative path to resolve")
+            .try_check_conflict(&writer)
+            .expect("expected parent directory creation to succeed")
+            .commit(&writer);
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                    trace_fs::error::WriteError::AlreadyExists { .. }
+                )))
+            ));
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("notes/out.md"))
+                    .expect("expected to read original file"),
+                "existing",
+                "expected create_new to leave the original file unchanged"
+            );
+        }
+    }
+
     mod accessors {
         use pretty_assertions::assert_eq;
 
