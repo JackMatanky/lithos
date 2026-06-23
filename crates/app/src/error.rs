@@ -1,4 +1,10 @@
-//! App-layer error types.
+//! App-layer error types and aggregation.
+//!
+//! This module defines the top-level error boundaries for the application's
+//! composition root. It aggregates errors from various bounded contexts
+//! (like discovery, config, and indexing) into a unified `AppError` type,
+//! which is subsequently wrapped and surfaced by executable adapters (e.g.,
+//! CLI).
 
 use trace_settings::{DiscoveryError, config::error::ConfigError};
 

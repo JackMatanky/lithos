@@ -22,8 +22,11 @@ pub type WalkIter = Box<dyn Iterator<Item = Result<ScanEntry, ScannerError>>>;
 /// the `Skipped` variant — the caller accumulates these into `IndexReport`.
 #[derive(Debug)]
 pub enum ScanEntry {
+    /// Discovered a standard file node.
     File(FileNode),
+    /// Discovered a standard directory node.
     Dir(DirNode),
+    /// The entry was skipped (e.g., due to filters or permissions).
     Skipped(SkippedEntry),
 }
 
@@ -38,6 +41,10 @@ pub enum ScanEntry {
 /// adapter clones `DirPath` and `ScanFilters` internally when building the
 /// iterator, so the caller's references are not borrowed by the stream.
 pub trait ScannerPort {
+    /// Traverses the root and yields scan entries.
+    ///
+    /// # Errors
+    /// Returns a `ScannerError` if traversal initialization fails.
     fn walk(
         &self,
         root: &trace_fs::DirPath,

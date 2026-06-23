@@ -1,17 +1,27 @@
-//! Indexer error types.
+//! Indexer error types and boundaries.
+//!
+//! This module defines the core error types for the `trace-indexer` bounded
+//! context. It strictly separates internal scanner/traversal errors from
+//! local database (repository) errors, allowing upstream components
+//! to appropriately categorize and respond to failures.
 
 use std::path::PathBuf;
 
 use trace_db::DbError;
 use trace_fs::{PathKey, error::PathError};
 
+/// Unified error type for the indexer context.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum IndexerError {
+    /// An error originated from the scanner adapter during filesystem
+    /// traversal.
     #[error(transparent)]
     Scanner(#[from] ScannerError),
+    /// An error originated from the local database or storage repository.
     #[error(transparent)]
     Repository(#[from] IndexerRepositoryError),
+    /// An error occurred while parsing or resolving a filesystem path.
     #[error(transparent)]
     Path(#[from] PathError),
 }

@@ -28,7 +28,7 @@ impl IndexReport {
     )]
     #[inline]
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         scanned: usize,
         new: usize,
         fresh: usize,
@@ -110,11 +110,7 @@ impl IndexNodeFailure {
     /// Creates a new failure record.
     #[inline]
     #[must_use]
-    pub(crate) fn new(
-        id: FsRecordId,
-        kind: FsRecordType,
-        error: Box<str>,
-    ) -> Self {
+    pub fn new(id: FsRecordId, kind: FsRecordType, error: Box<str>) -> Self {
         Self {
             id,
             kind,
@@ -125,21 +121,21 @@ impl IndexNodeFailure {
     /// Returns the node identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
+    pub fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the node type (file or directory).
     #[inline]
     #[must_use]
-    pub(crate) fn kind(&self) -> FsRecordType {
+    pub fn kind(&self) -> FsRecordType {
         self.kind
     }
 
     /// Returns the error message for this failure.
     #[inline]
     #[must_use]
-    pub(crate) fn error(&self) -> &str {
+    pub fn error(&self) -> &str {
         &self.error
     }
 }

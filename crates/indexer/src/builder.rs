@@ -101,6 +101,10 @@ pub(crate) struct EntryBuilder<S> {
 impl<S> EntryBuilder<S> {
     #[inline]
     #[must_use]
+    #[allow(
+        dead_code,
+        reason = "Internal state accessor used in tests in future issues"
+    )]
     pub(crate) fn state(&self) -> &S {
         &self.state
     }
@@ -436,10 +440,7 @@ mod tests {
         reason = "Test code often panics and shadows variables safely"
     )]
 
-    use trace_fs::{
-        metadata::{DirMetadata, FileMetadata, FsTimes},
-        path::FilePath,
-    };
+    use trace_fs::metadata::{DirMetadata, FileMetadata, FsTimes};
 
     use super::*;
     use crate::storage::InMemoryRepository;

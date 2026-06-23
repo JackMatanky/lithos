@@ -51,21 +51,21 @@ impl FileIndexEntry {
     /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
+    pub fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the file domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &FileRecord {
+    pub fn node(&self) -> &FileRecord {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub(crate) fn path(&self) -> &FilePath {
+    pub fn path(&self) -> &FilePath {
         &self.path
     }
 
@@ -108,21 +108,21 @@ impl DirIndexEntry {
     /// Returns the record's stable identifier.
     #[inline]
     #[must_use]
-    pub(crate) fn id(&self) -> FsRecordId {
+    pub fn id(&self) -> FsRecordId {
         self.id
     }
 
     /// Returns the directory domain record.
     #[inline]
     #[must_use]
-    pub(crate) fn node(&self) -> &DirRecord {
+    pub fn node(&self) -> &DirRecord {
         &self.node
     }
 
     /// Returns the runtime filesystem path for this entry.
     #[inline]
     #[must_use]
-    pub(crate) fn path(&self) -> &DirPath {
+    pub fn path(&self) -> &DirPath {
         &self.path
     }
 

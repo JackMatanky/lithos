@@ -1,6 +1,13 @@
 //! Integration tests for the indexing pipeline wiring.
+//!
+//! This module verifies that the `trace_app` composition root successfully
+//! orchestrates the concrete `WalkdirAdapter`, `RedbRepository`, and
+//! `IndexerService` by running actual filesystem traversals against
+//! temporary test vaults.
+
 use std::fs;
 
+use pretty_assertions::assert_eq;
 use tempfile::tempdir;
 use trace_app::index::{IndexCommand, run_index};
 use trace_fs::DirPath;

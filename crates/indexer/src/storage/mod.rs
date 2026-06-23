@@ -19,8 +19,6 @@
 
 use std::sync::Arc;
 
-use trace_db::DbError;
-
 use crate::{
     IndexerRepositoryError,
     storage::tables::{
@@ -49,6 +47,7 @@ impl RedbRepository {
     ///
     /// Returns [`IndexerRepositoryError`] if any table cannot be created
     /// or opened.
+    #[inline]
     pub fn try_new(
         store: Arc<trace_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
@@ -80,6 +79,7 @@ pub(crate) mod testing;
 
 #[cfg(test)]
 pub(crate) use self::testing::InMemoryRepository;
+/// The filename of the Redb database.
 pub const INDEX_DB_FILENAME: &str = "index.redb";
 
 #[cfg(test)]

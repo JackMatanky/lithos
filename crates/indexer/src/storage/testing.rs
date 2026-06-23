@@ -10,7 +10,7 @@ use trace_fs::{FileFormat, path::PathKey};
 use crate::{
     error::IndexerRepositoryError,
     model::{DirRecord, FileRecord, FsParentId, FsRecordId},
-    repository::{ReadRepository, Repository, WriteRepository},
+    repository::{ReadRepository, WriteRepository},
 };
 
 /// A test-only in-memory repository implementation.

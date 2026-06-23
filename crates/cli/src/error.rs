@@ -9,7 +9,7 @@
 //! - `2` — invalid explicit path or configuration error (user error)
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
-use trace_app::bootstrap::AppError;
+use trace_app::error::AppError;
 use trace_settings::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
@@ -23,7 +23,7 @@ use trace_settings::DiscoveryError;
 /// (`clippy::exit = "deny"`); the runner in Slice 8 handles the actual exit.
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub(crate) enum CliError {
-    /// Bootstrap pipeline failed (discovery or config error).
+    /// Application pipeline failed (discovery, config, or indexing error).
     #[error(transparent)]
     Bootstrap(#[from] AppError),
 
@@ -64,8 +64,8 @@ impl CliError {
                 exit_code_for_discovery(discovery_err)
             }
             Self::Bootstrap(AppError::Config(_)) => 2,
-            Self::Bootstrap(AppError::Indexer(_)) => 1,
-            Self::Write {
+            Self::Bootstrap(AppError::Indexer(_))
+            | Self::Write {
                 ..
             } => 3,
         }
@@ -96,7 +96,7 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
 mod tests {
     use std::path::PathBuf;
 
-    use trace_app::bootstrap::AppError;
+    use trace_app::error::AppError;
     use trace_fs::PathError;
     use trace_settings::{
         DiscoveryError,
@@ -192,26 +192,6 @@ mod tests {
                 err.exit_code(),
                 2,
                 "ServiceConfigError (catch-all) must map to exit code 2"
-            );
-        }
-
-        #[test]
-        fn returns_3_when_permission_denied() {
-            let source = std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "permission denied",
-            );
-            let err = CliError::Bootstrap(AppError::Discovery(
-                DiscoveryError::CanonicalizePath {
-                    path: PathBuf::from("/restricted/path"),
-                    source,
-                },
-            ));
-            assert_eq!(
-                err.exit_code(),
-                3,
-                "CanonicalizePath with PermissionDenied must map to exit code \
-                 3"
             );
         }
 

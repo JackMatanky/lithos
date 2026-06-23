@@ -9,17 +9,6 @@
 //!
 //! Config → Indexer → Schema, Note, Template
 
-#![allow(
-    private_interfaces,
-    private_bounds,
-    missing_docs,
-    clippy::missing_errors_doc,
-    clippy::missing_inline_in_public_items,
-    dead_code,
-    unused_imports,
-    reason = "Domain types are implemented ahead of usage in subsequent issues"
-)]
-
 mod builder;
 mod entry;
 mod error;
@@ -35,8 +24,7 @@ mod summary;
 
 pub use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
 pub use error::{IndexerError, IndexerRepositoryError, ScannerError};
-pub use model::FsRecordId;
-pub(crate) use model::{DirRecord, FileRecord, FsParentId, FsRecordType};
+pub use model::{DirRecord, FileRecord, FsParentId, FsRecordId, FsRecordType};
 pub use port::{ScanEntry, ScannerPort, WalkIter};
 pub use report::{IndexNodeFailure, IndexReport, SkipReason, SkippedEntry};
 pub use repository::{ReadRepository, Repository, WriteRepository};

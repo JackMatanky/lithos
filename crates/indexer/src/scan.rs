@@ -21,7 +21,7 @@ impl ScanFilters {
     /// lists.
     #[inline]
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         included_extensions: Vec<Box<str>>,
         excluded_names: Vec<Box<str>>,
     ) -> Self {
@@ -79,7 +79,7 @@ impl IndexOptions {
     /// Creates a new `IndexOptions`.
     #[inline]
     #[must_use]
-    pub(crate) fn new(reindex: bool, dry_run: bool) -> Self {
+    pub fn new(reindex: bool, dry_run: bool) -> Self {
         Self {
             reindex,
             dry_run,
