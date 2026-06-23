@@ -65,6 +65,7 @@ pub mod writer;
 pub use entry::{DirNode, FileNode, FsNode};
 pub use error::{
     FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
+    WriteError,
 };
 pub use format::{FileExtensionRef, FileFormat, StructuredFileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
@@ -78,3 +79,4 @@ pub use path::{
 pub use reader::FileReader;
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;
+pub use writer::Writer as FsWriter;

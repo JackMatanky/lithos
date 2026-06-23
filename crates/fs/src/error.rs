@@ -126,6 +126,40 @@ pub enum ReadError {
     RootScope(#[from] RootScopeError),
 }
 
+/// Errors related to atomic file creation operations.
+///
+/// These errors occur when creating a new file that must not already exist
+/// (TOCTOU-free `create_new` semantics), preserving the offending path and
+/// underlying I/O cause for actionable diagnostics.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "WriteError clarifies this is write-specific within the error \
+              module"
+)]
+pub enum WriteError {
+    /// The target file already exists and creation was refused.
+    #[error("File already exists: {path}")]
+    AlreadyExists {
+        /// The path that already exists.
+        path: PathBuf,
+    },
+
+    /// An I/O error occurred while creating or writing the file.
+    #[error("Failed to write {path}: {source}")]
+    Io {
+        /// The path that failed to be written.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: std::io::Error,
+    },
+
+    /// A composed filesystem error.
+    #[error(transparent)]
+    Fs(#[from] FsError),
+}
+
 /// Errors related to directory traversal operations.
 ///
 /// These errors occur during walkdir traversal, glob pattern matching, or when
@@ -607,6 +641,46 @@ mod tests {
                 );
                 assert!(msg.contains("/vault/root"), "Expected base in: {msg}");
             }
+        }
+    }
+
+    mod write_error {
+        use std::io;
+
+        use super::*;
+
+        #[test]
+        fn already_exists_displays_path() {
+            let err = WriteError::AlreadyExists {
+                path: PathBuf::from("vault/note.md"),
+            };
+            let msg = format!("{err}");
+            assert!(msg.contains("vault/note.md"), "Expected path in: {msg}");
+        }
+
+        #[test]
+        fn io_displays_path_and_source() {
+            let err = WriteError::Io {
+                path: PathBuf::from("vault/note.md"),
+                source: io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "permission denied",
+                ),
+            };
+            let msg = format!("{err}");
+            assert!(msg.contains("vault/note.md"), "Expected path in: {msg}");
+            assert!(
+                msg.contains("permission denied"),
+                "Expected source in: {msg}"
+            );
+        }
+
+        #[test]
+        fn implements_error_trait() {
+            let err = WriteError::AlreadyExists {
+                path: PathBuf::from("file.txt"),
+            };
+            let _: &dyn std::error::Error = &err;
         }
     }
 

@@ -11,7 +11,7 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use super::validator::Validator;
+use super::{error::WriteError, validator::Validator};
 
 /// Production filesystem writer using `std::fs`.
 ///
@@ -19,7 +19,7 @@ use super::validator::Validator;
 /// filesystem operations. The writer uses atomic replace semantics for file
 /// updates via [`Writer::atomic_write`].
 #[derive(Debug, Clone)]
-pub(crate) struct Writer {
+pub struct Writer {
     /// Root directory for scoped file access.
     root: PathBuf,
     /// Path validator for security checks.
@@ -38,11 +38,65 @@ impl Writer {
     /// Creates a new filesystem writer with flexible path validation.
     #[inline]
     #[must_use]
-    pub(crate) fn new(root: &Path) -> Self {
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
             validator: Validator::new_flexible(),
         }
+    }
+
+    /// Atomically creates a new file, failing if it already exists.
+    ///
+    /// Uses [`std::fs::File::create_new`] (`O_CREAT | O_EXCL`) as a
+    /// TOCTOU-free existence guard, so concurrent callers cannot both
+    /// observe the file as absent and clobber each other. Parent
+    /// directories are created as needed before the atomic create.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WriteError::AlreadyExists`] if the target file already
+    /// exists, or [`WriteError::Io`] if validation, directory creation, the
+    /// create, or the write fails.
+    #[inline]
+    pub fn create_new(
+        &self,
+        path: &Path,
+        contents: &[u8],
+    ) -> Result<(), WriteError> {
+        use std::io::Write as _;
+
+        self.validate_path(path).map_err(|source| WriteError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            self.create_dir_all(parent).map_err(|source| WriteError::Io {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        }
+
+        let resolved = self.resolve(path);
+        let mut file = std::fs::File::create_new(resolved).map_err(|err| {
+            if err.kind() == io::ErrorKind::AlreadyExists {
+                WriteError::AlreadyExists {
+                    path: path.to_path_buf(),
+                }
+            } else {
+                WriteError::Io {
+                    path: path.to_path_buf(),
+                    source: err,
+                }
+            }
+        })?;
+
+        file.write_all(contents).map_err(|source| WriteError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
     }
 
     #[inline]
@@ -64,7 +118,7 @@ impl Writer {
     /// Returns an error if directories cannot be created or the path is
     /// invalid.
     #[inline]
-    pub(crate) fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+    pub fn create_dir_all(&self, path: &Path) -> io::Result<()> {
         self.validate_path(path)?;
         std::fs::create_dir_all(self.resolve(path))
     }
@@ -270,6 +324,44 @@ mod tests {
                 .atomic_write(Path::new("sub/file.txt"), b"data")
                 .expect("write");
             assert!(dir.path().join("sub/file.txt").exists());
+        }
+    }
+
+    mod create_new {
+        use super::*;
+
+        #[test]
+        fn creates_file_when_not_exists() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+
+            writer
+                .create_new(Path::new("file.txt"), b"content")
+                .expect("create");
+
+            let content =
+                std::fs::read(dir.path().join("file.txt")).expect("read");
+            assert_eq!(content, b"content");
+        }
+
+        #[test]
+        fn rejects_existing_file() {
+            let dir = TempDir::new().expect("tempdir");
+            std::fs::write(dir.path().join("file.txt"), b"original")
+                .expect("write");
+            let writer = Writer::new(dir.path());
+
+            let result = writer.create_new(Path::new("file.txt"), b"new");
+            assert!(matches!(result, Err(WriteError::AlreadyExists { .. })));
+        }
+
+        #[test]
+        fn rejects_invalid_path() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(
+                writer.create_new(Path::new("../escape.txt"), b"data").is_err()
+            );
         }
     }
 
