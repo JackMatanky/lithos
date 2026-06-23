@@ -6,3 +6,5 @@
 //! port contract lives in the parent `port` module.
 
 mod walkdir;
+
+pub use walkdir::WalkdirAdapter;

@@ -92,7 +92,7 @@ impl ScannerPort for WalkdirAdapter {
         filters: &ScanFilters,
     ) -> Result<WalkIter, ScannerError> {
         let filters = filters.clone();
-        let walker = WalkDir::new(root.as_path()).into_iter();
+        let walker = WalkDir::new(root.as_path()).min_depth(1).into_iter();
         let filtered =
             walker.filter_entry(move |e| Self::filter_entry(e, &filters));
 

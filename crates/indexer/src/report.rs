@@ -10,7 +10,7 @@ use super::model::{FsRecordId, FsRecordType};
 
 /// A summary report containing metrics and failures from an indexer run.
 #[derive(Debug, Clone)]
-pub(crate) struct IndexReport {
+pub struct IndexReport {
     scanned: usize,
     new: usize,
     fresh: usize,
@@ -51,56 +51,56 @@ impl IndexReport {
     /// Returns the total number of nodes scanned.
     #[inline]
     #[must_use]
-    pub(crate) fn scanned(&self) -> usize {
+    pub fn scanned(&self) -> usize {
         self.scanned
     }
 
     /// Returns the count of new nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn new_count(&self) -> usize {
+    pub fn new_count(&self) -> usize {
         self.new
     }
 
     /// Returns the count of fresh nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn fresh_count(&self) -> usize {
+    pub fn fresh_count(&self) -> usize {
         self.fresh
     }
 
     /// Returns the count of stale nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn stale_count(&self) -> usize {
+    pub fn stale_count(&self) -> usize {
         self.stale
     }
 
     /// Returns the count of deleted nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn deleted_count(&self) -> usize {
+    pub fn deleted_count(&self) -> usize {
         self.deleted
     }
 
     /// Returns the entries skipped during the scan.
     #[inline]
     #[must_use]
-    pub(crate) fn skipped(&self) -> &[SkippedEntry] {
+    pub fn skipped(&self) -> &[SkippedEntry] {
         &self.skipped
     }
 
     /// Returns the failures encountered during the scan.
     #[inline]
     #[must_use]
-    pub(crate) fn failures(&self) -> &[IndexNodeFailure] {
+    pub fn failures(&self) -> &[IndexNodeFailure] {
         &self.failures
     }
 }
 
 /// A failure record for a single filesystem node that could not be indexed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IndexNodeFailure {
+pub struct IndexNodeFailure {
     id: FsRecordId,
     kind: FsRecordType,
     error: Box<str>,
@@ -146,7 +146,7 @@ impl IndexNodeFailure {
 
 /// A record of a node that could not be indexed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SkippedEntry {
+pub struct SkippedEntry {
     /// Path to the skipped entry.
     pub(crate) path: PathBuf,
     /// The reason the entry was skipped.
@@ -155,7 +155,7 @@ pub(crate) struct SkippedEntry {
 
 /// The reason a node was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SkipReason {
+pub enum SkipReason {
     /// Access was denied.
     PermissionDenied,
     /// The entry type (e.g., socket, pipe) is not supported.

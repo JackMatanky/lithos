@@ -38,7 +38,7 @@ use crate::{
 /// [`ReadRepository`]: crate::repository::ReadRepository
 /// [`WriteRepository`]: crate::repository::WriteRepository
 /// [`Store`]: trace_db::Store
-pub(crate) struct RedbRepository {
+pub struct RedbRepository {
     pub(crate) store: Arc<trace_db::Store>,
 }
 
@@ -49,7 +49,7 @@ impl RedbRepository {
     ///
     /// Returns [`IndexerRepositoryError`] if any table cannot be created
     /// or opened.
-    pub(crate) fn try_new(
+    pub fn try_new(
         store: Arc<trace_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
@@ -80,6 +80,7 @@ pub(crate) mod testing;
 
 #[cfg(test)]
 pub(crate) use self::testing::InMemoryRepository;
+pub const INDEX_DB_FILENAME: &str = "index.redb";
 
 #[cfg(test)]
 mod tests {

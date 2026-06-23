@@ -7,7 +7,7 @@ use trace_fs::{PathKey, error::PathError};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub(crate) enum IndexerError {
+pub enum IndexerError {
     #[error(transparent)]
     Scanner(#[from] ScannerError),
     #[error(transparent)]
@@ -20,7 +20,7 @@ pub(crate) enum IndexerError {
 /// redb and rkyv types never appear here.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub(crate) enum IndexerRepositoryError {
+pub enum IndexerRepositoryError {
     /// Transparent wrapper around the shared `DbError` (follows
     /// `VaultRepositoryError` pattern).
     #[error("storage error: {0}")]
@@ -32,7 +32,7 @@ pub(crate) enum IndexerRepositoryError {
 
 /// Errors that can occur during filesystem scanning.
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum ScannerError {
+pub enum ScannerError {
     /// A walkdir entry or metadata read failed during traversal.
     #[error("traversal failed for {path}: {source}")]
     Traversal {

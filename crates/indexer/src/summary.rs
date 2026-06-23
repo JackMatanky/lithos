@@ -14,7 +14,7 @@ use super::{
 ///
 /// Contains the payload of indexed entries and deleted identifiers.
 #[derive(Debug, Clone)]
-pub(crate) struct IndexResult {
+pub struct IndexResult {
     indexed: IndexedNodes,
     deleted: DeletedNodes,
     report: IndexReport,
@@ -39,28 +39,28 @@ impl IndexResult {
     /// Returns the indexed nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn indexed(&self) -> &IndexedNodes {
+    pub fn indexed(&self) -> &IndexedNodes {
         &self.indexed
     }
 
     /// Returns the deleted node record.
     #[inline]
     #[must_use]
-    pub(crate) fn deleted(&self) -> &DeletedNodes {
+    pub fn deleted(&self) -> &DeletedNodes {
         &self.deleted
     }
 
     /// Returns the index report.
     #[inline]
     #[must_use]
-    pub(crate) fn report(&self) -> &IndexReport {
+    pub fn report(&self) -> &IndexReport {
         &self.report
     }
 }
 
 /// The set of successfully indexed filesystem nodes.
 #[derive(Debug, Clone)]
-pub(crate) struct IndexedNodes {
+pub struct IndexedNodes {
     files: Box<[FileIndexEntry]>,
     dirs: Box<[DirIndexEntry]>,
 }
@@ -82,14 +82,14 @@ impl IndexedNodes {
     /// Returns the indexed file entries.
     #[inline]
     #[must_use]
-    pub(crate) fn files(&self) -> &[FileIndexEntry] {
+    pub fn files(&self) -> &[FileIndexEntry] {
         &self.files
     }
 
     /// Returns the indexed directory entries.
     #[inline]
     #[must_use]
-    pub(crate) fn dirs(&self) -> &[DirIndexEntry] {
+    pub fn dirs(&self) -> &[DirIndexEntry] {
         &self.dirs
     }
 }
@@ -97,7 +97,7 @@ impl IndexedNodes {
 /// The set of filesystem node IDs that were present in a prior index run but
 /// no longer exist on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct DeletedNodes {
+pub struct DeletedNodes {
     files: Box<[FsRecordId]>,
     dirs: Box<[FsRecordId]>,
 }
@@ -119,14 +119,14 @@ impl DeletedNodes {
     /// Returns the IDs of deleted file nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn files(&self) -> &[FsRecordId] {
+    pub fn files(&self) -> &[FsRecordId] {
         &self.files
     }
 
     /// Returns the IDs of deleted directory nodes.
     #[inline]
     #[must_use]
-    pub(crate) fn dirs(&self) -> &[FsRecordId] {
+    pub fn dirs(&self) -> &[FsRecordId] {
         &self.dirs
     }
 

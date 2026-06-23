@@ -1,7 +1,7 @@
 //! CLI error types with exit code derivation.
 //!
 //! This module defines [`CliError`], the top-level error type for the Lithos
-//! CLI binary. It wraps [`BootstrapError`] and owns the mapping from error
+//! CLI binary. It wraps [`AppError`] and owns the mapping from error
 //! variants to POSIX exit codes.
 //!
 //! Exit code conventions:
@@ -9,7 +9,7 @@
 //! - `2` — invalid explicit path or configuration error (user error)
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
-use trace_app::bootstrap::BootstrapError;
+use trace_app::bootstrap::AppError;
 use trace_settings::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
@@ -25,7 +25,7 @@ use trace_settings::DiscoveryError;
 pub(crate) enum CliError {
     /// Bootstrap pipeline failed (discovery or config error).
     #[error(transparent)]
-    Bootstrap(#[from] BootstrapError),
+    Bootstrap(#[from] AppError),
 
     /// Writing to stdout or stderr failed.
     #[error("failed to write to {stream}")]
@@ -49,22 +49,22 @@ impl CliError {
     ///
     /// # Exit code mapping
     ///
-    /// - [`BootstrapError::Discovery`] with
+    /// - [`AppError::Discovery`] with
     ///   [`DiscoveryError::InvalidAnchorDirectory`] → 1
-    /// - [`BootstrapError::Discovery`] with [`DiscoveryError::Flag`] or
+    /// - [`AppError::Discovery`] with [`DiscoveryError::Flag`] or
     ///   [`DiscoveryError::Env`] → 2
-    /// - [`BootstrapError::Discovery`] with
-    ///   [`DiscoveryError::CanonicalizePath`] where `source.kind() ==
-    ///   PermissionDenied` → 3
-    /// - [`BootstrapError::Config`] → 2
+    /// - [`AppError::Discovery`] with [`DiscoveryError::CanonicalizePath`]
+    ///   where `source.kind() == PermissionDenied` → 3
+    /// - [`AppError::Config`] → 2
     /// - [`CliError::Write`] → 3 (I/O failure writing to stdout or stderr)
     /// - All other variants → 2
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
-            Self::Bootstrap(BootstrapError::Discovery(discovery_err)) => {
+            Self::Bootstrap(AppError::Discovery(discovery_err)) => {
                 exit_code_for_discovery(discovery_err)
             }
-            Self::Bootstrap(BootstrapError::Config(_)) => 2,
+            Self::Bootstrap(AppError::Config(_)) => 2,
+            Self::Bootstrap(AppError::Indexer(_)) => 1,
             Self::Write {
                 ..
             } => 3,
@@ -96,7 +96,7 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
 mod tests {
     use std::path::PathBuf;
 
-    use trace_app::bootstrap::BootstrapError;
+    use trace_app::bootstrap::AppError;
     use trace_fs::PathError;
     use trace_settings::{
         DiscoveryError,
@@ -113,18 +113,14 @@ mod tests {
 
         #[test]
         fn converts_bootstrap_error_to_cli_error() {
-            let bootstrap_err = BootstrapError::Discovery(
-                DiscoveryError::InvalidAnchorDirectory {
+            let bootstrap_err =
+                AppError::Discovery(DiscoveryError::InvalidAnchorDirectory {
                     path: PathBuf::from("/bad"),
                     source: PathError::NotADirectory(PathBuf::from("/bad")),
-                },
-            );
+                });
             let cli_err = CliError::from(bootstrap_err);
             assert!(
-                matches!(
-                    cli_err,
-                    CliError::Bootstrap(BootstrapError::Discovery(_))
-                ),
+                matches!(cli_err, CliError::Bootstrap(AppError::Discovery(_))),
                 "expected CliError::Bootstrap(Discovery(..)), got: {cli_err:?}"
             );
         }
@@ -135,7 +131,7 @@ mod tests {
 
         #[test]
         fn returns_1_when_vault_not_found() {
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
+            let err = CliError::Bootstrap(AppError::Discovery(
                 DiscoveryError::InvalidAnchorDirectory {
                     path: PathBuf::from("/no/vault"),
                     source: PathError::NotADirectory(PathBuf::from(
@@ -152,7 +148,7 @@ mod tests {
 
         #[test]
         fn returns_2_when_explicit_path_is_invalid() {
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
+            let err = CliError::Bootstrap(AppError::Discovery(
                 DiscoveryError::Flag(FlagOverrideError::VaultPathNotFound {
                     path: PathBuf::from("/explicit/missing"),
                 }),
@@ -166,19 +162,18 @@ mod tests {
 
         #[test]
         fn returns_2_when_env_override_is_invalid() {
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
-                DiscoveryError::Env(
+            let err =
+                CliError::Bootstrap(AppError::Discovery(DiscoveryError::Env(
                     EnvironmentOverrideError::VaultPathNotFound {
                         path: PathBuf::from("/env/missing"),
                     },
-                ),
-            ));
+                )));
             assert_eq!(err.exit_code(), 2, "Env error must map to exit code 2");
         }
 
         #[test]
         fn returns_2_when_config_error() {
-            let err = CliError::Bootstrap(BootstrapError::Config(
+            let err = CliError::Bootstrap(AppError::Config(
                 ConfigError::Ingestion("bad toml".into()),
             ));
             assert_eq!(
@@ -190,7 +185,7 @@ mod tests {
 
         #[test]
         fn returns_2_when_service_config_error() {
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
+            let err = CliError::Bootstrap(AppError::Discovery(
                 DiscoveryError::Config(ServiceConfigError::VaultMarkerPatterns),
             ));
             assert_eq!(
@@ -206,7 +201,7 @@ mod tests {
                 std::io::ErrorKind::PermissionDenied,
                 "permission denied",
             );
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
+            let err = CliError::Bootstrap(AppError::Discovery(
                 DiscoveryError::CanonicalizePath {
                     path: PathBuf::from("/restricted/path"),
                     source,
@@ -243,7 +238,7 @@ mod tests {
             // through to catch-all → 2
             let source =
                 std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
-            let err = CliError::Bootstrap(BootstrapError::Discovery(
+            let err = CliError::Bootstrap(AppError::Discovery(
                 DiscoveryError::CanonicalizePath {
                     path: PathBuf::from("/missing/path"),
                     source,

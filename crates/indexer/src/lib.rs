@@ -10,6 +10,11 @@
 //! Config → Indexer → Schema, Note, Template
 
 #![allow(
+    private_interfaces,
+    private_bounds,
+    missing_docs,
+    clippy::missing_errors_doc,
+    clippy::missing_inline_in_public_items,
     dead_code,
     unused_imports,
     reason = "Domain types are implemented ahead of usage in subsequent issues"
@@ -23,26 +28,24 @@ pub(crate) mod port;
 pub(crate) mod report;
 pub(crate) mod repository;
 mod scan;
-pub(crate) mod scanner;
+pub mod scanner;
 mod service;
-pub(crate) mod storage;
+pub mod storage;
 mod summary;
 
-pub(crate) use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
-pub(crate) use error::{IndexerError, IndexerRepositoryError, ScannerError};
-pub(crate) use model::{
-    DirRecord, FileRecord, FsParentId, FsRecordId, FsRecordType,
-};
-pub(crate) use port::{ScanEntry, ScannerPort};
-pub(crate) use report::{
-    IndexNodeFailure, IndexReport, SkipReason, SkippedEntry,
-};
-pub(crate) use repository::{ReadRepository, Repository, WriteRepository};
-pub(crate) use scan::{IndexOptions, IndexScope, ScanFilters};
+pub use entry::{DirIndexEntry, FileIndexEntry, IndexStatus};
+pub use error::{IndexerError, IndexerRepositoryError, ScannerError};
+pub use model::FsRecordId;
+pub(crate) use model::{DirRecord, FileRecord, FsParentId, FsRecordType};
+pub use port::{ScanEntry, ScannerPort, WalkIter};
+pub use report::{IndexNodeFailure, IndexReport, SkipReason, SkippedEntry};
+pub use repository::{ReadRepository, Repository, WriteRepository};
+pub use scan::{IndexOptions, IndexScope, ScanFilters};
+pub use service::IndexerService;
 #[cfg(test)]
 pub(crate) use storage::InMemoryRepository;
-pub(crate) use storage::RedbRepository;
-pub(crate) use summary::{DeletedNodes, IndexResult, IndexedNodes};
+pub use storage::RedbRepository;
+pub use summary::{DeletedNodes, IndexResult, IndexedNodes};
 
 #[cfg(test)]
 mod tests {

@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Repository trait for reading indexed filesystem records.
-pub(crate) trait ReadRepository {
+pub trait ReadRepository {
     fn find_file(
         &self,
         id: FsRecordId,
@@ -51,7 +51,7 @@ pub(crate) trait ReadRepository {
 }
 
 /// Repository trait for writing indexed filesystem records.
-pub(crate) trait WriteRepository {
+pub trait WriteRepository {
     fn save_file(
         &self,
         record: &FileRecord,
@@ -84,7 +84,7 @@ pub(crate) trait WriteRepository {
 }
 
 /// Unified repository trait combining read and write capabilities.
-pub(crate) trait Repository: ReadRepository + WriteRepository {}
+pub trait Repository: ReadRepository + WriteRepository {}
 
 impl<T> Repository for T where T: ReadRepository + WriteRepository {}
 

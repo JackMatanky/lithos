@@ -29,7 +29,7 @@ use trace_utils::UuidV7;
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub(crate) struct FsRecordId(pub(crate) UuidV7);
+pub struct FsRecordId(pub(crate) UuidV7);
 
 impl FsRecordId {
     /// Zero sentinel for storage keys — deterministic UUID (nil, not v7).

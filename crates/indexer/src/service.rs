@@ -36,7 +36,7 @@ use crate::{
 /// Wires a `ScannerPort` and `Repository` into a single indexing run.
 /// Call `run()` with an `IndexScope` and `IndexOptions` to produce an
 /// `IndexResult`.
-pub(crate) struct IndexerService<S: ScannerPort, R: Repository> {
+pub struct IndexerService<S: ScannerPort, R: Repository> {
     vault_root: DirPath,
     scanner: S,
     repo: R,
@@ -46,7 +46,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// Create a new indexer service.
     #[inline]
     #[must_use]
-    pub(crate) fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
+    pub fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
         Self {
             vault_root,
             scanner,
@@ -62,7 +62,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// 4. Detect deletions (diff `all_paths()` vs `seen_paths`).
     /// 5. Persist indexed and deleted records (skip if `dry_run`).
     /// 6. Build `IndexReport` and return `IndexResult`.
-    pub(crate) fn run(
+    pub fn run(
         &self,
         scope: &IndexScope,
         opts: IndexOptions,

@@ -11,7 +11,7 @@ use super::model::{DirRecord, FileRecord, FsRecordId};
 ///
 /// Drives staleness detection and incremental re-indexing logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum IndexStatus {
+pub enum IndexStatus {
     /// The record has not been seen before; needs full indexing.
     New,
     /// The record is known and its metadata matches; no action required.
@@ -23,7 +23,7 @@ pub(crate) enum IndexStatus {
 /// An indexed file entry pairing a [`FileRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub(crate) struct FileIndexEntry {
+pub struct FileIndexEntry {
     id: FsRecordId,
     node: FileRecord,
     path: FilePath,
@@ -80,7 +80,7 @@ impl FileIndexEntry {
 /// An indexed directory entry pairing a [`DirRecord`] with its runtime path and
 /// current index classification.
 #[derive(Debug, Clone)]
-pub(crate) struct DirIndexEntry {
+pub struct DirIndexEntry {
     id: FsRecordId,
     node: DirRecord,
     path: DirPath,
