@@ -10,7 +10,7 @@ PRD: `.scratch/workspace-refactoring/PRD.md`
 
 Execute the final, global project rename from "Lithos" to "Traces".
 
-The crate structures and imports have already been updated to `trace-` (the crate prefix is unchanged — previous slices used `trace-`), but many text references remain. Search the codebase for "lithos", "Lithos", and "LITHOS" and replace them with their "Traces" equivalents. This includes:
+The crate structures and imports have already been updated to `traces-`, but many text references remain. Search the codebase for "lithos", "Lithos", and "LITHOS" and replace them with their "Traces" equivalents. This includes:
 - Markdown documentation (`README.md`, `CLAUDE.md`, `AGENTS.md`)
 - CONTEXT.md and CONTEXT-MAP.md files
 - Error messages, logs, tracing spans, and terminal output.
@@ -44,7 +44,7 @@ pub const PROJECT_NAME_TITLE: &str = "Traces";
 **Re-export**: Add `pub mod project_name;` to `crates/utils/src/lib.rs`.
 
 These constants become the single source of truth — the rename is done by
-importing `trace_utils::project_name::{PROJECT_NAME_LOWER, PROJECT_NAME_UPPER, PROJECT_NAME_TITLE}`
+importing `traces_utils::project_name::{PROJECT_NAME_LOWER, PROJECT_NAME_UPPER, PROJECT_NAME_TITLE}`
 wherever the respective case variant would be hardcoded (env var names in
 `env.rs`, marker prefixes in `policy.rs`, cache path docs, config file path
 construction in tests, output labels). The binary `name` attribute in `cli.rs`
@@ -52,7 +52,7 @@ still uses the literal `"traces"` since clap requires a compile-time constant.
 
 ## Acceptance criteria
 
-- [ ] `PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE` constants exist in `trace_utils::project_name`.
+- [ ] `PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE` constants exist in `traces_utils::project_name`.
 - [ ] All user-facing text uses the constants where feasible, or the correct
       literal where not.
 - [ ] No references to "Lithos" remain in user-facing documentation or output.
@@ -71,10 +71,10 @@ still uses the literal `"traces"` since clap requires a compile-time constant.
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Perform a global text replacement to rebrand "Lithos" to "Traces" across all documents, strings, and configuration values, using `PROJECT_NAME_LOWER`/`PROJECT_NAME_UPPER`/`PROJECT_NAME_TITLE` constants from `trace_utils::project_name` as the canonical source.
+**Summary:** Perform a global text replacement to rebrand "Lithos" to "Traces" across all documents, strings, and configuration values, using `PROJECT_NAME_LOWER`/`PROJECT_NAME_UPPER`/`PROJECT_NAME_TITLE` constants from `traces_utils::project_name` as the canonical source.
 
 **Current behavior:**
-The project name "Lithos" appears extensively in user-facing documentation (`README.md`), CLI output, logs, error messages, environment variables, config file paths, marker prefixes, cache directory paths, and Cargo metadata. The binary is still named `lithos`. The crate names have already been migrated to `trace-*` (previous slices).
+The project name "Lithos" appears extensively in user-facing documentation (`README.md`), CLI output, logs, error messages, environment variables, config file paths, marker prefixes, cache directory paths, and Cargo metadata. The binary is still named `lithos`. The crate names have already been migrated to `traces-*` (previous slices).
 
 **Desired behavior:**
 All textual instances of "Lithos", "lithos", and "LITHOS" are correctly replaced with "Traces", "traces", and "TRACES", respectively. The rename is semantically correct and does not accidentally break standard Rust keywords or syntax. The project compiles under its new identity.
@@ -91,7 +91,7 @@ All textual instances of "Lithos", "lithos", and "LITHOS" are correctly replaced
 - Cargo metadata + CI badge URLs in `README.md`.
 
 **Acceptance criteria:**
-- [ ] `PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE` constants exist in `trace_utils::project_name`.
+- [ ] `PROJECT_NAME_LOWER`, `PROJECT_NAME_UPPER`, `PROJECT_NAME_TITLE` constants exist in `traces_utils::project_name`.
 - [ ] No references to "Lithos" remain in user-facing documentation or output.
 - [ ] No references to "lithos" remain in environment variables or configuration keys.
 - [ ] UUID v5 namespace updated (semantic change, acceptable pre-1.0).
