@@ -3,7 +3,6 @@
 # changed — Run tests only for crates affected by changes.
 #
 #MISE description="Run tests only for crates affected by changes"
-#MISE alias="tc"
 #USAGE arg "[base_ref]" help="Git ref to compare against (auto-detects origin/main or falls back to HEAD~1)"
 
 set -euo pipefail
