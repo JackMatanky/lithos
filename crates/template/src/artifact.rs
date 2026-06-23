@@ -8,9 +8,10 @@
 
 #![allow(dead_code, reason = "rendered artifacts are wired by issue-06")]
 
-use trace_fs::RelativeFilePath;
+use trace_fs::{RelativeFilePath, error::PathError};
 
 use super::TemplateName;
+use crate::error::{TemplateArtifactError, TemplatePathError};
 
 /// Marker state for an artifact that has rendered text but no output target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,9 +32,11 @@ impl TargetResolved {
     }
 }
 
-/// State for an artifact validated and ready to commit to its target.
+/// State for an artifact whose target directory has been ensured and is ready
+/// for the atomic commit.
 ///
-/// Holds the validated vault-relative path the artifact will be written to.
+/// Holds the validated vault-relative path whose parent directory now exists,
+/// so the artifact can be written in a single atomic create.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReadyToCommit(RelativeFilePath);
 
@@ -86,6 +89,54 @@ impl TemplateArtifact<Rendered> {
     #[must_use]
     pub(crate) fn content(&self) -> &str {
         &self.content
+    }
+
+    /// Resolves and validates the output target path, advancing the artifact
+    /// from [`Rendered`] to [`TargetResolved`].
+    ///
+    /// Validation is performed by [`RelativeFilePath::try_new`], which rejects
+    /// absolute paths and `..` traversal. Rejections are mapped to named
+    /// [`TemplateArtifactError`] variants by [`map_path_error`]; any other
+    /// validation failure surfaces through
+    /// [`TemplateArtifactError::InvalidPath`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateArtifactError::AbsolutePathRejected`] for absolute
+    /// paths, [`TemplateArtifactError::TraversalRejected`] for `..` traversal,
+    /// and [`TemplateArtifactError::InvalidPath`] for any other invalid path.
+    pub(crate) fn try_resolve_target(
+        &self,
+        path: &str,
+    ) -> Result<TemplateArtifact<TargetResolved>, TemplateArtifactError> {
+        match RelativeFilePath::try_new(path) {
+            Ok(target) => Ok(TemplateArtifact {
+                template: self.template.clone(),
+                content: self.content.clone(),
+                state: TargetResolved(target),
+            }),
+            Err(err) => Err(map_path_error(err)),
+        }
+    }
+}
+
+/// Maps a [`PathError`] from target-path validation to a named
+/// [`TemplateArtifactError`] variant.
+///
+/// The catch-all arm handles [`PathError::Empty`],
+/// [`PathError::CurrentDirComponent`], and any future variants of the
+/// `#[non_exhaustive]` [`PathError`] enum.
+fn map_path_error(err: PathError) -> TemplateArtifactError {
+    match err {
+        PathError::NotRelative(path) => {
+            TemplateArtifactError::AbsolutePathRejected(path)
+        }
+        PathError::ParentTraversal(path) => {
+            TemplateArtifactError::TraversalRejected(path)
+        }
+        other => {
+            TemplateArtifactError::InvalidPath(TemplatePathError::from(other))
+        }
     }
 }
 
@@ -151,6 +202,77 @@ mod tests {
 
             assert_eq!(artifact.template(), &name);
             assert_eq!(artifact.content(), "Hello Alice");
+        }
+    }
+
+    mod try_resolve_target {
+        use pretty_assertions::assert_eq;
+
+        use super::{
+            super::super::error::TemplateArtifactError, TemplateArtifact,
+            template_name,
+        };
+
+        #[test]
+        fn returns_target_resolved_when_path_valid() {
+            let name = template_name("greeting");
+            let artifact = TemplateArtifact::rendered(
+                name.clone(),
+                "Hello Alice".to_owned(),
+            );
+
+            let resolved = artifact
+                .try_resolve_target("notes/x.md")
+                .expect("expected valid relative path to resolve");
+
+            assert_eq!(resolved.state.path().as_str(), "notes/x.md");
+            assert_eq!(resolved.template, name);
+            assert_eq!(resolved.content.as_str(), "Hello Alice");
+        }
+
+        #[test]
+        fn rejects_absolute_path() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("/abs/x.md");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::AbsolutePathRejected(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_traversal_path() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("../escape.md");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::TraversalRejected(_))
+            ));
+        }
+
+        #[test]
+        fn rejects_invalid_path() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::InvalidPath(_))
+            ));
         }
     }
 
