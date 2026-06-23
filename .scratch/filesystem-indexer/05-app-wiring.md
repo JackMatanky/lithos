@@ -23,11 +23,13 @@ Introduce a single `index` module inside `trace-app`:
 
 - `IndexCommand` carrying `IndexScope` and `IndexOptions` (domain types
   re-exported from `trace-indexer`).
-- `run_index(config, cmd) -> Result<IndexResult, AppError>` — expects a
-  pre-resolved `Config` (produced by `bootstrap.rs`), constructs the walkdir
+- `run_index(root: &DirPath, cache_dir: &DirPath, cmd: IndexCommand)
+   -> Result<IndexResult, AppError>` — expects a pre-resolved vault root and
+  cache directory (produced by the bootstrapper), constructs the walkdir
   scanner, the redb repository, and the `IndexerService` from `trace-indexer`,
   delegates to `IndexerService::run()`, and returns the result.
   Pipeline order (Discovery → Config → Indexer) is guaranteed by the caller.
+  Does not receive `Config` — only the vault root and cache dir are needed.
 
 No `flows/`, `composition/`, or `diagnostics/` sub-modules: composition is
 trivial (open store → construct adapters → inject) and fits inline in `run_index`.
@@ -73,19 +75,22 @@ wires them.
 - [ ] `trace-indexer` visibility uplift completed (all types above made `pub`).
 - [ ] `trace-indexer` added as dependency in `crates/app/Cargo.toml`.
 - [ ] `trace-db` added as dependency in `crates/app/Cargo.toml` (for `Store`).
-- [ ] `AppError` in `crates/app/src/error.rs` extended with `Indexer` variant
-      (wrapping `IndexerError`).
-- [ ] `IndexCommand` is defined with `IndexScope` and `IndexOptions` fields.
-- [ ] `run_index` constructs `WalkdirAdapter`, `RedbRepository`, and
-      `IndexerService`, then delegates to `IndexerService::run()`.
-- [ ] `run_index` receives a pre-resolved `Config` (produced upstream by
-      `bootstrap.rs`) and does not run Discovery or Config itself (correct
-      pipeline order: Discovery → Config → Indexer, with the first two
-      stages handled by the caller).
+- [ ] `AppError` renamed from `BootstrapError` with added `Indexer(#[from] IndexerError)` variant.
+- [ ] CLI `From<trace_app::BootstrapError>` updated to `From<trace_app::AppError>`.
+- [ ] `IndexCommand` defined with private `IndexScope` and `IndexOptions` fields,
+      public accessor methods.
+- [ ] `INDEX_DB_FILENAME` const added to `trace-indexer::storage` (`"index.redb"`).
+- [ ] `run_index(root: &DirPath, cache_dir: &DirPath, cmd: IndexCommand)
+      -> Result<IndexResult, AppError>` constructs `WalkdirAdapter`,
+      `RedbRepository`, and `IndexerService`, then delegates to
+      `IndexerService::run()`. Opens store at `cache_dir / INDEX_DB_FILENAME`.
+- [ ] `run_index` does not run Discovery or Config itself (correct pipeline
+      order guaranteed by caller).
 - [ ] `trace-app` exposes no redb, walkdir, or adapter-specific types in its
       public surface.
-- [ ] Integration test: calling `run_index` with a real (temp-dir) vault root
-      produces an `IndexResult` with correct counts and no panics.
+- [ ] Integration test: calling `run_index` with `trace_db::testing::TestDb`
+      (temp-dir vault + real redb) produces an `IndexResult` with correct
+      counts and no panics.
 - [ ] `app` module-level documentation describes the `index` module and scope
       guardrails (per ADR 021, updated for crate structure).
 - [ ] `IndexerError` variants are reviewed and confirmed to cover all error
@@ -150,8 +155,155 @@ The approach validated against `docs/refs/rust/guides/hexagonal_architecture.md`
 
 - [ ] Uplift visibility in `crates/indexer/src/` (see table above).
 - [ ] Add `trace-indexer` + `trace-db` to `crates/app/Cargo.toml`.
-- [ ] Add `Indexer` variant to `AppError` in `crates/app/src/error.rs`.
+- [ ] Rename `BootstrapError` → `AppError`, add `Indexer(#[from] IndexerError)` variant.
+- [ ] Update CLI `From<trace_app::BootstrapError>` → `From<trace_app::AppError>`.
 - [ ] Create `crates/app/src/index.rs` with `IndexCommand` and `run_index()`.
-- [ ] Write integration test (temp-dir vault + real walkdir + InMemoryRepository).
+- [ ] Write integration test (temp-dir vault + real walkdir + `trace_db::testing::TestDb`).
 - [ ] Update ADR 021 and ADR 024 crate path references.
 - [ ] `mise run verify` (fmt + lint + tests) after changes.
+
+---
+
+## TDD Plan
+
+Approved pre-implementation decisions:
+
+| Decision | Resolution |
+|----------|------------|
+| `run_index` parameters | `(root: &DirPath, cache_dir: &DirPath, cmd: IndexCommand)` — no `Config` |
+| `BootstrapError` → `AppError` | Rename, update CLI `From` impl, **no** deprecated type alias |
+| Store path | `cache_dir / INDEX_DB_FILENAME` (const `"index.redb"` in `trace-indexer::storage`) |
+| Integration storage | `trace_db::testing::TestDb` (real redb, not `InMemoryRepository`) |
+| `IndexCommand` fields | Private, public accessor methods |
+| Visibility promotion | Only the 21 types in the required table + module-level `pub` changes |
+| Pipeline order | Caller guarantees Discovery → Config → Indexer |
+
+### Slice V1: Visibility uplift
+
+**Files:** `crates/indexer/src/lib.rs`, `port.rs`, `repository.rs`, `service.rs`, `scan.rs`, `summary.rs`, `entry.rs`, `model.rs`, `report.rs`, `error.rs`, `scanner/mod.rs`, `scanner/walkdir.rs`, `storage/mod.rs`
+
+Change all `pub(crate)` → `pub` for the 21 types listed in the required table. Change `pub(crate) mod scanner` and `pub(crate) mod storage` to `pub mod`. Add `pub use walkdir::WalkdirAdapter;` to `scanner/mod.rs`.
+
+Kept `pub(crate)`: `InMemoryRepository`, `FileRecord`, `DirRecord`, `FsParentId`, `FsRecordType`, builder internals.
+
+**Tests:** Existing `test_indexer_exports` passes. `mise run test`.
+
+### Slice V2: `INDEX_DB_FILENAME` const
+
+**File:** `crates/indexer/src/storage/mod.rs`
+
+```rust
+pub const INDEX_DB_FILENAME: &str = "index.redb";
+```
+
+**Tests:** None — constant, no behavior.
+
+### Slice V3: Dependencies
+
+**File:** `crates/app/Cargo.toml`
+
+Add `trace-indexer` to `[dependencies]`, `trace-db` to both `[dependencies]` and `[dev-dependencies]` (with `features = ["testing"]`).
+
+**Tests:** `cargo check -p trace-app` compiles.
+
+### Slice V4: `AppError` + CLI update
+
+**RED** — Write 3 tests in `crates/app/src/error.rs`:
+
+| Test | Verifies |
+|------|----------|
+| `converts_indexer_error_to_app_error` | `IndexerError` → `AppError::Indexer` via `#[from]` |
+| `preserves_discovery_error_variant` | `DiscoveryError` → `AppError::Discovery` |
+| `preserves_config_error_variant` | `ConfigError` → `AppError::Config` |
+
+**GREEN** — Rename `BootstrapError` → `AppError` in `crates/app/src/error.rs`, add `Indexer(#[from] IndexerError)` variant. Update all references in `crates/app/src/bootstrap.rs`. Update `crates/cli/src/error.rs` `From<trace_app::BootstrapError>` → `From<trace_app::AppError>`.
+
+### Slice V5: `IndexCommand`
+
+**RED** — Write test in `crates/app/src/index.rs`:
+
+```rust
+mod index_command {
+    mod constructor {
+        #[test]
+        fn creates_command_with_scope_and_options() { ... }
+    }
+}
+```
+
+**GREEN** — Create `crates/app/src/index.rs`:
+
+```rust
+pub struct IndexCommand {
+    scope: IndexScope,
+    opts: IndexOptions,
+}
+
+impl IndexCommand {
+    pub fn new(scope: IndexScope, opts: IndexOptions) -> Self { ... }
+    pub fn scope(&self) -> &IndexScope { ... }
+    pub fn opts(&self) -> IndexOptions { ... }
+}
+```
+
+### Slice V6: `run_index`
+
+**RED** — Write test:
+
+```rust
+mod run_index {
+    #[test]
+    fn returns_app_error_when_store_fails() { ... }
+}
+```
+
+**GREEN** — Implement `run_index`:
+
+```rust
+pub fn run_index(
+    root: &DirPath,
+    cache_dir: &DirPath,
+    cmd: IndexCommand,
+) -> Result<IndexResult, AppError> {
+    let store = Store::open(&cache_dir.as_path().join(INDEX_DB_FILENAME))
+        .map_err(|e| AppError::Indexer(IndexerError::Repository(e.into())))?;
+    let repo = RedbRepository::try_new(Arc::new(store))?;
+    let service = IndexerService::new(root.clone(), WalkdirAdapter, repo);
+    Ok(service.run(cmd.scope(), cmd.opts())?)
+}
+```
+
+### Slice V7: Integration test
+
+**File:** `crates/app/tests/index.rs` (new)
+
+| Test | Verifies |
+|------|----------|
+| `run_index_with_temp_vault_returns_correct_counts` | Real vault files → correct file/dir counts, new_count |
+| `run_index_handles_empty_vault` | Empty vault → dirs=1 (vault root), files=0, no panic |
+
+Uses `trace_db::testing::TestDb` for temp dir + redb store.
+
+### Slice V8: ADR updates
+
+**Files:** `docs/adr/021-app-composition-root.md`, `docs/adr/024-bootstrapper-orchestration.md`
+
+Replace `lithos-core::app` → `crates/app` / `trace-app`. Update planned submodule descriptions in ADR 021 to reflect single `index` module.
+
+### Verification
+
+```
+mise run verify    # fmt + lint + test
+```
+
+### Complete test inventory
+
+| Loc | Module | Test |
+|-----|--------|------|
+| `crates/app/src/error.rs` | `conversions` | `converts_indexer_error_to_app_error` |
+| `crates/app/src/error.rs` | `conversions` | `preserves_discovery_error_variant` |
+| `crates/app/src/error.rs` | `conversions` | `preserves_config_error_variant` |
+| `crates/app/src/index.rs` | `index_command::constructor` | `creates_command_with_scope_and_options` |
+| `crates/app/src/index.rs` | `run_index` | `returns_app_error_when_store_fails` |
+| `crates/app/tests/index.rs` | — | `run_index_with_temp_vault_returns_correct_counts` |
+| `crates/app/tests/index.rs` | — | `run_index_handles_empty_vault` |
