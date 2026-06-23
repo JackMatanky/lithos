@@ -1,5 +1,5 @@
 ---
-labels: ["ready-for-agent"]
+labels: ["ready-for-agent", "enhancement"]
 ---
 
 # Issue: Update Mise Configuration for Consolidated Workspace Layout
@@ -87,3 +87,44 @@ Full design: `docs/superpowers/specs/2026-06-23-mise-updates-design.md`
 3. **Remove `context_filter`**: The auto-filtering of test names by crate is no longer needed since `-p <crate>` already scopes to a separate package.
 
 4. **Google Shell Style compliance**: All 12 file tasks reformatted to 2-space indent, `[[ ]]` everywhere, proper function headers, `main()` convention, error messages to stderr.
+
+---
+
+## Agent Brief
+
+**Category:** enhancement
+**Summary:** Update mise configuration to match consolidated workspace crate layout
+
+**Current behavior:**
+After the workspace consolidation, all `mise run` commands that target specific packages (`test:unit:core`, `test:unit:cli`, `test:bench:core`, etc.) fail or test the wrong code because `mise.toml` vars and `.mise/tasks/` scripts still hardcode legacy package names (`lithos-core`, `lithos-cli`, `lithos`). File tasks also reference non-existent directory paths like `lithos-cli/` and `lithos-core/`. Many file tasks use 4-space indentation and non-idiomatic shell patterns, diverging from the project's Google Shell Style guide.
+
+**Desired behavior:**
+All mise configuration and file tasks work correctly with the 12 `trace-*` crates under `crates/`. Crate names are discovered dynamically from `crates/*/Cargo.toml` at runtime, eliminating hardcoded package name mappings. All file tasks conform to the Google Shell Style Guide (2-space indent, `[[ ]]` over `[ ]`, `(( ... ))` for arithmetic, `local` variables, `main()` function convention, error messages to stderr).
+
+**Key interfaces:**
+- `scripts/_crate_utils.sh` — new shared bash library providing `discover_crate_names()`, `resolve_crate_name()`, and `build_package_arg()` for dynamic crate name resolution
+- `mise.toml` `[vars]` section — remove legacy vars; keep only generic path/tool vars
+- `.mise/tasks/*` file tasks — each sources the shared library and uses dynamic resolution
+- Google Shell Style Guide (`docs/refs/google_shell_script_style_guide.md`) — all 12 file tasks comply
+
+**Acceptance criteria:**
+- [ ] `mise run test:unit` runs all workspace unit tests successfully
+- [ ] `mise run test:unit -p cli` runs only `trace-cli` unit tests
+- [ ] `mise run test:unit -p settings` runs only `trace-settings` unit tests
+- [ ] `mise run test:integration` runs all workspace integration tests
+- [ ] `mise run test:e2e` runs CLI end-to-end tests using `trace-cli` binary
+- [ ] `mise run test:changed` detects changes in `crates/*/` and tests only affected crates
+- [ ] `mise run test:bench` runs benchmarks with correct package selection
+- [ ] `mise run clean` removes build artifacts without error
+- [ ] `mise run adr:validate` validates all ADRs
+- [ ] `mise run verify` — full quality gate passes
+- [ ] All `.mise/tasks/*` scripts pass ShellCheck or follow Google Shell Style conventions
+- [ ] No references to `lithos-core`, `lithos-cli`, or `lithos` remain in mise configuration or task scripts
+- [ ] `detect_changes()` reports no unexpected affected files
+
+**Out of scope:**
+- Rust source code changes
+- Renaming crate directories or package names
+- Adding new mise tasks beyond fixing existing ones
+- Updating documentation outside `mise.toml` and `.mise/tasks/` files
+- Fixing legacy references in `.scratch/` issue files or historical design docs
