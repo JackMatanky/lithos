@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# metrics — Generate ADR quality metrics and summary.
+#
 #MISE description="Generate ADR quality metrics and summary"
 #MISE sources=["{{vars.adr_dir}}/*.md"]
 #MISE outputs=["target/adr-metrics.stamp"]
@@ -9,113 +12,109 @@ set -euo pipefail
 # Generate ADR quality metrics.
 # Globals:
 #   ADR_DIR
-# Arguments:
-#   None
+#   TOTAL_ADRS, ACCEPTED, PROPOSED, SUPERSEDED, REJECTED, DEPRECATED, COMPLETE (modified)
 # Outputs:
 #   Writes metrics to stdout
 #######################################
 generate_adr_metrics() {
-    for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
-        [ -e "$adr" ] || continue
-        ((TOTAL_ADRS++))
+  # ADRs follow the NNN-name.md pattern (3 digits), though the original used 4;
+  # updating to match validate.
+  for adr in "${ADR_DIR}"/[0-9][0-9][0-9]-*.md; do
+    [[ -e "${adr}" ]] || continue
+    ((TOTAL_ADRS++))
 
-        status=$(grep -oE "\*   \*\*Status\*\*:[[:space:]]*[A-Za-z]+" "$adr" | awk -F': ' '{print $2}')
+    local status
+    status="$(grep -iE "^status:[[:space:]]*[A-Za-z]+" "${adr}" | awk -F': *' '{print $2}' || true)"
+    # Capitalize first letter
+    status="$(echo "${status}" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')"
 
-        case "$status" in
-        Accepted)
-            ((ACCEPTED++))
-            ;;
-        Proposed)
-            ((PROPOSED++))
-            ;;
-        Superseded)
-            ((SUPERSEDED++))
-            ;;
-        Rejected)
-            ((REJECTED++))
-            ;;
-        Deprecated)
-            ((DEPRECATED++))
-            ;;
-        esac
+    case "${status}" in
+      Accepted|Implemented)
+        ((ACCEPTED++))
+        ;;
+      Proposed)
+        ((PROPOSED++))
+        ;;
+      Superseded)
+        ((SUPERSEDED++))
+        ;;
+      Rejected)
+        ((REJECTED++))
+        ;;
+      Deprecated)
+        ((DEPRECATED++))
+        ;;
+    esac
 
-        # Check for completeness (all 6 headers present)
-        missing=0
-        for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences" "Status Tracking"; do
-            if ! grep -q "^## $section" "$adr"; then
-                ((missing++))
-            fi
-        done
-
-        if [ $missing -eq 0 ]; then
-            ((COMPLETE++))
-        fi
+    # Check for completeness (all 5 required headers present)
+    local missing=0
+    local section
+    for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences"; do
+      if ! grep -q "^## ${section}" "${adr}"; then
+        ((missing++))
+      fi
     done
+
+    if (( missing == 0 )); then
+      ((COMPLETE++))
+    fi
+  done
 }
 
 #######################################
 # Report ADR metrics.
 # Globals:
 #   TOTAL_ADRS, ACCEPTED, PROPOSED, SUPERSEDED, REJECTED, DEPRECATED, COMPLETE
-# Arguments:
-#   None
 # Outputs:
 #   Writes metrics summary to stdout
 #######################################
 report_metrics() {
-    echo "Total ADRs: $TOTAL_ADRS"
-    echo "  Accepted:   $ACCEPTED"
-    echo "  Proposed:   $PROPOSED"
-    echo "  Other:      $((SUPERSEDED + REJECTED + DEPRECATED))"
-    echo ""
-    echo "Quality Gate Status:"
+  echo "Total ADRs: ${TOTAL_ADRS}"
+  echo "  Accepted:   ${ACCEPTED}"
+  echo "  Proposed:   ${PROPOSED}"
+  echo "  Other:      $((SUPERSEDED + REJECTED + DEPRECATED))"
+  echo ""
+  echo "Quality Gate Status:"
 
-    if [ $TOTAL_ADRS -eq 0 ]; then
-        COMPLETENESS=0
-    else
-        COMPLETENESS=$(((COMPLETE * 100) / TOTAL_ADRS))
-    fi
+  local completeness
+  if (( TOTAL_ADRS == 0 )); then
+    completeness=0
+  else
+    completeness=$(( (COMPLETE * 100) / TOTAL_ADRS ))
+  fi
 
-    echo "  Completeness: $COMPLETENESS% ($COMPLETE/$TOTAL_ADRS files meet template standards)"
+  echo "  Completeness: ${completeness}% (${COMPLETE}/${TOTAL_ADRS} files meet template standards)"
 
-    if [ $COMPLETENESS -lt 100 ]; then
-        echo "  ⚠️ Action Required: Some ADRs are missing required sections."
-    else
-        echo "  ✅ All ADRs meet the gold standard."
-    fi
+  if (( completeness < 100 )); then
+    echo "  ⚠️ Action Required: Some ADRs are missing required sections."
+  else
+    echo "  ✅ All ADRs meet the gold standard."
+  fi
 }
 
 #######################################
 # Main entry point.
-# Globals:
-#   None
-# Arguments:
-#   $@
-# Outputs:
-#   Writes ADR metrics to stdout
 #######################################
 main() {
-    ADR_DIR="${ADR_DIR:-docs/adr}"
-    TOTAL_ADRS=0
-    ACCEPTED=0
-    PROPOSED=0
-    SUPERSEDED=0
-    REJECTED=0
-    DEPRECATED=0
-    COMPLETE=0
+  export ADR_DIR="${MISE_VARS_ADR_DIR:-docs/adr}"
+  export TOTAL_ADRS=0
+  export ACCEPTED=0
+  export PROPOSED=0
+  export SUPERSEDED=0
+  export REJECTED=0
+  export DEPRECATED=0
+  export COMPLETE=0
 
-    echo "📊 ADR Quality Metrics for Lithos..."
-    echo "-----------------------------------"
-    generate_adr_metrics
-    report_metrics
-    echo "Reported metrics" >&2
-    echo "-----------------------------------"
+  echo "📊 ADR Quality Metrics for Lithos..."
+  echo "-----------------------------------"
+  generate_adr_metrics
+  report_metrics
+  echo "Reported metrics" >&2
+  echo "-----------------------------------"
 
-    # Create stamp file for caching
-    mkdir -p target
-    touch target/adr-metrics.stamp
-
-    exit 0
+  # Create stamp file for caching
+  mkdir -p target
+  touch target/adr-metrics.stamp
 }
 
 main "$@"

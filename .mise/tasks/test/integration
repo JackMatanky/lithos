@@ -1,35 +1,22 @@
 #!/usr/bin/env bash
+#
+# integration — Run integration tests across the workspace using nextest.
+#
 #MISE description="Run all integration tests across the workspace using nextest"
 #MISE alias="ti"
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
-#USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "core" "cli"
+#USAGE flag "-p --package <package>" help="Run tests for a specific crate" {
+#USAGE   choices "cli" "settings" "note" "schema" "template" "db" "fs" "app" "support" "indexer" "vault" "utils"
 #USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
-#######################################
-# Map shorthand package names to full cargo package names.
-# Globals:
-#   usage_package  (read)
-# Outputs:
-#   Echoes the full package name (may be empty)
-#######################################
-map_package_name() {
-    case "${usage_package:-}" in
-    core)
-        echo "lithos-core"
-        ;;
-    cli)
-        echo "lithos"
-        ;;
-    *)
-        echo ""
-        ;;
-    esac
-}
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source "$(git rev-parse --show-toplevel)/.mise/lib/_crate_names.sh"
 
 #######################################
 # Main entry point.
@@ -37,39 +24,43 @@ map_package_name() {
 #   TEST_THREADS   (read)
 #   usage_verbose  (read)
 #   usage_filter   (read)
+#   usage_package  (read)
 #######################################
 main() {
-    local resolved_package
-    resolved_package=$(map_package_name)
+  local -a args=()
 
-    local args=()
+  # Threading
+  args+=("--test-threads" "${TEST_THREADS:-4}")
 
-    # Threading
-    args+=("--test-threads" "${TEST_THREADS:-4}")
-
-    # Package selection
-    if [[ -n "${resolved_package}" ]]; then
-        args+=("--package" "${resolved_package}")
-    else
-        args+=("--workspace")
+  # Package selection
+  if [[ -n "${usage_package:-}" ]]; then
+    local resolved
+    resolved="$(resolve_crate_name "${usage_package}")"
+    if [[ -z "${resolved}" ]]; then
+      echo "Error: Unknown crate '${usage_package}'" >&2
+      exit 1
     fi
+    args+=("--package" "${resolved}")
+  else
+    args+=("--workspace")
+  fi
 
-    # Integration tests only
-    args+=("--filter-expr" "kind(test)")
-    if [[ -n "${usage_filter:-}" ]]; then
-        args+=("${usage_filter}")
-    fi
+  # Integration tests only
+  args+=("--filter-expr" "kind(test)")
+  if [[ -n "${usage_filter:-}" ]]; then
+    args+=("${usage_filter}")
+  fi
 
-    # Execution options
-    args+=("--partition" "hash:1/1")
-    args+=("--no-tests" "pass")
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        args+=("--verbose")
-    fi
+  # Execution options
+  args+=("--partition" "hash:1/1")
+  args+=("--no-tests" "pass")
+  if [[ "${usage_verbose:-}" == "1" ]]; then
+    args+=("--verbose")
+  fi
 
-    echo "🧪 Running integration tests..."
-    cargo nextest run "${args[@]}"
-    echo "✅ Integration tests complete"
+  echo "🧪 Running integration tests..."
+  cargo nextest run "${args[@]}"
+  echo "✅ Integration tests complete"
 }
 
 main "$@"

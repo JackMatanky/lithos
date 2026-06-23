@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# clean — Clean the workspace by removing build artifacts and cache files.
+#
 #MISE description="Clean the workspace by removing build artifacts and cache files"
 #MISE alias="c"
 #USAGE arg "[target]" help="What to clean" default="all" {
@@ -13,8 +16,8 @@ set -euo pipefail
 #   Writes progress to stdout
 #######################################
 clean_cargo() {
-    echo "🧹 Cleaning cargo build artifacts..."
-    cargo clean
+  echo "🧹 Cleaning cargo build artifacts..."
+  cargo clean
 }
 
 #######################################
@@ -23,11 +26,11 @@ clean_cargo() {
 #   Writes progress to stdout
 #######################################
 clean_test() {
-    echo "🧹 Cleaning test output artifacts..."
-    # shellcheck disable=SC1083
-    rm -rf {{env.TEST_OUTPUT_DIR}}
-    # shellcheck disable=SC1083
-    rm -f {{vars.junit_unit}} {{vars.junit_integration}}
+  echo "🧹 Cleaning test output artifacts..."
+  # shellcheck disable=SC1083
+  rm -rf {{env.TEST_OUTPUT_DIR}}
+  # shellcheck disable=SC1083
+  rm -f {{vars.junit_unit}} {{vars.junit_integration}}
 }
 
 #######################################
@@ -36,45 +39,41 @@ clean_test() {
 #   Writes progress to stdout
 #######################################
 clean_reports() {
-    echo "🧹 Cleaning report artifacts and stamps..."
-    # shellcheck disable=SC1083
-    rm -f {{vars.target_dir}}/*.stamp
-    # shellcheck disable=SC1083
-    rm -f {{vars.coverage_report}}
+  echo "🧹 Cleaning report artifacts and stamps..."
+  # shellcheck disable=SC1083
+  rm -f {{vars.target_dir}}/*.stamp
+  # shellcheck disable=SC1083
+  rm -f {{vars.coverage_report}}
 }
 
 #######################################
 # Main entry point.
 # Globals:
 #   usage_target - Set by usage spec (default: "all")
-# Arguments:
-#   $@
-# Outputs:
-#   None
 #######################################
 main() {
-    case "${usage_target:-all}" in
-        all)
-            clean_cargo
-            clean_test
-            clean_reports
-            ;;
-        cargo)
-            clean_cargo
-            ;;
-        test)
-            clean_test
-            ;;
-        reports)
-            clean_reports
-            ;;
-        *)
-            echo "Error: Unknown target '${usage_target}'" >&2
-            exit 1
-            ;;
-    esac
+  case "${usage_target:-all}" in
+    all)
+      clean_cargo
+      clean_test
+      clean_reports
+      ;;
+    cargo)
+      clean_cargo
+      ;;
+    test)
+      clean_test
+      ;;
+    reports)
+      clean_reports
+      ;;
+    *)
+      echo "Error: Unknown target '${usage_target}'" >&2
+      exit 1
+      ;;
+  esac
 
-    echo "✅ Cleanup complete"
+  echo "✅ Cleanup complete"
 }
 
 main "$@"
