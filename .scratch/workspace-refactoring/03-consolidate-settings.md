@@ -19,10 +19,10 @@ Merge the isolated configuration and discovery mechanisms into a single, cohesiv
 
 ## Acceptance criteria
 
-- [ ] `crates/settings` exists and contains the logic for config, discovery, dirs, and env.
-- [ ] The old `config` and `discovery` crates are deleted.
-- [ ] `trace-app` successfully orchestrates application workflows using `trace-settings`.
-- [ ] The workspace compiles and all tests pass.
+- [x] `crates/settings` exists and contains the logic for config, discovery, dirs, and env.
+- [x] The old `config` and `discovery` crates are deleted.
+- [x] `trace-app` successfully orchestrates application workflows using `trace-settings`.
+- [x] The workspace compiles and all tests pass.
 
 ## Blocked by
 
@@ -53,13 +53,13 @@ A single `trace-settings` crate (`crates/settings`, package `trace-settings`) ho
 - Preserve the crate-level `#![feature(trivial_bounds)]` that both source crates carry.
 
 **Acceptance criteria:**
-- [ ] `crates/settings` exists as package `trace-settings`, containing config, discovery, `dirs`, and `env` logic (plus the config `vault`/storage submodules), exposing both discovery results and the configuration API from one crate root.
-- [ ] `crates/config` and `crates/discovery` are deleted; the root workspace `Cargo.toml` lists `trace-settings` in place of `trace-config`/`trace-discovery`.
-- [ ] Every former dependent (`trace-note`, `trace-schema`, `trace-template`, `trace-vault`, `trace-app`, `trace-cli`) builds against `trace-settings`; no `trace-config`/`trace_config` or `trace-discovery`/`trace_discovery` references remain in the workspace.
-- [ ] `crates/settings/tests/architecture.rs` enforces the intra-crate config→discovery one-way boundary, and those tests no longer live in the `trace-app` suite.
-- [ ] The `testing` feature is preserved on `trace-settings` and every crate enabling it still compiles.
-- [ ] `crates/settings/CONTEXT.md` exists (merging the config + discovery context docs) so the `CONTEXT-MAP.md` Settings link resolves.
-- [ ] `cargo check` and `cargo test` pass for the whole workspace.
+- [x] `crates/settings` exists as package `trace-settings`, containing config, discovery, `dirs`, and `env` logic (plus the config `vault`/storage submodules), exposing both discovery results and the configuration API from one crate root.
+- [x] `crates/config` and `crates/discovery` are deleted; the root workspace `Cargo.toml` lists `trace-settings` in place of `trace-config`/`trace-discovery`.
+- [x] Every former dependent (`trace-note`, `trace-schema`, `trace-template`, `trace-vault`, `trace-app`, `trace-cli`) builds against `trace-settings`; no `trace-config`/`trace_config` or `trace-discovery`/`trace_discovery` references remain in the workspace.
+- [x] `crates/settings/tests/architecture.rs` enforces the intra-crate config→discovery one-way boundary, and those tests no longer live in the `trace-app` suite.
+- [x] The `testing` feature is preserved on `trace-settings` and every crate enabling it still compiles.
+- [x] `crates/settings/CONTEXT.md` exists (merging the config + discovery context docs) so the `CONTEXT-MAP.md` Settings link resolves.
+- [x] `cargo check` and `cargo test` pass for the whole workspace.
 
 ## Import Refactor Map
 
