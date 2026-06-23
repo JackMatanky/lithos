@@ -132,23 +132,23 @@ The `verify` task depends on `deny`. The `deny` task should ideally be part of t
 
 ## 4. Design: Shared Crate Discovery Library
 
-The core innovation is a shared bash library (`scripts/_crate_utils.sh`) that all file tasks source. This replaces the redundant `map_package_name` functions currently duplicated across 5+ tasks.
+The core innovation is a shared bash library (`scripts/_crate_names.sh`) that all file tasks source. This replaces the redundant `map_package_name` functions currently duplicated across 5+ tasks.
 
-**Location**: `scripts/_crate_utils.sh` — outside mise's task discovery paths, so it won't be accidentally loaded as a task. Made non-executable (`chmod -x`).
+**Location**: `.mise/lib/_crate_names.sh` — a `.mise/` subdirectory keeps it adjacent to the tasks that source it. Non-executable (`chmod -x`) so mise doesn't discover it as a task.
 
-### 4.1 `scripts/_crate_utils.sh`
+### 4.1 `.mise/lib/_crate_names.sh`
 
 A library file (not executable, per Google convention). Provides:
 
 ```bash
 #!/usr/bin/env bash
 #
-# _crate_utils.sh — Shared crate discovery and mapping utilities.
+# _crate_names.sh — Shared crate discovery and mapping utilities.
 #
 # Provides functions for dynamically resolving workspace crate names
 # from the filesystem, eliminating hardcoded package name mappings.
 #
-# Usage: source "$(dirname "$0")/_crate_utils.sh"
+# Usage: source "$(dirname "$0")/_crate_names.sh"
 #
 # Functions:
 #   discover_crate_names    — Lists all workspace crate package names
@@ -258,16 +258,18 @@ build_package_arg() {
 
 ### 4.2 Integration Contract
 
-Each file task sources the library at the top:
+Each file task sources the library using a stable root-relative path.
+
+Relative pathing (`$(dirname "$0")/../lib/_crate_names.sh`) doesn't work uniformly — tasks at depth 1 (`.mise/tasks/clean`) need `../lib/` while tasks at depth 2 (`.mise/tasks/test/unit`) need `../../lib/`.
+
+Use `MISE_PROJECT_ROOT` (guaranteed by mise) or `git rev-parse --show-toplevel` (already used in `test/bench`, `fmt`):
 
 ```bash
-# shellcheck source=scripts/_crate_utils.sh
-source "$(git rev-parse --show-toplevel)/scripts/_crate_utils.sh"
+# shellcheck source=.mise/lib/_crate_names.sh
+source "$(git rev-parse --show-toplevel)/.mise/lib/_crate_names.sh"
 ```
 
-**Alternative** (if `git` is unavailable in the execution context): Use `"${MISE_PROJECT_ROOT}/scripts/_crate_utils.sh"` or construct a relative path from `$(dirname "$0")`. For `.mise/tasks/test/unit`, the relative path is `"$(dirname "$0")/../../scripts/_crate_utils.sh"`.
-
-Prefer `git rev-parse --show-toplevel` since it is already used consistently in existing file tasks (e.g., `test/bench`, `fmt`).
+This resolves correctly from any nesting depth.
 
 ---
 
@@ -302,24 +304,24 @@ Prefer `git rev-parse --show-toplevel` since it is already used consistently in 
 
 ### 5.5 `.mise/tasks/test/unit`
 
-- Replace: `map_package_name()` → source `_crate_utils.sh` and call `resolve_crate_name`/`build_package_arg`
+- Replace: `map_package_name()` → source `_crate_names.sh` and call `resolve_crate_name`/`build_package_arg`
 - **Remove**: `context_filter()` — no longer needed. Previously filtered tests like `config::` within monolithic `lithos-core`. Now `-p settings` already scopes to the `trace-settings` crate. Users pass positional filter args directly (e.g., `mise run test:unit -p settings config::`).
 - Update: `-p choices` in usage spec to list all 12 crate directories: `cli`, `settings`, `note`, `schema`, `template`, `db`, `fs`, `app`, `support`, `indexer`, `vault`, `utils`
 - Fix: 4-space → 2-space indent
 - Fix: Add file header, proper function docs
 - Keep: Same test flow (nextest + doc-tests)
-- **Package choice mapping**: `cli` → `trace-cli`, `settings` → `trace-settings`, `note` → `trace-note`, etc. All resolved via `_crate_utils.sh`.
+- **Package choice mapping**: `cli` → `trace-cli`, `settings` → `trace-settings`, `note` → `trace-note`, etc. All resolved via `_crate_names.sh`.
 
 ### 5.6 `.mise/tasks/test/integration`
 
-- Replace: `map_package_name()` → source `_crate_utils.sh`
+- Replace: `map_package_name()` → source `_crate_names.sh`
 - Fix: Add `set -euo pipefail`, shebang, file header
 - Fix: 4-space → 2-space indent
 - Update: `-p choices` usage spec to reflect current crate names: `cli`, `settings`, `note`, `schema`, `template`, `db`, `fs`, `app`, `support`, `indexer`, `vault`, `utils`
 
 ### 5.7 `.mise/tasks/test/e2e`
 
-- Replace: Hardcoded `--package lithos` → source `_crate_utils.sh`, use `build_package_arg cli`
+- Replace: Hardcoded `--package lithos` → source `_crate_names.sh`, use `build_package_arg cli`
 - Replace: `binary(lithos)` → `binary(trace-cli)`
 - Fix: Add `set -euo pipefail`, shebang, file header, `main()` function with proper docs
 - Fix: 4-space → 2-space indent
@@ -328,14 +330,14 @@ Prefer `git rev-parse --show-toplevel` since it is already used consistently in 
 ### 5.8 `.mise/tasks/test/changed`
 
 - Replace: Legacy grep `^(lithos-core|lithos-cli)/` → `^crates/`
-- Replace: Legacy directory mapping (`lithos-core` → `mise run test:unit -p core`) → source `_crate_utils.sh` and call  `mise run test:unit -p <dirname>` directly (e.g., `mise run test:unit -p settings`)
+- Replace: Legacy directory mapping (`lithos-core` → `mise run test:unit -p core`) → source `_crate_names.sh` and call  `mise run test:unit -p <dirname>` directly (e.g., `mise run test:unit -p settings`)
 - Fix: 4-space → 2-space indent
 - Fix: File header and function docs
 - **New logic**: Extract changed crate dirs from `crates/<name>/` paths, then use the directory name as shorthand for `resolve_crate_name`
 
 ### 5.9 `.mise/tasks/test/coverage`
 
-- Replace: `map_package_name()` → source `_crate_utils.sh`
+- Replace: `map_package_name()` → source `_crate_names.sh`
 - Replace: Case filter (`config | note | schema | ...`) → use `resolve_crate_name`
 - Fix: Add `set -euo pipefail`
 - Fix: 4-space → 2-space indent
@@ -343,7 +345,7 @@ Prefer `git rev-parse --show-toplevel` since it is already used consistently in 
 
 ### 5.10 `.mise/tasks/test/bench`
 
-- Replace: `map_package_name()` → source `_crate_utils.sh`
+- Replace: `map_package_name()` → source `_crate_names.sh`
 - Replace: Legacy fallback vars `:-lithos-core`, `:-lithos-cli` → dynamic discovery
 - Replace: `discover_bench_targets` search path from `lithos-core` -> resolve dynamically
 - Already: 2-space indent, good structure
@@ -413,7 +415,7 @@ Every file task must conform to these rules:
 
 The proposed implementation order minimizes disruption:
 
-1. **Create `_crate_utils.sh`** — shared library (no existing code changes)
+1. **Create `_crate_names.sh`** — shared library (no existing code changes)
 2. **Update `mise.toml`** — vars, env, remove legacy tasks, simplify build task
 3. **Update `test/unit`** — first consumer of the shared library, most complex
 4. **Update `test/integration`** — second consumer
@@ -451,7 +453,7 @@ After all changes:
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | `resolve_crate_name` fails for edge case shorthand | Low | Test with each shorthand before committing |
-| `_crate_utils.sh` sourcing path wrong for deep tasks | Low | Use `$(dirname "$0")` relative pathing; test each depth |
+| `_crate_names.sh` sourcing path wrong for deep tasks | Low | Use `$(dirname "$0")` relative pathing; test each depth |
 | Dynamic crate discovery breaks in CI | Low | CI runs from project root; `git rev-parse` handles this |
-| A crate rename breaks `_crate_utils.sh` | Low by design — auto-discovers from Cargo.toml |
+| A crate rename breaks `_crate_names.sh` | Low by design — auto-discovers from Cargo.toml |
 | Google style changes introduce bugs | Low | Indent-only changes are mechanical; test after each task |
