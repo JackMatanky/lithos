@@ -682,6 +682,13 @@ mod tests {
             };
             let _: &dyn std::error::Error = &err;
         }
+
+        #[test]
+        fn converts_from_fs_error() {
+            let fs_error = FsError::from(PathError::Empty);
+            let write_error: WriteError = fs_error.into();
+            assert!(matches!(write_error, WriteError::Fs(_)));
+        }
     }
 
     mod scan_error {
