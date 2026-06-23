@@ -61,6 +61,101 @@ A single `trace-settings` crate (`crates/settings`, package `trace-settings`) ho
 - [ ] `crates/settings/CONTEXT.md` exists (merging the config + discovery context docs) so the `CONTEXT-MAP.md` Settings link resolves.
 - [ ] `cargo check` and `cargo test` pass for the whole workspace.
 
+## Import Refactor Map
+
+Every path follows the same mechanical transform:
+
+```
+trace_config::xxx::Yyy  →  trace_settings::xxx::Yyy
+trace_discovery::xxx::Yyy  →  trace_settings::xxx::Yyy
+```
+
+**25 files** with `use` statements / inline-path references + **15 source-crate files** with doc-comment-only updates (harmless to compilation but should be updated for correctness).
+
+### Cargo.toml dependency changes
+
+| Crate               | Current                                   | New            |
+| ------------------- | ----------------------------------------- | -------------- |
+| Root workspace      | `trace-config`, `trace-discovery`             | `trace-settings` |
+| `trace-app`           | `trace-discovery`, `trace-config`             | `trace-settings` |
+| `trace-cli`           | `trace-discovery`, `trace-config` (w/testing) | `trace-settings` |
+| `trace-note`          | `trace-config`                              | `trace-settings` |
+| `trace-schema`        | `trace-config`                              | `trace-settings` |
+| `trace-template`      | `trace-config`                              | `trace-settings` |
+| `trace-vault`         | `trace-config`                              | `trace-settings` |
+| `trace-config` (self) | `trace-discovery`                           | (deleted)      |
+
+### A) `trace-app` (heaviest — both config + discovery imports)
+
+| File                        | Changes                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `crates/app/src/bootstrap.rs` | 2 top-level `use` blocks (config + discovery), 2 inner `#[cfg(test)]` blocks, 5 inline-path refs, 1 doc-comment |
+| `crates/app/src/error.rs`     | 2 single-line `use` (`ConfigError`, `DiscoveryError`)                                                           |
+
+**Key types:** `aggregate::Config`, `builder::Builder`, `repository::Repository`, `DiscoveryContext`, `DiscoveryEnv`, `DiscoveryFlags`, `EnvVars`, `dirs::AppDirs`, `error::DiscoveryError`, `port::DiscoveryPort`, `report::DiscoveryReport`, `service::DiscoveryResult`, `service::DiscoveryService`, `service::DiscoveryServiceConfig`, `service::CandidatePath`, `location::CacheRoot`, `location::CacheLocation`, `location::GlobalCacheLocation`
+
+Also `trace_discovery::port::DiscoveryPort` in trait impl (`impl trace_discovery::port::DiscoveryPort for DiscoveryPort`), and `trace_discovery::location::CacheRoot` in return type annotation.
+
+### B) `trace-cli` (both config + discovery imports)
+
+| File                                    | Changes                                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `crates/cli/src/main.rs`                  | `use trace_discovery::DiscoveryFlags` + inline `DiscoveryError::CanonicalizePath`                                              |
+| `crates/cli/src/error.rs`                 | 1 `use trace_discovery::error::DiscoveryError`, inner `#[cfg(test)]`: `use trace_config::error::ConfigError`, `use trace_discovery::error::{DiscoveryError, EnvironmentOverrideError, FlagOverrideError, ServiceConfigError}` |
+| `crates/cli/src/commands/doctor.rs`       | 2 top-level uses (`InMemoryRepository` + `DiscoveryFlags`/`port::DiscoveryPort`), 3 inline-path `DiscoveryReport` refs, inner `#[cfg(test)]`: `DiscoveryFlags`/`service::DiscoveryService` |
+| `crates/cli/src/commands/config.rs`       | `use trace_config::InMemoryRepository`, `use trace_discovery::{DiscoveryFlags, port::DiscoveryPort, report::{DiscoveryReport, SkippedCeilingReason}}`, inline `LocalTraversalStopReason`, inner `#[cfg(test)]`: `DiscoveryFlags`/`service::DiscoveryService` |
+| `crates/cli/src/commands/config_files.rs`| `use trace_discovery::{DiscoveryFlags, port::DiscoveryPort}`, inner `#[cfg(test)]`: same block                |
+
+### C) `trace-note` (trace_config only — 12 files)
+
+| File                                                 | Pattern                                                     | Key types                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `crates/note/src/processor.rs`                         | 1 `use` + 10 inline fn sigs                                 | `Config`, `TaskConfigSpec`, `FrontmatterConfigSpec`                                  |
+| `crates/note/src/task.rs`                              | 1 `use` + 5 inline type annotations + 1 inner `use`         | `TaskConfigSpec`, `DateSpec`, `TemporalSlot`                                          |
+| `crates/note/src/aggregate.rs`                         | 1 block `use` + 1 inline + inner test block + 3 inline      | `FrontmatterConfigSpec`, `TaskConfigSpec`, `Config`, `RawVaultConfig`, `VaultId`, `VaultRoot` |
+| `crates/note/src/list.rs`                              | 1 `use`                                                     | `TaskConfigSpec`                                                                    |
+| `crates/note/src/frontmatter.rs`                       | 1 `use`                                                     | `FrontmatterConfigSpec`                                                             |
+| `crates/note/src/raw/value.rs`                         | 1 `use`                                                     | `DateSpec`                                                                          |
+| `crates/note/src/error.rs`                             | 1 inline `#[from]`                                          | `ConfigError`                                                                       |
+| `crates/note/src/parser/mod.rs`                        | 2 `use` (file + inner `#[cfg(test)]`)                         | `TaskConfigSpec`                                                                    |
+| `crates/note/tests/note_ingest.rs`                     | 1 block `use`                                                | `Version`, `builder`, `VaultId`, `VaultRoot`                                           |
+| `crates/note/tests/note_reader.rs`                     | 1 block `use`                                                | `Config`, `Version`, `builder`, `StatusSymbol`, `VaultId`, `VaultRoot`                    |
+| `crates/note/tests/note_lexical_policy_integration.rs` | 1 `use`                                                     | `TaskConfigSpec`                                                                    |
+| `crates/note/benches/note_parsing.rs`                  | 1 `use`                                                     | `TaskConfigSpec`                                                                    |
+
+### D) `trace-schema` (trace_config only — 3 files)
+
+| File | Changes |
+|------|---------|
+| `crates/schema/src/builder.rs` | 1 top-level `use Config`, inner test block: `use {Config, SchemaConfigSpec}` + 3 inline paths (`build_from_layers`, `VaultId::new`, `VaultRoot::try_new`, `Version::initial`) |
+| `crates/schema/src/discovery.rs` | 1 `use` (`SchemaConfigSpec`) |
+| `crates/schema/tests/schema_loader.rs` | 1 block `use` (`Config`, `Version`, `builder`, `VaultId`, `VaultRoot`) |
+
+### E) Others
+
+| File | Changes |
+|------|---------|
+| `crates/template/src/service.rs` | 1 `use` (`TemplateConfigSpec`) |
+| `crates/vault/src/processor.rs` | 1 `use` (`Config`) |
+
+### F) Source-crate self-references (doc-comments only)
+
+15 files in `crates/config/src/` and `crates/discovery/src/` with `///` or `//!` code examples referencing `trace_config::` or `trace_discovery::`. While harmless to compilation, update these to `trace_settings::` for correctness.
+
+### Architecture test implications
+
+The 5 boundary tests in `crates/app/tests/architecture.rs` that glob into `crates/config/` need path rewrites when moved to `crates/settings/tests/architecture.rs`:
+
+| Test | Current glob | New glob |
+|------|-------------|----------|
+| `config_must_not_import_discovery_diagnostics_or_source_policy` | `../../crates/config/src/**/*.rs` | `../../crates/settings/src/config/**/*.rs` |
+| `config_must_not_own_filesystem_candidate_discovery_modules` | checks `../config/src/candidates.rs`, `../config/src/location.rs` | check `../settings/src/discovery/location.rs` exists (moved, not owned by config/) |
+| `builder_must_not_hardcode_system_global_config_path` | `../config/src/builder.rs` | `../settings/src/config/builder.rs` |
+| `builder_must_not_use_known_vault_root_discovery_shortcut` | `../config/src/builder.rs` | `../settings/src/config/builder.rs` |
+| `builder_imports_only_discovery_service_result_from_discovery` | `../config/src/builder.rs` | `../settings/src/config/builder.rs` |
+
+Also: `contexts_must_not_import_each_other` (line 191) currently has `other == "config"` as a special exception — update to `other == "settings"` or remove entirely (compiler now enforces context isolation).
+
 **Out of scope:**
 - Changing configuration formats, precedence rules, or adding new settings.
 - The global "Lithos" → "Trace" text/env-var rename — that's 04-global-rename (blocked by this slice). Leave existing `lithos`/`LITHOS` strings, including the `/etc/lithos` assertion in the moved architecture test, untouched here.
