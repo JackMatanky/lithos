@@ -6,7 +6,12 @@
 //! [`ReadyToCommit`], [`Committed`]) carry the resolved write target as the
 //! artifact moves toward a committed vault file.
 
-#![allow(dead_code, reason = "rendered artifacts are wired by issue-06")]
+#![allow(
+    dead_code,
+    reason = "the write-pipeline transitions are exercised by tests here; \
+              production wiring lands with the Template Service/Processor \
+              (issues 04/07/08)"
+)]
 
 use std::path::Path;
 
