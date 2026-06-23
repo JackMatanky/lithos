@@ -8,10 +8,14 @@
 
 #![allow(dead_code, reason = "rendered artifacts are wired by issue-06")]
 
-use trace_fs::{RelativeFilePath, error::PathError};
+use std::path::Path;
+
+use trace_fs::{FsWriter, RelativeFilePath, error::PathError};
 
 use super::TemplateName;
-use crate::error::{TemplateArtifactError, TemplatePathError};
+use crate::error::{
+    TemplateArtifactError, TemplatePathError, TemplateWriteError,
+};
 
 /// Marker state for an artifact that has rendered text but no output target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +122,59 @@ impl TemplateArtifact<Rendered> {
             Err(err) => Err(map_path_error(err)),
         }
     }
+}
+
+impl TemplateArtifact<TargetResolved> {
+    /// Ensures the parent directory of the resolved target exists, advancing
+    /// the artifact from [`TargetResolved`] to [`ReadyToCommit`].
+    ///
+    /// This does NOT check whether the target file already exists — the
+    /// conflict guard is the atomic `File::create_new` performed at commit
+    /// time, which eliminates the TOCTOU race. Directory creation is
+    /// idempotent, so an already-existing parent is not an error, and a
+    /// top-level target whose parent is the vault root skips creation
+    /// because the vault root already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateArtifactError::Write`] if the parent directory
+    /// cannot be created.
+    pub(crate) fn try_check_conflict(
+        &self,
+        fs_writer: &FsWriter,
+    ) -> Result<TemplateArtifact<ReadyToCommit>, TemplateArtifactError> {
+        let rel = self.state.path();
+        let rel_str = rel.as_str();
+        let target = Path::new(rel_str);
+
+        if let Some(parent) = target.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs_writer
+                .create_dir_all(parent)
+                .map_err(|source| write_io_error(parent, source))?;
+        }
+
+        Ok(TemplateArtifact {
+            template: self.template.clone(),
+            content: self.content.clone(),
+            state: ReadyToCommit(rel.clone()),
+        })
+    }
+}
+
+/// Maps a directory-creation [`std::io::Error`] into the template error
+/// hierarchy via [`trace_fs::error::WriteError::Io`].
+fn write_io_error(
+    path: &Path,
+    source: std::io::Error,
+) -> TemplateArtifactError {
+    TemplateArtifactError::Write(TemplateWriteError::from(
+        trace_fs::error::WriteError::Io {
+            path: path.to_path_buf(),
+            source,
+        },
+    ))
 }
 
 /// Maps a [`PathError`] from target-path validation to a named
@@ -273,6 +330,56 @@ mod tests {
                 result,
                 Err(TemplateArtifactError::InvalidPath(_))
             ));
+        }
+    }
+
+    mod try_check_conflict {
+        use pretty_assertions::assert_eq;
+        use tempfile::TempDir;
+        use trace_fs::FsWriter;
+
+        use super::{TemplateArtifact, template_name};
+
+        #[test]
+        fn returns_ready_to_commit_when_dir_created() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let fs_writer = FsWriter::new(dir.path());
+            let resolved = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "body".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("expected valid relative path to resolve");
+
+            let ready = resolved
+                .try_check_conflict(&fs_writer)
+                .expect("expected parent directory creation to succeed");
+
+            assert_eq!(ready.state.path().as_str(), "sub/x.md");
+            assert!(
+                dir.path().join("sub").exists(),
+                "expected parent directory to be created on disk"
+            );
+        }
+
+        #[test]
+        fn returns_ready_to_commit_when_dir_exists() {
+            let dir = TempDir::new().expect("expected temp dir");
+            std::fs::create_dir_all(dir.path().join("sub"))
+                .expect("expected pre-created parent directory");
+            let fs_writer = FsWriter::new(dir.path());
+            let resolved = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "body".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("expected valid relative path to resolve");
+
+            let ready = resolved
+                .try_check_conflict(&fs_writer)
+                .expect("expected idempotent directory creation to succeed");
+
+            assert_eq!(ready.state.path().as_str(), "sub/x.md");
         }
     }
 
