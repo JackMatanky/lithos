@@ -7,6 +7,8 @@
 //! - [`TemplateBodyError`] — empty content rejection
 //! - [`TemplateRepositoryError`] — persistence/storage errors
 
+use std::path::PathBuf;
+
 use thiserror::Error;
 use trace_db::DbError;
 use trace_fs::PathKey;
@@ -105,6 +107,51 @@ pub enum TemplateReadError {
 pub enum TemplatePathError {
     #[error(transparent)]
     Path(#[from] trace_fs::error::PathError),
+}
+
+// ============================================================================
+// TemplateWriteError
+// ============================================================================
+
+/// Errors returned when writing a template artifact to the filesystem.
+///
+/// Wraps [`trace_fs::error::WriteError`] so atomic file-creation failures
+/// surface through the template error hierarchy without leaking `fs` internals
+/// into call sites.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateWriteError {
+    /// An atomic file-creation failure from the filesystem layer.
+    #[error(transparent)]
+    Write(#[from] trace_fs::error::WriteError),
+}
+
+// ============================================================================
+// TemplateArtifactError
+// ============================================================================
+
+/// Errors returned while resolving and committing a template artifact through
+/// the write pipeline.
+///
+/// Target-resolution rejections (absolute paths, `..` traversal, and other
+/// invalid paths) and commit-time write failures surface here. The wrapped
+/// variants use explicit construction rather than `#[from]` conversions, so
+/// each pipeline transition names the error it produces.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TemplateArtifactError {
+    /// An absolute target path was rejected during target resolution.
+    #[error("absolute target path rejected: {0}")]
+    AbsolutePathRejected(PathBuf),
+    /// A target path containing `..` traversal was rejected.
+    #[error("traversal target path rejected: {0}")]
+    TraversalRejected(PathBuf),
+    /// A target path failed validation for a reason other than being absolute
+    /// or containing traversal (e.g. empty, or a `.` current-dir component).
+    #[error(transparent)]
+    InvalidPath(TemplatePathError),
+    /// A filesystem write failed while committing the artifact.
+    #[error(transparent)]
+    Write(TemplateWriteError),
 }
 
 // ============================================================================
@@ -208,6 +255,122 @@ mod tests {
             };
             let read_err: TemplateReadError = fs_err.into();
             assert!(matches!(read_err, TemplateReadError::Read(_)));
+        }
+    }
+
+    mod template_write_error {
+        use std::io;
+
+        use super::*;
+
+        #[test]
+        fn preserves_already_exists_variant() {
+            let write_err = trace_fs::error::WriteError::AlreadyExists {
+                path: PathBuf::from("note.md"),
+            };
+            let template_err: TemplateWriteError = write_err.into();
+            assert!(matches!(
+                template_err,
+                TemplateWriteError::Write(
+                    trace_fs::error::WriteError::AlreadyExists { .. }
+                )
+            ));
+        }
+
+        #[test]
+        fn preserves_io_variant() {
+            let io_err = io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "permission denied",
+            );
+            let write_err = trace_fs::error::WriteError::Io {
+                path: PathBuf::from("note.md"),
+                source: io_err,
+            };
+            let template_err: TemplateWriteError = write_err.into();
+            assert!(matches!(
+                template_err,
+                TemplateWriteError::Write(
+                    trace_fs::error::WriteError::Io { .. }
+                )
+            ));
+        }
+    }
+
+    mod template_artifact_error {
+        use std::error::Error;
+
+        use super::*;
+
+        #[test]
+        fn absolute_path_rejected_displays_path() {
+            let err = TemplateArtifactError::AbsolutePathRejected(
+                PathBuf::from("/abs/x.md"),
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains("/abs/x.md"),
+                "Display should contain the rejected path, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn traversal_rejected_displays_path() {
+            let err = TemplateArtifactError::TraversalRejected(PathBuf::from(
+                "../escape.md",
+            ));
+            let msg = err.to_string();
+            assert!(
+                msg.contains("../escape.md"),
+                "Display should contain the rejected path, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn write_preserves_source() {
+            // The `Io` variant carries an underlying source; `transparent`
+            // forwards `source()` straight through to it.
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "permission denied",
+            );
+            let write_err =
+                TemplateWriteError::Write(trace_fs::error::WriteError::Io {
+                    path: PathBuf::from("note.md"),
+                    source: io_err,
+                });
+            let err = TemplateArtifactError::Write(write_err);
+            assert!(
+                err.source().is_some(),
+                "transparent Write variant should forward its source"
+            );
+        }
+
+        #[test]
+        fn invalid_path_preserves_source() {
+            // `PathError::Empty` is a source-less leaf, so `transparent`
+            // forwarding bottoms out at `None`. The meaningful preservation
+            // guarantee for this variant is Display forwarding: the wrapped
+            // path error's message surfaces unchanged through the artifact
+            // error.
+            let path_err =
+                TemplatePathError::from(trace_fs::error::PathError::Empty);
+            let inner_msg = path_err.to_string();
+            let err = TemplateArtifactError::InvalidPath(path_err);
+            assert_eq!(
+                err.to_string(),
+                inner_msg,
+                "transparent InvalidPath variant should forward the inner \
+                 error's Display unchanged"
+            );
+        }
+
+        #[test]
+        fn implements_error_trait() {
+            let err = TemplateArtifactError::AbsolutePathRejected(
+                PathBuf::from("/abs/x.md"),
+            );
+            let _: &dyn std::error::Error = &err;
         }
     }
 
