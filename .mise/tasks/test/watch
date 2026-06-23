@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# watch — Watch for changes and automatically run tests.
+#
 #MISE description="Watch for changes and automatically run tests"
 #MISE alias="tw"
 #MISE sources=["**/*.rs", "Cargo.toml"]
@@ -10,8 +13,6 @@ set -euo pipefail
 # Build the command string for cargo-watch.
 # Globals:
 #   usage_args
-# Arguments:
-#   None
 # Outputs:
 #   Echoes the watch command
 #######################################
@@ -26,26 +27,22 @@ build_watch_command() {
 #######################################
 # Watch for changes and run tests using cargo-watch.
 # Arguments:
-#   The watch command string
+#   $1 - The watch command string
 # Outputs:
 #   Writes test results to stdout on every change
 #######################################
 run_cargo_watch() {
-  local watch_cmd=$1
+  local watch_cmd="$1"
   echo "👀 Watching for changes..."
   cargo watch -x "${watch_cmd}"
 }
 
 #######################################
 # Main entry point.
-# Arguments:
-#   $@
-# Outputs:
-#   None
 #######################################
 main() {
   local watch_cmd
-  watch_cmd=$(build_watch_command)
+  watch_cmd="$(build_watch_command)"
   run_cargo_watch "${watch_cmd}"
 }
 

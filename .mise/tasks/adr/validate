@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# validate — Validate ADRs for template compliance.
+#
 #MISE description="Validate ADRs for template compliance"
 #MISE sources=["{{vars.adr_dir}}/*.md"]
 #MISE outputs=["target/adr-validate.stamp"]
@@ -9,137 +12,125 @@ set -euo pipefail
 # Validate ADR metadata.
 # Globals:
 #   ADR_DIR
-#   EXIT_CODE
-# Arguments:
-#   None
+#   EXIT_CODE (modified)
 # Outputs:
 #   Writes validation results to stdout
-#   Modifies EXIT_CODE
 #######################################
 validate_adr_metadata() {
-    # Check files matching the NNN-name.md pattern (3 digits)
-    for adr in "$ADR_DIR"/[0-9][0-9][0-9]-*.md; do
-        [ -e "$adr" ] || continue
+  # Check files matching the NNN-name.md pattern (3 digits)
+  for adr in "${ADR_DIR}"/[0-9][0-9][0-9]-*.md; do
+    [[ -e "${adr}" ]] || continue
 
-        filename=$(basename "$adr")
-        echo "  📄 Checking metadata in $filename..."
+    local filename
+    filename="$(basename "${adr}")"
+    echo "  📄 Checking metadata in ${filename}..."
 
-        # Check for YAML frontmatter delimiters
-        if ! head -n 1 "$adr" | grep -q "^---$"; then
-            echo "    ❌ Missing YAML frontmatter start (---)"
-            EXIT_CODE=1
-        fi
+    # Check for YAML frontmatter delimiters
+    if ! head -n 1 "${adr}" | grep -q "^---$"; then
+      echo "    ❌ Missing YAML frontmatter start (---)"
+      EXIT_CODE=1
+    fi
 
-        for meta in "name" "status" "stakeholders" "date_proposed" "date_decided" "date_implemented"; do
-            # Pattern: start-of-line, key: value
-            pattern="^${meta}:"
+    local meta
+    for meta in "name" "status" "stakeholders" "date_proposed" "date_decided" "date_implemented"; do
+      # Pattern: start-of-line, key: value
+      local pattern="^${meta}:"
 
-            if ! grep -Eq "$pattern" "$adr"; then
-                echo "    ❌ Missing metadata in frontmatter: $meta"
-                EXIT_CODE=1
-            fi
-        done
+      if ! grep -Eq "${pattern}" "${adr}"; then
+        echo "    ❌ Missing metadata in frontmatter: ${meta}"
+        EXIT_CODE=1
+      fi
     done
+  done
 }
 
 #######################################
 # Validate ADR sections.
 # Globals:
 #   ADR_DIR
-#   EXIT_CODE
-# Arguments:
-#   None
+#   EXIT_CODE (modified)
 # Outputs:
 #   Writes validation results to stdout
-#   Modifies EXIT_CODE
 #######################################
 validate_adr_sections() {
-    # Check files matching the NNN-name.md pattern (3 digits)
-    for adr in "$ADR_DIR"/[0-9][0-9][0-9]-*.md; do
-        [ -e "$adr" ] || continue
+  # Check files matching the NNN-name.md pattern (3 digits)
+  for adr in "${ADR_DIR}"/[0-9][0-9][0-9]-*.md; do
+    [[ -e "${adr}" ]] || continue
 
-        filename=$(basename "$adr")
-        echo "  📄 Checking sections in $filename..."
+    local filename
+    filename="$(basename "${adr}")"
+    echo "  📄 Checking sections in ${filename}..."
 
-        # Check for required sections (must be ## headers)
-        for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences"; do
-            if ! grep -q "^## $section" "$adr"; then
-                echo "    ❌ Missing section: ## $section"
-                EXIT_CODE=1
-            fi
-        done
+    # Check for required sections (must be ## headers)
+    local section
+    for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences"; do
+      if ! grep -q "^## ${section}" "${adr}"; then
+        echo "    ❌ Missing section: ## ${section}"
+        EXIT_CODE=1
+      fi
     done
+  done
 }
 
 #######################################
 # Validate ADR filename conventions.
 # Globals:
 #   ADR_DIR
-#   EXIT_CODE
-# Arguments:
-#   None
+#   EXIT_CODE (modified)
 # Outputs:
 #   Writes validation results to stdout
-#   Modifies EXIT_CODE
 #######################################
 validate_adr_naming() {
-    for f in "$ADR_DIR"/*.md; do
-        filename=$(basename "$f")
-        if [[ "$filename" == "adr-process.md" || "$filename" == "template.md" || "$filename" == "index.md" || "$filename" == "README.md" ]]; then
-            continue
-        fi
-        # Enforce exactly 3 digits followed by a hyphen
-        if [[ ! "$filename" =~ ^[0-9]{3}-.*\.md$ ]]; then
-            echo "    ❌ Invalid filename: $filename (Expected NNN-name.md)"
-            EXIT_CODE=1
-        fi
-    done
+  local f filename
+  for f in "${ADR_DIR}"/*.md; do
+    filename="$(basename "${f}")"
+    if [[ "${filename}" == "adr-process.md" || "${filename}" == "template.md" || "${filename}" == "index.md" || "${filename}" == "README.md" ]]; then
+      continue
+    fi
+    # Enforce exactly 3 digits followed by a hyphen
+    if [[ ! "${filename}" =~ ^[0-9]{3}-.*\.md$ ]]; then
+      echo "    ❌ Invalid filename: ${filename} (Expected NNN-name.md)"
+      EXIT_CODE=1
+    fi
+  done
 }
 
 #######################################
 # Report validation results.
 # Globals:
 #   EXIT_CODE
-# Arguments:
-#   None
 # Outputs:
 #   Writes summary to stdout
 #######################################
 report_validation_results() {
-    if [ $EXIT_CODE -eq 0 ]; then
-        echo "✅ All ADRs passed validation."
-    else
-        echo "❌ Some ADRs failed validation."
-    fi
+  if (( EXIT_CODE == 0 )); then
+    echo "✅ All ADRs passed validation."
+  else
+    echo "❌ Some ADRs failed validation."
+  fi
 }
 
 #######################################
 # Main entry point.
-# Globals:
-#   None
-# Arguments:
-#   $@
-# Outputs:
-#   Writes validation results to stdout
-#   Exits with 0 on success, 1 on validation failure
 #######################################
 main() {
-    ADR_DIR="${ADR_DIR:-docs/adr}"
-    EXIT_CODE=0
+  # Global config
+  export ADR_DIR="${MISE_VARS_ADR_DIR:-docs/adr}"
+  export EXIT_CODE=0
 
-    echo "🔍 Validating ADRs in $ADR_DIR..."
-    validate_adr_metadata
-    validate_adr_sections
-    validate_adr_naming
-    report_validation_results
+  echo "🔍 Validating ADRs in ${ADR_DIR}..."
+  validate_adr_metadata
+  validate_adr_sections
+  validate_adr_naming
+  report_validation_results
 
-    # Create stamp file for caching if validation passed
-    if [ $EXIT_CODE -eq 0 ]; then
-        mkdir -p target
-        touch target/adr-validate.stamp
-    fi
+  # Create stamp file for caching if validation passed
+  if (( EXIT_CODE == 0 )); then
+    mkdir -p target
+    touch target/adr-validate.stamp
+  fi
 
-    return $EXIT_CODE
+  return "${EXIT_CODE}"
 }
 
 main "$@"

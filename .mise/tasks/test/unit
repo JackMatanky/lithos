@@ -1,67 +1,24 @@
 #!/usr/bin/env bash
+#
+# unit — Run unit tests and doc tests across the workspace using nextest.
+#
+# Supports filtering by crate via -p and generic string filters via positional arg.
+#
 #MISE description="Run all unit tests across the workspace using nextest"
 #MISE alias="tu"
 #MISE depends=["fmt"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
-#USAGE flag "-p --package <package>" help="Run tests for a specific package or module" {
-#USAGE   choices "core" "cli" "config" "note" "schema" "template" "db" "fs"
+#USAGE flag "-p --package <package>" help="Run tests for a specific crate" {
+#USAGE   choices "cli" "settings" "note" "schema" "template" "db" "fs" "app" "support" "indexer" "vault" "utils"
 #USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
 set -euo pipefail
 
-#######################################
-# Map shorthand package names to full cargo package names.
-# Globals:
-#   usage_package
-# Arguments:
-#   None
-# Outputs:
-#   Echoes the full package name
-#######################################
-map_package_name() {
-    case "${usage_package:-}" in
-    core | config | note | schema | template | db | fs)
-        # Modules live inside lithos-core
-        echo "lithos-core"
-        ;;
-    cli)
-        echo "lithos"
-        ;;
-    *)
-        # Empty string for workspace-wide or unrecognized
-        echo ""
-        ;;
-    esac
-}
-
-#######################################
-# If the user selects a bounded context and does not pass a filter, provide a
-# sensible default filter that narrows tests to that module.
-#
-# Globals:
-#   usage_package
-#   usage_filter
-# Arguments:
-#   None
-# Outputs:
-#   Updates usage_filter in-place
-#######################################
-context_filter() {
-    if [[ -n "${usage_filter:-}" ]]; then
-        return
-    fi
-
-    case "${usage_package:-}" in
-    config | note | schema | template | db | fs)
-        usage_filter="${usage_package}::"
-        ;;
-    *)
-        ;;
-    esac
-}
+# shellcheck disable=SC1091
+source "$(git rev-parse --show-toplevel)/.mise/lib/_crate_names.sh"
 
 #######################################
 # Build nextest or doc-test arguments into a named global array.
@@ -69,49 +26,55 @@ context_filter() {
 #   usage_package   (read)
 #   usage_verbose   (read)
 #   usage_filter    (read)
+#   NEXTEST_ARGS    (written)
+#   DOC_ARGS        (written)
 # Arguments:
-#   $1 - The resolved package name
-#   $2 - The test runner type ("nextest" or "doc")
+#   $1 - The test runner type ("nextest" or "doc")
 #######################################
 NEXTEST_ARGS=()
 DOC_ARGS=()
 
 build_test_args() {
-    local package_name=$1
-    local test_type=$2
-    local -a args=()
+  local test_type="$1"
+  local -a args=()
 
-    # Nextest-specific arguments
-    if [[ "${test_type}" == "nextest" ]]; then
-        if [[ "${usage_package:-}" == "cli" ]]; then
-            args+=("--bins")
-        else
-            args+=("--lib" "--bins")
-        fi
-        args+=("--partition" "hash:1/1")
-        if [[ "${usage_verbose:-}" == "1" ]]; then
-            args+=("--verbose")
-        fi
-    fi
-
-    # Package selection
-    if [[ -n "${package_name}" ]]; then
-        args+=("--package" "${package_name}")
+  # Nextest-specific arguments
+  if [[ "${test_type}" == "nextest" ]]; then
+    if [[ "${usage_package:-}" == "cli" ]]; then
+      args+=("--bins")
     else
-        args+=("--workspace")
+      args+=("--lib" "--bins")
     fi
+    args+=("--partition" "hash:1/1")
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+      args+=("--verbose")
+    fi
+  fi
 
-    # Optional name filter
-    if [[ -n "${usage_filter:-}" ]]; then
-        args+=("${usage_filter}")
+  # Package selection dynamically from shorthand
+  if [[ -n "${usage_package:-}" ]]; then
+    local resolved
+    resolved="$(resolve_crate_name "${usage_package}")"
+    if [[ -z "${resolved}" ]]; then
+      echo "Error: Unknown crate '${usage_package}'" >&2
+      exit 1
     fi
+    args+=("--package" "${resolved}")
+  else
+    args+=("--workspace")
+  fi
 
-    # Store into the appropriate global array
-    if [[ "${test_type}" == "nextest" ]]; then
-        NEXTEST_ARGS=("${args[@]}")
-    else
-        DOC_ARGS=("${args[@]}")
-    fi
+  # Optional name filter
+  if [[ -n "${usage_filter:-}" ]]; then
+    args+=("${usage_filter}")
+  fi
+
+  # Store into the appropriate global array
+  if [[ "${test_type}" == "nextest" ]]; then
+    NEXTEST_ARGS=("${args[@]}")
+  else
+    DOC_ARGS=("${args[@]}")
+  fi
 }
 
 #######################################
@@ -120,25 +83,20 @@ build_test_args() {
 #   usage_package  (read)
 #######################################
 main() {
-    context_filter
+  build_test_args "nextest"
+  build_test_args "doc"
 
-    local resolved_package
-    resolved_package=$(map_package_name)
+  echo "🧪 Running unit tests (nextest)..."
+  cargo nextest run "${NEXTEST_ARGS[@]}"
 
-    build_test_args "${resolved_package}" "nextest"
-    build_test_args "${resolved_package}" "doc"
+  if [[ "${usage_package:-}" == "cli" ]]; then
+    echo "📖 Skipping doc tests (binary-only package)..."
+  else
+    echo "📖 Running doc tests..."
+    cargo test --doc "${DOC_ARGS[@]}"
+  fi
 
-    echo "🧪 Running unit tests (nextest)..."
-    cargo nextest run "${NEXTEST_ARGS[@]}"
-
-    if [[ "${usage_package:-}" == "cli" ]]; then
-        echo "📖 Skipping doc tests (binary-only package)..."
-    else
-        echo "📖 Running doc tests..."
-        cargo test --doc "${DOC_ARGS[@]}"
-    fi
-
-    echo "✅ All unit and doc tests complete"
+  echo "✅ All unit and doc tests complete"
 }
 
 main "$@"

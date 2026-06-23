@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
+#
+# coverage — Generate code coverage reports using tarpaulin.
+#
 #MISE description="Generate code coverage reports using tarpaulin"
-#MISE alias="tc"
+#MISE alias="tc_cov"
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#MISE outputs=["{{vars.coverage_report}}"]
+#MISE outputs=["{{vars.target_dir}}/tarpaulin/{{vars.coverage_report}}"]
 #MISE env={TARGET_DIR="{{vars.target_dir}}", COVERAGE_REPORT="{{vars.coverage_report}}"}
 #USAGE flag "-o --open" help="Open coverage report in browser"
-#USAGE flag "-p --package <package>" help="Run coverage for a specific package or module" {
-#USAGE   choices "core" "cli" "config" "note" "schema" "template" "db" "fs"
+#USAGE flag "-p --package <package>" help="Run coverage for a specific crate" {
+#USAGE   choices "cli" "settings" "note" "schema" "template" "db" "fs" "app" "support" "indexer" "vault" "utils"
 #USAGE }
 #USAGE flag "--skip-e2e" help="Skip E2E tests (when coverage tooling cannot build CLI binaries)"
 
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source "$(git rev-parse --show-toplevel)/.mise/lib/_crate_names.sh"
+
 #######################################
-# Map shorthand package names to full cargo package names.
-# Globals:
-#   usage_package
+# Open a file in the default browser.
 # Arguments:
-#   None
-# Outputs:
-#   Echoes the full package name
+#   $1 - Path to the file to open
 #######################################
-map_package_name() {
-    case "${usage_package:-}" in
-    core | config | note | schema | template | db | fs)
-        # Modules live inside lithos-core
-        echo "lithos-core"
-        ;;
-    cli)
-        echo "lithos"
-        ;;
-    *)
-        echo ""
-        ;;
-    esac
+open_file() {
+  local file_path="$1"
+  if command -v open >/dev/null; then
+    open "${file_path}"
+  elif command -v xdg-open >/dev/null; then
+    xdg-open "${file_path}"
+  else
+    echo "⚠️  Cannot automatically open browser on this platform" >&2
+  fi
 }
 
 #######################################
@@ -45,48 +45,45 @@ map_package_name() {
 #   usage_open        (read)
 #######################################
 main() {
-    local resolved_package
-    resolved_package=$(map_package_name)
+  local output_dir="${TARGET_DIR}/tarpaulin"
+  mkdir -p "${output_dir}"
 
-    local output_dir="${TARGET_DIR}/tarpaulin"
-    mkdir -p "${output_dir}"
+  local -a args=()
 
-    local args=()
+  # Base tarpaulin options
+  args+=("--ignore-tests")
+  args+=("--out" "Html")
+  args+=("--output-dir" "${output_dir}")
 
-    # Base tarpaulin options
-    args+=("--ignore-tests")
-    args+=("--out" "Html")
-    args+=("--output-dir" "${output_dir}")
-
-    # Package selection
-    if [[ -n "${resolved_package}" ]]; then
-        args+=("--packages" "${resolved_package}")
-    else
-        args+=("--workspace")
+  # Package selection
+  if [[ -n "${usage_package:-}" ]]; then
+    local resolved
+    resolved="$(resolve_crate_name "${usage_package}")"
+    if [[ -z "${resolved}" ]]; then
+      echo "Error: Unknown crate '${usage_package}'" >&2
+      exit 1
     fi
+    args+=("--packages" "${resolved}")
+  else
+    args+=("--workspace")
+  fi
 
-    # Test filters
-    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
-        args+=("--" "--skip" "cli_smoke")
-    else
-        case "${usage_package:-}" in
-        config | note | schema | template | db | fs)
-            args+=("--" "${usage_package}::")
-            ;;
-        esac
-    fi
+  # Test filters
+  if [[ "${usage_skip_e2e:-}" == "1" || "${usage_skip_e2e:-}" == "true" ]]; then
+    args+=("--" "--skip" "cli_smoke")
+  fi
 
-    # Run coverage
-    echo "📊 Generating code coverage report..."
-    cargo tarpaulin "${args[@]}"
+  # Run coverage
+  echo "📊 Generating code coverage report..."
+  cargo tarpaulin "${args[@]}"
 
-    # Open report if requested
-    if [[ "${usage_open:-}" == "1" ]]; then
-        echo "🌐 Opening coverage report..."
-        open_file "${output_dir}/${COVERAGE_REPORT}"
-    fi
+  # Open report if requested
+  if [[ "${usage_open:-}" == "1" || "${usage_open:-}" == "true" ]]; then
+    echo "🌐 Opening coverage report..."
+    open_file "${output_dir}/${COVERAGE_REPORT}"
+  fi
 
-    echo "✅ Coverage report generated"
+  echo "✅ Coverage report generated"
 }
 
 main "$@"

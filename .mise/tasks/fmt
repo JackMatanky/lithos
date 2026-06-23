@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# fmt — Format all Rust files in the workspace using rustfmt.
+#
 #MISE description="Format all Rust files in the workspace using rustfmt"
 #MISE alias="f"
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
@@ -8,52 +11,44 @@
 set -euo pipefail
 
 # Ensure we are in the project root
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 
 #######################################
 # Format the codebase using rustfmt.
 # Arguments:
-#   Arguments for cargo fmt
+#   $@ - Arguments for cargo fmt
 # Outputs:
 #   Writes formatting progress to stdout
 #######################################
 run_rustfmt() {
-    echo "🚀 Formatting codebase (using nightly via rust-toolchain.toml)..."
-    # rust-toolchain.toml handles the nightly channel selection.
-    # --unstable-features enables nightly-only rustfmt options.
-    cargo fmt --all "$@" -- --unstable-features
+  echo "🚀 Formatting codebase (using nightly via rust-toolchain.toml)..."
+  # rust-toolchain.toml handles the nightly channel selection.
+  # --unstable-features enables nightly-only rustfmt options.
+  cargo fmt --all "$@" -- --unstable-features
 }
 
 #######################################
 # Create a stamp file for mise caching.
-# Arguments:
-#   None
-# Outputs:
-#   None
 #######################################
 create_stamp_file() {
-    mkdir -p target
-    touch target/fmt.stamp
+  mkdir -p target
+  touch target/fmt.stamp
 }
 
 #######################################
 # Main entry point.
 # Globals:
 #   usage_check
-# Arguments:
-#   None
-# Outputs:
-#   Writes formatting progress to stdout
 #######################################
 main() {
-    if [[ "${usage_check:-}" == "1" ]]; then
-        run_rustfmt --check
-    else
-        run_rustfmt
-    fi
+  if [[ "${usage_check:-}" == "1" || "${usage_check:-}" == "true" ]]; then
+    run_rustfmt --check
+  else
+    run_rustfmt
+  fi
 
-    create_stamp_file
-    echo "✅ Formatting complete"
+  create_stamp_file
+  echo "✅ Formatting complete"
 }
 
 main "$@"

@@ -1,152 +1,143 @@
 #!/usr/bin/env bash
+#
+# changed — Run tests only for crates affected by changes.
+#
 #MISE description="Run tests only for crates affected by changes"
 #MISE alias="tc"
 #USAGE arg "[base_ref]" help="Git ref to compare against (auto-detects origin/main or falls back to HEAD~1)"
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(git rev-parse --show-toplevel)/.mise/lib/_crate_names.sh"
+
 #######################################
 # Determine the git reference to compare against.
 # Arguments:
-#   Optional base ref from user
+#   $1 - Optional base ref from user
 # Outputs:
 #   Echoes the resolved base ref
 #######################################
 determine_base_ref() {
-    local base_ref=$1
+  local base_ref="$1"
 
-    if [[ -n "${base_ref}" ]]; then
-        echo "${base_ref}"
-        return
-    fi
+  if [[ -n "${base_ref}" ]]; then
+    echo "${base_ref}"
+    return
+  fi
 
-    if git rev-parse --verify origin/main >/dev/null 2>&1; then
-        echo "origin/main"
-    else
-        echo "HEAD~1"
-    fi
+  if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    echo "origin/main"
+  else
+    echo "HEAD~1"
+  fi
 }
 
 #######################################
 # Get list of changed files relative to base ref.
 # Arguments:
-#   Base ref to compare against
+#   $1 - Base ref to compare against
 # Outputs:
 #   Echoes list of changed file paths
 #######################################
 get_changed_files() {
-    local base_ref=$1
-    git diff --name-only "${base_ref}"...HEAD 2>/dev/null || \
-        git diff --name-only "${base_ref}" 2>/dev/null || \
-        true
+  local base_ref="$1"
+  git diff --name-only "${base_ref}"...HEAD 2>/dev/null || \
+    git diff --name-only "${base_ref}" 2>/dev/null || \
+    true
 }
 
 #######################################
-# Extract unique crate names from changed file paths.
+# Extract unique crate directories from changed file paths.
 # Arguments:
-#   Newline-separated list of file paths
+#   $1 - Newline-separated list of file paths
 # Outputs:
-#   Echoes unique crate names (lithos-core or lithos-cli)
+#   Echoes unique crate directory names (e.g., 'cli', 'settings')
 #######################################
 extract_changed_crates() {
-    local changed_files=$1
-    echo "${changed_files}" | \
-        grep -E '^(lithos-core|lithos-cli)/' | \
-        cut -d'/' -f1 | \
-        sort -u || \
-        true
+  local changed_files="$1"
+  echo "${changed_files}" | \
+    grep '^crates/' | \
+    cut -d'/' -f2 | \
+    sort -u || \
+    true
 }
 
 #######################################
-# Run tests for a workspace crate.
+# Run tests for a workspace crate shorthand.
 # Arguments:
-#   Crate name (e.g., "lithos-core", "lithos-cli")
+#   $1 - Crate shorthand (e.g., "cli", "settings")
 # Outputs:
 #   Writes progress to stdout
 #######################################
 run_tests_for_crate() {
-    local crate=$1
+  local shorthand="$1"
+  local project_root
+  project_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "${MISE_PROJECT_ROOT:-.}")"
 
-    if [[ ! -d "${crate}" ]]; then
-        return 1
-    fi
+  if [[ ! -d "${project_root}/crates/${shorthand}" ]]; then
+    return 1
+  fi
 
-    echo "🏃 Running unit tests for crate '${crate}'..."
-
-    # Map directory names to simplified package names
-    case "${crate}" in
-        lithos-core)
-            mise run test:unit -p core
-            ;;
-        lithos-cli)
-            mise run test:unit -p cli
-            ;;
-        *)
-            echo "⚠️  Unknown crate: ${crate}" >&2
-            return 1
-            ;;
-    esac
+  echo "🏃 Running unit tests for crate '${shorthand}'..."
+  mise run test:unit -p "${shorthand}"
 }
 
 #######################################
-# Process a single changed crate.
+# Process a single changed crate shorthand.
 # Arguments:
-#   Crate name
+#   $1 - Crate shorthand
 # Outputs:
 #   Writes progress to stdout
 #######################################
 process_changed_crate() {
-    local crate=$1
+  local shorthand="$1"
 
-    echo "🧪 Processing ${crate}..."
-
-    if [[ -d "${crate}" ]]; then
-        run_tests_for_crate "${crate}"
-    else
-        echo "⚠️  Unknown crate location: ${crate}" >&2
-    fi
+  echo "🧪 Processing ${shorthand}..."
+  if ! run_tests_for_crate "${shorthand}"; then
+    echo "⚠️  Failed or unknown crate location: ${shorthand}" >&2
+  fi
 }
 
 #######################################
 # Main entry point.
 # Globals:
-#   usage_base_ref - Set by usage spec (default: empty)
-# Arguments:
-#   $@
-# Outputs:
-#   None
+#   usage_base_ref
 #######################################
 main() {
-    local base_ref
-    base_ref=$(determine_base_ref "${usage_base_ref:-}")
+  local base_ref
+  base_ref=$(determine_base_ref "${usage_base_ref:-}")
 
-    echo "🔍 Detecting changed crates relative to ${base_ref}..."
+  echo "🔍 Detecting changed crates relative to ${base_ref}..."
 
-    local changed_files
-    changed_files=$(get_changed_files "${base_ref}")
+  local changed_files
+  changed_files=$(get_changed_files "${base_ref}")
 
-    if [[ -z "${changed_files}" ]]; then
-        echo "✅ No changes detected."
-        exit 0
-    fi
+  if [[ -z "${changed_files}" ]]; then
+    echo "✅ No changes detected."
+    exit 0
+  fi
 
-    local changed_crates
-    changed_crates=$(extract_changed_crates "${changed_files}")
+  local changed_crates
+  changed_crates=$(extract_changed_crates "${changed_files}")
 
-    if [[ -z "${changed_crates}" ]]; then
-        echo "ℹ️  No crate-specific changes detected (only root docs, mise tasks, or config)."
-        echo "⚠️  Skipping tests - no code changes detected."
-        exit 0
-    fi
+  if [[ -z "${changed_crates}" ]]; then
+    echo "ℹ️  No crate-specific changes detected (only root docs, mise tasks, or config)."
+    echo "⚠️  Skipping tests - no code changes detected."
+    exit 0
+  fi
 
-    echo "📦 Affected crates: ${changed_crates}"
+  # Replace newlines with spaces for single-line display
+  local display_crates
+  display_crates="$(echo "${changed_crates}" | tr '\n' ' ')"
+  echo "📦 Affected crates: ${display_crates}"
 
-    while IFS= read -r crate; do
-        [[ -z "${crate}" ]] && continue
-        process_changed_crate "${crate}"
-    done <<< "${changed_crates}"
+  while IFS= read -r crate; do
+    [[ -z "${crate}" ]] && continue
+    process_changed_crate "${crate}"
+  done <<< "${changed_crates}"
 
-    echo "✅ Affected tests complete."
+  echo "✅ Affected tests complete."
 }
 
 main "$@"
