@@ -540,7 +540,6 @@ mod tests {
 
         #[test]
         fn rejects_absolute_path() {
-            let dir = TempDir::new().expect("expected temp dir");
             let artifact = TemplateArtifact::rendered(
                 template_name("greeting"),
                 "Hello, world!".to_owned(),
@@ -552,10 +551,6 @@ mod tests {
                 result,
                 Err(TemplateArtifactError::AbsolutePathRejected(_))
             ));
-            assert!(
-                !dir.path().join("etc/passwd").exists(),
-                "expected no file to be written on rejection"
-            );
         }
 
         #[test]
