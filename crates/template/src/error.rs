@@ -7,8 +7,6 @@
 //! - [`TemplateBodyError`] — empty content rejection
 //! - [`TemplateRepositoryError`] — persistence/storage errors
 
-use std::path::PathBuf;
-
 use thiserror::Error;
 use trace_db::DbError;
 use trace_fs::PathKey;
@@ -91,6 +89,7 @@ pub enum TemplateBodyError {
 /// template error hierarchy without leaking `fs` internals into call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplateReadError {
+    /// Embedded filesystem read error.
     #[error(transparent)]
     Read(#[from] trace_fs::ReadError),
 }
@@ -105,6 +104,7 @@ pub enum TemplateReadError {
 /// template error hierarchy without leaking `fs` internals into call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplatePathError {
+    /// Embedded filesystem path validation error.
     #[error(transparent)]
     Path(#[from] trace_fs::error::PathError),
 }
@@ -140,15 +140,15 @@ pub enum TemplateWriteError {
 #[non_exhaustive]
 pub enum TemplateArtifactError {
     /// An absolute target path was rejected during target resolution.
-    #[error("absolute target path rejected: {0}")]
-    AbsolutePathRejected(PathBuf),
+    #[error("absolute target path rejected: {}", .0.to_string())]
+    AbsolutePathRejected(#[source] trace_fs::error::WriteTargetError),
     /// A target path containing `..` traversal was rejected.
-    #[error("traversal target path rejected: {0}")]
-    TraversalRejected(PathBuf),
+    #[error("traversal target path rejected: {}", .0.to_string())]
+    TraversalRejected(#[source] trace_fs::error::WriteTargetError),
     /// A target path failed validation for a reason other than being absolute
     /// or containing traversal (e.g. empty, or a `.` current-dir component).
     #[error(transparent)]
-    InvalidPath(TemplatePathError),
+    InvalidPath(trace_fs::error::WriteTargetError),
     /// A filesystem write failed while committing the artifact.
     #[error(transparent)]
     Write(TemplateWriteError),
@@ -165,6 +165,7 @@ pub enum TemplateArtifactError {
 /// call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplateDirScanError {
+    /// Embedded directory scanning error.
     #[error(transparent)]
     Scan(#[from] trace_fs::error::ScanError),
 }
@@ -196,6 +197,8 @@ pub enum TemplateRepositoryError {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     mod template_name_error {
@@ -305,7 +308,9 @@ mod tests {
         #[test]
         fn absolute_path_rejected_displays_path() {
             let err = TemplateArtifactError::AbsolutePathRejected(
-                PathBuf::from("/abs/x.md"),
+                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
+                    "/abs/x.md",
+                )),
             );
             let msg = err.to_string();
             assert!(
@@ -316,9 +321,11 @@ mod tests {
 
         #[test]
         fn traversal_rejected_displays_path() {
-            let err = TemplateArtifactError::TraversalRejected(PathBuf::from(
-                "../escape.md",
-            ));
+            let err = TemplateArtifactError::TraversalRejected(
+                trace_fs::error::WriteTargetError::Traversal(PathBuf::from(
+                    "../escape.md",
+                )),
+            );
             let msg = err.to_string();
             assert!(
                 msg.contains("../escape.md"),
@@ -348,27 +355,22 @@ mod tests {
 
         #[test]
         fn invalid_path_preserves_source() {
-            // `PathError::Empty` is a source-less leaf, so `transparent`
-            // forwarding bottoms out at `None`. The meaningful preservation
-            // guarantee for this variant is Display forwarding: the wrapped
-            // path error's message surfaces unchanged through the artifact
-            // error.
-            let path_err =
-                TemplatePathError::from(trace_fs::error::PathError::Empty);
+            let path_err = trace_fs::error::WriteTargetError::Empty;
             let inner_msg = path_err.to_string();
             let err = TemplateArtifactError::InvalidPath(path_err);
             assert_eq!(
                 err.to_string(),
                 inner_msg,
-                "transparent InvalidPath variant should forward the inner \
-                 error's Display unchanged"
+                "transparent InvalidPath variant should forward the inner                  error's Display unchanged"
             );
         }
 
         #[test]
         fn implements_error_trait() {
             let err = TemplateArtifactError::AbsolutePathRejected(
-                PathBuf::from("/abs/x.md"),
+                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
+                    "/abs/x.md",
+                )),
             );
             let _: &dyn std::error::Error = &err;
         }

@@ -154,10 +154,6 @@ pub enum WriteError {
         /// The underlying I/O error.
         source: std::io::Error,
     },
-
-    /// A composed filesystem error.
-    #[error(transparent)]
-    Fs(#[from] FsError),
 }
 
 /// Errors related to directory traversal operations.
@@ -644,6 +640,48 @@ mod tests {
         }
     }
 
+    mod write_target_error {
+        use super::*;
+
+        #[test]
+        fn formats_empty_message() {
+            let error = WriteTargetError::Empty;
+            let msg = format!("{error}");
+            assert!(msg.to_lowercase().contains("empty"));
+        }
+
+        #[test]
+        fn formats_absolute_with_path() {
+            let error = WriteTargetError::Absolute(PathBuf::from("/abs/path"));
+            let msg = format!("{error}");
+            assert!(msg.contains("/abs/path"));
+            assert!(msg.to_lowercase().contains("absolute"));
+        }
+
+        #[test]
+        fn formats_traversal_with_path() {
+            let error = WriteTargetError::Traversal(PathBuf::from("../escape"));
+            let msg = format!("{error}");
+            assert!(msg.contains("../escape"));
+            assert!(msg.contains(".."));
+        }
+
+        #[test]
+        fn formats_current_dir_with_path() {
+            let error = WriteTargetError::CurrentDir(PathBuf::from("./here"));
+            let msg = format!("{error}");
+            assert!(msg.contains("./here"));
+        }
+
+        #[test]
+        fn formats_hidden_with_path() {
+            let error = WriteTargetError::Hidden(PathBuf::from(".secret"));
+            let msg = format!("{error}");
+            assert!(msg.contains(".secret"));
+            assert!(msg.to_lowercase().contains("hidden"));
+        }
+    }
+
     mod write_error {
         use std::io;
 
@@ -681,13 +719,6 @@ mod tests {
                 path: PathBuf::from("file.txt"),
             };
             let _: &dyn std::error::Error = &err;
-        }
-
-        #[test]
-        fn converts_from_fs_error() {
-            let fs_error = FsError::from(PathError::Empty);
-            let write_error: WriteError = fs_error.into();
-            assert!(matches!(write_error, WriteError::Fs(_)));
         }
     }
 
@@ -856,4 +887,28 @@ mod tests {
             }
         }
     }
+}
+/// Errors that occur during write target validation.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum WriteTargetError {
+    /// The target path is empty.
+    #[error("Write target path is empty")]
+    Empty,
+
+    /// The target path is absolute.
+    #[error("Write target cannot be absolute: {0}")]
+    Absolute(PathBuf),
+
+    /// The target path contains traversal components (`..`).
+    #[error("Write target contains traversal components (..): {0}")]
+    Traversal(PathBuf),
+
+    /// The target path contains a current directory component (`.`).
+    #[error("Write target contains current directory component (.): {0}")]
+    CurrentDir(PathBuf),
+
+    /// The target path contains a hidden component (leading `.`).
+    #[error("Write target contains hidden component: {0}")]
+    Hidden(PathBuf),
 }

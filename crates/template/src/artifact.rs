@@ -3,7 +3,7 @@
 //! This module defines the template artifact type-state pipeline. The initial
 //! [`Rendered`] state holds rendered content tied back to the source
 //! [`TemplateName`]; later write-pipeline states ([`TargetResolved`],
-//! [`ReadyToCommit`], [`Committed`]) carry the resolved write target as the
+//! [`Committed`]) carry the resolved write target as the
 //! artifact moves toward a committed vault file.
 
 #![allow(
@@ -13,14 +13,10 @@
               (issues 04/07/08)"
 )]
 
-use std::path::Path;
-
-use trace_fs::{FsWriter, RelativeFilePath, error::PathError};
+use trace_fs::{FileWriter, WriteTarget, error::WriteTargetError};
 
 use super::TemplateName;
-use crate::error::{
-    TemplateArtifactError, TemplatePathError, TemplateWriteError,
-};
+use crate::error::{TemplateArtifactError, TemplateWriteError};
 
 /// Marker state for an artifact that has rendered text but no output target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,30 +26,13 @@ pub(crate) struct Rendered;
 ///
 /// Holds the validated vault-relative path the artifact will be written to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TargetResolved(RelativeFilePath);
+pub(crate) struct TargetResolved(WriteTarget);
 
 impl TargetResolved {
     /// Returns the resolved vault-relative write target.
     #[inline]
     #[must_use]
-    pub(crate) const fn path(&self) -> &RelativeFilePath {
-        &self.0
-    }
-}
-
-/// State for an artifact whose target directory has been ensured and is ready
-/// for the atomic commit.
-///
-/// Holds the validated vault-relative path whose parent directory now exists,
-/// so the artifact can be written in a single atomic create.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReadyToCommit(RelativeFilePath);
-
-impl ReadyToCommit {
-    /// Returns the vault-relative write target ready for commit.
-    #[inline]
-    #[must_use]
-    pub(crate) const fn path(&self) -> &RelativeFilePath {
+    pub(crate) const fn path(&self) -> &WriteTarget {
         &self.0
     }
 }
@@ -103,11 +82,10 @@ impl TemplateArtifact<Rendered> {
     /// Resolves and validates the output target path, advancing the artifact
     /// from [`Rendered`] to [`TargetResolved`].
     ///
-    /// Validation is performed by [`RelativeFilePath::try_new`], which rejects
-    /// absolute paths and `..` traversal. Rejections are mapped to named
-    /// [`TemplateArtifactError`] variants by [`map_path_error`]; any other
-    /// validation failure surfaces through
-    /// [`TemplateArtifactError::InvalidPath`].
+    /// Validation is performed by [`WriteTarget::try_new`], which rejects
+    /// absolute paths, `..` traversal, empty paths, current-dir (`.`), and
+    /// hidden components (leading `.`). Rejections are mapped to named
+    /// [`TemplateArtifactError`] variants by [`map_path_error`].
     ///
     /// # Errors
     ///
@@ -115,13 +93,13 @@ impl TemplateArtifact<Rendered> {
     /// paths, [`TemplateArtifactError::TraversalRejected`] for `..` traversal,
     /// and [`TemplateArtifactError::InvalidPath`] for any other invalid path.
     pub(crate) fn try_resolve_target(
-        &self,
+        self,
         path: &str,
     ) -> Result<TemplateArtifact<TargetResolved>, TemplateArtifactError> {
-        match RelativeFilePath::try_new(path) {
+        match WriteTarget::try_new(path) {
             Ok(target) => Ok(TemplateArtifact {
-                template: self.template.clone(),
-                content: self.content.clone(),
+                template: self.template,
+                content: self.content,
                 state: TargetResolved(target),
             }),
             Err(err) => Err(map_path_error(err)),
@@ -130,109 +108,49 @@ impl TemplateArtifact<Rendered> {
 }
 
 impl TemplateArtifact<TargetResolved> {
-    /// Ensures the parent directory of the resolved target exists, advancing
-    /// the artifact from [`TargetResolved`] to [`ReadyToCommit`].
-    ///
-    /// This does NOT check whether the target file already exists — the
-    /// conflict guard is the atomic `File::create_new` performed at commit
-    /// time, which eliminates the TOCTOU race. Directory creation is
-    /// idempotent, so an already-existing parent is not an error, and a
-    /// top-level target whose parent is the vault root skips creation
-    /// because the vault root already exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TemplateArtifactError::Write`] if the parent directory
-    /// cannot be created.
-    pub(crate) fn try_check_conflict(
-        &self,
-        fs_writer: &FsWriter,
-    ) -> Result<TemplateArtifact<ReadyToCommit>, TemplateArtifactError> {
-        let rel = self.state.path();
-        let rel_str = rel.as_str();
-        let target = Path::new(rel_str);
-
-        if let Some(parent) = target.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            fs_writer
-                .create_dir_all(parent)
-                .map_err(|source| write_io_error(parent, source))?;
-        }
-
-        Ok(TemplateArtifact {
-            template: self.template.clone(),
-            content: self.content.clone(),
-            state: ReadyToCommit(rel.clone()),
-        })
-    }
-}
-
-impl TemplateArtifact<ReadyToCommit> {
     /// Atomically writes the rendered content to the resolved target,
-    /// advancing the artifact from [`ReadyToCommit`] to the terminal
+    /// advancing the artifact from [`TargetResolved`] to the terminal
     /// [`Committed`] state.
     ///
     /// Uses `File::create_new` via the FS writer, which fails with
     /// [`trace_fs::error::WriteError::AlreadyExists`] if the destination
     /// already exists. Performing the existence check and creation in one
     /// atomic operation eliminates the TOCTOU race a separate pre-check would
-    /// introduce.
+    /// introduce. Parent directories are automatically created if missing.
     ///
     /// # Errors
     ///
     /// Returns [`TemplateArtifactError::Write`] if the destination already
     /// exists or the file cannot be written.
     pub(crate) fn commit(
-        &self,
-        fs_writer: &FsWriter,
+        self,
+        writer: &impl FileWriter,
     ) -> Result<TemplateArtifact<Committed>, TemplateArtifactError> {
-        let target = self.state.path();
-        fs_writer
-            .create_new(Path::new(target.as_str()), self.content.as_bytes())
-            .map_err(|source| {
+        writer.create_new(self.state.path(), self.content.as_bytes()).map_err(
+            |source| {
                 TemplateArtifactError::Write(TemplateWriteError::from(source))
-            })?;
+            },
+        )?;
 
         Ok(TemplateArtifact {
-            template: self.template.clone(),
-            content: self.content.clone(),
+            template: self.template,
+            content: self.content,
             state: Committed,
         })
     }
 }
 
-/// Maps a directory-creation [`std::io::Error`] into the template error
-/// hierarchy via [`trace_fs::error::WriteError::Io`].
-fn write_io_error(
-    path: &Path,
-    source: std::io::Error,
-) -> TemplateArtifactError {
-    TemplateArtifactError::Write(TemplateWriteError::from(
-        trace_fs::error::WriteError::Io {
-            path: path.to_path_buf(),
-            source,
-        },
-    ))
-}
-
-/// Maps a [`PathError`] from target-path validation to a named
+/// Maps a [`WriteTargetError`] from target-path validation to a named
 /// [`TemplateArtifactError`] variant.
-///
-/// The catch-all arm handles [`PathError::Empty`],
-/// [`PathError::CurrentDirComponent`], and any future variants of the
-/// `#[non_exhaustive]` [`PathError`] enum.
-fn map_path_error(err: PathError) -> TemplateArtifactError {
+fn map_path_error(err: WriteTargetError) -> TemplateArtifactError {
     match err {
-        PathError::NotRelative(path) => {
-            TemplateArtifactError::AbsolutePathRejected(path)
+        WriteTargetError::Absolute(_) => {
+            TemplateArtifactError::AbsolutePathRejected(err)
         }
-        PathError::ParentTraversal(path) => {
-            TemplateArtifactError::TraversalRejected(path)
+        WriteTargetError::Traversal(_) => {
+            TemplateArtifactError::TraversalRejected(err)
         }
-        other => {
-            TemplateArtifactError::InvalidPath(TemplatePathError::from(other))
-        }
+        other => TemplateArtifactError::InvalidPath(other),
     }
 }
 
@@ -241,8 +159,7 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        Committed, ReadyToCommit, Rendered, TargetResolved, TemplateArtifact,
-        TemplateName,
+        Committed, Rendered, TargetResolved, TemplateArtifact, TemplateName,
     };
 
     fn template_name(name: &str) -> TemplateName {
@@ -253,33 +170,35 @@ mod tests {
 
     mod state {
         use pretty_assertions::assert_eq;
-        use trace_fs::RelativeFilePath;
+        use trace_fs::WriteTarget;
 
-        use super::{Committed, ReadyToCommit, TargetResolved};
-
-        #[test]
-        fn target_resolved_holds_path() {
-            let state = TargetResolved(
-                RelativeFilePath::try_new("notes/x.md")
-                    .expect("expected valid relative file path"),
-            );
-
-            assert_eq!(state.path().as_str(), "notes/x.md");
-        }
+        use super::{
+            Committed, Rendered, TargetResolved, TemplateArtifact,
+            template_name,
+        };
 
         #[test]
-        fn ready_to_commit_holds_path() {
-            let state = ReadyToCommit(
-                RelativeFilePath::try_new("notes/x.md")
-                    .expect("expected valid relative file path"),
-            );
+        fn target_resolved_holds_write_target() {
+            let target = WriteTarget::try_new("notes/x.md")
+                .expect("expected valid write target");
+            let state = TargetResolved(target.clone());
 
-            assert_eq!(state.path().as_str(), "notes/x.md");
+            assert_eq!(state.path(), &target);
         }
 
         #[test]
         fn committed_is_zero_sized() {
             assert_eq!(std::mem::size_of::<Committed>(), 0);
+        }
+
+        #[test]
+        fn rendered_state_is_rendered() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            assert_eq!(artifact.state, Rendered);
         }
     }
 
@@ -301,8 +220,9 @@ mod tests {
         }
     }
 
-    mod try_resolve_target {
+    mod validation {
         use pretty_assertions::assert_eq;
+        use trace_fs::error::WriteTargetError;
 
         use super::{
             super::super::error::TemplateArtifactError, TemplateArtifact,
@@ -321,7 +241,10 @@ mod tests {
                 .try_resolve_target("notes/x.md")
                 .expect("expected valid relative path to resolve");
 
-            assert_eq!(resolved.state.path().as_str(), "notes/x.md");
+            assert_eq!(
+                resolved.state.path().as_path().to_str().unwrap(),
+                "notes/x.md"
+            );
             assert_eq!(resolved.template, name);
             assert_eq!(resolved.content.as_str(), "Hello Alice");
         }
@@ -337,7 +260,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::AbsolutePathRejected(_))
+                Err(TemplateArtifactError::AbsolutePathRejected(
+                    WriteTargetError::Absolute(_)
+                ))
             ));
         }
 
@@ -352,7 +277,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::TraversalRejected(_))
+                Err(TemplateArtifactError::TraversalRejected(
+                    WriteTargetError::Traversal(_)
+                ))
             ));
         }
 
@@ -367,80 +294,48 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::InvalidPath(_))
+                Err(TemplateArtifactError::InvalidPath(
+                    WriteTargetError::Empty
+                ))
+            ));
+        }
+
+        #[test]
+        fn rejects_hidden_file_component() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target(".config/x.md");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::InvalidPath(
+                    WriteTargetError::Hidden(_)
+                ))
+            ));
+        }
+
+        #[test]
+        fn rejects_current_dir_component() {
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello Alice".to_owned(),
+            );
+
+            let result = artifact.try_resolve_target("./x.md");
+
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::InvalidPath(
+                    WriteTargetError::CurrentDir(_)
+                ))
             ));
         }
     }
 
-    mod try_check_conflict {
-        use pretty_assertions::assert_eq;
-        use tempfile::TempDir;
-        use trace_fs::FsWriter;
-
-        use super::{TemplateArtifact, template_name};
-
-        #[test]
-        fn returns_ready_to_commit_when_dir_created() {
-            let dir = TempDir::new().expect("expected temp dir");
-            let fs_writer = FsWriter::new(dir.path());
-            let resolved = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "body".to_owned(),
-            )
-            .try_resolve_target("sub/x.md")
-            .expect("expected valid relative path to resolve");
-
-            let ready = resolved
-                .try_check_conflict(&fs_writer)
-                .expect("expected parent directory creation to succeed");
-
-            assert_eq!(ready.state.path().as_str(), "sub/x.md");
-            assert!(
-                dir.path().join("sub").exists(),
-                "expected parent directory to be created on disk"
-            );
-        }
-
-        #[test]
-        fn returns_ready_to_commit_when_dir_exists() {
-            let dir = TempDir::new().expect("expected temp dir");
-            std::fs::create_dir_all(dir.path().join("sub"))
-                .expect("expected pre-created parent directory");
-            let fs_writer = FsWriter::new(dir.path());
-            let resolved = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "body".to_owned(),
-            )
-            .try_resolve_target("sub/x.md")
-            .expect("expected valid relative path to resolve");
-
-            let ready = resolved
-                .try_check_conflict(&fs_writer)
-                .expect("expected idempotent directory creation to succeed");
-
-            assert_eq!(ready.state.path().as_str(), "sub/x.md");
-        }
-
-        #[test]
-        fn returns_ready_to_commit_for_top_level_target() {
-            let dir = TempDir::new().expect("expected temp dir");
-            let fs_writer = FsWriter::new(dir.path());
-            let resolved = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "body".to_owned(),
-            )
-            .try_resolve_target("x.md")
-            .expect("expected valid relative path to resolve");
-
-            let ready = resolved
-                .try_check_conflict(&fs_writer)
-                .expect("expected top-level target to skip directory creation");
-
-            assert_eq!(ready.state.path().as_str(), "x.md");
-        }
-    }
-
-    mod commit {
+    mod create {
         use pretty_assertions::assert_eq;
         use tempfile::TempDir;
         use trace_fs::FsWriter;
@@ -459,11 +354,10 @@ mod tests {
                 "Hello".to_owned(),
             )
             .try_resolve_target("sub/x.md")
-            .expect("resolve")
-            .try_check_conflict(&writer)
-            .expect("check");
+            .expect("resolve");
 
-            artifact.commit(&writer).expect("expected commit to succeed");
+            let result = artifact.commit(&writer);
+            assert!(result.is_ok(), "expected commit to succeed");
 
             let written = dir.path().join("sub/x.md");
             assert!(written.exists(), "expected committed file on disk");
@@ -487,9 +381,7 @@ mod tests {
                 "Hello".to_owned(),
             )
             .try_resolve_target("sub/x.md")
-            .expect("resolve")
-            .try_check_conflict(&writer)
-            .expect("check");
+            .expect("resolve");
 
             let result = artifact.commit(&writer);
 
@@ -505,6 +397,43 @@ mod tests {
                 "existing",
                 "expected create_new to leave the original file unchanged"
             );
+        }
+
+        #[test]
+        fn fails_with_io_error_on_non_already_exists_error() {
+            // Test that a generic I/O error (like parent dir not writable)
+            // surfaces as WriteError::Io.
+            let dir = TempDir::new().expect("expected temp dir");
+            let sub = dir.path().join("sub");
+            std::fs::create_dir_all(&sub).expect("create dir");
+
+            // On Unix, we can remove write permissions from the parent to force
+            // an I/O error
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&sub).unwrap().permissions();
+                perms.set_mode(0o555); // read and execute, no write
+                std::fs::set_permissions(&sub, perms).unwrap();
+            }
+
+            let writer = FsWriter::new(dir.path());
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("resolve");
+
+            let result = artifact.commit(&writer);
+
+            #[cfg(unix)]
+            assert!(matches!(
+                result,
+                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                    trace_fs::error::WriteError::Io { .. }
+                )))
+            ));
         }
     }
 
@@ -523,16 +452,15 @@ mod tests {
             let dir = TempDir::new().expect("expected temp dir");
             let writer = FsWriter::new(dir.path());
 
-            TemplateArtifact::rendered(
+            let result = TemplateArtifact::rendered(
                 template_name("greeting"),
                 "Hello, world!".to_owned(),
             )
             .try_resolve_target("notes/out.md")
             .expect("expected valid relative path to resolve")
-            .try_check_conflict(&writer)
-            .expect("expected parent directory creation to succeed")
-            .commit(&writer)
-            .expect("expected commit to succeed");
+            .commit(&writer);
+
+            assert!(result.is_ok(), "expected commit to succeed");
 
             let written = dir.path().join("notes/out.md");
             assert!(written.exists(), "expected committed file on disk");
@@ -541,36 +469,6 @@ mod tests {
                     .expect("expected to read committed file"),
                 "Hello, world!"
             );
-        }
-
-        #[test]
-        fn rejects_absolute_path() {
-            let artifact = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "Hello, world!".to_owned(),
-            );
-
-            let result = artifact.try_resolve_target("/etc/passwd");
-
-            assert!(matches!(
-                result,
-                Err(TemplateArtifactError::AbsolutePathRejected(_))
-            ));
-        }
-
-        #[test]
-        fn rejects_traversal_path() {
-            let artifact = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "Hello, world!".to_owned(),
-            );
-
-            let result = artifact.try_resolve_target("../escape.md");
-
-            assert!(matches!(
-                result,
-                Err(TemplateArtifactError::TraversalRejected(_))
-            ));
         }
 
         #[test]
@@ -588,8 +486,6 @@ mod tests {
             )
             .try_resolve_target("notes/out.md")
             .expect("expected valid relative path to resolve")
-            .try_check_conflict(&writer)
-            .expect("expected parent directory creation to succeed")
             .commit(&writer);
 
             assert!(matches!(
@@ -607,10 +503,10 @@ mod tests {
         }
     }
 
-    mod accessors {
+    mod equality {
         use pretty_assertions::assert_eq;
 
-        use super::{Rendered, TemplateArtifact, template_name};
+        use super::{TemplateArtifact, template_name};
 
         #[test]
         fn maintains_partial_eq() {
@@ -623,16 +519,6 @@ mod tests {
                 TemplateArtifact::rendered(name, "Hello Alice".to_owned());
 
             assert_eq!(first, second);
-        }
-
-        #[test]
-        fn rendered_state_is_rendered() {
-            let artifact = TemplateArtifact::rendered(
-                template_name("greeting"),
-                "Hello Alice".to_owned(),
-            );
-
-            assert_eq!(artifact.state, Rendered);
         }
     }
 }
