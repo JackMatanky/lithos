@@ -44,16 +44,16 @@ Path validation (in `Rendered → TargetResolved` transition):
 
 ## Acceptance criteria
 
-- [ ] `TemplateArtifact<S>` is generic over a state type parameter, with shared fields in the outer struct and per-state data in `state: S`
-- [ ] `try_resolve_target` converts `TemplateArtifact<Rendered>` → `Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>`; path validation uses `RelativeFilePath::try_new` (no separate `PathValidator` call)
-- [ ] `try_check_conflict` converts `TemplateArtifact<TargetResolved>` → `Result<TemplateArtifact<ReadyToCommit>, TemplateArtifactError>`; creates parent directories (no existence check — `File::create_new` is the atomic guard, eliminating TOCTOU)
-- [ ] Commit from `ReadyToCommit` to `Committed` uses `File::create_new` (not a pre-check + create sequence)
-- [ ] Absolute target paths are rejected at the `Rendered → TargetResolved` transition
-- [ ] Traversal paths (`..` components) are rejected at the `Rendered → TargetResolved` transition
-- [ ] No raw `std::fs` usage — all I/O goes through the FS context
-- [ ] `TemplateArtifact<Committed>` is the terminal state
-- [ ] `TemplateArtifactSet` is not implemented
-- [ ] Tests cover: vault-relative target success (file created), absolute path rejection, traversal path rejection, `AlreadyExists` failure from `File::create_new`, single-file creation verified end-to-end; invalid transitions are impossible by type construction (no runtime test needed — compiler enforces this)
+- [x] `TemplateArtifact<S>` is generic over a state type parameter, with shared fields in the outer struct and per-state data in `state: S`
+- [x] `try_resolve_target` converts `TemplateArtifact<Rendered>` → `Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>`; path validation uses `WriteTarget::try_new` (no separate `PathValidator` call)
+- [x] Commit from `TargetResolved` to `Committed` uses `File::create_new` via the `FileWriter` port (not a pre-check + create sequence, parent directories are created here)
+- [x] Absolute target paths are rejected at the `Rendered → TargetResolved` transition
+- [x] Traversal paths (`..` components) are rejected at the `Rendered → TargetResolved` transition
+- [x] Hidden files and current-dir components are rejected at the `Rendered → TargetResolved` transition
+- [x] No raw `std::fs` usage — all I/O goes through the FS context (`FileWriter` trait)
+- [x] `TemplateArtifact<Committed>` is the terminal state
+- [x] `TemplateArtifactSet` is not implemented
+- [x] Tests cover: vault-relative target success (file created), absolute path rejection, traversal path rejection, hidden path rejection, `AlreadyExists` failure from `File::create_new`, generic I/O failures, single-file creation verified end-to-end; invalid transitions are impossible by type construction (no runtime test needed — compiler enforces this)
 
 ## Blocked by
 
