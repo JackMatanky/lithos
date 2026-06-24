@@ -8,21 +8,13 @@ Implement `PropertyBuilder` and `PropertyMapBuilder` in `schema/property/builder
 
 **`PropertyBuilder`** handles the single-property lifecycle. It is a stateless free function (no struct needed). Interface:
 
-> **Note**: Add a new `PropertyBuilderError` to `schema/error.rs` (it does not exist yet). Per hexagonal architecture principles, `MissingPropertyBank` is a **construction error** (builder was misconfigured), not a property reference error. It lives in its own error type:
+> **Note**: Add a `MissingPropertyBank` variant to the existing `PropertyBuilderError` in `schema/error.rs` (the enum already exists with variant `OverridePropertyRefSpecTypeMismatch`). Per hexagonal architecture principles, missing bank is a **construction error** (builder was misconfigured), not a property reference error. The variant is:
 > ```rust
-> // New enum in schema/error.rs:
-> #[derive(Debug, thiserror::Error)]
-> pub enum PropertyBuilderError {
->     #[error("property bank required to resolve $ref, but no bank was provided")]
->     MissingPropertyBank,
-> }
+> #[error("property bank required to resolve $ref, but no bank was provided")]
+> MissingPropertyBank,
 > ```
 >
-> Add a corresponding variant to `SchemaError`:
-> ```rust
-> #[error(transparent)]
-> PropertyBuilder(#[from] PropertyBuilderError),
-> ```
+> The `PropertyBuilder` variant on `SchemaBuilderError` and the `From<PropertyBuilderError>` impl for `SchemaError` already exist — no changes needed there.
 
 ```rust
 pub fn build_inline(raw: RawPropertyInline) -> Result<Property, SchemaError>
@@ -55,7 +47,7 @@ The builder accepts `RawPropertyMap<T>` (the validated map wrapper) for all raw 
 ## Acceptance criteria
 
 - [ ] `schema/property/builder.rs` exists and is part of the `schema::property` module
-- [ ] `schema/error.rs` gains `PropertyBuilderError::MissingPropertyBank` and `SchemaError::PropertyBuilder(#[from] PropertyBuilderError)` variant
+- [ ] `schema/error.rs` gains `PropertyBuilderError::MissingPropertyBank` variant on the existing enum
 - [ ] `build_inline` converts `RawPropertyInline` → `Property` with a new ID
 - [ ] `build_ref` resolves `RawPropertyRef` against `PropertyBank` → `Property` preserving the bank entry's ID and applying overrides
 - [ ] `build_ref` returns `SchemaError::PropertyRef(NotFound)` when the bank target is absent
