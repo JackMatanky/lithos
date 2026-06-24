@@ -204,12 +204,12 @@ As a user, I want a beautiful and responsive fuzzy-search interface in my termin
 
 ### Story 12.8: [Test] Obsidian Templater Template Conversion & Fixtures
 
-As a developer, I want to use real-world Obsidian templates as test fixtures, so that I can verify Lithos provides a viable migration path for power users.
+As a developer, I want to use real-world Obsidian templates as test fixtures, so that I can verify Traces provides a viable migration path for power users.
 **Acceptance Criteria:**
 
 - **Given** the templates in `docs/refs/obsidian/00_system/`
-- **When** I convert `42_00_action_item.md` to Lithos format
-- **Then** the Lithos implementation must achieve the same metadata generation and file placement as the original.
+- **When** I convert `42_00_action_item.md` to Traces format
+- **Then** the Traces implementation must achieve the same metadata generation and file placement as the original.
 - **And** the automated schema-derived queries must match the output of the original manual Javascript queries.
   **References:** NFR20
 
@@ -338,7 +338,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 12 public components are implemented
 **When** I verify test coverage

@@ -4,7 +4,7 @@ This directory contains Architecture Decision Records (ADRs) for the centralized
 
 ## Overview
 
-Lithos previously duplicated filesystem discovery logic across multiple contexts (Schema, Config), creating inconsistent behavior and maintenance overhead. The centralized discovery processor refactor consolidates all filesystem scanning into a single, shared discovery engine that runs once and provides results to all downstream contexts.
+Traces previously duplicated filesystem discovery logic across multiple contexts (Schema, Config), creating inconsistent behavior and maintenance overhead. The centralized discovery processor refactor consolidates all filesystem scanning into a single, shared discovery engine that runs once and provides results to all downstream contexts.
 
 ## Decision Records (In Order)
 

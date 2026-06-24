@@ -1,7 +1,7 @@
 # redb - Modular Reference Documentation
 
 **Version:** 3.1.x (Stable)
-**Goal:** This documentation serves as a standalone, comprehensive reference for the `redb` embedded database within the Lithos project. It aims to replace the need for consulting external official documentation for most development and operational tasks.
+**Goal:** This documentation serves as a standalone, comprehensive reference for the `redb` embedded database within the Traces project. It aims to replace the need for consulting external official documentation for most development and operational tasks.
 
 ---
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 🚀 Quick Start (Lithos Pattern)
+## 🚀 Quick Start (Traces Pattern)
 
 ### 1. Define your Table
 ```rust
@@ -25,7 +25,7 @@ use redb::TableDefinition;
 
 // Pattern: Namespace tables to avoid collisions
 pub const NOTES_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("lithos:note:v1");
+    TableDefinition::new("traces:note:v1");
 ```
 
 ### 2. Basic CRUD

@@ -9,7 +9,7 @@ mod tests {
     #[test]
     fn ports_must_not_import_std_fs() {
         // We search from the project root, but the test runs in the crate root.
-        // Paths are relative to the crate root (lithos-core).
+        // Paths are relative to the crate root (traces-core).
         let port_files = glob("../../crates/**/src/**/ports.rs")
             .expect("Failed to read glob pattern");
 

@@ -1,6 +1,6 @@
 # Clippy Quality Standards & AI Safeguards
 
-This document outlines the stringent clippy linting standards for the Lithos Rust project, specifically designed to maintain high code quality in an AI-assisted development environment.
+This document outlines the stringent clippy linting standards for the Traces Rust project, specifically designed to maintain high code quality in an AI-assisted development environment.
 
 ## Overview
 

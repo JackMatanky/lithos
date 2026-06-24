@@ -240,7 +240,7 @@ So that only changed files are reprocessed and note identity is preserved across
 **When** I validate efficiency
 **Then** large vaults show significant performance improvement over full rebuilds
 
-**Given** a note file is renamed between indexing runs (Lithos not running)
+**Given** a note file is renamed between indexing runs (Traces not running)
 **When** I perform incremental indexing
 **Then** the engine detects potential renames using a three-tier strategy: filesystem metadata → frontmatter matching → content hash fallback
 **And** UUID v7 identity is preserved for correctly detected renames
@@ -276,7 +276,7 @@ So that only changed files are reprocessed and note identity is preserved across
 **And** total indexing time remains within NFR2 (<2s for 1000+ files)
 
 **Given** rename detection is configurable
-**When** users set preferences in lithos.toml
+**When** users set preferences in traces.toml
 **Then** they can configure: rename_detection strategy, auto_accept_threshold, interactive_prompts, allow_content_hashing, frontmatter_signature_fields
 **And** they can disable rename detection entirely for performance-critical scenarios
 
@@ -477,7 +477,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 10 public components are implemented
 **When** I verify test coverage

@@ -183,7 +183,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 8.1: Run `mise run test:coverage` and verify `RedbCache` logic is fully exercised
   - [x] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
   - [x] Subtask 8.3: Run `mise run lint` one final time
-  - [x] Subtask 8.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 8.4: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 

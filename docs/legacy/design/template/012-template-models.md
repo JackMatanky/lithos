@@ -77,7 +77,7 @@ We're refactoring to a MiniJinja-first architecture where:
 **Creating a Simple Template (No Inheritance):**
 
 ```rust
-use lithos_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
+use traces_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
 
 // Create template metadata (pure data structure)
 let template = Template::new(

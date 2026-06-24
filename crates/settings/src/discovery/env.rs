@@ -1,6 +1,6 @@
-//! Central registry of Lithos environment variables and platform directories.
+//! Central registry of Traces environment variables and platform directories.
 //!
-//! All `LITHOS_*` environment variables are read once through [`EnvVars`] and
+//! All `TRACES_*` environment variables are read once through [`EnvVars`] and
 //! exposed as a consistent API. Platform directories (`HOME`, `XDG_*`) are
 //! resolved as lazy statics with per-platform fallbacks.
 //!
@@ -12,7 +12,7 @@
 //! use trace_settings::config::{EnvVars, XDG_CACHE_HOME};
 //!
 //! let vars = EnvVars::capture();
-//! let cache_base = XDG_CACHE_HOME.join("lithos");
+//! let cache_base = XDG_CACHE_HOME.join("traces");
 //! ```
 
 use std::{path::PathBuf, sync::LazyLock};
@@ -153,7 +153,7 @@ pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
 // EnvVars
 // ---------------------------------------------------------------------------
 
-/// Captured Lithos environment variables.
+/// Captured Traces environment variables.
 ///
 /// Pure capture — no fallbacks, no platform logic, no filesystem validation.
 /// Construct via [`EnvVars::capture()`] to read from the real environment, or
@@ -168,20 +168,20 @@ pub struct EnvVars {
 }
 
 impl EnvVars {
-    /// Read all LITHOS_* env vars from the process environment.
+    /// Read all TRACES_* env vars from the process environment.
     #[inline]
     #[must_use]
     pub fn capture() -> Self {
         Self {
-            vault_dir: var_path("LITHOS_VAULT_DIR"),
-            config_file: var_path("LITHOS_CONFIG_FILE"),
-            cache_dir: var_path("LITHOS_CACHE_DIR"),
-            ceiling_dirs: var_path("LITHOS_CEILING_DIRS").map(|raw| {
+            vault_dir: var_path("TRACES_VAULT_DIR"),
+            config_file: var_path("TRACES_CONFIG_FILE"),
+            cache_dir: var_path("TRACES_CACHE_DIR"),
+            ceiling_dirs: var_path("TRACES_CEILING_DIRS").map(|raw| {
                 std::env::split_paths(&raw)
                     .filter(|p| !p.as_os_str().is_empty())
                     .collect()
             }),
-            suppress_global: var_is_true("LITHOS_SUPPRESS_GLOBAL"),
+            suppress_global: var_is_true("TRACES_SUPPRESS_GLOBAL"),
         }
     }
 

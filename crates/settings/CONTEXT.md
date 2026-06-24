@@ -59,7 +59,7 @@ The Discovery context locates the runtime filesystem context needed before confi
 ## Language
 
 **Vault Root**:
-The directory that bounds a Lithos vault and serves as the base for local config path resolution.
+The directory that bounds a Traces vault and serves as the base for local config path resolution.
 _Avoid_: project root, workspace root
 
 **Root Marker**:
@@ -92,11 +92,11 @@ _Avoid_: discovery log, diagnostics, discovery warnings
 
 ## Example Dialogue
 
-> **Dev**: The user ran `lithos sync` from inside their vault. How does Discovery find the vault root?
+> **Dev**: The user ran `traces sync` from inside their vault. How does Discovery find the vault root?
 >
-> **Domain expert**: Discovery starts an Ascending Walk from the current directory. It checks each parent directory for a Root Marker — a file like `lithos.toml`. The first directory where it finds one becomes the Vault Root.
+> **Domain expert**: Discovery starts an Ascending Walk from the current directory. It checks each parent directory for a Root Marker — a file like `traces.toml`. The first directory where it finds one becomes the Vault Root.
 >
-> **Dev**: What if the user also set `LITHOS_VAULT`?
+> **Dev**: What if the user also set `TRACES_VAULT`?
 >
 > **Domain expert**: That's an Override. It preempts the Ascending Walk entirely. Discovery validates the path and returns it as the Vault Root without walking at all.
 >

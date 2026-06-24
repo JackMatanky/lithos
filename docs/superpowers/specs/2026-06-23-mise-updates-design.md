@@ -7,22 +7,22 @@
 
 ## 1. Current State Summary
 
-The project consolidated from monolithic `lithos-core` / `lithos-cli` layout into individual workspace crates under `crates/`. All 12 crates now have `trace-*` package names (e.g. `trace-cli`, `trace-settings`, `trace-note`). However, mise configuration still references the legacy names.
+The project consolidated from monolithic `traces-core` / `traces-cli` layout into individual workspace crates under `crates/`. All 12 crates now have `trace-*` package names (e.g. `trace-cli`, `trace-settings`, `trace-note`). However, mise configuration still references the legacy names.
 
 ### What's Broken/Outdated
 
 | File | Issue |
 |---|---|
-| `mise.toml` `[vars]` | `core_crate = "lithos-core"`, `cli_crate = "lithos-cli"`, `binary_name = "lithos"`, `bench_package_core/cli` — all wrong |
+| `mise.toml` `[vars]` | `core_crate = "traces-core"`, `cli_crate = "traces-cli"`, `binary_name = "traces"`, `bench_package_core/cli` — all wrong |
 | `mise.toml` `[env]` | `CORE_CRATE`, `CLI_CRATE` reference legacy vars |
-| `mise.toml` `[tasks.build]` | Maps `core → lithos-core`, `cli → lithos`; outputs reference `lithos` binary |
+| `mise.toml` `[tasks.build]` | Maps `core → traces-core`, `cli → traces`; outputs reference `traces` binary |
 | `mise.toml` per-crate shortcuts | 8 `test:unit:*` + 2 `test:bench:*` tasks hardcode legacy package names |
-| `.mise/tasks/test/unit` | `map_package_name()` maps to `lithos-core` / `lithos` |
+| `.mise/tasks/test/unit` | `map_package_name()` maps to `traces-core` / `traces` |
 | `.mise/tasks/test/integration` | Same legacy mapping |
-| `.mise/tasks/test/e2e` | Uses `--package lithos`, `binary(lithos)` |
-| `.mise/tasks/test/changed` | Greps `^(lithos-core\|lithos-cli)/` — wrong paths |
+| `.mise/tasks/test/e2e` | Uses `--package traces`, `binary(traces)` |
+| `.mise/tasks/test/changed` | Greps `^(traces-core\|traces-cli)/` — wrong paths |
 | `.mise/tasks/test/coverage` | Same legacy mapping as `test/unit` |
-| `.mise/tasks/test/bench` | Fallback vars `:-lithos-core`, `:-lithos-cli`; search path `lithos-core/` |
+| `.mise/tasks/test/bench` | Fallback vars `:-traces-core`, `:-traces-cli`; search path `traces-core/` |
 
 ### Google Shell Style Non-Compliance
 
@@ -305,7 +305,7 @@ This resolves correctly from any nesting depth.
 ### 5.5 `.mise/tasks/test/unit`
 
 - Replace: `map_package_name()` → source `_crate_names.sh` and call `resolve_crate_name`/`build_package_arg`
-- **Remove**: `context_filter()` — no longer needed. Previously filtered tests like `config::` within monolithic `lithos-core`. Now `-p settings` already scopes to the `trace-settings` crate. Users pass positional filter args directly (e.g., `mise run test:unit -p settings config::`).
+- **Remove**: `context_filter()` — no longer needed. Previously filtered tests like `config::` within monolithic `traces-core`. Now `-p settings` already scopes to the `trace-settings` crate. Users pass positional filter args directly (e.g., `mise run test:unit -p settings config::`).
 - Update: `-p choices` in usage spec to list all 12 crate directories: `cli`, `settings`, `note`, `schema`, `template`, `db`, `fs`, `app`, `support`, `indexer`, `vault`, `utils`
 - Fix: 4-space → 2-space indent
 - Fix: Add file header, proper function docs
@@ -321,16 +321,16 @@ This resolves correctly from any nesting depth.
 
 ### 5.7 `.mise/tasks/test/e2e`
 
-- Replace: Hardcoded `--package lithos` → source `_crate_names.sh`, use `build_package_arg cli`
-- Replace: `binary(lithos)` → `binary(trace-cli)`
+- Replace: Hardcoded `--package traces` → source `_crate_names.sh`, use `build_package_arg cli`
+- Replace: `binary(traces)` → `binary(trace-cli)`
 - Fix: Add `set -euo pipefail`, shebang, file header, `main()` function with proper docs
 - Fix: 4-space → 2-space indent
-- Update: `sources` from `lithos-cli/**/*.rs` → `crates/cli/**/*.rs`
+- Update: `sources` from `traces-cli/**/*.rs` → `crates/cli/**/*.rs`
 
 ### 5.8 `.mise/tasks/test/changed`
 
-- Replace: Legacy grep `^(lithos-core|lithos-cli)/` → `^crates/`
-- Replace: Legacy directory mapping (`lithos-core` → `mise run test:unit -p core`) → source `_crate_names.sh` and call  `mise run test:unit -p <dirname>` directly (e.g., `mise run test:unit -p settings`)
+- Replace: Legacy grep `^(traces-core|traces-cli)/` → `^crates/`
+- Replace: Legacy directory mapping (`traces-core` → `mise run test:unit -p core`) → source `_crate_names.sh` and call  `mise run test:unit -p <dirname>` directly (e.g., `mise run test:unit -p settings`)
 - Fix: 4-space → 2-space indent
 - Fix: File header and function docs
 - **New logic**: Extract changed crate dirs from `crates/<name>/` paths, then use the directory name as shorthand for `resolve_crate_name`
@@ -346,8 +346,8 @@ This resolves correctly from any nesting depth.
 ### 5.10 `.mise/tasks/test/bench`
 
 - Replace: `map_package_name()` → source `_crate_names.sh`
-- Replace: Legacy fallback vars `:-lithos-core`, `:-lithos-cli` → dynamic discovery
-- Replace: `discover_bench_targets` search path from `lithos-core` -> resolve dynamically
+- Replace: Legacy fallback vars `:-traces-core`, `:-traces-cli` → dynamic discovery
+- Replace: `discover_bench_targets` search path from `traces-core` -> resolve dynamically
 - Already: 2-space indent, good structure
 - Fix: Add file header comment
 - Fix: Ensure proper quoting and error handling

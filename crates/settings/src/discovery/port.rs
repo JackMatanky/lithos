@@ -74,7 +74,7 @@ mod tests {
             #[test]
             fn returns_discovery_result_from_mock() {
                 let root = tempfile::tempdir().expect("root");
-                let _candidate = make_candidate(&root, "lithos.toml");
+                let _candidate = make_candidate(&root, "traces.toml");
                 let _report = DiscoveryReport {
                     skipped_ceilings: vec![],
                     local_traversal_stop_reason:

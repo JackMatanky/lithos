@@ -13,7 +13,7 @@ update_reason: Clarified why runtime loading is required (template pack ecosyste
 
 ## Context
 
-Lithos templates are primarily Markdown files containing YAML frontmatter and body content with embedded logic. The engine must support high-frequency rendering for a Command Line Interface (CLI) and a future Language Server Protocol (LSP).
+Traces templates are primarily Markdown files containing YAML frontmatter and body content with embedded logic. The engine must support high-frequency rendering for a Command Line Interface (CLI) and a future Language Server Protocol (LSP).
 
 Key technical challenges for Markdown templates include:
 
@@ -24,7 +24,7 @@ Key technical challenges for Markdown templates include:
 
 ## Decision
 
-We will use **MiniJinja** as the primary template engine for Lithos Rust.
+We will use **MiniJinja** as the primary template engine for Traces Rust.
 
 ### 1. Engine Specifics for Markdown
 
@@ -55,7 +55,7 @@ Handlebars' "logic-less" philosophy requires excessive custom helpers for common
 
 ### Why not Askama?
 
-While Askama offers compile-time type safety and zero runtime overhead through compile-time template compilation, it **fundamentally conflicts with Lithos's core value proposition**:
+While Askama offers compile-time type safety and zero runtime overhead through compile-time template compilation, it **fundamentally conflicts with Traces's core value proposition**:
 
 **Template Pack Ecosystem Requirements (FR34-FR37):**
 - Users must create custom templates in their editor (FR1)
@@ -65,18 +65,18 @@ While Askama offers compile-time type safety and zero runtime overhead through c
 
 **Askama's Limitations:**
 - Templates must be embedded in the binary at compile time
-- Users cannot create or modify templates without recompiling Lithos
+- Users cannot create or modify templates without recompiling Traces
 - Git distribution of template files is meaningless (templates aren't loaded at runtime)
 - Community template pack ecosystem becomes impossible
 
 **Why Runtime Loading is Non-Negotiable:**
-Lithos is a **platform for user-created content**, not a fixed-template system. The entire product vision (Journey 3: Jordan distributes template packs, Journey 4: Maya adopts community templates) depends on runtime template loading. Choosing a compile-time engine would eliminate the core differentiator that makes Lithos valuable.
+Traces is a **platform for user-created content**, not a fixed-template system. The entire product vision (Journey 3: Jordan distributes template packs, Journey 4: Maya adopts community templates) depends on runtime template loading. Choosing a compile-time engine would eliminate the core differentiator that makes Traces valuable.
 
 ## Technical Validation
 
 ### Research Findings
 
-- **Markdown Safety Advantage**: MiniJinja allows defining "Safe" vs "Raw" strings at the application level. Lithos can pass schema-validated Markdown snippets into a template and ensure they aren't mangled by the engine, while still protecting against accidental injection in other contexts.
+- **Markdown Safety Advantage**: MiniJinja allows defining "Safe" vs "Raw" strings at the application level. Traces can pass schema-validated Markdown snippets into a template and ensure they aren't mangled by the engine, while still protecting against accidental injection in other contexts.
 - **Mechanical Sympathy**: MiniJinja's VM-based approach and minimal dependency tree (minimal binary size increase of ~50KB) align with Rust's performance goals.
 - **Whitespace Control**: Jinja2-style `{%- ... -%}` is superior for Markdown where extra newlines can change document meaning.
 
@@ -144,7 +144,7 @@ This approach gives us:
 
 ### Positive
 
-- **Runtime Flexibility**: Users can create, modify, and share templates without recompiling Lithos
+- **Runtime Flexibility**: Users can create, modify, and share templates without recompiling Traces
 - **Template Pack Ecosystem**: Enables Git-based distribution of community-created template packs (core product differentiator)
 - **High Performance**: Sub-50ms rendering via efficient VM + zero-copy context building from rkyv archived data
 - **Small Binary**: Minimal dependency footprint (~50KB increase)
@@ -155,7 +155,7 @@ This approach gives us:
 ### Negative
 
 - **Runtime Template Errors**: Syntax errors discovered at execution time (not compile time)
-  - *Mitigation*: Template validation commands (`lithos template check`)
+  - *Mitigation*: Template validation commands (`traces template check`)
   - *Mitigation*: LSP provides real-time syntax checking during template editing
 - **Custom Environment Management**: Requires extension-based escaping configuration
   - *Mitigation*: Centralized `TemplateEnvironment` factory in `template/` context

@@ -30,7 +30,7 @@ section: "Completion & Handoff"
 
 - 8 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
-- **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
+- **Single-Crate Architecture** (`traces-core`) specified for zero-copy performance
 - **Unified Repository Traits** pattern for testability without CQRS complexity
 - **Files as Source of Truth** with database as rebuildable projection/cache
 - **Optional View Pattern** (ADR 003) - introduce `*View` only when domain shape is inefficient
@@ -46,10 +46,10 @@ section: "Completion & Handoff"
 ## Implementation Handoff
 
 **For AI Agents:**
-This architecture document is your complete guide for implementing Lithos Rust. Follow all decisions, patterns, and structures exactly as documented.
+This architecture document is your complete guide for implementing Traces Rust. Follow all decisions, patterns, and structures exactly as documented.
 
 **First Implementation Priority:**
-Initialize the Workspace with `lithos-core` and `lithos-cli`. Implement `db.rs` to establish the Data Plane.
+Initialize the Workspace with `traces-core` and `traces-cli`. Implement `db.rs` to establish the Data Plane.
 
 **Development Sequence:**
 

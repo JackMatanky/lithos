@@ -28,7 +28,7 @@ Capture the completed path taxonomy as an ADR and in module-level doc comments s
 
 ## 2. Module Doc Updates
 
-### `lithos-core/src/fs/path.rs`
+### `traces-core/src/fs/path.rs`
 - **Goal**: Provide a comprehensive guide to the path system.
 - **Content**:
     - taxonomy table (as above).
@@ -36,7 +36,7 @@ Capture the completed path taxonomy as an ADR and in module-level doc comments s
     - Guidance on when to use each tier.
     - Specific documentation for `RelativePath` enum emphasizing its use for display and serialization.
 
-### `lithos-core/src/config/{cache.rs,template.rs,schema.rs}`
+### `traces-core/src/config/{cache.rs,template.rs,schema.rs}`
 - **Goal**: Clarify the role of declarative paths in config.
 - **Content**:
     - Note that config stores declarative types (`RelativeDirPath`/`RelativeFilePath`) rather than filesystem-validated or storage-key types.
@@ -44,11 +44,11 @@ Capture the completed path taxonomy as an ADR and in module-level doc comments s
 
 ## 3. Context Alignment
 
-### `lithos-core/src/fs/CONTEXT.md`
+### `traces-core/src/fs/CONTEXT.md`
 - **Update**: "Normalized Path" entry.
 - **Refinement**: Reference the taxonomy and clarify the role of `PathKey` vs `FsPath`.
 
-### `lithos-core/src/config/CONTEXT.md`
+### `traces-core/src/config/CONTEXT.md`
 - **Update**: Add note about config using `RelativeDirPath`/`RelativeFilePath` for declarative path values.
 
 ## 4. Verification Plan

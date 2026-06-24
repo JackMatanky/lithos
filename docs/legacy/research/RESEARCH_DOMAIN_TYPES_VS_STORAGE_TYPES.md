@@ -576,7 +576,7 @@ pub trait Repository {
 
 ---
 
-## 7. File-Based Systems: The Lithos Pattern
+## 7. File-Based Systems: The Traces Pattern
 
 ### 7.1 Core Principle
 
@@ -592,7 +592,7 @@ This fundamentally changes the domain/storage relationship:
 | State machines, workflows | Mostly queries + validation    |
 | CQRS for scaling writes   | No CQRS (files control writes) |
 
-### 7.2 Recommended Type Layers for Lithos
+### 7.2 Recommended Type Layers for Traces
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -635,7 +635,7 @@ This fundamentally changes the domain/storage relationship:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 7.3 Lithos Type Guidelines
+### 7.3 Traces Type Guidelines
 
 **For each context (schema, note, template, config):**
 
@@ -658,7 +658,7 @@ This fundamentally changes the domain/storage relationship:
 
 ---
 
-## 8. Case Studies: Applying to Lithos Contexts
+## 8. Case Studies: Applying to Traces Contexts
 
 ### 8.1 Schema Context
 
@@ -939,7 +939,7 @@ impl Note {
 
 ---
 
-## 10. Recommendations for Lithos
+## 10. Recommendations for Traces
 
 ### 10.1 Type Architecture Per Context
 
@@ -1002,7 +1002,7 @@ For each context, follow this pattern:
 2. **Domain types** that are BOTH validated entities AND storage shapes
 3. **Optional `*View` types** ONLY when profiling reveals inefficiency
 
-**For Lithos specifically:**
+**For Traces specifically:**
 
 - **Drop the CQRS Query/Command split** - Use single Repository trait
 - **Use single domain type per context** - Not Domain + Stored + View + Aggregate

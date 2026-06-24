@@ -115,7 +115,7 @@ impl FileReader {
     /// let fs = FileReader::from_system_root();
     ///
     /// // Can now check absolute system paths
-    /// if fs.exists(Path::new("/etc/lithos/lithos.toml")) {
+    /// if fs.exists(Path::new("/etc/traces/traces.toml")) {
     ///     // Global config exists
     /// }
     /// ```

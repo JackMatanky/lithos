@@ -91,10 +91,10 @@ Simplify the `Extender` to build a lightweight `InheritanceGraph` with just IDs 
 
 **Files Modified**:
 
-- ✅ `lithos-core/src/schema/extender.rs`
-- ✅ `lithos-core/src/schema/merger.rs`
-- ✅ `lithos-core/src/schema/views/inheritance.rs`
-- ✅ `lithos-core/src/schema/views/inheritance_redesign.rs`
+- ✅ `traces-core/src/schema/extender.rs`
+- ✅ `traces-core/src/schema/merger.rs`
+- ✅ `traces-core/src/schema/views/inheritance.rs`
+- ✅ `traces-core/src/schema/views/inheritance_redesign.rs`
 
 #### 1.2 Create `InheritanceNode` Type
 
@@ -104,7 +104,7 @@ Simplify the `Extender` to build a lightweight `InheritanceGraph` with just IDs 
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/extender.rs` (new type)
+- `traces-core/src/schema/extender.rs` (new type)
 
 #### 1.3 Simplify `Extender::build()`
 
@@ -115,7 +115,7 @@ Simplify the `Extender` to build a lightweight `InheritanceGraph` with just IDs 
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/extender.rs` (~200 lines)
+- `traces-core/src/schema/extender.rs` (~200 lines)
 
 #### 1.4 Update `Merger` to Accept Graph
 
@@ -124,7 +124,7 @@ Simplify the `Extender` to build a lightweight `InheritanceGraph` with just IDs 
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/merger.rs` (lines ~70-100)
+- `traces-core/src/schema/merger.rs` (lines ~70-100)
 
 ### Verification
 
@@ -166,7 +166,7 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
 
 **Files to Create**:
 
-- `lithos-core/src/schema/property_bank_pipeline.rs`
+- `traces-core/src/schema/property_bank_pipeline.rs`
 
 #### 2.2 Define Data Structures
 
@@ -199,8 +199,8 @@ Implement the 6-state PropertyBank pipeline as a typestate state machine.
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/mod.rs` (add module)
-- `lithos-core/src/schema/property_bank_pipeline.rs` (new)
+- `traces-core/src/schema/mod.rs` (add module)
+- `traces-core/src/schema/property_bank_pipeline.rs` (new)
 
 ### Verification
 
@@ -246,7 +246,7 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
 
 **Files to Create**:
 
-- `lithos-core/src/schema/schema_pipeline.rs`
+- `traces-core/src/schema/schema_pipeline.rs`
 
 #### 3.2 Define Data Structures
 
@@ -284,8 +284,8 @@ Implement the basic 9-state Schema pipeline structure (without optimization).
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/mod.rs` (add module)
-- `lithos-core/src/schema/schema_pipeline.rs` (new, ~800 lines)
+- `traces-core/src/schema/mod.rs` (add module)
+- `traces-core/src/schema/schema_pipeline.rs` (new, ~800 lines)
 
 ### Verification
 
@@ -347,7 +347,7 @@ Add incremental update optimizations (level-by-level processing, staleness skipp
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/schema_pipeline.rs` (lines ~400-600)
+- `traces-core/src/schema/schema_pipeline.rs` (lines ~400-600)
 
 ### Verification
 
@@ -383,7 +383,7 @@ Refactor `Loader` into a thin `Builder` facade and remove `Ingestor` entirely.
 
 #### 5.1 Create Builder Facade
 
-- [ ] Create `lithos-core/src/schema/builder.rs`
+- [ ] Create `traces-core/src/schema/builder.rs`
 - [ ] Thin facade (~50 lines):
 
   ```rust
@@ -409,34 +409,34 @@ Refactor `Loader` into a thin `Builder` facade and remove `Ingestor` entirely.
 
 #### 5.2 Remove Ingestor
 
-- [ ] Delete `lithos-core/src/schema/ingestor.rs`
+- [ ] Delete `traces-core/src/schema/ingestor.rs`
 - [ ] Move filesystem logic into state machine transitions
 - [ ] Move DB queries into state machine transitions
 
 #### 5.3 Update Public API
 
-- [ ] Update `lithos-core/src/schema/mod.rs` exports
+- [ ] Update `traces-core/src/schema/mod.rs` exports
 - [ ] Remove `Loader` struct
 - [ ] Export `Builder` as primary API
 
 #### 5.4 Update Callsites
 
-- [ ] Update `lithos-cli` to use `Builder`
+- [ ] Update `traces-cli` to use `Builder`
 - [ ] Update tests to use `Builder`
 
 **Files to Create**:
 
-- `lithos-core/src/schema/builder.rs`
+- `traces-core/src/schema/builder.rs`
 
 **Files to Delete**:
 
-- `lithos-core/src/schema/ingestor.rs`
-- `lithos-core/src/schema/loader.rs` (most of it)
+- `traces-core/src/schema/ingestor.rs`
+- `traces-core/src/schema/loader.rs` (most of it)
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/mod.rs`
-- `lithos-cli/src/commands/*.rs`
+- `traces-core/src/schema/mod.rs`
+- `traces-cli/src/commands/*.rs`
 
 ### Verification
 
@@ -504,8 +504,8 @@ Comprehensive testing of the refactored pipelines.
 
 **Files to Create**:
 
-- `lithos-core/tests/schema_pipeline_integration.rs`
-- `lithos-core/benches/schema_pipeline.rs`
+- `traces-core/tests/schema_pipeline_integration.rs`
+- `traces-core/benches/schema_pipeline.rs`
 
 ### Verification
 
@@ -748,11 +748,11 @@ mise run adr:validate
 
 ### Files to Create (New)
 
-- `lithos-core/src/schema/property_bank_pipeline.rs`
-- `lithos-core/src/schema/schema_pipeline.rs`
-- `lithos-core/src/schema/builder.rs`
-- `lithos-core/tests/schema_pipeline_integration.rs`
-- `lithos-core/benches/schema_pipeline.rs`
+- `traces-core/src/schema/property_bank_pipeline.rs`
+- `traces-core/src/schema/schema_pipeline.rs`
+- `traces-core/src/schema/builder.rs`
+- `traces-core/tests/schema_pipeline_integration.rs`
+- `traces-core/benches/schema_pipeline.rs`
 - `docs/adr/0XX-typestate-pattern.md`
 - `docs/adr/0XX-early-tree-construction.md`
 - `docs/adr/0XX-hash-size-selection.md`
@@ -760,20 +760,20 @@ mise run adr:validate
 
 ### Files to Delete
 
-- `lithos-core/src/schema/ingestor.rs` (~1500 lines)
-- `lithos-core/src/schema/loader.rs` (~1000 lines)
+- `traces-core/src/schema/ingestor.rs` (~1500 lines)
+- `traces-core/src/schema/loader.rs` (~1000 lines)
 
 ### Files to Modify (Major Changes)
 
-- `lithos-core/src/schema/extender.rs` (~200 lines changed)
-- `lithos-core/src/schema/merger.rs` (~100 lines changed)
-- `lithos-core/src/schema/views/metadata.rs` (✅ Complete)
-- `lithos-core/src/schema/views/inheritance_redesign.rs` (✅ Complete)
-- `lithos-core/src/schema/mod.rs` (~50 lines changed)
+- `traces-core/src/schema/extender.rs` (~200 lines changed)
+- `traces-core/src/schema/merger.rs` (~100 lines changed)
+- `traces-core/src/schema/views/metadata.rs` (✅ Complete)
+- `traces-core/src/schema/views/inheritance_redesign.rs` (✅ Complete)
+- `traces-core/src/schema/mod.rs` (~50 lines changed)
 
 ### Files to Modify (Minor Changes)
 
-- `lithos-cli/src/commands/*.rs` (update to use Builder)
+- `traces-cli/src/commands/*.rs` (update to use Builder)
 - Various test files (update to use Builder)
 
 ### Net Line Change Estimate

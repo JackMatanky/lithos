@@ -8,7 +8,7 @@
 
 ### Figment Usage Location
 
-**File**: `lithos-core/src/config/loader.rs`
+**File**: `traces-core/src/config/loader.rs`
 **Lines**: 22, 415-439
 
 ```rust
@@ -66,7 +66,7 @@ Loader::load()
 
 ### Note Processor Pattern
 
-**File**: `lithos-core/src/note/processor.rs`
+**File**: `traces-core/src/note/processor.rs`
 
 **Stages**:
 1. Discovery - repository lookup
@@ -85,7 +85,7 @@ Loader::load()
 
 ### Property Bank Processor Pattern
 
-**File**: `lithos-core/src/schema/property_bank_processor.rs`
+**File**: `traces-core/src/schema/property_bank_processor.rs`
 
 **Stages**:
 1. Discovery - check cached view
@@ -213,7 +213,7 @@ pub(crate) fn merge_all(
 - Removed legacy `Config::build(&RawConfig, ...)` from `config/aggregate.rs`.
 - Deleted `RawConfig` DTO and its conversion impls from `config/raw.rs`.
 - Reworked raw DTO tests to validate `RawGlobalConfig` / `RawVaultConfig` directly.
-- Remaining references to `RawConfig` in `lithos-core/src` are now zero (code path fully migrated).
+- Remaining references to `RawConfig` in `traces-core/src` are now zero (code path fully migrated).
 - Verification after deletion: `cargo test --lib` passed (985/0).
 
 ### Phase 6D verification checkpoint
@@ -236,16 +236,16 @@ pub(crate) fn merge_all(
 The prior "complete" mark was technically premature. A focused audit found real functional gaps:
 
 1. `config/processor.rs` has incomplete analysis logic:
-   - `TODO` at `lithos-core/src/config/processor.rs:645`.
+   - `TODO` at `traces-core/src/config/processor.rs:645`.
    - Current behavior assumes all fields changed when a view exists, so `NoChanges` is effectively unreachable for stale-view comparisons.
    - This defeats the intended incremental optimization.
 
 2. `config/merger.rs` still contains persistence stubs:
-   - `TODO` at `lithos-core/src/config/merger.rs:195`, `lithos-core/src/config/merger.rs:208`, `lithos-core/src/config/merger.rs:220`.
+   - `TODO` at `traces-core/src/config/merger.rs:195`, `traces-core/src/config/merger.rs:208`, `traces-core/src/config/merger.rs:220`.
    - View-update branches currently fall back to `load_cached_config()` without writing refreshed views.
 
 3. `config/discovery.rs` still has a repository integration TODO:
-   - `TODO` at `lithos-core/src/config/discovery.rs:313` claims view-query methods are missing, but `Repository` already has `get_raw_global_view` and `get_raw_vault_view`.
+   - `TODO` at `traces-core/src/config/discovery.rs:313` claims view-query methods are missing, but `Repository` already has `get_raw_global_view` and `get_raw_vault_view`.
    - This indicates design drift between implementation and comments/assumptions.
 
 4. Responsibility boundaries need tightening:
@@ -290,7 +290,7 @@ Remaining work is now architectural (naming and stricter role boundaries), not c
 - Current resolver still performs persistence actions for update/rebuild flows; further separation into pure resolution vs persistence orchestration remains optional follow-up depending on desired strictness.
 
 Verification after rename/update work:
-- `cargo test -p lithos-core config::merger::tests` passed.
+- `cargo test -p traces-core config::merger::tests` passed.
 - `mise run verify` passed.
 
 ### Boundary split completed
@@ -1066,7 +1066,7 @@ config/
 
 ### Existing Tests
 
-**File**: `lithos-core/src/config/loader.rs` (lines 746-777)
+**File**: `traces-core/src/config/loader.rs` (lines 746-777)
 
 ```rust
 #[test]
@@ -1322,7 +1322,7 @@ Decision: proceed with low-risk slice first (`RawConfigMetadata`), then tackle c
 ### Verification
 
 - `cargo test --lib` passes: **988 passed, 0 failed**
-- No remaining `RawConfigMetadata` usages in `lithos-core/src`
+- No remaining `RawConfigMetadata` usages in `traces-core/src`
 
 ---
 

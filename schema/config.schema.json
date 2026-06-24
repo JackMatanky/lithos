@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "config.schema.json",
-  "title": "Lithos Configuration",
-  "description": "Unified configuration schema for global and vault-level Lithos config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. Vault root is discovered at runtime, not configured. Defaults shown reflect Rust implementation in lithos-core/src/config/raw.rs.",
+  "title": "Traces Configuration",
+  "description": "Unified configuration schema for global and vault-level Traces config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. Vault root is discovered at runtime, not configured. Defaults shown reflect Rust implementation in traces-core/src/config/raw.rs.",
   "type": "object",
   "additionalProperties": false,
   "oneOf": [
@@ -18,7 +18,7 @@
     },
     "version": {
       "title": "App Version",
-      "description": "Lithos schema version this vault is compatible with. Vault-only field (ignored in global config). If omitted, defaults to the current Lithos version.",
+      "description": "Traces schema version this vault is compatible with. Vault-only field (ignored in global config). If omitted, defaults to the current Traces version.",
       "type": "string",
       "minLength": 1,
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?$"
@@ -82,7 +82,7 @@
     },
     "frontmatter": {
       "title": "Frontmatter Configuration",
-      "description": "Customize which keys Lithos looks for when parsing note frontmatter.",
+      "description": "Customize which keys Traces looks for when parsing note frontmatter.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -125,7 +125,7 @@
     },
     "task": {
       "title": "Task Configuration",
-      "description": "Configure how Lithos recognizes and processes tasks in markdown files.",
+      "description": "Configure how Traces recognizes and processes tasks in markdown files.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

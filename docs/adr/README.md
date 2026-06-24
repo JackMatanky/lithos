@@ -1,6 +1,6 @@
 # Architectural Decision Record (ADR) Process
 
-This guide documents the process for proposing, reviewing, and maintaining architectural decisions in the Lithos project.
+This guide documents the process for proposing, reviewing, and maintaining architectural decisions in the Traces project.
 
 ## Two-Tier Documentation Strategy
 

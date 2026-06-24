@@ -221,7 +221,7 @@ mod tests {
         #[test]
         fn returns_cache_dir_when_relative_path_is_valid() {
             let result =
-                CacheDir::try_new(std::path::Path::new(".lithos-cache"));
+                CacheDir::try_new(std::path::Path::new(".traces-cache"));
 
             assert!(
                 result.is_ok(),
@@ -233,7 +233,7 @@ mod tests {
                     .expect("result checked as ok")
                     .as_relative_dir()
                     .as_str(),
-                ".lithos-cache",
+                ".traces-cache",
                 "cache dir should preserve the validated relative declaration"
             );
         }

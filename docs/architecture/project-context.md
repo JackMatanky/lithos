@@ -1,5 +1,5 @@
 ---
-project_name: 'lithos'
+project_name: 'traces'
 user_name: 'Jack'
 date: '2026-01-23'
 sections_completed: ['technology_stack', 'architectural_integrity', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
@@ -61,14 +61,14 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Architectural Integrity
 - **Dependency Flow Architecture:**
-  - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow:
+  - **Single Core Crate:** `traces-core` contains all business logic and infrastructure. Dependencies flow:
     - Pure Infrastructure (`db/`, `fs/`) → All Contexts
     - Cross-Cutting Business Rules (`config/`) → Business Contexts
     - Business Contexts (`note/`, `schema/`, `template/`) → CLI
   - **Context Isolation:**
     - Business contexts (note, schema, template) MUST NOT import each other.
     - Business contexts MAY depend on config context (user-configurable rules) and pure infrastructure (generic utilities).
-  - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
+  - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `traces-cli`).
 - **Storage Pattern:**
   - **Unified Repository Traits:** Each context defines a single `Repository` trait (e.g., `schema::Repository`, `note::Repository`) that provides both read and write operations.
   - **Concrete Implementations:** Infrastructure provides concrete implementations (e.g., `schema::RedbRepository`, `schema::InMemoryRepository`).
@@ -177,15 +177,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Testing Rules
 - **Storage-Based Testing Hierarchy:**
   - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, invariants, and conversions.
-  - **Integration Tests:** Use `InMemoryRepository` implementations to test business logic without DB. Use real `RedbRepository` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
+  - **Integration Tests:** Use `InMemoryRepository` implementations to test business logic without DB. Use real `RedbRepository` with temporary DBs for full integration. Locations: Unit in `traces-core/src/`, Integration in `traces-core/tests/`.
   - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
 - **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<module>' for specific modules (config/note/schema/template/db/fs), 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:note'.
 - **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
 - **Schema Validation Authority:** Use the JSON schemas in `docs/schemas/` (from the Go implementation) as the source of truth for backward compatibility tests of the Rust Schema Engine.
 - **Starter Kit Pipeline:**
-  - **Conversion:** All `templater` scripts and templates (from `docs/refs/obsidian/`) must be converted to Lithos/MiniJinja template syntax before being promoted to test fixtures or starter kit assets.
+  - **Conversion:** All `templater` scripts and templates (from `docs/refs/obsidian/`) must be converted to Traces/MiniJinja template syntax before being promoted to test fixtures or starter kit assets.
   - **Sanitization:** ABSOLUTELY ALL personal information must be removed from sample files in `docs/refs/obsidian/` before they are used in tests or packaged.
-  - **Asset Bundle:** The final starter kit must include a cohesive set of sanitized templates, Go-compatible JSON schemas, a validated `lithos.toml` config, and a standard directory structure.
+  - **Asset Bundle:** The final starter kit must include a cohesive set of sanitized templates, Go-compatible JSON schemas, a validated `traces.toml` config, and a standard directory structure.
 - **Async Testing:** ALWAYS use `#[tokio::test(flavor = "multi_thread")]` for integration tests to surface race conditions in the event bus or indexer. Safety invariants: Use timeouts (e.g., with_timeout), semaphore for I/O throttling. Block limit: >10ms requires spawn_blocking.
 - **Performance Benchmarking:** Use `criterion` for all NFR-critical paths (Indexing, Rendering). 10k-note vault benchmarks are mandatory for storage changes.
 - **Coverage Target:** Enforce 80%+ coverage via tarpaulin in CI pipelines. Focus coverage efforts on domain and app logic; ignore generated code.

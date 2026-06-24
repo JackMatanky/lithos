@@ -59,13 +59,13 @@
 - FR40: Users can audit template execution and data access patterns
 
 ### Command Line Interface (FR41-FR47)
-- FR41: Users can execute lithos commands with subcommands for templates, schemas, and vaults
+- FR41: Users can execute traces commands with subcommands for templates, schemas, and vaults
 - FR42: Users can access comprehensive help and documentation from the CLI
 - FR43: Users can view status and configuration of templates and schemas
 - FR44: Users can manage vault operations (index, search, validate) from command line
 - FR45: Users can run templates with various output formats and destinations
 - FR46: Users can configure CLI behavior and preferences
-- FR47: Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection)
+- FR47: Users can execute most important commands with single words (e.g., `traces new` opens fuzzy picker for template selection)
 
 ### Error Handling & Recovery (FR48-FR50)
 - FR48: Users can receive clear, actionable error messages when operations fail

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This document captures the complete findings from an extensive architectural analysis comparing the planned Lithos architecture against Rust ecosystem best practices. The analysis revealed **fundamental misalignments** that will significantly impact:
+This document captures the complete findings from an extensive architectural analysis comparing the planned Traces architecture against Rust ecosystem best practices. The analysis revealed **fundamental misalignments** that will significantly impact:
 
 - **Performance**: Zero-copy features compromised by multi-crate boundaries (5-10x performance loss)
 - **Development Velocity**: Over-modularization creates navigation overhead (30+ files vs 8-10 idiomatic)
@@ -64,7 +64,7 @@ This document captures the complete findings from an extensive architectural ana
 
 > "Until you hit a million lines of code, the number of crates in the project will probably fit on one screen."
 
-**Application**: Lithos targets <50k LOC. Current 4-crate internal layers is atypical.
+**Application**: Traces targets <50k LOC. Current 4-crate internal layers is atypical.
 
 #### Module Organization
 
@@ -91,15 +91,15 @@ This document captures the complete findings from an extensive architectural ana
 
 **Critical Misunderstanding Corrected**:
 
-- User did NOT mean: Split domain into lithos-note, lithos-schema, lithos-template crates
-- User DID mean: Flat organization at lithos-core/src/ level (note/, schema/, template/ folders)
+- User did NOT mean: Split domain into traces-note, traces-schema, traces-template crates
+- User DID mean: Flat organization at traces-core/src/ level (note/, schema/, template/ folders)
 
 **This clarification was CRUCIAL** - completely changed the recommendation from "your workspace is too complex" to "your workspace needs restructuring".
 
 **Proper Rust Pattern**:
 
 ```
-lithos-core/src/
+traces-core/src/
   lib.rs
   note/        ← Context folder (not separate crate)
   schema/      ← Context folder
@@ -180,13 +180,13 @@ From ADR 006:
 **The Problem with Multi-Crate**:
 
 ```rust
-// lithos-adapters crate
+// traces-adapters crate
 pub fn get_note(&self, id: Uuid) -> Result<AccessGuard<'_, ArchivedNote>> {
     let guard = self.table.get(id)?;  // redb zero-copy
     Ok(guard)  // ← Returns across CRATE BOUNDARY
 }
 
-// lithos-app crate (DIFFERENT CRATE)
+// traces-app crate (DIFFERENT CRATE)
 let archived = storage.get_note(id)?;
 archived.title  // ← Is this zero-copy? NO!
 ```
@@ -346,7 +346,7 @@ After user requested proper course correction workflow, I invoked explore agent 
 1. **Multi-Crate Workspace Structure**
    - **Current**: 4 crates (domain, app, adapters, cli)
    - **Issue**: 5-10x performance loss on zero-copy reads due to cross-crate inlining limitations
-   - **Recommendation**: Single lithos-core library + separate binary crates (cli, lsp)
+   - **Recommendation**: Single traces-core library + separate binary crates (cli, lsp)
    - **Evidence**: Matklad research, Cargo Book profiles, ADR 006 performance targets
 
 2. **Domain Serialization**
@@ -453,8 +453,8 @@ BEFORE:
 │ │ │ └── ports/api/ + ports/spi/
 
 AFTER:
-lithos/
-├── lithos-core/
+traces/
+├── traces-core/
 │ └── src/
 │ ├── lib.rs
 │ ├── config.rs # All config types
@@ -466,8 +466,8 @@ lithos/
 │ ├── ports.rs # All ports OR api.rs + spi.rs
 │ ├── commands/ # Use case implementations
 │ └── storage/ # Infrastructure (pub(crate))
-├── lithos-cli/
-└── lithos-lsp/ (Phase 2)
+├── traces-cli/
+└── traces-lsp/ (Phase 2)
 ```
 
 **Line 181 - Zero-Copy Safety**:
@@ -760,7 +760,7 @@ TOTAL: 35-40ms (COMFORTABLE - well under 50ms target)
 
 ### Phase 3: Crate Merge (High Risk)
 
-- Merge domain/app/adapters into lithos-core
+- Merge domain/app/adapters into traces-core
 - Update all inter-crate imports to intra-crate
 - Change Cargo.toml dependencies to pub(crate) visibility
 

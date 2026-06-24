@@ -635,7 +635,7 @@ let client = Builder::new()
 
 ---
 
-## 6. Recommendations for Lithos Schema Refactor
+## 6. Recommendations for Traces Schema Refactor
 
 ### 6.1 When to Use Typestates
 
@@ -651,7 +651,7 @@ let client = Builder::new()
 - States that change frequently in loops
 - States that need to be stored in collections
 
-### 6.2 Recommended Pattern for Lithos
+### 6.2 Recommended Pattern for Traces
 
 **Use Approach B (generic struct) with closure-based access:**
 

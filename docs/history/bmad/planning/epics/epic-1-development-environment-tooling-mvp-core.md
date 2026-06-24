@@ -27,7 +27,7 @@ So that the project has clear separation between domain, application, infrastruc
 **Then** a Cargo workspace is created with the following structure:
 
 ```
-lithos/
+traces/
 ├── Cargo.toml (workspace configuration)
 ├── crates/
 │   ├── domain/ (pure business logic, no I/O)
@@ -263,7 +263,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 
 As a developer or user discovering the project,
 I want a clear overview of the project with setup instructions,
-So that I can quickly understand what lithos is and how to get started.
+So that I can quickly understand what traces is and how to get started.
 
 **Acceptance Criteria:**
 

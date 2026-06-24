@@ -1,7 +1,7 @@
 # Rust Test Review Patterns
 
 ## Overview
-This document provides senior developer-level patterns and methodologies for conducting comprehensive test reviews in Rust projects, specifically for the Lithos architecture. These patterns focus on quality assurance, professional standards, and systematic review approaches.
+This document provides senior developer-level patterns and methodologies for conducting comprehensive test reviews in Rust projects, specifically for the Traces architecture. These patterns focus on quality assurance, professional standards, and systematic review approaches.
 
 ## Review Framework Architecture
 
@@ -16,7 +16,7 @@ Layer 1: Test Quality Assessment
 
 Layer 2: Standards Compliance
 ├── Rust Best Practices Adherence
-├── Lithos Pattern Compliance
+├── Traces Pattern Compliance
 ├── Documentation Standards
 └── Code Quality Requirements
 
@@ -312,7 +312,7 @@ style_and_linting_review:
 
 Refer to `linting.md` for specific suppression rules and justified exceptions.
 
-### 2. Lithos Architecture Compliance
+### 2. Traces Architecture Compliance
 
 #### Pattern: Context Boundary Validation
 **Objective**: Ensure tests respect bounded context isolation.

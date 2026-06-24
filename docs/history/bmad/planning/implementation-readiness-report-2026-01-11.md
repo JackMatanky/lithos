@@ -16,7 +16,7 @@ includedFiles:
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-01-11
-**Project:** lithos
+**Project:** traces
 
 ## Document Inventory
 
@@ -115,13 +115,13 @@ FR37: Users can contribute improvements to shared template ecosystems
 FR38: Users can control access to sensitive vault data and templates
 FR39: Users can encrypt sensitive configuration and schema files
 FR40: Users can audit template execution and data access patterns
-FR41: Users can execute lithos commands with subcommands for templates, schemas, and vaults
+FR41: Users can execute traces commands with subcommands for templates, schemas, and vaults
 FR42: Users can access comprehensive help and documentation from the CLI
 FR43: Users can view status and configuration of templates and schemas
 FR44: Users can manage vault operations (index, search, validate) from command line
 FR45: Users can run templates with various output formats and destinations
 FR46: Users can configure CLI behavior and preferences
-FR47: Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection)
+FR47: Users can execute most important commands with single words (e.g., `traces new` opens fuzzy picker for template selection)
 FR48: Users can receive clear, actionable error messages when operations fail
 FR49: Users can recover from failed template executions with rollback capabilities
 FR50: Users can diagnose and troubleshoot configuration and schema issues
@@ -175,7 +175,7 @@ Total NFRs: 30
 
 ### PRD Completeness Assessment
 
-The PRD is exceptionally thorough, with 50 specific Functional Requirements and 30 Non-Functional Requirements. It successfully captures the core vision of Lithos while providing clear technical and performance boundaries. The requirements for schema-driven interactivity and large vault performance are particularly well-defined.
+The PRD is exceptionally thorough, with 50 specific Functional Requirements and 30 Non-Functional Requirements. It successfully captures the core vision of Traces while providing clear technical and performance boundaries. The requirements for schema-driven interactivity and large vault performance are particularly well-defined.
 
 ## Epic Coverage Validation
 
@@ -223,13 +223,13 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR38 | Users can control access to sensitive vault data and templates | Post-MVP Phase 4 | ✓ Covered |
 | FR39 | Users can encrypt sensitive configuration and schema files | Post-MVP Phase 4 / Epic 6 | ✓ Covered |
 | FR40 | Users can audit template execution and data access patterns | Post-MVP Phase 4 / Epic 14 | ✓ Covered |
-| FR41 | Users can execute lithos commands with subcommands for templates, schemas, and vaults | Epic 14 | ✓ Covered |
+| FR41 | Users can execute traces commands with subcommands for templates, schemas, and vaults | Epic 14 | ✓ Covered |
 | FR42 | Users can access comprehensive help and documentation from the CLI | Epic 14 | ✓ Covered |
 | FR43 | Users can view status and configuration of templates and schemas | Epic 14 | ✓ Covered |
 | FR44 | Users can manage vault operations from command line | Epic 14 | ✓ Covered |
 | FR45 | Users can run templates with various output formats and destinations | Epic 14 | ✓ Covered |
 | FR46 | Users can configure CLI behavior and preferences | Epic 14 | ✓ Covered |
-| FR47 | Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection) | Epic 14 | ✓ Covered |
+| FR47 | Users can execute most important commands with single words (e.g., `traces new` opens fuzzy picker for template selection) | Epic 14 | ✓ Covered |
 | FR48 | Users can receive clear, actionable error messages when operations fail | Epic 14 | ✓ Covered |
 | FR49 | Users can recover from failed template executions with rollback capabilities | Epic 14 | ✓ Covered |
 | FR50 | Users can diagnose and troubleshoot configuration and schema issues | Epic 14 | ✓ Covered |

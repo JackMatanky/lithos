@@ -109,7 +109,7 @@ so that I can efficiently run tests, benchmarks, formatting, and other developme
     if [[ "${usage_verbose:-false}" == "true" ]]; then
       verbose_flag="--verbose"
     fi
-    cargo test -p lithos-domain ${verbose_flag}
+    cargo test -p traces-domain ${verbose_flag}
   }
 
   main() {

@@ -62,7 +62,7 @@ We have formalized a three-tier path taxonomy that distinguishes between Filesys
     - Simplified auditing of security-critical path scoping.
     - Consistent storage format (`PathKey`).
 - **Negative**:
-    - Increased type count in `lithos-core::fs`.
+    - Increased type count in `traces-core::fs`.
     - Explicit conversions required at context boundaries.
 
 ## References
@@ -83,17 +83,17 @@ git commit -m "docs: create ADR 020 for three-tier path taxonomy"
 
 ---
 
-### Task 2: Update Module Documentation in `lithos-core/src/fs/path.rs`
+### Task 2: Update Module Documentation in `traces-core/src/fs/path.rs`
 
 **Files:**
-- Modify: `lithos-core/src/fs/path.rs`
+- Modify: `traces-core/src/fs/path.rs`
 
 - [ ] **Step 1: Replace module-level doc comment**
 
 Replace lines 1-19 with the new taxonomy-focused documentation.
 
 ```rust
-//! Three-tier path taxonomy for the Lithos core library.
+//! Three-tier path taxonomy for the Traces core library.
 //!
 //! This module provides a hierarchy of type-safe path wrappers that enforce
 //! filesystem invariants and security policies. The path system is organized into
@@ -142,7 +142,7 @@ Expected: PASS
 - [ ] **Step 4: Commit changes**
 
 ```bash
-git add lithos-core/src/fs/path.rs
+git add traces-core/src/fs/path.rs
 git commit -m "docs: overhaul path module documentation with three-tier taxonomy"
 ```
 
@@ -151,16 +151,16 @@ git commit -m "docs: overhaul path module documentation with three-tier taxonomy
 ### Task 3: Update config path modules
 
 **Files:**
-- Modify: `lithos-core/src/config/cache.rs`
-- Modify: `lithos-core/src/config/template.rs`
-- Modify: `lithos-core/src/config/schema.rs`
+- Modify: `traces-core/src/config/cache.rs`
+- Modify: `traces-core/src/config/template.rs`
+- Modify: `traces-core/src/config/schema.rs`
 
 - [ ] **Step 1: Enhance module documentation**
 
 ```rust
 //! Validated path configuration management.
 //!
-//! This module defines how Lithos manages its filesystem locations (cache,
+//! This module defines how Traces manages its filesystem locations (cache,
 //! schemas, templates). Configuration values use **declarative path types**
 //! ([`RelativeDirPath`] and [`RelativeFilePath`]) which are platform-agnostic
 //! and only lexically validated. They must be resolved against a vault root
@@ -170,7 +170,7 @@ git commit -m "docs: overhaul path module documentation with three-tier taxonomy
 - [ ] **Step 2: Verify and Commit**
 
 ```bash
-git add lithos-core/src/config/cache.rs lithos-core/src/config/template.rs lithos-core/src/config/schema.rs
+git add traces-core/src/config/cache.rs traces-core/src/config/template.rs traces-core/src/config/schema.rs
 git commit -m "docs: update config paths documentation to mention declarative types"
 ```
 
@@ -179,8 +179,8 @@ git commit -m "docs: update config paths documentation to mention declarative ty
 ### Task 4: Context Alignment
 
 **Files:**
-- Modify: `lithos-core/src/fs/CONTEXT.md`
-- Modify: `lithos-core/src/config/CONTEXT.md`
+- Modify: `traces-core/src/fs/CONTEXT.md`
+- Modify: `traces-core/src/config/CONTEXT.md`
 
 - [ ] **Step 1: Update `fs/CONTEXT.md`**
 
@@ -210,7 +210,7 @@ Configuration values use declarative relative paths (`RelativeDirPath`, `Relativ
 - [ ] **Step 3: Verify and Commit**
 
 ```bash
-git add lithos-core/src/fs/CONTEXT.md lithos-core/src/config/CONTEXT.md
+git add traces-core/src/fs/CONTEXT.md traces-core/src/config/CONTEXT.md
 git commit -m "docs: align context files with three-tier path taxonomy"
 ```
 

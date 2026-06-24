@@ -15,7 +15,7 @@ The refactored benchmark script successfully implements all required functionali
 **Command:** `mise run test:bench run -p core -q --name test-refactor-1`
 
 **Expected:**
-- Run benchmarks for lithos-core package
+- Run benchmarks for traces-core package
 - Use quick mode (lower sample count)
 - Save baseline with custom name
 - Export to `.benchmarks/baselines/test-refactor-1.json`
@@ -115,7 +115,7 @@ echo "$baseline_name"
 ```
 
 ### Bug 2: Missing Bench Targets
-**Issue:** `cargo bench --package lithos-core` ran unit tests instead of benchmarks because bench targets weren't specified.
+**Issue:** `cargo bench --package traces-core` ran unit tests instead of benchmarks because bench targets weren't specified.
 
 **Fix:** Integrated `discover_bench_targets` logic into `build_cargo_args`:
 ```bash

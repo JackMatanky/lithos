@@ -171,7 +171,7 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 ### Architectural Invariants
 - **Test-First Refactoring (CRITICAL):** NO refactoring work begins until comprehensive unit tests exist for ALL domain logic to be modified. Tests are the safety net that ensures behavior preservation.
 - **Behavior Preservation:** Refactoring MUST NOT change any observable behavior. All tests must pass without modification after refactoring is complete.
-- **Domain Purity:** The domain crate MUST NOT have dependencies on `app`, `adapters`, or `lithos`.
+- **Domain Purity:** The domain crate MUST NOT have dependencies on `app`, `adapters`, or `traces`.
 - **Visibility (CRITICAL):** Prefer `pub(crate)` for ALL internal modules and utilities. ONLY export what is strictly necessary for the public API at the root `lib.rs`.
 - **Single Responsibility (SRP):** Validation logic must be decomposed into simple, deterministic private helpers.
 - **Encapsulation (DDD):** Aggregate roots must encapsulate their state. Use private fields and public accessors to protect invariants.
@@ -272,7 +272,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - ✅ **SRP Validation**: Extracted 15+ private helpers in `validation.rs`.
 - ✅ **Context Events**: Renamed `DomainEvent` to `NoteEvent`, `SchemaEvent`, etc.
 - ✅ **Visibility Lock-down**: Changed bounded context modules to `pub(crate)`.
-- ✅ **Public API cleanup**: All types now accessible via `lithos_domain::<Type>`.
+- ✅ **Public API cleanup**: All types now accessible via `traces_domain::<Type>`.
 - ✅ **Doc-test fix**: Updated all 30+ doc-tests to use simplified paths.
 - ✅ **Gate Check**: 193 tests passing, zero Clippy warnings.
 
@@ -309,7 +309,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - ✅ **MAJOR**: Minimized public API surface
   - Internal modules are `pub(crate)`
   - Hierarchy hidden from outside world
-  - Simplified paths for consumers (e.g. `lithos_domain::Note`)
+  - Simplified paths for consumers (e.g. `traces_domain::Note`)
 - ✅ **MAJOR**: SRP Validation
   - All validation functions decomposed into single-purpose private helpers
   - Comprehensive unit test suite for validation core
@@ -359,7 +359,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - `crates/domain/src/schema/resolver.rs` - Path updates for context restructuring
 - `crates/domain/src/template/aggregate.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
 - `crates/domain/src/template/composition.rs` - Updates for context restructuring
-- `lithos-core/benches/schema_benchmarks.rs` - Path updates for context restructuring
+- `traces-core/benches/schema_benchmarks.rs` - Path updates for context restructuring
 - `crates/domain/src/note/error.rs` - Created NoteError
 - `crates/domain/src/schema/error.rs` - Created SchemaError
 

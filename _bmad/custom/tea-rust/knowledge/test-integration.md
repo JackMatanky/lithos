@@ -2,7 +2,7 @@
 
 ## CONTEXT
 
-- **Applies to**: Tests in `lithos-core/tests/` directory
+- **Applies to**: Tests in `traces-core/tests/` directory
 - **Location**: External to the library crate
 - **Purpose**: Testing public API, port contracts, adapter implementations
 - **Can test**: I/O operations, external dependencies, persistence layers
@@ -34,13 +34,13 @@ Does the test require...
 
 ### Test Location
 
-- [ ] Test is in `lithos-core/tests/` directory (not `src/`)
+- [ ] Test is in `traces-core/tests/` directory (not `src/`)
 - [ ] Test file name follows `*_test.rs` or describes the component (e.g., `adapter_test.rs`)
 - [ ] Test uses public API only (no access to private items)
 
 ### Test Structure
 
-- [ ] Uses `use lithos_core::*;` to import the library
+- [ ] Uses `use traces_core::*;` to import the library
 - [ ] Tests one port/adapter or one integration scenario per file
 - [ ] Organized into modules by functionality
 
@@ -125,8 +125,8 @@ mod database_integration_tests {
     }
 }
 
-// lithos-core/tests/storage_adapter_test.rs
-use lithos_core::*;
+// traces-core/tests/storage_adapter_test.rs
+use traces_core::*;
 use tempfile::TempDir;
 
 #[test]
@@ -150,9 +150,9 @@ fn persists_note_to_database() {
 ### Port Contract Test
 
 ```rust
-// lithos-core/tests/port_contract_test.rs
-use lithos_core::ports::*;
-use lithos_core::adapters::InMemoryStorageAdapter;
+// traces-core/tests/port_contract_test.rs
+use traces_core::ports::*;
+use traces_core::adapters::InMemoryStorageAdapter;
 
 #[test]
 fn storage_port_contract_honors_transactions() {
@@ -172,7 +172,7 @@ fn storage_port_contract_honors_transactions() {
 ### With Mockall
 
 ```rust
-use lithos_core::ports::*;
+use traces_core::ports::*;
 use mockall::predicate::*;
 use mockall::mock;
 

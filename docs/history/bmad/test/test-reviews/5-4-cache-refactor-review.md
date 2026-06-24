@@ -13,7 +13,7 @@
 
 **Recommendation**: Approve
 
-The test suite for Story 5.4 has been fully refactored to comply with the Lithos Quality Gates and Test Design System. All public SPI components now feature comprehensive **Doc Tests**, and the entire unit test suite utilizes the **BDD (Given-When-Then)** structured comment standard. **Non-deterministic hard waits** have been replaced with the **virtual clock** (`advance`) pattern in `redb.rs`, and stabilized with maintenance triggers in `moka.rs`. Full **traceability** to Story 5.4 requirement IDs has been established.
+The test suite for Story 5.4 has been fully refactored to comply with the Traces Quality Gates and Test Design System. All public SPI components now feature comprehensive **Doc Tests**, and the entire unit test suite utilizes the **BDD (Given-When-Then)** structured comment standard. **Non-deterministic hard waits** have been replaced with the **virtual clock** (`advance`) pattern in `redb.rs`, and stabilized with maintenance triggers in `moka.rs`. Full **traceability** to Story 5.4 requirement IDs has been established.
 
 ### Key Strengths
 ✅ **Architectural Documentation**: Mandatory doc tests now provide executable examples for `Codec`, `Builder`, and CQRS handles.

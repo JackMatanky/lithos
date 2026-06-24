@@ -1,6 +1,6 @@
 ---
 title: "Project Structure & Boundaries"
-description: "Complete project directory structure and architectural boundaries for Lithos"
+description: "Complete project directory structure and architectural boundaries for Traces"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-03-10"
@@ -19,7 +19,7 @@ section: "Project Structure"
 > - `[LEGACY - REMOVE]` - Old CQRS/port/event patterns to be deleted
 
 ```text
-lithos/
+traces/
 ├── .mise/tasks/                # TASK ORCHESTRATION (mise-first)
 │   ├── adr/                    # ADR management tasks (validate, metrics)
 │   ├── test/                   # Specialized test suite execution tasks
@@ -36,7 +36,7 @@ lithos/
 ├── docs/                       # PROJECT DOCUMENTATION
 │   ├── adr/                    # Architectural Decision Records (0001-0012)
 │   └── design/                 # Technical design specifications
-├── lithos-core/                # CORE LIBRARY (Logic + Infrastructure)
+├── traces-core/                # CORE LIBRARY (Logic + Infrastructure)
 │   ├── benches/                # Performance benchmarks (Criterion)
 │   │   └── redb_rkyv.rs        # Persistence layer performance validation
 │   ├── tests/                  # Integration tests (Cross-context flows)
@@ -144,7 +144,7 @@ lithos/
 │           ├── writer.rs       # Root-scoped file writer (FsWriter) with atomic-replace
 │           ├── validator.rs    # Security-critical path validation (PathValidator)
 │           └── types.rs        # File type markers and parsing helpers (module-internal)
-├── lithos-cli/                 # BINARY CRATE (CLI Driver)
+├── traces-cli/                 # BINARY CRATE (CLI Driver)
 │   └── src/main.rs             # CLI entry point (Clap + Miette)
 ├── .gitattributes              # LF enforcement
 ├── .gitignore                  # standard Rust ignores
@@ -164,12 +164,12 @@ lithos/
 
 ### API Boundaries
 
-- **CLI (`lithos-cli`):** The primary driver. Orchestrates `lithos-core` logic and owns terminal rendering via `miette`.
-- **Core (`lithos-core`):** Contains all business logic, storage implementation, and file processing.
+- **CLI (`traces-cli`):** The primary driver. Orchestrates `traces-core` logic and owns terminal rendering via `miette`.
+- **Core (`traces-core`):** Contains all business logic, storage implementation, and file processing.
 
 ### Logical Boundaries (Module Visibility)
 
-- **Public API:** Only types reachable from `lithos-core/src/lib.rs` are public.
+- **Public API:** Only types reachable from `traces-core/src/lib.rs` are public.
 - **Context Isolation:**
   - **Business Contexts** (`note`, `schema`, `template`): Isolated from each other via Rust module boundaries.
   - **Cross-Cutting Context** (`config`): Shared business rules/settings accessible to all business contexts.
@@ -188,11 +188,11 @@ lithos/
 ### Component Boundaries
 
 - **Indexer/Loader:** A functional pipeline orchestrated by `<context>/loader.rs` during system bootstrap or file changes. Writes are atomic and coordinated via `db.batch_write()` for bulk operations.
-- **Compliance Engine:** Located in `lithos-core/src/schema/`. Checks if Note metadata satisfies Schema rules.
+- **Compliance Engine:** Located in `traces-core/src/schema/`. Checks if Note metadata satisfies Schema rules.
 
 ### Service Boundaries
 
-- **Template System:** The core logic remains in `lithos-core/src/template/`. Interaction is handled via `lithos-cli`.
+- **Template System:** The core logic remains in `traces-core/src/template/`. Interaction is handled via `traces-cli`.
 - **Metrics & Stats:** Aggregates vault-wide data. Likely implemented as projection queries in `<context>/storage.rs` or a specialized metrics module.
 
 ### Data Boundaries
@@ -224,18 +224,18 @@ lithos/
 
 ### Feature/Epic Mapping
 
-- **Knowledge Graph (FR20-FR25):** `lithos-core/src/note/` + `lithos-core/src/db/` (Links/Embeds/Tags).
-- **Schema & Compliance (FR8-FR14):** `lithos-core/src/schema/`.
-- **Template Design (FR1-FR7, FR9):** `lithos-core/src/template/`.
-- **Interactive CLI (FR41-FR47):** `lithos-cli/src/main.rs` (Driver) delegating to `lithos-core/src/` contexts.
+- **Knowledge Graph (FR20-FR25):** `traces-core/src/note/` + `traces-core/src/db/` (Links/Embeds/Tags).
+- **Schema & Compliance (FR8-FR14):** `traces-core/src/schema/`.
+- **Template Design (FR1-FR7, FR9):** `traces-core/src/template/`.
+- **Interactive CLI (FR41-FR47):** `traces-cli/src/main.rs` (Driver) delegating to `traces-core/src/` contexts.
 
 ### Cross-Cutting Concerns
 
-- **Metadata Extraction:** Handled in `lithos-core/src/note/frontmatter.rs` and `lithos-core/src/fs/parsers.rs`.
+- **Metadata Extraction:** Handled in `traces-core/src/note/frontmatter.rs` and `traces-core/src/fs/parsers.rs`.
 - **Validation Hierarchy:**
-  - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `lithos-core/src/fs/validator.rs`).
-  - **Semantic:** Contract check between a Note and its Schema (in `lithos-core/src/schema/`).
-- **Performance:** Monitored via `lithos-core/benches/`, optimized via `rkyv` byte-layouts.
+  - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `traces-core/src/fs/validator.rs`).
+  - **Semantic:** Contract check between a Note and its Schema (in `traces-core/src/schema/`).
+- **Performance:** Monitored via `traces-core/benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
 ## Integration Points
@@ -243,12 +243,12 @@ lithos/
 ### Internal Communication
 
 - **Functional Composition:** System state mutations and data flow occur via direct functional calls and pipeline iterators, using `Result<T, E>` for error propagation. No event bus or event sourcing is utilized.
-- **Database:** `lithos-core/src/db/mod.rs` exposes a concrete `Database` struct with zero-copy methods (`get`, `put`). Context storage implementations utilize this shared infrastructure.
+- **Database:** `traces-core/src/db/mod.rs` exposes a concrete `Database` struct with zero-copy methods (`get`, `put`). Context storage implementations utilize this shared infrastructure.
 
 ### External Integrations
 
-- **Obsidian Vault:** Interfaced via `lithos-core/src/fs/` (e.g., `FileReader`) and parsed via `lithos-core/src/fs/parsers.rs`.
-- **Hierarchical Config:** Managed by `figment` in `lithos-core/src/config/` (Global -> User -> Project -> Vault -> Env -> Flag).
+- **Obsidian Vault:** Interfaced via `traces-core/src/fs/` (e.g., `FileReader`) and parsed via `traces-core/src/fs/parsers.rs`.
+- **Hierarchical Config:** Managed by `figment` in `traces-core/src/config/` (Global -> User -> Project -> Vault -> Env -> Flag).
 
 ### Data Flow
 
@@ -269,7 +269,7 @@ lithos/
 
 ## Test Organization
 
-- **Unit:** Inline `#[cfg(test)]` within `lithos-core` modules.
-- **Integration:** `lithos-core/tests/` for full flows (CLI -> Core -> DB) when added.
+- **Unit:** Inline `#[cfg(test)]` within `traces-core` modules.
+- **Integration:** `traces-core/tests/` for full flows (CLI -> Core -> DB) when added.
 - **Architecture:** Enforced via module visibility and dependency flow rules.
-- **Benchmarks:** `lithos-core/benches/` for zero-copy validation.
+- **Benchmarks:** `traces-core/benches/` for zero-copy validation.

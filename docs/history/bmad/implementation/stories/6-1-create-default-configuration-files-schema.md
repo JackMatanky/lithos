@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As a user getting started with lithos,
+As a user getting started with traces,
 I want default configuration files with proper schema validation,
 so that I can understand configuration options and customize settings confidently.
 

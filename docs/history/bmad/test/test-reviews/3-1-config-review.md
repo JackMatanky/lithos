@@ -216,7 +216,7 @@ This review consulted the following knowledge base fragments and project standar
 - **[fixture-architecture.md](../../../testarch/knowledge/fixture-architecture.md)** - Fixture composition patterns
 - **[data-factories.md](../../../testarch/knowledge/data-factories.md)** - Factory-style fixtures guidance
 - **[test-levels-framework.md](../../../testarch/knowledge/test-levels-framework.md)** - Unit test appropriateness
-- **[test-design-system.md](../../../_bmad-output/test-design-system.md)** - Lithos test level strategy + DoD criteria
+- **[test-design-system.md](../../../_bmad-output/test-design-system.md)** - Traces test level strategy + DoD criteria
 - **[docs/test_guide.md](../../../docs/test_guide.md)** - Naming conventions, module organization, assertion rules
 - **`tests/utils/`** - Not used in this unit scope; relevant for future CQRS/event integration tests
 

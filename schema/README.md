@@ -1,23 +1,23 @@
-# Lithos Schema Format
+# Traces Schema Format
 
-This directory contains the JSON Schema meta-schema files used by Lithos to validate vault schema files at ingestion time.
+This directory contains the JSON Schema meta-schema files used by Traces to validate vault schema files at ingestion time.
 
 ## Meta-Schema Files
 
 | File | Validates |
 |------|-----------|
-| `property-bank.schema.json` | `property_bank.{json,toml,yaml}` in a vault's `.lithos/schemas/` directory |
-| `note-metadata.schema.json` | Every other schema file in a vault's `.lithos/schemas/` directory |
+| `property-bank.schema.json` | `property_bank.{json,toml,yaml}` in a vault's `.traces/schemas/` directory |
+| `note-metadata.schema.json` | Every other schema file in a vault's `.traces/schemas/` directory |
 
 ---
 
 ## Vault Schema Files
 
-In a vault, schemas live at `.lithos/schemas/` and can be written in **JSON**, **TOML**, or **YAML**. All three formats are equivalent — use whichever you prefer.
+In a vault, schemas live at `.traces/schemas/` and can be written in **JSON**, **TOML**, or **YAML**. All three formats are equivalent — use whichever you prefer.
 
 ```
 my-vault/
-└── .lithos/
+└── .traces/
     └── schemas/
         ├── property_bank.json    ← reusable property definitions
         ├── task.toml             ← note schema (TOML)
@@ -652,7 +652,7 @@ task
   └── task_child     (extends task, excludes: date_start, date_end)
 ```
 
-Lithos detects circular inheritance and reports an error at ingestion time.
+Traces detects circular inheritance and reports an error at ingestion time.
 
 ---
 

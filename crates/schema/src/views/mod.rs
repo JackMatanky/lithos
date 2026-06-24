@@ -11,7 +11,7 @@
 //! (YAML, JSON, TOML). To persist staleness detection metadata alongside these
 //! parsed structures, we need separate view types that **do** support `rkyv`.
 //!
-//! Views enable **incremental schema updates** in Lithos's
+//! Views enable **incremental schema updates** in Traces's
 //! "files-as-source-of-truth" architecture by tracking content hashes, file
 //! timestamps, and version history to answer "Has this file changed?" **without
 //! re-parsing**, delivering massive performance wins for large vaults (1000+

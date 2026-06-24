@@ -2,7 +2,7 @@
 
 ## CONTEXT
 
-- **Applies to**: End-to-end CLI testing in `lithos-cli/`
+- **Applies to**: End-to-end CLI testing in `traces-cli/`
 - **Purpose**: Testing complete user journeys and CLI behavior
 - **Tools**: `assert_cmd`, `predicates`, `tempfile`
 - **Scope**: Full stack from CLI → App → Domain → Adapters
@@ -12,7 +12,7 @@
 ```
 Does the test verify...
 ├── Complete user journey (CLI command to result)?
-│   └── YES → E2E test in lithos-cli/
+│   └── YES → E2E test in traces-cli/
 │
 ├── CLI argument parsing and validation?
 │   └── YES → E2E test
@@ -34,7 +34,7 @@ Does the test verify...
 
 ### Test Structure
 
-- [ ] Test is in `lithos-cli/tests/` or `lithos-cli/src/main.rs` doc tests
+- [ ] Test is in `traces-cli/tests/` or `traces-cli/src/main.rs` doc tests
 - [ ] Uses `assert_cmd::Command` to invoke the binary
 - [ ] Tests complete user flows (not implementation details)
 - [ ] Focus on happy paths and critical error paths only
@@ -62,7 +62,7 @@ Does the test verify...
 
 ### Structure Issues
 
-- ❌ **E2E test in `lithos-core/`** → Move to `lithos-cli/`
+- ❌ **E2E test in `traces-core/`** → Move to `traces-cli/`
 - ❌ **Testing implementation details** → Test behavior, not internals
 - ❌ **Testing every edge case via CLI** → Use unit tests for edge cases
 - ❌ **Complex setup in E2E tests** → Simplify or use integration tests
@@ -85,7 +85,7 @@ Does the test verify...
 ### Basic CLI Test
 
 ```rust
-// lithos-cli/tests/cli_test.rs
+// traces-cli/tests/cli_test.rs
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
@@ -93,7 +93,7 @@ use tempfile::TempDir;
 
 #[test]
 fn cli_shows_help() {
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -108,7 +108,7 @@ fn new_command_creates_note() {
     fs::create_dir(&vault_path).unwrap();
 
     // Act
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&vault_path)
         .arg("new")
         .arg("hello.md")
@@ -130,7 +130,7 @@ fn new_command_fails_when_vault_not_initialized() {
     let not_a_vault = temp.path().join("not_a_vault");
     fs::create_dir(&not_a_vault).unwrap();
 
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&not_a_vault)
         .arg("new")
         .arg("test.md");
@@ -150,26 +150,26 @@ fn full_workflow_create_index_and_search() {
     let vault = temp.path().join("vault");
 
     // Initialize vault
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&vault.parent().unwrap())
         .arg("init")
         .arg(&vault);
     cmd.assert().success();
 
     // Create note
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&vault)
         .arg("new")
         .arg("project/ideas.md");
     cmd.assert().success();
 
     // Index vault
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&vault).arg("index");
     cmd.assert().success();
 
     // Search
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&vault)
         .arg("search")
         .arg("ideas");
@@ -186,7 +186,7 @@ fn full_workflow_create_index_and_search() {
 fn list_command_outputs_json_when_requested() {
     let temp = setup_test_vault();
 
-    let mut cmd = Command::cargo_bin("lithos").unwrap();
+    let mut cmd = Command::cargo_bin("traces").unwrap();
     cmd.current_dir(&temp)
         .arg("list")
         .arg("--format")
@@ -203,10 +203,10 @@ fn list_command_outputs_json_when_requested() {
 
 ### DO Test (Critical User Journeys)
 
-- Vault initialization (`lithos init`)
-- Note creation (`lithos new`)
-- Vault indexing (`lithos index`)
-- Basic search (`lithos search`)
+- Vault initialization (`traces init`)
+- Note creation (`traces new`)
+- Vault indexing (`traces index`)
+- Basic search (`traces search`)
 - CLI help and version
 - Configuration handling
 
@@ -223,7 +223,7 @@ fn list_command_outputs_json_when_requested() {
 | Task            | Pattern                                    |
 | --------------- | ------------------------------------------ |
 | Run E2E tests   | `mise run test:e2e`                        |
-| Invoke CLI      | `Command::cargo_bin("lithos")`             |
+| Invoke CLI      | `Command::cargo_bin("traces")`             |
 | Assert success  | `.assert().success()`                      |
 | Assert failure  | `.assert().failure()`                      |
 | Check output    | `.stdout(predicate::str::contains("..."))` |

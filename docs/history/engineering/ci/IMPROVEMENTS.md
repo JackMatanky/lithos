@@ -1,7 +1,7 @@
 # CI/CD Pipeline Improvements Summary
 
 ## Overview
-This document summarizes the optimizations and enhancements made to the Lithos CI/CD pipeline to improve efficiency, reliability, and speed.
+This document summarizes the optimizations and enhancements made to the Traces CI/CD pipeline to improve efficiency, reliability, and speed.
 
 ---
 
@@ -14,7 +14,7 @@ Added `test:changed` mise task that intelligently detects which crates have chan
 
 **How it works**:
 - Compares current branch against `origin/main` (or `HEAD~1` as fallback)
-- Extracts changed crates from `lithos-core/` and `lithos-cli/`
+- Extracts changed crates from `traces-core/` and `traces-cli/`
 - Runs targeted tests per crate using `mise run test:unit -p core|cli`
 - Skips tests when only non-code files change
 

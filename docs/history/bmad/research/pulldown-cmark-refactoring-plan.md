@@ -106,7 +106,7 @@ Event::Start(_)              // ← Ignores ALL unhandled tags!
 
 **Goal**: Enable all Obsidian-relevant options with zero breaking changes
 
-**File**: `lithos-core/src/fs/markdown.rs`
+**File**: `traces-core/src/fs/markdown.rs`
 
 **Changes**:
 
@@ -144,7 +144,7 @@ mise run test:unit:note
 
 **Goal**: Populate `note.headings()` with parsed heading data
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 **Changes**:
 
@@ -243,7 +243,7 @@ mise run test:unit:note
 
 **Goal**: Populate `note.links()` with WikiLinks, embeds, and markdown links
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 **Changes**:
 
@@ -380,9 +380,9 @@ mise run test:unit:note
 
 **Goal**: Populate `note.frontmatter()` with parsed YAML metadata
 
-**Dependencies**: Add `serde_yaml = "0.9"` to `lithos-core/Cargo.toml`
+**Dependencies**: Add `serde_yaml = "0.9"` to `traces-core/Cargo.toml`
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 **Changes**:
 
@@ -479,7 +479,7 @@ mise run test:unit:note
 
 **Goal**: Prevent false positives in tag/task extraction inside code blocks
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 **Changes**:
 
@@ -548,7 +548,7 @@ mise run test:unit:note
 
 **Goal**: Add `#[tracing::instrument]` to all new parser methods per architecture requirements
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 **Changes**:
 
@@ -586,7 +586,7 @@ RUST_LOG=debug mise run test:unit:note
 ### Required Dependencies
 
 ```toml
-# lithos-core/Cargo.toml [dependencies] section
+# traces-core/Cargo.toml [dependencies] section
 
 # ALREADY PRESENT:
 pulldown-cmark = "0.13"    # Event-stream markdown parser
@@ -599,7 +599,7 @@ serde_yaml = "0.9"         # For frontmatter YAML parsing
 
 ```bash
 # Add dependency
-cargo add serde_yaml --package lithos-core
+cargo add serde_yaml --package traces-core
 
 # Verify it compiles
 mise run build
@@ -614,7 +614,7 @@ mise run test:unit:note
 
 ### Unit Tests (Phase 1)
 
-**Location**: `lithos-core/src/note/parser.rs` (in existing `#[cfg(test)] mod tests`)
+**Location**: `traces-core/src/note/parser.rs` (in existing `#[cfg(test)] mod tests`)
 
 **Required Tests**:
 

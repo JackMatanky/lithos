@@ -754,9 +754,9 @@ fn run_global_resolution<P>(
 /// Resolves the cache root directory from the available inputs.
 ///
 /// Precedence (highest → lowest):
-/// 1. `LITHOS_CACHE_DIR` env var (passed as `env_cache_dir`)
-/// 2. Vault-local default: `<vault_root>/.lithos/cache/`
-/// 3. OS platform user-cache directory (`XDG_CACHE_HOME / "lithos"`).
+/// 1. `TRACES_CACHE_DIR` env var (passed as `env_cache_dir`)
+/// 2. Vault-local default: `<vault_root>/.traces/cache/`
+/// 3. OS platform user-cache directory (`XDG_CACHE_HOME / "traces"`).
 fn resolve_cache_root(
     env_cache_dir: Option<&std::path::Path>,
     vault_root: Option<&DirPath>,
@@ -770,11 +770,11 @@ fn resolve_cache_root(
     if let Some(root) = vault_root {
         return CacheRoot::new(
             CacheLocation::Local(LocalCacheLocation::ProjectCacheDirectory),
-            root.as_path().join(".lithos/cache"),
+            root.as_path().join(".traces/cache"),
         );
     }
     // No env override and no vault root — use OS platform cache directory.
-    let path = XDG_CACHE_HOME.join("lithos");
+    let path = XDG_CACHE_HOME.join("traces");
     CacheRoot::new(
         CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
         path,
@@ -967,7 +967,7 @@ mod tests {
         fn probes_flag_vault_dir_when_present() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
 
             let config = default_config();
             let flags =
@@ -1159,7 +1159,7 @@ mod tests {
         fn probes_env_vault_dir_when_present() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
 
             let config = default_config();
             let env =
@@ -1347,7 +1347,7 @@ mod tests {
         #[test]
         fn finds_marker_in_anchor_directory() {
             let root = tempfile::tempdir().expect("root");
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
 
             let config = default_config();
             let ctx = make_context(root.path()).expect("ctx");
@@ -1425,7 +1425,7 @@ mod tests {
             std::fs::create_dir(&sub).expect("sub dir");
             // marker is in root, but ceiling is root — traversal must not reach
             // it
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
 
             let ceiling =
                 root.path().canonicalize().expect("canonical ceiling");
@@ -1455,7 +1455,7 @@ mod tests {
             let root = tempfile::tempdir().expect("root");
             let sub = root.path().join("sub");
             std::fs::create_dir(&sub).expect("sub dir");
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
 
             let ceiling =
                 root.path().canonicalize().expect("canonical ceiling");
@@ -1519,7 +1519,7 @@ mod tests {
         fn probes_global_directories_when_not_suppressed() {
             let root = tempfile::tempdir().expect("root");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -1539,7 +1539,7 @@ mod tests {
         fn global_candidates_are_empty_when_suppress_global_is_set() {
             let root = tempfile::tempdir().expect("root");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -1668,7 +1668,7 @@ mod tests {
         fn flag_vault_and_config_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
@@ -1694,7 +1694,7 @@ mod tests {
         fn flag_vault_and_config_global_is_empty() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
@@ -1720,7 +1720,7 @@ mod tests {
             // Pipeline is complete from flags — not suppressed by --no-global.
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
@@ -1775,9 +1775,9 @@ mod tests {
         fn flag_vault_only_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -1806,9 +1806,9 @@ mod tests {
         fn flag_vault_only_global_is_populated() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -1915,7 +1915,7 @@ mod tests {
         #[test]
         fn env_config_only_ascend_skip_global_global_is_empty() {
             let root = tempfile::tempdir().expect("root");
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
             let config_file = tempfile::NamedTempFile::new().expect("config");
 
             let config = default_config();
@@ -1973,9 +1973,9 @@ mod tests {
         #[test]
         fn ascend_then_global_vault_is_populated() {
             let root = tempfile::tempdir().expect("root");
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -2006,9 +2006,9 @@ mod tests {
         #[test]
         fn ascend_then_global_global_is_populated() {
             let root = tempfile::tempdir().expect("root");
-            write_marker(root.path(), "lithos.toml");
+            write_marker(root.path(), "traces.toml");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -2057,7 +2057,7 @@ mod tests {
         fn suppress_global_sets_report_skip_reason() {
             let root = tempfile::tempdir().expect("root");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -2087,7 +2087,7 @@ mod tests {
         fn suppress_global_produces_empty_global_candidates() {
             let root = tempfile::tempdir().expect("root");
             let global_dir = tempfile::tempdir().expect("global dir");
-            write_marker(global_dir.path(), "lithos.toml");
+            write_marker(global_dir.path(), "traces.toml");
 
             let config = DiscoveryServiceConfig {
                 global_directories: vec![
@@ -2183,7 +2183,7 @@ mod tests {
         fn returns_environment_override_regardless_of_vault_presence() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
             let cache_path = PathBuf::from("/env/cache");
 
             let config = default_config();
@@ -2212,7 +2212,7 @@ mod tests {
         fn returns_project_cache_directory_when_vault_present_and_no_env() {
             let root = tempfile::tempdir().expect("root");
             let vault_dir = tempfile::tempdir().expect("vault dir");
-            write_marker(vault_dir.path(), "lithos.toml");
+            write_marker(vault_dir.path(), "traces.toml");
 
             let config = default_config();
             let env =
@@ -2230,8 +2230,8 @@ mod tests {
                 )
             );
             assert!(
-                cache_root.path().ends_with(".lithos/cache"),
-                "path should end with .lithos/cache, got: {:?}",
+                cache_root.path().ends_with(".traces/cache"),
+                "path should end with .traces/cache, got: {:?}",
                 cache_root.path()
             );
         }

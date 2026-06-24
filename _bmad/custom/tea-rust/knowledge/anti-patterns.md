@@ -14,7 +14,7 @@
 | ------------------------------- | ---------------------------------------- | ----------------------------- |
 | Unit test in `tests/` directory | Tests private API from external location | Move to inline `#[cfg(test)]` |
 | Integration test in `src/`      | Cannot test public API isolation         | Move to `tests/` directory    |
-| E2E test in `lithos-core/`      | Wrong layer                              | Move to `lithos-cli/`         |
+| E2E test in `traces-core/`      | Wrong layer                              | Move to `traces-cli/`         |
 
 ### ❌ Assertion Issues
 
@@ -216,7 +216,7 @@ assert!(x != y)              // Could use assert_ne
 | ----------- | -------------- | ------------------------------- |
 | Unit        | `tests/*.rs`   | `src/**/*.rs` in `#[cfg(test)]` |
 | Integration | `src/*.rs`     | `tests/*.rs`                    |
-| E2E         | `lithos-core/` | `lithos-cli/`                   |
+| E2E         | `traces-core/` | `traces-cli/`                   |
 
 ## SCORING IMPACT
 
@@ -479,7 +479,7 @@ fn test_async_error_handling() {
 }
 ```
 
-### Lithos Architecture Anti-Patterns
+### Traces Architecture Anti-Patterns
 
 #### 1. Context Boundary Violations
 
@@ -817,4 +817,4 @@ async fn test_async_properly() {
 - [ ] Async tests use proper async/await patterns
 - [ ] Performance tests use proper benchmarking tools
 
-By avoiding these anti-patterns, the Lithos project can maintain high-quality, effective test suites that provide real confidence in code correctness and reliability.
+By avoiding these anti-patterns, the Traces project can maintain high-quality, effective test suites that provide real confidence in code correctness and reliability.

@@ -2,7 +2,7 @@
 
 ## Requirements
 From user request:
-- Update `SchemaConfigSpec` in `lithos-core/src/config/schema.rs`
+- Update `SchemaConfigSpec` in `traces-core/src/config/schema.rs`
 - Change from `RelativePath` to `Path` or `PathBuf`
 - Join schema directory to VaultRoot from vault metadata
 - Join property bank file on top of that
@@ -44,7 +44,7 @@ From user request:
 3. **builder.rs:61** - `Builder::load_all()` - CONSUMER
 
 ### DirPath and FilePath Types Discovery
-- `DirPath` and `FilePath` exist in `lithos-core/src/fs/path.rs`
+- `DirPath` and `FilePath` exist in `traces-core/src/fs/path.rs`
 - Both wrap `PathBuf` internally: `pub struct FilePath(#[rkyv(with = AsString)] PathBuf)`
 - Both have `.new(PathBuf)` that validates filesystem (checks `.is_file()` / `.is_dir()`)
 - **CRITICAL**: Both have `impl From<PathBuf>` that bypasses filesystem validation (lines 473, 653)
@@ -92,16 +92,16 @@ From user request:
 
 ## Resources
 Files to modify:
-- `lithos-core/src/config/schema.rs` - SchemaConfigSpec struct definition
-- `lithos-core/src/config/aggregate.rs` - Config::to_schema_spec() implementation
-- `lithos-core/src/schema/discovery.rs` - DiscoveryEngine::run() signature
-- `lithos-core/src/schema/builder.rs` - Builder::load_all() usage
+- `traces-core/src/config/schema.rs` - SchemaConfigSpec struct definition
+- `traces-core/src/config/aggregate.rs` - Config::to_schema_spec() implementation
+- `traces-core/src/schema/discovery.rs` - DiscoveryEngine::run() signature
+- `traces-core/src/schema/builder.rs` - Builder::load_all() usage
 
 Test files to update:
-- `lithos-core/src/config/schema.rs` (mod tests::schema_config_spec)
-- `lithos-core/src/config/aggregate.rs` (mod tests - to_schema_spec tests)
-- `lithos-core/src/schema/discovery.rs` (mod tests)
-- `lithos-core/src/schema/builder.rs` (mod tests)
+- `traces-core/src/config/schema.rs` (mod tests::schema_config_spec)
+- `traces-core/src/config/aggregate.rs` (mod tests - to_schema_spec tests)
+- `traces-core/src/schema/discovery.rs` (mod tests)
+- `traces-core/src/schema/builder.rs` (mod tests)
 
 ## Visual/Browser Findings
 N/A - code analysis only

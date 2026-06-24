@@ -1,7 +1,7 @@
 # Note Module Review: Findings & Implementation Guidance
 
 **Date**: 2026-02-26
-**Scope**: `lithos-core/src/note/` (full), plus ingestion dependencies (context-only)
+**Scope**: `traces-core/src/note/` (full), plus ingestion dependencies (context-only)
 **Status**: Exhaustive read-only audit (no refactor performed)
 
 ---
@@ -26,16 +26,16 @@ out-of-scope modules reviewed for context only.
 
 ### 2.1 In-Scope (Reviewed for correctness, performance, tests, idioms)
 
-- `lithos-core/src/note/**/*.rs`
-- `lithos-core/tests/note_ingest.rs`
-- `lithos-core/benches/note_parsing.rs` (note ingestion)
-- `lithos-core/benches/db_storage.rs` (note usage only)
+- `traces-core/src/note/**/*.rs`
+- `traces-core/tests/note_ingest.rs`
+- `traces-core/benches/note_parsing.rs` (note ingestion)
+- `traces-core/benches/db_storage.rs` (note usage only)
 
 ### 2.2 Context-Only (Reviewed for ingestion/validation context, **not** for refactoring)
 
-- `lithos-core/src/fs/*` (reader, validator, types)
-- `lithos-core/src/config/*` (task, frontmatter, aggregate)
-- `lithos-core/src/application/*` (schema service only)
+- `traces-core/src/fs/*` (reader, validator, types)
+- `traces-core/src/config/*` (task, frontmatter, aggregate)
+- `traces-core/src/application/*` (schema service only)
 
 **Important**: Any findings in context-only modules are explicitly flagged as
 out-of-scope for refactoring in this review.
@@ -87,9 +87,9 @@ indexes return empty results even when data is present in notes.
 
 **Files**:
 
-- `lithos-core/src/note/mod.rs`
-- `lithos-core/src/note/adapter/command.rs`
-- `lithos-core/src/note/adapter/query.rs`
+- `traces-core/src/note/mod.rs`
+- `traces-core/src/note/adapter/command.rs`
+- `traces-core/src/note/adapter/query.rs`
 
 ---
 
@@ -103,7 +103,7 @@ from headings and list items, affecting task content and heading extraction.
 
 **Files**:
 
-- `lithos-core/src/note/adapter/reader.rs`
+- `traces-core/src/note/adapter/reader.rs`
 
 ---
 
@@ -117,7 +117,7 @@ is currently split into a separate anchor, which is invalid for external links.
 
 **Files**:
 
-- `lithos-core/src/note/adapter/reader.rs`
+- `traces-core/src/note/adapter/reader.rs`
 
 ---
 
@@ -131,8 +131,8 @@ should retain `MdLink` style.
 
 **Files**:
 
-- `lithos-core/src/note/adapter/reader.rs`
-- `lithos-core/src/note/link.rs`
+- `traces-core/src/note/adapter/reader.rs`
+- `traces-core/src/note/link.rs`
 
 ---
 
@@ -146,7 +146,7 @@ collapsed and mis-parsed.
 
 **Files**:
 
-- `lithos-core/src/note/adapter/reader.rs`
+- `traces-core/src/note/adapter/reader.rs`
 
 ---
 
@@ -159,7 +159,7 @@ expects normalized paths, this is inconsistent with other validation rules.
 
 **Files**:
 
-- `lithos-core/src/note/aggregate.rs`
+- `traces-core/src/note/aggregate.rs`
 
 ---
 
@@ -171,7 +171,7 @@ in some contexts. `PathValidator` in fs handles Windows drive detection, but
 
 **Files**:
 
-- `lithos-core/src/note/aggregate.rs`
+- `traces-core/src/note/aggregate.rs`
 
 ---
 
@@ -185,9 +185,9 @@ This creates inconsistent behavior between tag parsing and task tagging.
 
 **Files**:
 
-- `lithos-core/src/note/tag.rs`
-- `lithos-core/src/note/task.rs`
-- `lithos-core/src/config/task.rs` (context-only)
+- `traces-core/src/note/tag.rs`
+- `traces-core/src/note/task.rs`
+- `traces-core/src/config/task.rs` (context-only)
 
 ---
 
@@ -198,7 +198,7 @@ the task is valid. This is overly strict for real-world notes.
 
 **Files**:
 
-- `lithos-core/src/note/task.rs`
+- `traces-core/src/note/task.rs`
 
 ---
 
@@ -209,7 +209,7 @@ positives. Token-aware matching is safer and aligns with intent.
 
 **Files**:
 
-- `lithos-core/src/note/task.rs`
+- `traces-core/src/note/task.rs`
 
 ---
 
@@ -220,7 +220,7 @@ anchors should remain part of the URL, not a separate anchor field.
 
 **Files**:
 
-- `lithos-core/src/note/link.rs`
+- `traces-core/src/note/link.rs`
 
 ---
 
@@ -254,7 +254,7 @@ These should be replaced by `"literal".into()`.
 
 **Files**:
 
-- `lithos-core/src/note/tag.rs` (example)
+- `traces-core/src/note/tag.rs` (example)
 
 ---
 
@@ -265,8 +265,8 @@ allocation. Not critical, but measurable at scale.
 
 **Files**:
 
-- `lithos-core/src/note/adapter/command.rs`
-- `lithos-core/src/note/adapter/query.rs`
+- `traces-core/src/note/adapter/command.rs`
+- `traces-core/src/note/adapter/query.rs`
 
 ---
 
@@ -278,7 +278,7 @@ allocation. Not critical, but measurable at scale.
 
 **Files**:
 
-- `lithos-core/src/note/value.rs`
+- `traces-core/src/note/value.rs`
 
 ---
 
@@ -291,7 +291,7 @@ calls `is_future(None)`. This fails as time advances.
 
 **File**:
 
-- `lithos-core/src/note/task.rs`
+- `traces-core/src/note/task.rs`
 
 ---
 
@@ -302,9 +302,9 @@ These inflate the suite without increasing confidence.
 
 **Examples**:
 
-- `lithos-core/src/note/structure.rs` (Heading/Section accessors)
-- `lithos-core/src/note/frontmatter.rs` (accessor-only cases)
-- `lithos-core/src/note/value.rs` (getter-only cases)
+- `traces-core/src/note/structure.rs` (Heading/Section accessors)
+- `traces-core/src/note/frontmatter.rs` (accessor-only cases)
+- `traces-core/src/note/value.rs` (getter-only cases)
 
 ---
 
@@ -334,8 +334,8 @@ appears only in tests/bench data.
 
 **Files**:
 
-- `lithos-core/src/note/structure.rs`
-- `lithos-core/src/note/aggregate.rs`
+- `traces-core/src/note/structure.rs`
+- `traces-core/src/note/aggregate.rs`
 
 ---
 
@@ -345,8 +345,8 @@ appears only in tests/bench data.
 
 **Files**:
 
-- `lithos-core/src/note/aggregate.rs`
-- `lithos-core/src/note/events.rs`
+- `traces-core/src/note/aggregate.rs`
+- `traces-core/src/note/events.rs`
 
 ---
 
@@ -362,8 +362,8 @@ is intended to represent already-validated vault paths.
 
 **Files**:
 
-- `lithos-core/src/fs/validator.rs` (context-only)
-- `lithos-core/src/note/aggregate.rs`
+- `traces-core/src/fs/validator.rs` (context-only)
+- `traces-core/src/note/aggregate.rs`
 
 ---
 
@@ -373,8 +373,8 @@ Config task tags require ASCII-only; note tag parsing allows Unicode.
 
 **Files**:
 
-- `lithos-core/src/config/task.rs` (context-only)
-- `lithos-core/src/note/tag.rs`
+- `traces-core/src/config/task.rs` (context-only)
+- `traces-core/src/note/tag.rs`
 
 ---
 
@@ -384,7 +384,7 @@ No issues found; behavior is consistent with note frontmatter handling.
 
 **File**:
 
-- `lithos-core/src/config/frontmatter.rs` (context-only)
+- `traces-core/src/config/frontmatter.rs` (context-only)
 
 ---
 
@@ -394,7 +394,7 @@ Only schema service exists. Note ingestion is adapter-driven via `NoteReader`.
 
 **File**:
 
-- `lithos-core/src/application/mod.rs` (context-only)
+- `traces-core/src/application/mod.rs` (context-only)
 
 ---
 
@@ -428,8 +428,8 @@ This section is guidance only. No refactor performed.
 
 ## 12. Verification Checklist (Exhaustive Review)
 
-- [x] All `lithos-core/src/note/**/*.rs` reviewed end-to-end
-- [x] Integration tests (`lithos-core/tests/note_ingest.rs`) reviewed
+- [x] All `traces-core/src/note/**/*.rs` reviewed end-to-end
+- [x] Integration tests (`traces-core/tests/note_ingest.rs`) reviewed
 - [x] Benchmarks (`note_parsing`, `db_storage`) reviewed for note usage
 - [x] pulldown-cmark options and event model verified
 - [x] Ingestion dependencies reviewed (fs, config, application) for context

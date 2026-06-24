@@ -70,7 +70,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Consolidate duplicate fixtures into reusable modules
 - [x] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
     - [x] Hide setup/boilerplate imports and logic using the `#` prefix
-    - [x] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
+    - [x] Ensure examples are high-fidelity and demonstrate real-world usage of `traces-test-utils`
     - [x] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
 - [x] Optimize slow tests using parallel execution and Epic 2 patterns
 - [x] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
@@ -300,7 +300,7 @@ crates/domain/
 │   └── lib.rs
 ├── tests/                 // Integration tests
 │   └── integration_tests.rs
-└── lithos-core/benches/              // Performance benchmarks
+└── traces-core/benches/              // Performance benchmarks
     └── domain_benchmarks.rs
 
 // Test placement rules
@@ -376,7 +376,7 @@ crates/
 │   ├── tests/
 │   │   ├── integration_tests.rs    # Cross-entity integration
 │   │   └── property_tests.rs       # Property-based tests
-│   └── lithos-core/benches/
+│   └── traces-core/benches/
 │       └── domain_benchmarks.rs    # Performance tests
 ```
 
@@ -520,7 +520,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Generated Epic 2 test utilities reference doc with usage examples.
 - 2026-01-19: Ran `mise run test:unit` to validate test utilities and doc-tests.
 - 2026-01-19: Ran `time mise run test` for full test timing; unit, integration, and E2E suites passed.
-- 2026-01-19: Ran `cargo test -p lithos-domain --doc -- --list` to audit doc-tests in domain models.
+- 2026-01-19: Ran `cargo test -p traces-domain --doc -- --list` to audit doc-tests in domain models.
 - 2026-01-19: Reviewed domain test modules for hexagonal compliance (no external deps; inline `#[cfg(test)]`), integration tests in tests/suite.
 - 2026-01-19: Ran `mise run test:coverage --package domain --skip-e2e` to generate tarpaulin HTML report and per-file coverage stats.
 - 2026-01-19: Audited fixture duplication, property-based test usage, `rstest` usage, overlapping scenarios, and slow-test contributors for Task 3.
@@ -567,7 +567,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - Created Epic 2 test utilities reference at `_bmad-output/test-utilities-reference.md`, covering core async helpers, fixtures, assertions, CQRS/event tools, integration fixtures, benchmarks, observability, and mocks.
 - Confirmed `mise run test:unit` passes (193 unit tests, doc tests across domain and test-utils).
 - Full test run timing: total ~18.84s; unit 223 tests, integration 247 tests, E2E 2 tests.
-- Doc-test audit: lithos-domain lists 82 doc-tests; all public domain models have executable examples.
+- Doc-test audit: traces-domain lists 82 doc-tests; all public domain models have executable examples.
 - Domain tests are inline under `#[cfg(test)]` with no adapter/app imports; integration and E2E tests live under tests/suite.
 - Coverage strategy documented: prioritize business logic, error paths, and edge conditions over raw line metrics; use property tests and targeted unit coverage for complex branches.
 - Fixture duplication between note fixtures (`crates/domain/src/note/aggregate.rs`) and schema/property fixtures (`crates/domain/src/schema/aggregate.rs`, `crates/domain/src/schema/property.rs`) is resolved by removing the redundant schema aggregate fixture and relying on local schema/property fixtures in their modules.
@@ -579,7 +579,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - Added shared proptest strategies in `tests/utils/src/data/properties.rs` for valid/invalid identifiers and reused them in schema/property and template tests.
 - Cleaned doc-test examples by hiding boilerplate imports and aligning schema resolver example with actual API.
 - Added doc-test examples for all core domain constructors and validators.
-- `cargo test -p lithos-domain --doc` passes (82 doctests).
+- `cargo test -p traces-domain --doc` passes (82 doctests).
 - Applied BDD standards (GIVEN/WHEN/THEN) and normalized colons across all domain tests.
 - Fixed all clippy violations and ensured mandatory order compliance.
 - Added maintenance tracking log and review cadence in `docs/test-maintenance-log.md` and `docs/maintenance_guidelines.md`.

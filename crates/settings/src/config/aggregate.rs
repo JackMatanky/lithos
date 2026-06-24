@@ -449,7 +449,7 @@ pub(crate) mod fixtures {
             .expect("clock should be monotonic")
             .as_millis();
         let dir = std::env::temp_dir()
-            .join(format!("lithos-test-{millis}"))
+            .join(format!("traces-test-{millis}"))
             .join(basename);
         std::fs::create_dir_all(&dir).expect("test vault dir should exist");
         VaultRoot::try_new(dir).expect("vault_root")
@@ -494,7 +494,7 @@ pub(crate) mod fixtures {
                 directory: Some("custom_templates".to_owned()),
             }),
             cache: Some(crate::config::raw::RawCacheConfig {
-                directory: Some(".lithos".to_owned()),
+                directory: Some(".traces".to_owned()),
             }),
             frontmatter: Some(RawFrontmatter {
                 alias_key: Some("aliases".to_owned()),
@@ -730,7 +730,7 @@ mod tests {
                     directory: Some("my-templates".to_owned()),
                 }),
                 cache: Some(crate::config::raw::RawCacheConfig {
-                    directory: Some(".lithos-cache".to_owned()),
+                    directory: Some(".traces-cache".to_owned()),
                 }),
                 ..Default::default()
             };
@@ -748,7 +748,7 @@ mod tests {
             );
             assert_eq!(
                 config.cache().cache_dir().as_relative_dir().as_str(),
-                ".lithos-cache"
+                ".traces-cache"
             );
         }
     }
@@ -942,7 +942,7 @@ mod tests {
                     directory: Some("my-templates".to_owned()),
                 }),
                 cache: Some(crate::config::raw::RawCacheConfig {
-                    directory: Some(".lithos-cache".to_owned()),
+                    directory: Some(".traces-cache".to_owned()),
                 }),
                 ..Default::default()
             };
@@ -957,7 +957,7 @@ mod tests {
 
             assert_eq!(
                 config.cache().cache_dir().as_relative_dir().as_str(),
-                ".lithos-cache",
+                ".traces-cache",
                 "raw cache_dir should populate CacheConfig"
             );
             assert_eq!(
@@ -1075,12 +1075,12 @@ mod tests {
         #[expect(deprecated, reason = "testing deprecated method behavior")]
         fn to_cache_spec_respects_custom_cache_config() {
             let root = tempfile::tempdir().expect("temp dir should be created");
-            let cache = root.path().join(".lithos-cache");
+            let cache = root.path().join(".traces-cache");
             std::fs::create_dir_all(&cache)
                 .expect("cache dir should be created");
             let vault = crate::config::raw::RawVaultConfig {
                 cache: Some(crate::config::raw::RawCacheConfig {
-                    directory: Some(".lithos-cache".to_owned()),
+                    directory: Some(".traces-cache".to_owned()),
                 }),
                 ..Default::default()
             };

@@ -6,7 +6,7 @@
 
 **Bug**: `schema_list` and `batch_save_is_atomic` tests fail with rkyv deserialization error when loading multiple schemas.
 
-**Root Cause**: Issue in `scan_table_tx()` function in `lithos-core/src/db/reader.rs` - NOT in rkyv itself.
+**Root Cause**: Issue in `scan_table_tx()` function in `traces-core/src/db/reader.rs` - NOT in rkyv itself.
 
 **Fix Complexity**: SIMPLE - likely 1-line change
 
@@ -18,7 +18,7 @@
 
 ### What We Tested
 
-Created 8 diagnostic tests in `lithos-core/tests/rkyv_debug.rs`:
+Created 8 diagnostic tests in `traces-core/tests/rkyv_debug.rs`:
 
 1. ✅ Save 2 schemas with no properties → **WORKS**
 2. ✅ Save 2 schemas with properties → **WORKS**
@@ -67,7 +67,7 @@ for bytes in all_bytes.iter() {
 ### Broken Code (scan_table_tx in db/reader.rs)
 
 ```rust
-// lithos-core/src/db/reader.rs:753-770
+// traces-core/src/db/reader.rs:753-770
 for result in table_ref.iter()? {
     let (_key, value): (_, redb::AccessGuard<&[u8]>) = result?;
     let bytes: &[u8] = value.value();

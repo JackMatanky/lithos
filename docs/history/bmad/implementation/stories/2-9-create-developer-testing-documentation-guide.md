@@ -6,13 +6,13 @@ Status: done
 
 ## Story
 
-As a developer onboarding to Lithos testing patterns,
+As a developer onboarding to Traces testing patterns,
 I want a consolidated testing documentation guide that references project rules and ADRs,
 so that I can apply the approved patterns consistently and avoid ambiguity.
 
 ## Acceptance Criteria
 
-1. **Given** I need to understand Lithos testing standards
+1. **Given** I need to understand Traces testing standards
    **When** I open the developer testing guide
    **Then** it documents:
    - Hexagonal testing hierarchy (domain, integration, E2E)
@@ -50,7 +50,7 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
    - [x] Update ADRs 0010 and 0011 if they reference outdated practices; ensure they align with current Rust ecosystem standards
 
  - [x] Create comprehensive developer testing guide at `docs/testing/developer-guide.md` (AC: 1-3)
-   - [x] Write a 2-paragraph overview: define scope (Lithos testing standards), audience (developers onboarding or writing tests), and usage (quick reference for patterns and commands)
+   - [x] Write a 2-paragraph overview: define scope (Traces testing standards), audience (developers onboarding or writing tests), and usage (quick reference for patterns and commands)
    - [x] Add "Testing Hierarchy" section: describe hexagonal layers (domain unit, integration public APIs, E2E CLI), with when to use each and file locations
    - [x] Add "Async Testing" section: summarize mandatory `#[tokio::test(flavor = "multi_thread")]` usage, blocking avoidance, timeouts; reference `docs/testing/async.md` for details
    - [x] Add "Event & CQRS Testing" section: outline Given-When-Then for aggregates, mock event buses, payload verification; reference ADR 012 and `docs/testing/event.md`

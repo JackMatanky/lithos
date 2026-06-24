@@ -197,7 +197,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 - [x] Task 11: Comprehensive project verification
   - [x] Subtask 11.1: Run `mise run test:coverage` and verify `Backfiller` and `Coordinator` are fully exercised
   - [x] Subtask 11.2: Run `mise run fmt` and verify formatting compliance
-  - [x] Subtask 11.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 11.3: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 11.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 11.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
@@ -237,7 +237,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 
 ### Architecture Compliance
 - **CQRS Enforcement**: The coordinator is fully split into `Reader` and `Writer` components, re-exported as `ReaderCoordinator` and `WriterCoordinator`.
-- **Handle/Inner Pattern**: Follows standard Lithos patterns for thread-safe, cheaply cloneable handles.
+- **Handle/Inner Pattern**: Follows standard Traces patterns for thread-safe, cheaply cloneable handles.
 - **Event-Driven Backfill**: Prevents memory-write latency from affecting read performance; uses non-blocking `try_send` to ensure backfill pressure never stalls the caller.
 - **Hexagonal Architecture**: `Coordinator` handles act as Decorators for the underlying SPI Ports (`Arc<dyn CacheReader/Writer>`).
 - **Async Resource Safety**: Uses `mpsc` channels rather than spawning raw tasks to prevent resource leakage.
@@ -384,7 +384,7 @@ pub fn new<K, V>(capacity: usize) -> HandleWorkerPair<K, V>;
 - **Improved Observability**: Integrated structured tracing events for backfill lifecycle (triggered, started, success, error, dropped, stopped).
 - **Refactored Test Suite**: Organized `backfiller.rs` tests into descriptive submodules (`initialization`, `submission`, `execution`) and applied BDD-style GIVEN-WHEN-THEN documentation to all test cases.
 - **Quality Verified**: Resolved all complex linting issues (ordering, type complexity, naming) and achieved 100% logic coverage verified via `mise run verify` and doc tests.
-- Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
+- Implemented `clone_from` for all clonable structs to satisfy Traces quality gates (`missing_trait_methods`).
 - Sorted all implementation blocks alphabetically for maintainability.
 - **Post-Review Improvements**:
     - Fixed Critical lifecycle bug where backfill worker was dropped in independent readers.

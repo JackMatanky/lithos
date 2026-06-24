@@ -1,16 +1,16 @@
-# Lithos
+# Traces
 
-[![CI](https://github.com/jack/lithos-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/jack/lithos-rust/actions)
+[![CI](https://github.com/jack/traces-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/jack/traces-rust/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-orange.svg)](https://www.rust-lang.org)
-[![Crates.io](https://img.shields.io/crates/v/lithos.svg)](https://crates.io/crates/lithos)
-[![Docs.rs](https://docs.rs/lithos/badge.svg)](https://docs.rs/lithos)
+[![Crates.io](https://img.shields.io/crates/v/traces.svg)](https://crates.io/crates/traces)
+[![Docs.rs](https://docs.rs/traces/badge.svg)](https://docs.rs/traces)
 
 > Powerful, scriptable template generation for Obsidian vaults.
 
-Lithos is a command-line powerhouse for Obsidian vaults, bridging the gap between terminal efficiency and structured knowledge management. It provides a robust engine for executing modular templates, enforcing metadata schemas, and performing vault-wide queries without ever leaving your editor or terminal.
+Traces is a command-line powerhouse for Obsidian vaults, bridging the gap between terminal efficiency and structured knowledge management. It provides a robust engine for executing modular templates, enforcing metadata schemas, and performing vault-wide queries without ever leaving your editor or terminal.
 
-Whether you're an Alex Chen power user needing scriptable note creation or a Sarah Martinez researcher managing thousands of interconnected files, Lithos ensures your vault stays consistent and performant. Built in Rust with a quality-first mindset, it leverages zero-copy persistence and a hexagonal architecture to deliver sub-500ms operations even in massive vaults.
+Whether you're an Alex Chen power user needing scriptable note creation or a Sarah Martinez researcher managing thousands of interconnected files, Traces ensures your vault stays consistent and performant. Built in Rust with a quality-first mindset, it leverages zero-copy persistence and a hexagonal architecture to deliver sub-500ms operations even in massive vaults.
 
 ---
 
@@ -41,15 +41,15 @@ Whether you're an Alex Chen power user needing scriptable note creation or a Sar
 ### From Source
 
 ```bash
-git clone https://github.com/jack/lithos-rust.git
-cd lithos-rust
+git clone https://github.com/jack/traces-rust.git
+cd traces-rust
 cargo build --release
 ```
 
 ### Via Cargo (Coming Soon)
 
 ```bash
-cargo install lithos
+cargo install traces
 ```
 
 ---
@@ -60,17 +60,17 @@ Initialize a new note interactively from a template:
 
 ```bash
 # Run the interactive template picker
-lithos new --interactive
+traces new --interactive
 
 # Or specify a template directly
-lithos new project-decision --vault ~/my-obsidian-vault
+traces new project-decision --vault ~/my-obsidian-vault
 ```
 
 ---
 
 ## Architecture
 
-Lithos follows a **Hexagonal Architecture** (Ports and Adapters) combined with **CQRS** (Command Query Responsibility Segregation) to ensure the core domain logic remains isolated and testable.
+Traces follows a **Hexagonal Architecture** (Ports and Adapters) combined with **CQRS** (Command Query Responsibility Segregation) to ensure the core domain logic remains isolated and testable.
 
 ### Bounded Contexts
 
@@ -85,7 +85,7 @@ Lithos follows a **Hexagonal Architecture** (Ports and Adapters) combined with *
   - `crates/domain`: Pure business logic, entities, and Port traits. No external I/O.
   - `crates/app`: Use case orchestrators (Commands/Queries) and event handling.
   - `crates/adapters`: Infrastructure implementations (Redb storage, MiniJinja rendering, miette diagnostics).
-  - `crates/lithos`: Binary CLI entry point.
+  - `crates/traces`: Binary CLI entry point.
 
 For more details, see the [Architecture Documentation](_bmad-output/planning-artifacts/architecture.md) and the [System Data Flow Diagram](_bmad-output/planning-artifacts/architecture.md#architectural-integrity).
 
@@ -96,9 +96,9 @@ For more details, see the [Architecture Documentation](_bmad-output/planning-art
 
 Detailed API documentation for each crate is available via `docs.rs`:
 
-- [lithos-domain](https://docs.rs/lithos-domain): Core traits and models.
-- [lithos-app](https://docs.rs/lithos-app): Service orchestration.
-- [lithos-adapters](https://docs.rs/lithos-adapters): Implementation details.
+- [traces-domain](https://docs.rs/traces-domain): Core traits and models.
+- [traces-app](https://docs.rs/traces-app): Service orchestration.
+- [traces-adapters](https://docs.rs/traces-adapters): Implementation details.
 
 ---
 
@@ -118,7 +118,7 @@ mise run dev-setup
 
 ### Quality Tools
 
-Lithos enforces strict quality standards through `pre-commit` hooks and Clippy limits:
+Traces enforces strict quality standards through `pre-commit` hooks and Clippy limits:
 
 - **Formatting**: `mise run fmt` (Import sorting enabled)
 - **Linting**: `mise run lint` (Cognitive complexity < 25)
@@ -190,14 +190,14 @@ See [CHANGELOG.md](CHANGELOG.md) for a history of changes.
 
 - **Richard Littauer** for the [Standard README](https://github.com/RichardLitt/standard-readme) specification.
 - **Standard-Readme** community for best practices.
-- The **Rust Ecosystem** for provide the tools (Tokio, Serde, Redb, etc.) that make Lithos possible.
+- The **Rust Ecosystem** for provide the tools (Tokio, Serde, Redb, etc.) that make Traces possible.
 - **Obsidian** for inspiring a new wave of personal knowledge management.
 
 ---
 
 ## Roadmap
 
-Lithos development is organized into four major phases, following the [Product Requirements Document](_bmad-output/planning-artifacts/prd.md) and [Architectural Decisions](_bmad-output/planning-artifacts/architecture.md).
+Traces development is organized into four major phases, following the [Product Requirements Document](_bmad-output/planning-artifacts/prd.md) and [Architectural Decisions](_bmad-output/planning-artifacts/architecture.md).
 
 ### Phase 1: MVP Core
 **Goal:** High-performance CLI tool for interactive, schema-validated templating.
@@ -217,7 +217,7 @@ Lithos development is organized into four major phases, following the [Product R
 - **Phase 2c: Linter & Formatter** - Built-in Markdown linting and automatic formatting.
 
 ### Phase 3: Editor Integration
-- **Phase 3a: Neovim Plugin** - Native Neovim experience leveraging the Lithos LSP.
+- **Phase 3a: Neovim Plugin** - Native Neovim experience leveraging the Traces LSP.
 - **Phase 3b: VS Code & Zed** - Broadening the ecosystem support.
 
 ### Phase 4: Enterprise & Scale
@@ -229,7 +229,7 @@ Lithos development is organized into four major phases, following the [Product R
 
 ```mermaid
 gantt
-    title Lithos Development Timeline
+    title Traces Development Timeline
     dateFormat  YYYY-MM-DD
     section Phase 1: MVP
     Foundation (M1)       :done,    m1, 2026-01-01, 30d

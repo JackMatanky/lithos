@@ -26,7 +26,7 @@ But the underlying `scan_range_tx()` function already exists and works with `Wri
 
 ### Step 1: Add `scan_range()` to `ReadWriteUnitOfWork`
 
-Add ONE method to `lithos-core/src/db/writer.rs`:
+Add ONE method to `traces-core/src/db/writer.rs`:
 
 ```rust
 impl ReadWriteUnitOfWork {
@@ -67,7 +67,7 @@ impl ReadWriteUnitOfWork {
 
 ### Step 2: Add `scan_range_write_tx()` helper
 
-Add this helper function to `lithos-core/src/db/reader.rs` (or writer.rs):
+Add this helper function to `traces-core/src/db/reader.rs` (or writer.rs):
 
 ```rust
 /// Scan entries in a table matching a key prefix within a write transaction.

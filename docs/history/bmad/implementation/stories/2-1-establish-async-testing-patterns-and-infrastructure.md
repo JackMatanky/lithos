@@ -120,7 +120,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 
 ### Project Context Reference
 
-- Lithos project uses tokio for async operations throughout hexagonal architecture
+- Traces project uses tokio for async operations throughout hexagonal architecture
 - Testing strategy emphasizes async reliability and race-free execution
 - Domain layer requires async testing for event-driven operations
 
@@ -150,7 +150,7 @@ No debug logs required - implementation proceeded smoothly with all tests passin
 
 ### Completion Notes List
 
-1. **Created test-utils crate** - Established dedicated crate for async testing infrastructure following Lithos project structure
+1. **Created test-utils crate** - Established dedicated crate for async testing infrastructure following Traces project structure
 2. **Implemented async_test macro** - Provides `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` for consistent test runtime configuration and race condition detection
 3. **Created timeout helpers** - Implemented `with_timeout`, `default_test_timeout`, `short_test_timeout`, and `long_test_timeout` functions to prevent hanging tests
 4. **Implemented spawn_blocking_test** - Helper for executing blocking operations in async tests without blocking runtime threads (critical for `std::fs` operations, heavy CPU tasks, and Redb transactions)

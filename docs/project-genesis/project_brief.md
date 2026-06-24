@@ -1,10 +1,10 @@
-# Project Brief: Lithos
+# Project Brief: Traces
 
 ## Executive Summary
 
-**Project:** Lithos
+**Project:** Traces
 
-**Summary:** Lithos is a command-line interface (CLI) tool built in Go that provides powerful, scriptable template generation for Obsidian vaults. Inspired by the functionality of popular Obsidian plugins like Templater and Metadata Menu, Lithos allows users to automate note creation and management directly from the terminal, leveraging Go's native templating engine for a fast and dependency-free experience.
+**Summary:** Traces is a command-line interface (CLI) tool built in Go that provides powerful, scriptable template generation for Obsidian vaults. Inspired by the functionality of popular Obsidian plugins like Templater and Metadata Menu, Traces allows users to automate note creation and management directly from the terminal, leveraging Go's native templating engine for a fast and dependency-free experience.
 
 ## Problem Statement
 
@@ -20,7 +20,7 @@ This siloed functionality prevents Obsidian from being a truly app-agnostic, pla
 
 ## Proposed Solution
 
-To bridge this gap, Lithos will be a standalone Go CLI tool that operates directly on an Obsidian vault's markdown files. It will bring the core power of in-app templating to any terminal or scripted environment.
+To bridge this gap, Traces will be a standalone Go CLI tool that operates directly on an Obsidian vault's markdown files. It will bring the core power of in-app templating to any terminal or scripted environment.
 
 Key features include:
 
@@ -30,7 +30,7 @@ Key features include:
 - **Vault-Wide Alias Resolution:** Provides alias resolution to ensure that links and references remain intact throughout the vault during template processing.
 - **Shareable Template Packs:** Enables the distribution and reuse of templates and schemas as "template packs" via Git repositories, promoting community sharing and standardization.
 
-By decoupling templating from the Obsidian application, Lithos empowers users to integrate their knowledge base seamlessly into broader development and automation workflows.
+By decoupling templating from the Obsidian application, Traces empowers users to integrate their knowledge base seamlessly into broader development and automation workflows.
 
 ## Target Users
 
@@ -67,7 +67,7 @@ By decoupling templating from the Obsidian application, Lithos empowers users to
 ### Key Performance Indicators (KPIs)
 
 - **Capability Coverage %:** Achieve ≥ 60% coverage of required Templater behaviors (must include prompts & suggesters).
-- **Schema Compliance Rate:** Ensure ≥ 98% of files generated via Lithos pass metadata validation.
+- **Schema Compliance Rate:** Ensure ≥ 98% of files generated via Traces pass metadata validation.
 - **Cross-Platform Consistency:** Achieve 100% parity on golden path tests across macOS, Linux, and Windows.
 - **Time to First Note:** A new user should be able to go from installation to their first generated note in ≤ 2 minutes.
 - **Template Render Latency:** Maintain a typical generation time of ≤ 300 ms for a single file.
@@ -106,9 +106,9 @@ The MVP must enable individuals and OSS communities to generate, manage, and val
 
 ### Out of Scope for V1 (Non-Goals)
 
-- **No GUI or Plugin Integration:** Lithos is a CLI-only tool and will not integrate directly with the Obsidian application's UI.
+- **No GUI or Plugin Integration:** Traces is a CLI-only tool and will not integrate directly with the Obsidian application's UI.
 - **No Hosted Template Registry:** Template packs will be distributed and managed via Git repositories only.
-- **Limited Scripting Runtime:** Lithos is not a full JavaScript execution environment. It will support a targeted subset of Templater's most-used features (e.g., prompts, suggesters, date operations, includes) rather than arbitrary script execution.
+- **Limited Scripting Runtime:** Traces is not a full JavaScript execution environment. It will support a targeted subset of Templater's most-used features (e.g., prompts, suggesters, date operations, includes) rather than arbitrary script execution.
 - **Complement, Don't Compete:** The tool is designed to work alongside Obsidian, not replace it.
 - **Advanced graph queries:** Backlinks, block IDs, and heading references are not part of the MVP.
 
@@ -116,8 +116,8 @@ The MVP must enable individuals and OSS communities to generate, manage, and val
 
 - **Phase 2 - Templater Parity:** Expand the built-in templating functions to cover the majority of Templater's capabilities, providing a near feature-complete experience for common use cases.
 - **Phase 3 - Custom Functions:** Introduce support for user-defined functions and the execution of safe, sandboxed system commands, allowing for greater customization and power.
-- **Phase 4 - Advanced IDE Integration:** Implement a Language Server Protocol (LSP) provider to offer rich, in-editor support for Lithos templates and schemas directly within IDEs like VS Code.
-- **Long-term Vision:** Evolve Lithos into a standalone Terminal User Interface (TUI) or a NeoVim plugin, incorporating advanced features like bidirectional linking and Dataview-like querying capabilities, transforming it from a templating tool into a comprehensive CLI-based knowledge management environment.
+- **Phase 4 - Advanced IDE Integration:** Implement a Language Server Protocol (LSP) provider to offer rich, in-editor support for Traces templates and schemas directly within IDEs like VS Code.
+- **Long-term Vision:** Evolve Traces into a standalone Terminal User Interface (TUI) or a NeoVim plugin, incorporating advanced features like bidirectional linking and Dataview-like querying capabilities, transforming it from a templating tool into a comprehensive CLI-based knowledge management environment.
 - **Expansion Opportunities:** Explore support for other plain-text knowledge management tools (e.g., Logseq).
 
 ## Technical Considerations
@@ -156,4 +156,4 @@ The MVP must enable individuals and OSS communities to generate, manage, and val
   1. Finalize and approve this Project Brief.
   2. Begin creation of a detailed Product Requirements Document (PRD) that breaks down MVP features into epics and user stories.
   3. Initiate the high-level architecture and system design based on the technical considerations outlined above.
-- **PM Handoff:** This Project Brief provides the full context for Lithos. The next step is to transition to a Product Manager role to create the PRD. The brief should be used as the source of truth to define detailed requirements, epics, and stories, ensuring they align with the stated MVP scope and goals.
+- **PM Handoff:** This Project Brief provides the full context for Traces. The next step is to transition to a Product Manager role to create the PRD. The brief should be used as the source of truth to define detailed requirements, epics, and stories, ensuring they align with the stated MVP scope and goals.

@@ -1,10 +1,10 @@
-# Type-Driven Design Principles for Lithos
+# Type-Driven Design Principles for Traces
 
 Sources:
 - "Parse, don't validate" by Alexis King
 - "Type-Driven Development in Rust" by Ruggero Rebellato
 
-This reference distills key type-driven design principles relevant to the Lithos file-based refactor.
+This reference distills key type-driven design principles relevant to the Traces file-based refactor.
 
 ## Core Principle: Parse, Don't Validate
 
@@ -179,7 +179,7 @@ impl Config<String, u16> {
 
 // ✅ Forces setting both name and port
 let config = Config::new()
-    .name("lithos".into())
+    .name("traces".into())
     .port(8080)
     .build();
 ```
@@ -215,7 +215,7 @@ Rust's monomorphization means using rich types has no runtime cost:
 
 **Type-driven benefit**: Can freely use types for safety without performance penalty.
 
-## Application to Lithos Refactor
+## Application to Traces Refactor
 
 ### File-Based Source of Truth
 
@@ -301,7 +301,7 @@ impl PropertyBank {
 
 ## Summary
 
-Type-driven design in Lithos means:
+Type-driven design in Traces means:
 
 1. **Parse files into typed representations at system boundaries**
 2. **Use newtypes and ADTs to make illegal states unrepresentable**

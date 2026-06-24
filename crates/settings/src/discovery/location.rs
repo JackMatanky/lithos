@@ -65,7 +65,7 @@ pub enum CacheLocation {
 /// Local (vault-scoped) cache location variants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocalCacheLocation {
-    /// `<vault_root>/.lithos/cache/`
+    /// `<vault_root>/.traces/cache/`
     ///
     /// Selected when a vault root is available and no env override is set.
     ProjectCacheDirectory,
@@ -74,15 +74,15 @@ pub enum LocalCacheLocation {
 /// Global (user/platform) cache location variants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GlobalCacheLocation {
-    /// Sourced from the `LITHOS_CACHE_DIR` environment variable.
+    /// Sourced from the `TRACES_CACHE_DIR` environment variable.
     ///
     /// Used when the env var is set and non-empty, regardless of whether a
     /// vault root was found.
     EnvironmentOverride,
     /// Resolved from the OS platform user-cache convention:
-    /// - Linux:   `$XDG_CACHE_HOME/lithos/` or `~/.cache/lithos/`
-    /// - macOS:   `~/Library/Caches/lithos/`
-    /// - Windows: `%LOCALAPPDATA%\lithos\Cache\`
+    /// - Linux:   `$XDG_CACHE_HOME/traces/` or `~/.cache/traces/`
+    /// - macOS:   `~/Library/Caches/traces/`
+    /// - Windows: `%LOCALAPPDATA%\traces\Cache\`
     ///
     /// Used as a fallback when no vault root is available and no env var is
     /// set.

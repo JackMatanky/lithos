@@ -62,9 +62,9 @@ Phase 2
    - Create immutable checkpoints:
      - `git tag pre-merge-main-<date> main`
      - `git tag pre-merge-schema-refactor-<date> schema-refactor`
-   - Create belt-and-suspenders backup: `git bundle create ../lithos-pre-merge-<date>.bundle --all`
+   - Create belt-and-suspenders backup: `git bundle create ../traces-pre-merge-<date>.bundle --all`
 2. **Create reconciliation sandbox (third worktree)**
-   - `git worktree add ../lithos-reconcile main`
+   - `git worktree add ../traces-reconcile main`
    - In sandbox: `git switch -c reconcile/schema-refactor-into-main`
 3. **Sync latest refs safely**
    - `git fetch --all --prune`
@@ -72,7 +72,7 @@ Phase 2
 4. **Pre-merge analysis (in sandbox)**
    - `git rev-list --left-right --count main...schema-refactor`
    - `git diff --name-status main...schema-refactor`
-   - Partition conflict domains: `lithos-core/src/schema/**`, `lithos-core/src/note/**`, docs, tooling.
+   - Partition conflict domains: `traces-core/src/schema/**`, `traces-core/src/note/**`, docs, tooling.
 5. **Rehearsal merge**
    - `git merge --no-ff schema-refactor`
    - Resolve conflicts by domain; commit after each coherent conflict batch when possible.

@@ -1,6 +1,6 @@
 # Docs Home
 
-This is the canonical documentation entrypoint for the Lithos repository.
+This is the canonical documentation entrypoint for the Traces repository.
 
 ## Target docs structure (approved)
 

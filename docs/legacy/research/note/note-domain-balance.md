@@ -4,7 +4,7 @@ This document is a deep dive into the Note context architecture, the
 SourceLocation dilemma, and the balance between DDD and a cache-driven
 file-backed model. It is based on:
 
-- The full `lithos-core/src/note/` module (aggregate, adapters, ports,
+- The full `traces-core/src/note/` module (aggregate, adapters, ports,
   structures, tasks, values, positions).
 - Obsidian API types (Loc/Pos and metadata cache positioning).
 - Basalt note_editor (source ranges and editor-centric positions).
@@ -14,7 +14,7 @@ file-backed model. It is based on:
 Goal
 Provide a critical, adversarial decision record and a concrete refactor plan
 that preserves DDD benefits without letting a Note aggregate block the
-capabilities Lithos needs (vault indexing, templates, LSP/IDE).
+capabilities Traces needs (vault indexing, templates, LSP/IDE).
 
 ----------------------------------------------------------------
 1. Evidence and constraints
@@ -34,7 +34,7 @@ capabilities Lithos needs (vault indexing, templates, LSP/IDE).
 - Positions are tied to the editing model and are not domain state.
 - This matches a read-model or editor cache, not a persistent aggregate.
 
-1.3 Lithos note module (current model)
+1.3 Traces note module (current model)
 - Note aggregate stores:
   - `links`, `tags`, `headings`, `lists`, `tasks`, `sections`.
   - Each sub-entity stores `SourceByteOffset` or ranges.
@@ -171,7 +171,7 @@ read model should be projection-driven.
 ----------------------------------------------------------------
 
 This section outlines the exact impact for every file in
-`lithos-core/src/note/`.
+`traces-core/src/note/`.
 
 aggregate.rs
 - Rename Note -> ParsedNote (or keep Note but mark as ingest-only).
@@ -361,7 +361,7 @@ Cons
 ----------------------------------------------------------------
 
 This section enumerates all viable event-driven patterns for a file-backed
-vault. Each option includes pros/cons and suitability for Lithos.
+vault. Each option includes pros/cons and suitability for Traces.
 
 Option A: Pure event-driven indexing (notifications only)
 - Emit events at ingest boundaries:
@@ -455,17 +455,17 @@ Pros
 - Complete audit history and deterministic rebuilds.
 
 Cons
-- Conflicts with file-backed vaults unless Lithos is the only editor.
+- Conflicts with file-backed vaults unless Traces is the only editor.
 - Very high complexity and performance cost.
 
-Recommendation (optimal for Lithos)
+Recommendation (optimal for Traces)
 - Combine Option A + Option D as the baseline:
   - Emit ingest events for observability and downstream pipelines.
   - Use invalidation events for incremental cache rebuilds.
 - Add Option C selectively when diff-based deltas materially reduce work
   (large vaults, expensive projections, or heavy downstream consumers).
 - Option B is a safe add-on if auditability becomes important.
-- Avoid Options E/F until Lithos controls all writes.
+- Avoid Options E/F until Traces controls all writes.
 
 ----------------------------------------------------------------
 14. Open questions
@@ -597,7 +597,7 @@ Pulldown-cmark optimization checklist
 16. File-by-file migration checklist (all note/ files)
 ----------------------------------------------------------------
 
-The checklist below enumerates every file in `lithos-core/src/note/` and
+The checklist below enumerates every file in `traces-core/src/note/` and
 the concrete migration steps required for the new architecture.
 
 aggregate.rs

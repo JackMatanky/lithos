@@ -22,7 +22,7 @@
 //!
 //! When the redb adapter is built, both `InMemoryRepository` and
 //! `RedbRepository` should be tested against a shared contract suite in
-//! `lithos-core/tests/template_storage.rs`.
+//! `traces-core/tests/template_storage.rs`.
 //!
 //! [`Repository`]: crate::repository::Repository
 

@@ -12,7 +12,7 @@ use super::{error::ConfigError, raw::RawFrontmatter};
 
 /// Frontmatter configuration with validation.
 ///
-/// This struct defines which keys Lithos looks for when parsing metadata
+/// This struct defines which keys Traces looks for when parsing metadata
 /// from note frontmatter.
 ///
 /// # Examples

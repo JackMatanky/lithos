@@ -1,6 +1,6 @@
 # fs module refactor — second pass
 
-This document tracks the second-pass remediation of `lithos-core/src/fs/`. The first pass
+This document tracks the second-pass remediation of `traces-core/src/fs/`. The first pass
 (`fs-module-review.md`) established the module's foundation. This pass removes dead weight,
 fixes real defects, tightens public surface, and enforces best practices identified through
 critical review against authoritative Rust file-handling standards.
@@ -35,7 +35,7 @@ The review identified three categories of problem:
 
 **What:**
 
-In `lithos-core/Cargo.toml`, move `tempfile.workspace = true` from `[dev-dependencies]`
+In `traces-core/Cargo.toml`, move `tempfile.workspace = true` from `[dev-dependencies]`
 to `[dependencies]`.
 
 **Verify:** `cargo check`
@@ -625,7 +625,7 @@ module eliminates the duplication.
 
 **What:**
 
-9a. Create `lithos-core/src/fs/test_support.rs` (behind `#[cfg(test)]`) with:
+9a. Create `traces-core/src/fs/test_support.rs` (behind `#[cfg(test)]`) with:
 
 - `Workspace` struct (from `validator.rs`): `new()`, `create_file()`, `create_symlink()`
 - `write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf` (from `reader.rs`)
@@ -652,7 +652,7 @@ module eliminates the duplication.
 
 10b. Run doc tests: `cargo test --doc`
 
-10c. Check that no public items in `lithos-core::fs` lack documentation
+10c. Check that no public items in `traces-core::fs` lack documentation
 (`cargo doc --no-deps 2>&1 | grep "missing"` — must be empty).
 
 10d. Confirm the Definition of Done checklist:
@@ -707,23 +707,23 @@ Steps 7 and 8 can be done in parallel with Step 6 once Steps 3 and 4 are complet
 
 | File                                              | Step(s)    | Change summary                                                                                                           |
 | ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `lithos-core/Cargo.toml`                          | 1          | `tempfile` promoted from `[dev-dependencies]` to `[dependencies]`                                                        |
-| `lithos-core/src/fs/error.rs`                     | 2          | Delete `FsError`; add `PathValidationError::RelativeRoot`                                                                |
-| `lithos-core/src/fs/validator.rs`                 | 3          | Delete `check_windows_path_bytes` free fn; delete `is_windows_absolute_path` pub fn; delete `new_strict`; add `try_new_strict`; add `Validator::validate_vault_path`; add private `Self::is_windows_absolute`; fix ordering; clarify match arms; inline `get_relative_validation_path`; rename `check_strict_boundary`; fix doc example; remove `#[non_exhaustive]` from `Mode` |
-| `lithos-core/src/fs/mod.rs`                       | 4          | Remove `FsError`, `FileMetadata`, `is_windows_absolute_path`, `validate_vault_path` re-exports; demote `FsWriter`, `Json`, `Toml`, `Yaml`, `Markdown` to `pub(crate)`; update module doc |
-| `lithos-core/src/fs/types.rs`                     | 5          | Make all structs `pub(crate)`; remove `#[non_exhaustive]`; wire `detect()` into `classify_path`; add content-sniffing tests |
-| `lithos-core/src/fs/reader.rs`                    | 6          | Delete `FileMetadata`; `metadata()` returns `std::fs::Metadata`; store `Validator` on `Reader`; add `Reader::new_strict`; delete `Reader::validate_path`; fix `list_files` error propagation; fix `is_likely_binary` allocation; generalise `read_with` error type; make `classify`, `FormatKind`, `read_bytes` `pub(crate)`; update `classify` signature for content arg; update tests |
-| `lithos-core/src/fs/writer.rs`                    | 7          | Store `Validator` on `Writer`; replace `atomic_write` with `NamedTempFile`; make `Writer`/`FsWriter` `pub(crate)`; add comprehensive unit tests |
-| `lithos-core/src/fs/test_support.rs`              | 9          | New `#[cfg(test)]` module: shared `Workspace` and `write_file` fixtures                                                  |
-| `lithos-core/src/schema/adapter/ingestor.rs`      | 6          | Update `metadata` call site: `meta.modified` → `meta.modified().ok()`                                                    |
-| `lithos-core/src/template/adapter/filters.rs`     | 8          | Update `validate_vault_path` call: `crate::fs::validate_vault_path` → `crate::fs::PathValidator::validate_vault_path`    |
+| `traces-core/Cargo.toml`                          | 1          | `tempfile` promoted from `[dev-dependencies]` to `[dependencies]`                                                        |
+| `traces-core/src/fs/error.rs`                     | 2          | Delete `FsError`; add `PathValidationError::RelativeRoot`                                                                |
+| `traces-core/src/fs/validator.rs`                 | 3          | Delete `check_windows_path_bytes` free fn; delete `is_windows_absolute_path` pub fn; delete `new_strict`; add `try_new_strict`; add `Validator::validate_vault_path`; add private `Self::is_windows_absolute`; fix ordering; clarify match arms; inline `get_relative_validation_path`; rename `check_strict_boundary`; fix doc example; remove `#[non_exhaustive]` from `Mode` |
+| `traces-core/src/fs/mod.rs`                       | 4          | Remove `FsError`, `FileMetadata`, `is_windows_absolute_path`, `validate_vault_path` re-exports; demote `FsWriter`, `Json`, `Toml`, `Yaml`, `Markdown` to `pub(crate)`; update module doc |
+| `traces-core/src/fs/types.rs`                     | 5          | Make all structs `pub(crate)`; remove `#[non_exhaustive]`; wire `detect()` into `classify_path`; add content-sniffing tests |
+| `traces-core/src/fs/reader.rs`                    | 6          | Delete `FileMetadata`; `metadata()` returns `std::fs::Metadata`; store `Validator` on `Reader`; add `Reader::new_strict`; delete `Reader::validate_path`; fix `list_files` error propagation; fix `is_likely_binary` allocation; generalise `read_with` error type; make `classify`, `FormatKind`, `read_bytes` `pub(crate)`; update `classify` signature for content arg; update tests |
+| `traces-core/src/fs/writer.rs`                    | 7          | Store `Validator` on `Writer`; replace `atomic_write` with `NamedTempFile`; make `Writer`/`FsWriter` `pub(crate)`; add comprehensive unit tests |
+| `traces-core/src/fs/test_support.rs`              | 9          | New `#[cfg(test)]` module: shared `Workspace` and `write_file` fixtures                                                  |
+| `traces-core/src/schema/adapter/ingestor.rs`      | 6          | Update `metadata` call site: `meta.modified` → `meta.modified().ok()`                                                    |
+| `traces-core/src/template/adapter/filters.rs`     | 8          | Update `validate_vault_path` call: `crate::fs::validate_vault_path` → `crate::fs::PathValidator::validate_vault_path`    |
 
 ## Files that do NOT need changes
 
 | File                                              | Reason                                                                                     |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `lithos-core/src/note/adapter/reader.rs`          | `read_with` call site compiles unchanged after generalisation (closure returns `Ok(...)`)   |
-| `lithos-core/src/note/` (all other files)         | No fs symbols used directly                                                                |
-| `lithos-core/src/config/` (all files)             | No affected symbols                                                                        |
-| `lithos-core/tests/architecture.rs`               | No affected imports                                                                        |
-| `lithos-cli/src/`                                 | No fs symbols used                                                                         |
+| `traces-core/src/note/adapter/reader.rs`          | `read_with` call site compiles unchanged after generalisation (closure returns `Ok(...)`)   |
+| `traces-core/src/note/` (all other files)         | No fs symbols used directly                                                                |
+| `traces-core/src/config/` (all files)             | No affected symbols                                                                        |
+| `traces-core/tests/architecture.rs`               | No affected imports                                                                        |
+| `traces-cli/src/`                                 | No fs symbols used                                                                         |

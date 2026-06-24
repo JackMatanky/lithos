@@ -164,7 +164,7 @@ So that I can understand and contribute to the project quickly.
 
 ### Project Context Reference
 
-- Lithos project: Template management system with hexagonal architecture
+- Traces project: Template management system with hexagonal architecture
 - Quality-first approach with comprehensive tooling integration
 - Documentation-driven development with structured artifacts
 - Developer experience prioritized through clear onboarding

@@ -1,10 +1,10 @@
-# Lithos Testing Guides
+# Traces Testing Guides
 
-Tactical testing patterns and best practices for Lithos development.
+Tactical testing patterns and best practices for Traces development.
 
 ## Overview
 
-These guides provide **tactical implementation patterns** for testing Lithos code. For **architectural decisions** about testing infrastructure, see the relevant ADRs in `docs/adr/`.
+These guides provide **tactical implementation patterns** for testing Traces code. For **architectural decisions** about testing infrastructure, see the relevant ADRs in `docs/adr/`.
 
 ## Available Guides
 
@@ -38,7 +38,7 @@ These guides provide **tactical implementation patterns** for testing Lithos cod
 
 ## Testing Stack
 
-Lithos uses the following testing tools:
+Traces uses the following testing tools:
 
 | Tool | Purpose | Documentation |
 |------|---------|---------------|
@@ -80,20 +80,20 @@ See `mise.toml` for full list of test tasks.
 
 ## Test Organization
 
-Lithos follows Rust standard test organization:
+Traces follows Rust standard test organization:
 
 ```
-lithos-rust/
-├── lithos-core/            # Core crate
+traces-rust/
+├── traces-core/            # Core crate
 │   ├── src/                # Unit tests (#[cfg(test)] modules)
 │   ├── tests/              # Integration tests (when added)
 │   └── benches/            # Performance benchmarks
-└── lithos-cli/             # CLI crate (E2E binaries)
+└── traces-cli/             # CLI crate (E2E binaries)
 ```
 
 **Unit tests**: Co-located with code using `#[cfg(test)]` modules
-**Integration tests**: In `lithos-core/tests/` for cross-module testing (when added)
-**E2E tests**: In `lithos-cli/` for full CLI workflows
+**Integration tests**: In `traces-core/tests/` for cross-module testing (when added)
+**E2E tests**: In `traces-cli/` for full CLI workflows
 
 ## Historical Context
 

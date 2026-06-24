@@ -1,6 +1,6 @@
 # Reference Documentation
 
-This directory contains reference materials and external data used for Lithos development and testing.
+This directory contains reference materials and external data used for Traces development and testing.
 
 ## Contents
 

@@ -98,8 +98,8 @@ The Note bounded context currently lacks complete representation of markdown lis
 **Creating List Entities**
 
 ```rust
-use lithos_core::note::list::{List, ListItem, ListType};
-use lithos_core::config::task::{StatusSymbol, TaskConfig};
+use traces_core::note::list::{List, ListItem, ListType};
+use traces_core::config::task::{StatusSymbol, TaskConfig};
 
 // Parser creates List entities for all markdown lists
 let list = List::new(ListType::Unordered);
@@ -122,7 +122,7 @@ list.add_item(ListItem::Checkbox {
 **Promoting Checkboxes to Tasks**
 
 ```rust
-use lithos_core::note::task::Task;
+use traces_core::note::task::Task;
 
 // Check if checkbox should be promoted
 let checkbox_text = "#task Review PR [priority:: 1]";
@@ -179,7 +179,7 @@ for task in note.tasks() {
 
 ## Work Tasks
 
-- [ ] #task Review pull request [priority:: 1] [project:: lithos]
+- [ ] #task Review pull request [priority:: 1] [project:: traces]
 - [x] #task Update documentation [priority:: 2] [project:: docs]
 - [ ] #action-item Fix bug in parser [priority:: 3]
 
@@ -765,10 +765,10 @@ sequenceDiagram
     participant Config as TaskConfig
     participant Meta as TaskMetadata
 
-    Text->>Task: "#task Work [priority:: 1] [project:: lithos]"
+    Text->>Task: "#task Work [priority:: 1] [project:: traces]"
     Task->>Parser: extract_inline_metadata(text)
     Parser->>Parser: Find [key:: value] patterns
-    Parser-->>Task: [("priority", "1"), ("project", "lithos")]
+    Parser-->>Task: [("priority", "1"), ("project", "traces")]
 
     loop For each field
         Task->>Config: field_spec("priority")

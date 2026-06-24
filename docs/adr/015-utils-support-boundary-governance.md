@@ -11,7 +11,7 @@ stakeholders: [Core Maintainers]
 
 ## Context
 
-`lithos-core` historically exposed `support` as a public module while also using it for internal implementation details. As UUID and hashing primitives spread across contexts, this made it unclear which surfaces were stable contracts versus internal helpers and increased long-term coupling risk.
+`traces-core` historically exposed `support` as a public module while also using it for internal implementation details. As UUID and hashing primitives spread across contexts, this made it unclear which surfaces were stable contracts versus internal helpers and increased long-term coupling risk.
 
 ## Decision
 
@@ -47,7 +47,7 @@ We will enforce the following governance rules:
 
 - **Positive**: Clear contract vs internals boundary; safer refactoring posture; explicit policy for dependency/API surface growth.
 - **Negative**: Additional governance overhead for dependency additions and exceptions.
-- **Risks**: `lithos-core`-scoped `utils` may still accrue broad responsibilities if policy discipline is not maintained.
+- **Risks**: `traces-core`-scoped `utils` may still accrue broad responsibilities if policy discipline is not maintained.
 
 ## References
 

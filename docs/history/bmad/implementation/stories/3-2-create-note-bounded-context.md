@@ -163,7 +163,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **Status**: ✅ Platinum Standard Verified
 
 ### Summary
-Following the adversarial audit and final remediation, the test suite now achieves the Platinum Standard. It provides 100% verification of the **Lithos Test Guide**, including functional organization, security fuzzing, deterministic time control, and fully verified "Living Documentation" via doc-tests.
+Following the adversarial audit and final remediation, the test suite now achieves the Platinum Standard. It provides 100% verification of the **Traces Test Guide**, including functional organization, security fuzzing, deterministic time control, and fully verified "Living Documentation" via doc-tests.
 
 ### Remediation Details
 1. **Structural Integrity**: Added dedicated unit test modules to `tag.rs`, `structure.rs`, and `task.rs`.
@@ -327,7 +327,7 @@ pub struct Section {
 // Main aggregate containing all subentities
 pub struct Note {
     id: Uuid,                  // UUID v7 primary identity
-    path: String,              // Vault-relative path (e.g., "projects/lithos.md")
+    path: String,              // Vault-relative path (e.g., "projects/traces.md")
     frontmatter: Option<Frontmatter>,  // YAML metadata (optional)
     links: Vec<Link>,          // Wiki-links found in content
     embeds: Vec<Embed>,        // Embedded files
@@ -461,7 +461,7 @@ pub struct Note {
 - MUST be relative (no leading `/` or drive letters)
 - MAX length: 4096 characters
 - MUST end with `.md` extension
-- Example valid: `"projects/lithos-development.md"`
+- Example valid: `"projects/traces-development.md"`
 - Example invalid: `"/absolute/path.md"`, `""`, `"no-extension"`
 
 **Tag Validation:**
@@ -489,7 +489,7 @@ pub struct Note {
 **Link/Embed Target Validation:**
 - MUST be non-empty
 - MUST be vault-relative path
-- Example valid: `"projects/lithos.md"`, `"assets/diagram.png"`
+- Example valid: `"projects/traces.md"`, `"assets/diagram.png"`
 - Example invalid: `""`, `"/absolute/path.md"`
 
 ### Subentity Example Instances
@@ -531,13 +531,13 @@ let frontmatter = Frontmatter::new(fields)?;
 ```rust
 let link = Link {
     source_note_id: Uuid::now_v7(),
-    target_path: "projects/lithos.md".to_string(),
-    alias: Some("Lithos Project".to_string()),
+    target_path: "projects/traces.md".to_string(),
+    alias: Some("Traces Project".to_string()),
     link_type: LinkType::WikiLink,
     position: 150,  // Character offset in source document
 };
 
-// Corresponds to markdown: [[projects/lithos.md|Lithos Project]]
+// Corresponds to markdown: [[projects/traces.md|Traces Project]]
 ```
 
 **Example: Embed Construction**
@@ -659,7 +659,7 @@ fields.insert("created".to_string(), FrontmatterValue::Date(Utc.with_ymd_and_hms
 
 **Performance Testing:**
 ```rust
-// Add to lithos-core/benches/domain_models.rs using criterion per @docs/testing/developer-guide.md
+// Add to traces-core/benches/domain_models.rs using criterion per @docs/testing/developer-guide.md
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_note_creation(c: &mut Criterion) {
@@ -1079,7 +1079,7 @@ Adversarial code review identified critical false completion claims in Story 3.2
 **FINAL STATUS: ✅ DONE - Production Ready**
 
 Story 3.2 serves as an exemplary implementation of domain-driven design,
-hexagonal architecture, and platinum-level testing standards for the Lithos project.
+hexagonal architecture, and platinum-level testing standards for the Traces project.
 
 ---
 

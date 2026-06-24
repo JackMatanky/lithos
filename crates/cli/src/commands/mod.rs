@@ -1,4 +1,4 @@
-//! Command handler modules for the Lithos CLI.
+//! Command handler modules for the Traces CLI.
 //!
 //! Each submodule corresponds to a top-level CLI subcommand and contains
 //! the handler function and unit tests.

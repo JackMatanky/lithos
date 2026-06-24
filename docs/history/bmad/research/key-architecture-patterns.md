@@ -1,6 +1,6 @@
 # Key Architecture Patterns - Quick Reference
 
-**For**: Lithos development team
+**For**: Traces development team
 **Date**: April 21, 2026
 
 ## TL;DR - What to Steal
@@ -22,7 +22,7 @@ for file in workspace {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - Phase 1: Parse note, validate schema, extract links/headings → FileIndex
 - Phase 2: Validate link targets exist, no broken refs → WorkspaceIndex
 
@@ -48,7 +48,7 @@ for validator in validators {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - Scan for `---` frontmatter, `#tags`, `[[links]]`, etc.
 - Skip validators when features not present
 - Example: Skip tag validator when no `#` found
@@ -87,7 +87,7 @@ impl Validator for RequiredFieldsValidator {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - `note::NoteContext` holds all parsed data
 - Validators never parse directly
 - Single pulldown-cmark pass per file
@@ -114,7 +114,7 @@ if file_index.content_hash == compute_hash(new_content) {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - Hash note content on save
 - Compare with stored hash in redb
 - Skip validation if unchanged
@@ -144,7 +144,7 @@ impl WorkspaceIndex {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - `schema::WorkspaceIndex` for cross-file queries
 - Find link targets without re-parsing
 - Backlink queries in O(1) per file
@@ -184,7 +184,7 @@ impl Validator for LinkTargetValidator {
 }
 ```
 
-**Lithos application**:
+**Traces application**:
 - `schema::Validator` trait
 - Local: schema structure, required fields, types
 - Workspace: link targets, ref resolution, uniqueness
@@ -294,7 +294,7 @@ for event in parser {
 
 ---
 
-## Lithos-Specific Recommendations
+## Traces-Specific Recommendations
 
 ### File Ingestion Pipeline
 
@@ -493,7 +493,7 @@ fn test_link_validation() {
 ## Code Organization
 
 ```
-lithos-core/src/
+traces-core/src/
 ├── note/
 │   ├── mod.rs           # Public API
 │   ├── context.rs       # NoteContext (cached parsing)

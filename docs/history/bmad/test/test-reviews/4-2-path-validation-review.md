@@ -22,7 +22,7 @@ Note: This review audits existing tests; it does not generate tests.
 ✅ Proper fixture usage with Workspace for test setup/cleanup
 ✅ Explicit assertions throughout all tests
 ✅ Platform-aware testing (Unix/Windows symlink handling)
-✅ Correct Rust organization: Unit tests in same file with submodules (follows Lithos test guide best practices)
+✅ Correct Rust organization: Unit tests in same file with submodules (follows Traces test guide best practices)
 ✅ Verb-first naming conventions followed throughout
 
 ### Key Weaknesses
@@ -211,7 +211,7 @@ fn rejects_path_traversal(#[case] input: &str) {
 
 **Status**: ✅ Compliant
 **Location**: crates/adapters/src/spi/fs/validator.rs
-**Notes**: Unit tests correctly placed in same file with submodules (per Lithos test guide). Current 680-line structure is acceptable for comprehensive security validation tests. Verb-first naming conventions properly implemented.
+**Notes**: Unit tests correctly placed in same file with submodules (per Traces test guide). Current 680-line structure is acceptable for comprehensive security validation tests. Verb-first naming conventions properly implemented.
 
 ---
 
@@ -222,7 +222,7 @@ fn rejects_path_traversal(#[case] input: &str) {
 **Status**: All Recommendations Implemented ✅
 
 ### Improvements Documented
-Following the initial review, the following enhancements were implemented to meet Lithos Gold Standards:
+Following the initial review, the following enhancements were implemented to meet Traces Gold Standards:
 
 #### ✅ BDD Structure Implemented
 Added full `GIVEN-WHEN-THEN` comments to all 24 unit tests. This ensures the intent of each test is immediately clear to developers and auditors.
@@ -265,7 +265,7 @@ Grade:                   A+
 
 ## Decision: FINAL APPROVE
 
-> The test suite for `validator.rs` has been elevated from "Good" to "Exceptional". It now serves as the reference implementation for security-critical testing in the Lithos project, perfectly balancing Rust's performance requirements with high-fidelity validation and documentation.
+> The test suite for `validator.rs` has been elevated from "Good" to "Exceptional". It now serves as the reference implementation for security-critical testing in the Traces project, perfectly balancing Rust's performance requirements with high-fidelity validation and documentation.
 
 ---
 

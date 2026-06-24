@@ -60,7 +60,7 @@ pub trait Archive {
 **Important:** `Archived<T>` is a distinct type from `T`. Zero-copy access works with `Archived<T>`; deserialization is required to get `T`.
 See https://rkyv.org/ for conceptual guidance on working with archived types.
 
-**Lithos pattern:** Use `rkyv::Archived<T>` in public APIs and CQRS ports. Use `Archived*` only for local accessors inside the defining module when archived fields are private.
+**Traces pattern:** Use `rkyv::Archived<T>` in public APIs and CQRS ports. Use `Archived*` only for local accessors inside the defining module when archived fields are private.
 
 **Resolver:**
 
@@ -152,7 +152,7 @@ let original: Data = deserialize::<Data, rkyv::rancor::Error>(archived)?;
 
 **Note:** `deserialize` allocates and should be treated as an escape hatch for cold paths or interoperability.
 
-### 4.1 Write-Side Performance (Lithos Guidance)
+### 4.1 Write-Side Performance (Traces Guidance)
 
 rkyv can reduce read costs dramatically, but write-side choices determine whether storage remains fast and maintainable over time.
 
@@ -706,7 +706,7 @@ fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
 - Uses `munge` crate for safety
 - Compile-time guarantees
 
-## Integration with Lithos System
+## Integration with Traces System
 
 ### Recommended Use Cases
 
@@ -896,7 +896,7 @@ struct Data {
 }
 ```
 
-## Summary for Lithos
+## Summary for Traces
 
 rkyv provides unmatched zero-copy performance through:
 

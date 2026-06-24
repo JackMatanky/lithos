@@ -78,10 +78,10 @@ So that validation matches user format expectations.
 **And** examples show inheritance (extends/excludes)
 **And** examples show type-specific constraints (enum, pattern, min/max, format, file_class)
 
-**Given** old lithos.schema.json exists
+**Given** old traces.schema.json exists
 **When** I replace it
-**Then** DELETE `docs/schemas/lithos.schema.json`
-**And** CREATE `example_vault/.lithos/schemas/vault-schema.schema.json`
+**Then** DELETE `docs/schemas/traces.schema.json`
+**And** CREATE `example_vault/.traces/schemas/vault-schema.schema.json`
 **And** remove internal domain concepts (Property.id, PropertySpec, resolved_properties)
 
 ---
@@ -97,13 +97,13 @@ So that I have starter kit + test fixtures based on real vault data.
 **Given** need for user starter kit and test fixtures
 **When** I create example_vault/ structure
 **Then** it follows the structure documented in `docs/obsidian-vault-guide.md`
-**And** schemas are located in `example_vault/.lithos/schemas/`
+**And** schemas are located in `example_vault/.traces/schemas/`
 **And** sample notes demonstrate schema usage in `example_vault/notes/`
-**And** includes `.gitignore` ignoring `.lithos/cache/` but preserving schemas and templates
+**And** includes `.gitignore` ignoring `.traces/cache/` but preserving schemas and templates
 
 **Given** schemas exist in docs/refs/obsidian or docs/schemas/
 **When** I populate example_vault
-**Then** migrate existing schemas to `example_vault/.lithos/schemas/`
+**Then** migrate existing schemas to `example_vault/.traces/schemas/`
 **And** include `vault-schema.schema.json` for validation
 **And** include `property_bank.json` with reusable properties
 **And** all 41+ schemas are available for testing
@@ -140,7 +140,7 @@ So that schema files are safely read from disk before processing.
 **When** I create SchemaLoader in `crates/adapters/src/spi/schema/loader.rs`
 **Then** it integrates Epic 4 PathValidator for security checks
 **And** it integrates Epic 4 FormatDispatcher for JSON/TOML/YAML parsing
-**And** it accepts root_path from Config (e.g., `vault/.lithos/schemas/`)
+**And** it accepts root_path from Config (e.g., `vault/.traces/schemas/`)
 
 **Given** SchemaLoader loads individual files
 **When** I implement load_file(file_name)
@@ -172,7 +172,7 @@ So that schema files are safely read from disk before processing.
 **Then** test loading valid schemas (JSON/TOML/YAML)
 **And** test PathValidator rejection (paths outside root)
 **And** test resilience (load_all continues after individual failures)
-**And** use `example_vault/.lithos/schemas/` as test fixtures
+**And** use `example_vault/.traces/schemas/` as test fixtures
 
 ---
 
@@ -578,7 +578,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 7 components are implemented
 **When** I verify test coverage

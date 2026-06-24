@@ -31,31 +31,31 @@ These locations define error responsibility boundaries and should map to
 distinct error categories:
 
 ### Ingestion / File Parsing
-- `lithos-core/src/schema/ingestor.rs`
-- `lithos-core/src/schema/views/raw.rs`
-- `lithos-core/src/fs/error.rs` (ParseError integration)
+- `traces-core/src/schema/ingestor.rs`
+- `traces-core/src/schema/views/raw.rs`
+- `traces-core/src/fs/error.rs` (ParseError integration)
 
 ### Raw Syntax Validation
-- `lithos-core/src/schema/raw/mod.rs`
-- `lithos-core/src/schema/raw/property.rs`
-- `lithos-core/src/schema/raw/property_spec.rs`
+- `traces-core/src/schema/raw/mod.rs`
+- `traces-core/src/schema/raw/property.rs`
+- `traces-core/src/schema/raw/property_spec.rs`
 
 ### Domain Validation and Specs
-- `lithos-core/src/schema/aggregate.rs`
-- `lithos-core/src/schema/property.rs`
-- `lithos-core/src/schema/property_spec/*.rs`
+- `traces-core/src/schema/aggregate.rs`
+- `traces-core/src/schema/property.rs`
+- `traces-core/src/schema/property_spec/*.rs`
 
 ### Reference Expansion and Resolution
-- `lithos-core/src/schema/expander.rs`
-- `lithos-core/src/schema/extender.rs`
-- `lithos-core/src/schema/merger.rs`
-- `lithos-core/src/schema/resolver.rs`
+- `traces-core/src/schema/expander.rs`
+- `traces-core/src/schema/extender.rs`
+- `traces-core/src/schema/merger.rs`
+- `traces-core/src/schema/resolver.rs`
 
 ### Storage / Repository
-- `lithos-core/src/schema/storage.rs`
+- `traces-core/src/schema/storage.rs`
 
 ### Loader Orchestration
-- `lithos-core/src/schema/loader.rs`
+- `traces-core/src/schema/loader.rs`
 
 ## Proposed Error Taxonomy
 The following errors are the errors the schema module should have, even if

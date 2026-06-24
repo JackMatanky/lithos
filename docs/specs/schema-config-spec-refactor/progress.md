@@ -36,9 +36,9 @@
   - Ran `mise run fmt` - ✅ Code formatted
   - Ran `mise run test` - ✅ ALL PASSING (1157 unit + 38 integration)
 - Files modified:
-  - lithos-core/src/config/aggregate.rs (50 lines changed)
-  - lithos-core/src/config/schema.rs (112 lines changed)
-  - lithos-core/src/schema/discovery.rs (66 lines changed)
+  - traces-core/src/config/aggregate.rs (50 lines changed)
+  - traces-core/src/config/schema.rs (112 lines changed)
+  - traces-core/src/schema/discovery.rs (66 lines changed)
 - **Total:** 147 insertions(+), 81 deletions(-)
 
 ### Phase 2: Design & Planning
@@ -61,7 +61,7 @@
 
 ## Worktree Information
 - **Branch:** `refactor/schema-config-spec` (renamed from refactor/schema-config-spec-absolute-paths)
-- **Path:** /Users/jack/Documents/41_personal/lithos/.worktrees/refactor/schema-config-spec-absolute-paths
+- **Path:** /Users/jack/Documents/41_personal/traces/.worktrees/refactor/schema-config-spec-absolute-paths
 - **Baseline:** ✅ 1157 unit tests + 38 integration tests PASSING
 - **TDD Plan:** See TDD_PLAN.md in worktree for detailed implementation steps
 - **Final Status:** ✅ ALL TESTS PASSING (1157 unit + 38 integration)

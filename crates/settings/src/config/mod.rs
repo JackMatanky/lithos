@@ -1,7 +1,7 @@
-//! Domain-centric configuration management for Lithos.
+//! Domain-centric configuration management for Traces.
 //!
 //! This module provides the domain entities, validation logic, and storage
-//! for Lithos configuration. It ensures that configuration is
+//! for Traces configuration. It ensures that configuration is
 //! "Always Valid" by performing strict validation during ingestion and
 //! construction.
 //!

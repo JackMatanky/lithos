@@ -1,6 +1,6 @@
 # Rustfmt Standards
 
-Lithos enforces strict formatting standards to ensure that both human and AI-generated code remains maintainable and readable. We use `rustfmt` with nightly features to enforce consistent import sorting and code layout.
+Traces enforces strict formatting standards to ensure that both human and AI-generated code remains maintainable and readable. We use `rustfmt` with nightly features to enforce consistent import sorting and code layout.
 
 ## Configuration Details
 

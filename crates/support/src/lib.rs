@@ -1,5 +1,5 @@
 #![feature(trivial_bounds)]
-//! Crate-private implementation support for `lithos-core`.
+//! Crate-private implementation support for `traces-core`.
 //!
 //! This module is the internal "engine room" for helpers that are useful
 //! across multiple internal modules but are not part of the public contract

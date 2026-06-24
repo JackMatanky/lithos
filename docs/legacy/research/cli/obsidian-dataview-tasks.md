@@ -1,6 +1,6 @@
-# Obsidian Dataview + Tasks Learnings for Lithos
+# Obsidian Dataview + Tasks Learnings for Traces
 
-This document summarizes concrete lessons from the Dataview and Obsidian Tasks plugins and translates them into implementation requirements for Lithos, with a focus on task querying, metadata, and performance at Obsidian-scale vaults.
+This document summarizes concrete lessons from the Dataview and Obsidian Tasks plugins and translates them into implementation requirements for Traces, with a focus on task querying, metadata, and performance at Obsidian-scale vaults.
 
 Sources reviewed
 - Dataview docs: data annotation, task metadata, query types, API overview.
@@ -68,7 +68,7 @@ Obsidian Tasks learnings (critical behaviors)
 - Global query / global filter applied to all queries by default.
 - Queries support filters, sorting, grouping, limits, and custom functions.
 
-Lithos implementation requirements
+Traces implementation requirements
 
 1) Task projection model
 - Introduce a task projection table (`TASKS`) with a `StoredTask` record.

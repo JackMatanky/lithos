@@ -10,15 +10,15 @@
 
 ---
 
-### Task 1: Normalize Prefixed Traits in `lithos-core/src`
+### Task 1: Normalize Prefixed Traits in `traces-core/src`
 
 **Files:**
-- Modify: All `.rs` files in `lithos-core/src`
-- Modify: `lithos-core/src/schema/repository.rs` (ensure generic names)
-- Modify: `lithos-core/src/vault/repository.rs` (ensure generic names)
-- Modify: `lithos-core/src/note/repository.rs` (ensure generic names)
-- Modify: `lithos-core/src/template/repository.rs` (ensure generic names)
-- Modify: `lithos-core/src/config/repository.rs` (ensure generic names)
+- Modify: All `.rs` files in `traces-core/src`
+- Modify: `traces-core/src/schema/repository.rs` (ensure generic names)
+- Modify: `traces-core/src/vault/repository.rs` (ensure generic names)
+- Modify: `traces-core/src/note/repository.rs` (ensure generic names)
+- Modify: `traces-core/src/template/repository.rs` (ensure generic names)
+- Modify: `traces-core/src/config/repository.rs` (ensure generic names)
 
 - [ ] **Step 1: Normalize `Schema` repository usage**
     - Search for `SchemaReadRepository`, `SchemaWriteRepository`, `SchemaRepository`.
@@ -46,17 +46,17 @@
     - Fix imports accordingly.
 
 - [ ] **Step 6: Verify build**
-    - Run: `cargo build -p lithos-core`
+    - Run: `cargo build -p traces-core`
     - Expected: PASS
 
 - [ ] **Step 7: Commit**
-    - Run: `git add . && git commit -m "refactor(db): normalize prefixed repository traits in lithos-core/src"`
+    - Run: `git add . && git commit -m "refactor(db): normalize prefixed repository traits in traces-core/src"`
 
 ### Task 2: Normalize Prefixed Traits in Tests and Benches
 
 **Files:**
-- Modify: `lithos-core/tests/**/*.rs`
-- Modify: `lithos-core/benches/**/*.rs`
+- Modify: `traces-core/tests/**/*.rs`
+- Modify: `traces-core/benches/**/*.rs`
 
 - [ ] **Step 1: Normalize all prefixed traits in integration tests**
     - Apply same replacements as Task 1.
@@ -66,7 +66,7 @@
     - Apply same replacements as Task 1.
 
 - [ ] **Step 3: Verify tests**
-    - Run: `cargo test -p lithos-core`
+    - Run: `cargo test -p traces-core`
     - Expected: PASS
 
 - [ ] **Step 4: Commit**
@@ -90,11 +90,11 @@
 ### Task 4: Encapsulate Concrete Implementations
 
 **Files:**
-- Modify: `lithos-core/src/schema/storage/mod.rs`
-- Modify: `lithos-core/src/vault/storage/mod.rs`
-- Modify: `lithos-core/src/note/storage/mod.rs`
-- Modify: `lithos-core/src/template/storage/mod.rs`
-- Modify: `lithos-core/src/config/storage/mod.rs`
+- Modify: `traces-core/src/schema/storage/mod.rs`
+- Modify: `traces-core/src/vault/storage/mod.rs`
+- Modify: `traces-core/src/note/storage/mod.rs`
+- Modify: `traces-core/src/template/storage/mod.rs`
+- Modify: `traces-core/src/config/storage/mod.rs`
 - Modify: `**/storage/testing.rs` (for `InMemoryRepository`)
 
 - [ ] **Step 1: Encapsulate `RedbRepository` in all contexts**
@@ -104,7 +104,7 @@
     - Change `pub struct InMemoryRepository` to `#[doc(hidden)] pub struct InMemoryRepository`.
 
 - [ ] **Step 3: Verify integration tests still pass**
-    - Run: `cargo test -p lithos-core`
+    - Run: `cargo test -p traces-core`
     - Expected: PASS (Integration tests can still access `#[doc(hidden)] pub` items).
 
 - [ ] **Step 4: Commit**

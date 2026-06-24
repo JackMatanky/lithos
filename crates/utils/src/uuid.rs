@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn parse_rejects_non_v7() {
-        let raw = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos").to_string();
+        let raw = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"traces").to_string();
         assert!(matches!(
             UuidV7::parse(&raw),
             Err(UuidV7Error::WrongVersion { .. })
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn try_from_rejects_non_v7() {
-        let uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos");
+        let uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"traces");
         assert!(matches!(
             UuidV7::try_from(uuid),
             Err(UuidV7Error::WrongVersion { .. })
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn try_from_bytes_rejects_non_v7() {
-        let non_v7_uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos");
+        let non_v7_uuid = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"traces");
         let non_v7_bytes: [u8; 16] = non_v7_uuid.into_bytes();
         let result: Result<UuidV7, _> = non_v7_bytes.try_into();
         assert!(matches!(result, Err(UuidV7Error::WrongVersion { .. })));

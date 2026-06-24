@@ -17,13 +17,13 @@ The note bounded context is the core domain surface for representing an Obsidian
 
 Current implementation lives in:
 
-- `lithos-core/src/note/aggregate.rs` (`Note`, `NotePath`)
-- `lithos-core/src/note/link.rs` (`Link`, `Target`, `Anchor`, etc.)
-- `lithos-core/src/note/tag.rs` (`Tag`)
-- `lithos-core/src/note/task.rs` (`Task`, `TaskStatus`)
-- `lithos-core/src/note/structure.rs` (`Heading`, `Section`)
-- `lithos-core/src/note/events.rs` (`NoteCreated`, `FrontmatterValidated`, `NoteEvents`)
-- `lithos-core/src/note/frontmatter.rs` (covered by `docs/design/006-note-frontmatter.md`)
+- `traces-core/src/note/aggregate.rs` (`Note`, `NotePath`)
+- `traces-core/src/note/link.rs` (`Link`, `Target`, `Anchor`, etc.)
+- `traces-core/src/note/tag.rs` (`Tag`)
+- `traces-core/src/note/task.rs` (`Task`, `TaskStatus`)
+- `traces-core/src/note/structure.rs` (`Heading`, `Section`)
+- `traces-core/src/note/events.rs` (`NoteCreated`, `FrontmatterValidated`, `NoteEvents`)
+- `traces-core/src/note/frontmatter.rs` (covered by `docs/design/006-note-frontmatter.md`)
 
 System constraints:
 
@@ -82,7 +82,7 @@ Practical guidance (subject to revisiting as the codebase evolves):
 
 ### 1.5 Raw → Domain boundary (critical for avoiding `Stored*` models)
 
-Lithos has _two_ separate “raw” concepts in the note world, and keeping them explicit reduces long-term pressure to introduce `StoredNote` types:
+Traces has _two_ separate “raw” concepts in the note world, and keeping them explicit reduces long-term pressure to introduce `StoredNote` types:
 
 - **Raw file inputs (serde / parsing)**: adapter-level parse outputs that may be incomplete or invalid.
   - Examples: raw YAML frontmatter key/value trees, parser-emitted strings and offsets, unchecked wiki-link tokens.
@@ -107,9 +107,9 @@ Common workflows:
 1. Create a note aggregate with a validated vault-relative path
 
 ```rust
-use lithos_core::note::paths::NotePath;
+use traces_core::note::paths::NotePath;
 
-fn example() -> Result<(), lithos_core::note::error::NoteError> {
+fn example() -> Result<(), traces_core::note::error::NoteError> {
   let path = NotePath::try_from("projects/example.md")?;
   assert_eq!(path.as_str(), "projects/example.md");
   Ok(())
@@ -119,9 +119,9 @@ fn example() -> Result<(), lithos_core::note::error::NoteError> {
 2. Add value objects in a controlled way (builder or narrow mutators)
 
 ```rust
-use lithos_core::note::link::{Link, Target};
+use traces_core::note::link::{Link, Target};
 
-fn example() -> Result<(), lithos_core::note::error::NoteError> {
+fn example() -> Result<(), traces_core::note::error::NoteError> {
   let link = Link::new_wikilink(
     Target::Unresolved { raw: "Next Note".into() },
     None,

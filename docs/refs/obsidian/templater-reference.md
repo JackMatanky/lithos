@@ -219,7 +219,7 @@ Folder/Regex rules:
 - Regex rules are tested top-to-bottom; first match wins.
 - Use catch-all rule (`/` or `.*`) if needed.
 
-## Alignment Notes for Lithos
+## Alignment Notes for Traces
 
 - Templater establishes user expectations for `tp.*` utilities and
   template-time automation.

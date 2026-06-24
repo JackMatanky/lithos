@@ -1,4 +1,4 @@
-# COMPREHENSIVE pulldown-cmark Analysis for Lithos Note Context
+# COMPREHENSIVE pulldown-cmark Analysis for Traces Note Context
 
 **Version**: pulldown-cmark 0.13.0
 **Date**: 2026-02-10

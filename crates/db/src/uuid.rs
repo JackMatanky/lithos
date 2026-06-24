@@ -211,7 +211,7 @@ macro_rules! impl_redb_uuid {
 
             #[inline]
             fn type_name() -> redb::TypeName {
-                redb::TypeName::new(concat!("lithos::", stringify!($wrapper)))
+                redb::TypeName::new(concat!("traces::", stringify!($wrapper)))
             }
         }
 

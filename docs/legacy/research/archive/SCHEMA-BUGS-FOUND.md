@@ -9,7 +9,7 @@
 ## 🔴 CRITICAL BUGS (Fix Immediately)
 
 ### CRITICAL-001: Silent Integer Overflow in Rich Options Sorting
-**Location**: `lithos-core/src/schema/raw.rs:709`
+**Location**: `traces-core/src/schema/raw.rs:709`
 **Severity**: 🔴 CRITICAL - Silent data corruption
 
 **Bug**:
@@ -33,7 +33,7 @@ let order = entry.order.unwrap_or_else(|| {
 ---
 
 ### CRITICAL-002: UUID String Allocation in Hot Path
-**Location**: `lithos-core/src/schema/adapter/command.rs:151, 196`
+**Location**: `traces-core/src/schema/adapter/command.rs:151, 196`
 **Severity**: 🔴 CRITICAL - Performance violation
 
 **Bug**:
@@ -54,7 +54,7 @@ batch.put(SCHEMA_BY_ID, id_key.as_str(), &stored)?;
 ---
 
 ### CRITICAL-003: FileSpec Validation Logic Bug
-**Location**: `lithos-core/src/schema/property_spec.rs:547`
+**Location**: `traces-core/src/schema/property_spec.rs:547`
 **Severity**: 🔴 CRITICAL - Business logic error
 
 **Bug**:
@@ -85,7 +85,7 @@ if !value_path.starts_with(dir_path) || value_path == dir_path {
 ## 🟠 HIGH SEVERITY (Fix Soon)
 
 ### HIGH-001: Regex Recompilation on Every Validation
-**Location**: `lithos-core/src/schema/property_spec.rs:985`
+**Location**: `traces-core/src/schema/property_spec.rs:985`
 **Severity**: 🟠 HIGH - Major performance issue
 
 **Bug**:
@@ -111,7 +111,7 @@ if let Some(pattern) = self.pattern.as_ref() {
 ---
 
 ### HIGH-002: PropertyBank Non-Deterministic Iteration
-**Location**: `lithos-core/src/schema/bank.rs:167`, `extender.rs:256`
+**Location**: `traces-core/src/schema/bank.rs:167`, `extender.rs:256`
 **Severity**: 🟠 HIGH - Non-determinism
 
 **Bug**: Multiple `#[expect(clippy::iter_over_hash_type)]` suppressions without justification.
@@ -128,7 +128,7 @@ if let Some(pattern) = self.pattern.as_ref() {
 ---
 
 ### HIGH-003: Depth Calculation Bug in Resolver
-**Location**: `lithos-core/src/schema/resolver.rs:152`
+**Location**: `traces-core/src/schema/resolver.rs:152`
 **Severity**: 🟠 HIGH - Correctness bug
 
 **Bug**:
@@ -156,7 +156,7 @@ fn resolve_parent_depth(...) -> Result<usize, SchemaError> {
 ---
 
 ### HIGH-004: Missing Override Validation Error Handling
-**Location**: `lithos-core/src/schema/property_spec.rs:854`
+**Location**: `traces-core/src/schema/property_spec.rs:854`
 **Severity**: 🟠 HIGH - Silent failures
 
 **Bug**: `NumberSpec::apply_overrides` can fail (min > max after override), but dereferencer may not handle errors properly.
@@ -170,7 +170,7 @@ fn resolve_parent_depth(...) -> Result<usize, SchemaError> {
 ---
 
 ### HIGH-005: PropertyBank Idempotency Doesn't Verify Content
-**Location**: `lithos-core/src/schema/bank.rs:261`
+**Location**: `traces-core/src/schema/bank.rs:261`
 **Severity**: 🟠 HIGH - Data integrity
 
 **Bug**:
@@ -197,7 +197,7 @@ Entry::Occupied(_) => {
 ## 🟡 MEDIUM SEVERITY
 
 ### MEDIUM-001: Floating Point Epsilon Hardcoded
-**Location**: `lithos-core/src/schema/property_spec.rs:773`
+**Location**: `traces-core/src/schema/property_spec.rs:773`
 **Issue**: Step validation uses hardcoded `1e-10f64` epsilon, may fail for extreme values.
 
 ### MEDIUM-002: Schema vs Property Name Case Inconsistency

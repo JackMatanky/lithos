@@ -935,7 +935,7 @@ HTML String
 
 ---
 
-## Key Architectural Insights for Lithos
+## Key Architectural Insights for Traces
 
 ### 1. Use pulldown-cmark for Parsing Foundation
 - Industry standard, well-tested
@@ -1213,7 +1213,7 @@ impl WorkspaceIndex {
 
 ---
 
-## Recommendations for Lithos
+## Recommendations for Traces
 
 ### Architecture
 
@@ -1299,7 +1299,7 @@ The research reveals several key patterns:
 5. **Caching**: Content hashing + cached structures for performance
 6. **Extensibility**: Trait-based systems (rules/validators) with clear interfaces
 
-Lithos should adopt:
+Traces should adopt:
 - **pulldown-cmark** for parsing
 - **rumdl's two-phase validation** pattern
 - **comrak's arena allocation** for AST (if needed)

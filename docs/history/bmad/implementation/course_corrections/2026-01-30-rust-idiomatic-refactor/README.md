@@ -11,7 +11,7 @@
 
 This course correction addresses a fundamental architectural misalignment: treating Rust as a generic implementation detail rather than a distinct system. The multi-crate workspace structure was preventing zero-copy optimizations and causing a 5-10x performance penalty.
 
-**Decision**: Pivot to a single-crate "Core" architecture (`lithos-core`) + separate binary crates (`lithos-cli`, `lithos-lsp`).
+**Decision**: Pivot to a single-crate "Core" architecture (`traces-core`) + separate binary crates (`traces-cli`, `traces-lsp`).
 
 ---
 

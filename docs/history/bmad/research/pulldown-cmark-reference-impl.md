@@ -6,7 +6,7 @@ This document shows concrete code examples for leveraging pulldown-cmark's full 
 
 ## 1. Enhanced Markdown Parser Wrapper
 
-**File**: `lithos-core/src/fs/markdown.rs`
+**File**: `traces-core/src/fs/markdown.rs`
 
 ```rust
 //! Markdown parsing utilities for adapter layers.
@@ -92,7 +92,7 @@ impl MarkdownParser {
 
 ## 2. Enhanced Parser State
 
-**File**: `lithos-core/src/note/parser.rs`
+**File**: `traces-core/src/note/parser.rs`
 
 ```rust
 /// Markdown parser for note content extraction.
@@ -637,8 +637,8 @@ impl<'config> ParseState<'config> {
 ## 8. Usage Example
 
 ```rust
-use lithos_core::note::parser::NoteParser;
-use lithos_core::config::task::TaskConfig;
+use traces_core::note::parser::NoteParser;
+use traces_core::config::task::TaskConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = TaskConfig::default();

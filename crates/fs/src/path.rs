@@ -1,4 +1,4 @@
-//! Three-tier path taxonomy for the Lithos core library.
+//! Three-tier path taxonomy for the Traces core library.
 //!
 //! This module provides a hierarchy of type-safe path wrappers that enforce
 //! filesystem invariants and security policies. The path system is organized

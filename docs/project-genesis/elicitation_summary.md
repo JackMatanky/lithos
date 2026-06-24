@@ -1,6 +1,6 @@
-# Elicitation Summary for Lithos Project
+# Elicitation Summary for Traces Project
 
-This document provides a comprehensive summary of the key findings, discussions, and decisions made during the advanced elicitation sessions for the Lithos project. It serves as a record of the project's evolution through the planning phase.
+This document provides a comprehensive summary of the key findings, discussions, and decisions made during the advanced elicitation sessions for the Traces project. It serves as a record of the project's evolution through the planning phase.
 
 # Part 1: Project Brief Elicitations
 
@@ -61,16 +61,16 @@ This document provides a comprehensive summary of the key findings, discussions,
 - **Clarified Ambiguities**:
   - **Validation (FR4)**: "Correct types" was clarified to mean standard types (string, boolean, integer, float), custom date types (using Go time layouts), and custom string types (using regex).
   - **Lookups (FR6)**: The role of aliases was clarified; lookups will use stable identifiers like file paths or frontmatter keys as primary keys.
-  - **Index Freshness (NFR5)**: A manual `lithos index` command is sufficient for the MVP.
+  - **Index Freshness (NFR5)**: A manual `traces index` command is sufficient for the MVP.
 - **Identified Risks**: Acknowledged performance risks with indexing, complexity risks with the schema system, and usability risks with designing non-interactive flags for interactive features.
 - **Architectural Decisions**:
   - **Decoupling**: The Indexing and Template engines must be decoupled via a clean internal API.
   - **Componentization**: The fuzzy finder should be built as a core, reusable component.
-  - **Index Architecture**: Decided on a hybrid system for the MVP: a persistent on-disk cache stored within the vault (`.lithos/`) and a smaller in-memory index for performance.
+  - **Index Architecture**: Decided on a hybrid system for the MVP: a persistent on-disk cache stored within the vault (`.traces/`) and a smaller in-memory index for performance.
 - **Scope Refinements**:
   - **Platform Support (NFR1)**: The MVP will target macOS, with Linux support included only if it doesn't add significant complexity.
   - **Core Utilities (FR9)**: The requirement was refined to focus on building PKM-specific functions on top of Go's standard library, not reinventing them.
-- **"Hindsight" Insight**: The reflection on template validation led to the idea of a `lithos template lint` command as a valuable post-MVP feature.
+- **"Hindsight" Insight**: The reflection on template validation led to the idea of a `traces template lint` command as a valuable post-MVP feature.
 
 ## 2.3. Elicitation On: PRD User Interface Design Goals
 
@@ -79,9 +79,9 @@ This document provides a comprehensive summary of the key findings, discussions,
 **Key Findings & Decisions**:
 
 - **Error Handling**: Confirmed that robust, clear, and actionable error handling is a critical requirement to avoid silent failures.
-- **Command Renaming**: The `lithos fuzzy` command was renamed to `lithos find` for better clarity.
+- **Command Renaming**: The `traces fuzzy` command was renamed to `traces find` for better clarity.
 - **Testing Strategy**: Acknowledged the need to find a Go library for testing interactive terminal applications.
-- **Post-MVP Expansions**: The idea of subcommands (`lithos template list`, `lithos schema validate`) was proposed and added to the PRD as a post-MVP feature to keep the initial scope clean.
+- **Post-MVP Expansions**: The idea of subcommands (`traces template list`, `traces schema validate`) was proposed and added to the PRD as a post-MVP feature to keep the initial scope clean.
 - **"Hindsight" Insight**: The idea of "favorite" or "pinned" templates for the fuzzy finder was identified as a valuable potential MVP feature if complexity allows.
 
 ## 2.4. Elicitation On: PRD Technical Assumptions
@@ -125,7 +125,7 @@ This document provides a comprehensive summary of the key findings, discussions,
 
 - **Story Breakdown**: A key decision was made to break down the complex "Implement Schema Inheritance" feature into three smaller, more manageable stories: **Single-Level Inheritance**, **Multi-Level Inheritance**, and **Circular Dependency Detection**.
 - **Architectural Foresight**: The "Hindsight" reflection led to adding an AC to Story 2.1, requiring the creation of a `Config` struct to make future configuration changes easier.
-- **AC Refinement**: ACs were updated to specify the config file search path (`lithos.yaml` traversal) and to require clearer error logging for invalid schema files.
+- **AC Refinement**: ACs were updated to specify the config file search path (`traces.yaml` traversal) and to require clearer error logging for invalid schema files.
 
 ### 2.6.3. Elicitation on Stories for Epic 3 (Vault Indexing)
 

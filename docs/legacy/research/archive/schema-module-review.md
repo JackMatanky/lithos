@@ -1,7 +1,7 @@
 # Schema Module Review: Findings & Implementation Plan
 
 **Date**: 2026-02-17
-**Scope**: `lithos-core/src/schema/` — complete critical review
+**Scope**: `traces-core/src/schema/` — complete critical review
 **Status**: Pre-implementation planning document
 
 ---
@@ -156,7 +156,7 @@ Schema files have no `id` field. Every vault schema parsed by the current code w
 **Severity**: High — staleness detection silently breaks after Rust upgrades
 **File**: `aggregate.rs:557-573`
 
-`DefaultHasher`'s output is explicitly not guaranteed stable across Rust versions. `SchemaHash` is stored in `ResolutionMetadata` on disk and compared against freshly-computed hashes to detect parent schema changes. A Rust version upgrade can change `DefaultHasher`'s output, making every stored hash compare unequal to the new computation — forcing re-resolution of all schemas on every startup after an upgrade. `blake3` is already a workspace dependency in `lithos-core` and is stable, fast, and cryptographically sound.
+`DefaultHasher`'s output is explicitly not guaranteed stable across Rust versions. `SchemaHash` is stored in `ResolutionMetadata` on disk and compared against freshly-computed hashes to detect parent schema changes. A Rust version upgrade can change `DefaultHasher`'s output, making every stored hash compare unequal to the new computation — forcing re-resolution of all schemas on every startup after an upgrade. `blake3` is already a workspace dependency in `traces-core` and is stable, fast, and cryptographically sound.
 
 ---
 
@@ -594,7 +594,7 @@ In the `Entry::Occupied` branch: return `Ok(())` with no event. In `Entry::Vacan
 
 #### D1. Replace `SchemaHash::DefaultHasher` with blake3
 
-`blake3` is already a workspace dependency in `lithos-core`. Use it for a stable, cross-version hash:
+`blake3` is already a workspace dependency in `traces-core`. Use it for a stable, cross-version hash:
 
 ```rust
 pub fn compute(schema: &Schema) -> Self {
@@ -1150,7 +1150,7 @@ Walks `tree.nodes()` in topological order. For each `SchemaNode`:
 
 ### Component 6: `SchemaService` — `application/schema.rs`
 
-Thin orchestration only. Sequences adapters and domain components. Lives at `lithos-core/src/application/schema.rs`.
+Thin orchestration only. Sequences adapters and domain components. Lives at `traces-core/src/application/schema.rs`.
 
 Full pipeline:
 1. `Ingestor::load_raw_property_bank()` → `RawPropertyBank`
@@ -1268,7 +1268,7 @@ Part 7 successfully implemented the `Dereferencer → Extender → Resolver` pip
 
 #### 8.1 — Domain: Add `parent_id` to `Schema`
 
-**File**: `lithos-core/src/schema/aggregate.rs`
+**File**: `traces-core/src/schema/aggregate.rs`
 
 ```rust
 pub struct Schema {
@@ -1288,13 +1288,13 @@ Added accessor: `pub const fn parent_id(&self) -> Option<SchemaId>`
 
 #### 8.2 — Resolver: Pass `parent_id` to `Schema` Constructors
 
-**File**: `lithos-core/src/schema/resolver.rs`
+**File**: `traces-core/src/schema/resolver.rs`
 
 Threaded `node.parent_id` from `SchemaNode` (already available) to both `Schema::new()` and `Schema::resolve()` constructors.
 
 #### 8.3 — Ingestor: Capture Filesystem Times
 
-**File**: `lithos-core/src/schema/adapter/ingestor.rs`
+**File**: `traces-core/src/schema/adapter/ingestor.rs`
 
 **Before**: Returned `(RawSchema, Option<Timestamp>)` — only `modified` time
 
@@ -1306,7 +1306,7 @@ Extracts both `std::fs::Metadata::modified()` and `Metadata::created()` (birthti
 
 #### 8.4 — StoredSchema: Filesystem + DB Timestamps
 
-**File**: `lithos-core/src/schema/adapter/stored.rs`
+**File**: `traces-core/src/schema/adapter/stored.rs`
 
 **Before** (BUGGY):
 ```rust
@@ -1327,7 +1327,7 @@ Updated `to_stored(...)` signature to accept new timestamp fields. `parent_id` n
 
 #### 8.5 — SchemaRecord: Match StoredSchema Fields
 
-**File**: `lithos-core/src/schema/ports.rs`
+**File**: `traces-core/src/schema/ports.rs`
 
 **Before**:
 ```rust
@@ -1345,7 +1345,7 @@ pub recorded_at: Timestamp,
 
 #### 8.6 — SchemaService: Wire Correct Timestamps
 
-**File**: `lithos-core/src/application/schema.rs`
+**File**: `traces-core/src/application/schema.rs`
 
 **Changes**:
 1. Thread `(modified, created)` from ingestor through staleness loop via `StaleSchema` helper struct
@@ -1355,7 +1355,7 @@ pub recorded_at: Timestamp,
 
 #### 8.7 — QueryAdapter: Fix Staleness + Error Variants
 
-**File**: `lithos-core/src/schema/adapter/query.rs`
+**File**: `traces-core/src/schema/adapter/query.rs`
 
 **4 fixes**:
 
@@ -1373,7 +1373,7 @@ pub recorded_at: Timestamp,
 
 #### 8.8 — CommandAdapter: Atomicity + Dead Binding
 
-**File**: `lithos-core/src/schema/adapter/command.rs`
+**File**: `traces-core/src/schema/adapter/command.rs`
 
 **2 fixes**:
 
@@ -2076,7 +2076,7 @@ pub fn array(mut self, array: bool) -> Self { ... }
 
 ### Section 7: Comparison to Industry Standards
 
-| Feature        | Lithos | JSON Schema | GraphQL | Avro | Protobuf |
+| Feature        | Traces | JSON Schema | GraphQL | Avro | Protobuf |
 |----------------|--------|-------------|---------|------|----------|
 | Versioning     | ❌     | ✅          | ✅      | ✅   | ✅       |
 | Inheritance    | ✅     | ⚠️ (allOf)  | ✅      | ❌   | ❌       |
@@ -2232,7 +2232,7 @@ Two fundamental architectural issues discovered with the pattern system:
 ### Issue 1: Pattern Localization (CRITICAL)
 
 **Severity**: 🔴 CRITICAL — Broken encapsulation
-**Location**: `lithos-core/src/patterns.rs`
+**Location**: `traces-core/src/patterns.rs`
 
 #### Current State (WRONG)
 

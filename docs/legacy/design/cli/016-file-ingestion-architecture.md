@@ -86,7 +86,7 @@ ORCHESTRATED BY: Application Services (application/ layer)
 
 **Purpose**: Abstract over different file sources (filesystem, embedded, in-memory, network).
 
-**Location**: `lithos-core/src/fs/source.rs`
+**Location**: `traces-core/src/fs/source.rs`
 
 ```rust
 use std::path::{Path, PathBuf};
@@ -186,7 +186,7 @@ impl FileSource for InMemoryFileSource {
 
 **Purpose**: Convert raw file bytes to `Raw*` types (unvalidated).
 
-**Location**: `lithos-core/src/fs/parsers.rs`
+**Location**: `traces-core/src/fs/parsers.rs`
 
 ```rust
 use std::path::Path;
@@ -261,7 +261,7 @@ pub fn parse_note_file(
 
 **Purpose**: Orchestrate File → Raw → Domain → Database pipeline.
 
-**Location**: `lithos-core/src/application/services/ingestion.rs`
+**Location**: `traces-core/src/application/services/ingestion.rs`
 
 ```rust
 use std::path::Path;
@@ -425,7 +425,7 @@ pub trait Query {
 ### Workflow 1: Initial Vault Ingestion
 
 ```rust
-// CLI command: lithos init <vault-path>
+// CLI command: traces init <vault-path>
 pub fn init_vault(vault_path: &Path, db: &Database) -> Result<(), Error> {
     // Setup file source
     let source = FsFileSource::new(vault_path);
@@ -503,7 +503,7 @@ pub fn get_schema_for_lsp(name: &str, db: &Database) -> Result<Option<Schema>, E
 
 ### Config Ingestion (Already Implemented Correctly)
 
-**Location**: `lithos-core/src/config/ingest.rs`
+**Location**: `traces-core/src/config/ingest.rs`
 
 **Pattern**: Uses `figment::Provider` trait for source abstraction.
 
@@ -519,7 +519,7 @@ Files (global, vault) → Figment (merge) → RawConfig → Config → Database
 
 ### Schema Ingestion
 
-**Files**: `.lithos/schemas/**/*.{json,toml,yaml}`
+**Files**: `.traces/schemas/**/*.{json,toml,yaml}`
 
 **Workflow**:
 
@@ -574,7 +574,7 @@ pub fn ingest_schemas_with_resolution(
 
 ### Template Ingestion
 
-**Files**: `.lithos/templates/**/*.md` (Jinja2 templates)
+**Files**: `.traces/templates/**/*.md` (Jinja2 templates)
 
 **Workflow**:
 
@@ -785,12 +785,12 @@ fn schema_ingestion_service_rejects_invalid_file() {
 
 **Tasks**:
 
-1. **Refactor `lithos init` command** (`lithos-cli/src/commands/init.rs`)
+1. **Refactor `traces init` command** (`traces-cli/src/commands/init.rs`)
    - Use `SchemaIngestionService` instead of direct file reads
    - Use `TemplateIngestionService` for templates
    - Use `NoteIngestionService` for notes
 
-2. **Add `lithos refresh` command** (optional)
+2. **Add `traces refresh` command** (optional)
    - Re-ingest changed files only
    - Use `needs_update()` to skip unchanged files
 
@@ -802,16 +802,16 @@ fn schema_ingestion_service_rejects_invalid_file() {
 
 ```bash
 # Initial ingestion
-lithos init /path/to/vault
+traces init /path/to/vault
 
 # Re-ingest everything
-lithos refresh --all
+traces refresh --all
 
 # Re-ingest just schemas
-lithos refresh --schemas
+traces refresh --schemas
 
 # Watch for changes (future)
-lithos watch /path/to/vault
+traces watch /path/to/vault
 ```
 
 ---
@@ -822,7 +822,7 @@ lithos watch /path/to/vault
 
 **Tasks**:
 
-1. **Integration tests** (`lithos-core/tests/ingestion_flow.rs`)
+1. **Integration tests** (`traces-core/tests/ingestion_flow.rs`)
    - Test full pipeline: File → Raw → Domain → Database
    - Test partial failure handling (some files invalid)
    - Test incremental updates
@@ -912,8 +912,8 @@ mod tests {
 ### Integration Testing (Full Pipeline)
 
 ```rust
-// lithos-core/tests/ingestion_flow.rs
-use lithos_core::{
+// traces-core/tests/ingestion_flow.rs
+use traces_core::{
     db::Database,
     fs::{FileSource, InMemoryFileSource, parsers},
     schema::{self, Schema},
@@ -974,7 +974,7 @@ fn ingestion_handles_partial_failures_in_directory() {
 ### End-to-End Testing (CLI)
 
 ```rust
-// lithos-cli/tests/cli_ingestion.rs
+// traces-cli/tests/cli_ingestion.rs
 use assert_cmd::Command;
 use predicates::prelude::*;
 
@@ -984,14 +984,14 @@ fn cli_init_ingests_all_schemas_and_templates() {
     let vault = temp.path();
 
     // Setup vault structure
-    fs::create_dir_all(vault.join(".lithos/schemas")).unwrap();
+    fs::create_dir_all(vault.join(".traces/schemas")).unwrap();
     fs::write(
-        vault.join(".lithos/schemas/person.json"),
+        vault.join(".traces/schemas/person.json"),
         r#"{"name": "Person", "properties": []}"#,
     ).unwrap();
 
     // Execute
-    Command::cargo_bin("lithos")
+    Command::cargo_bin("traces")
         .unwrap()
         .arg("init")
         .arg(vault)
@@ -1000,7 +1000,7 @@ fn cli_init_ingests_all_schemas_and_templates() {
         .stdout(predicate::str::contains("Schemas ingested: 1"));
 
     // Verify database exists
-    assert!(vault.join(".lithos/lithos.db").exists());
+    assert!(vault.join(".traces/traces.db").exists());
 }
 ```
 
@@ -1030,7 +1030,7 @@ fn cli_init_ingests_all_schemas_and_templates() {
 
 ### Step 3: Refactor CLI to Use Services
 
-- Update `lithos-cli/src/commands/init.rs` to use ingestion services
+- Update `traces-cli/src/commands/init.rs` to use ingestion services
 - Remove any direct file I/O from CLI (delegate to services)
 
 **Result**: CLI uses new architecture, old code paths removed.

@@ -1,7 +1,7 @@
 # Rust Test Review Report
 
 **Workflow:** tea-rust-test-review
-**Target:** `lithos-core/src/fs/`
+**Target:** `traces-core/src/fs/`
 **Date:** 2026-02-20
 **Reviewer:** BMad Master (TEA-Rust Agent)
 

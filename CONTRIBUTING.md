@@ -1,6 +1,6 @@
-# Contributing to Lithos
+# Contributing to Traces
 
-We welcome contributions to Lithos! As a project focused on quality and architectural integrity, we have a few guidelines to ensure the codebase remains maintainable.
+We welcome contributions to Traces! As a project focused on quality and architectural integrity, we have a few guidelines to ensure the codebase remains maintainable.
 
 ## Getting Started
 
@@ -28,4 +28,4 @@ Significant changes (new dependencies, structural shifts) require an ADR (Archit
 
 ---
 
-*Thank you for helping make Lithos better!*
+*Thank you for helping make Traces better!*

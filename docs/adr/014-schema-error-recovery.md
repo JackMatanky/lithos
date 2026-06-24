@@ -255,12 +255,12 @@ Future: Add test for missing parent warning (simulate Extender bug).
 
 ## References
 
-- **Implementation**: `lithos-core/src/schema/`
+- **Implementation**: `traces-core/src/schema/`
   - `adapter/command.rs` - Version cleanup error handling
   - `resolver.rs` - Missing parent warning
   - `adapter/query.rs` - Corruption detection
 
-- **Tests**: `lithos-core/tests/schema_cqrs.rs`
+- **Tests**: `traces-core/tests/schema_cqrs.rs`
   - `corruption` module - Corruption detection tests
   - `critical` module - Edge case tests
   - `staleness` module - Missing entity tests

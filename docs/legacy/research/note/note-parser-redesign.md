@@ -2,14 +2,14 @@
 
 ## Purpose
 This document captures the research findings and a complete redesign plan for
-Lithos note parsing, based on pulldown-cmark developer documentation and the
+Traces note parsing, based on pulldown-cmark developer documentation and the
 Basalt project. It also specifies the new parsing and projection architecture
 and outlines the implementation sequence.
 
 ## Scope
-Focuses on the `lithos-core/src/note` parsing pipeline and storage projection
+Focuses on the `traces-core/src/note` parsing pipeline and storage projection
 generation. This plan keeps the note context isolated and aligns with the
-CQRS + projection architecture of Lithos.
+CQRS + projection architecture of Traces.
 
 ## Research Findings
 
@@ -25,7 +25,7 @@ subpages (block parsing, inline processing, string handling, performance).
 - String handling uses `CowStr` for zero-copy or inlined strings.
 - Performance relies on streaming and linear passes, not repeated scanning.
 
-Implication for Lithos: our parser should consume the event stream once and
+Implication for Traces: our parser should consume the event stream once and
 produce a single, minimal AST. All projections should be derived from that AST
 to avoid repeated parsing and helper duplication.
 
@@ -38,11 +38,11 @@ Key characteristics:
 - Minimal node types and a simple parse loop.
 - No persistence or indexing in the parser.
 
-Implication for Lithos: match the simplicity by generating a single AST, then
+Implication for Traces: match the simplicity by generating a single AST, then
 derive all note-specific projections separately.
 
 ## CQRS Pipeline Lessons Applied
-This section maps the pipeline stages you provided to Lithos, highlights
+This section maps the pipeline stages you provided to Traces, highlights
 current violations, and defines how the redesign fixes them.
 
 ### Pipeline Mapping (Target State)

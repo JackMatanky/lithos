@@ -3,7 +3,7 @@
 ## CONTEXT
 
 - **Applies to**: Tests in `#[cfg(test)] mod tests` blocks
-- **Location**: Same file as implementation (`lithos-core/src/**/*.rs`)
+- **Location**: Same file as implementation (`traces-core/src/**/*.rs`)
 - **Does NOT apply to**: `tests/` directory, integration tests, E2E tests
 - **Purpose**: Testing business logic, state transitions, validation rules with zero I/O
 
@@ -24,7 +24,7 @@ Is the test checking...
 │   └── YES → Integration test in tests/ directory
 │
 ├── CLI command behavior?
-│   └── YES → E2E test in lithos-cli/
+│   └── YES → E2E test in traces-cli/
 │
 └── Port/adapter implementations?
     └── YES → Integration test with mock ports

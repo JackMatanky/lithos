@@ -5,7 +5,7 @@
 //! This module provides [`HashRecord`], a dual-level hashing structure that
 //! enables both **file-level staleness detection** (content hash) and
 //! **incremental property resolution** (per-property hashes). This design
-//! allows Lithos to answer two critical questions efficiently:
+//! allows Traces to answer two critical questions efficiently:
 //!
 //! 1. **"Has this file changed?"** (content hash comparison, O(1))
 //! 2. **"Which properties changed?"** (per-property hash diff, O(k) where k =

@@ -36,7 +36,7 @@ pub(crate) struct EventStreamConfig {
 }
 
 impl EventStreamConfig {
-    /// Canonical default pulldown option set used by Lithos.
+    /// Canonical default pulldown option set used by Traces.
     #[must_use]
     #[inline]
     pub(crate) fn default_options() -> Options {
@@ -449,7 +449,7 @@ impl BreakPolicy {
 }
 
 impl Default for BreakPolicy {
-    /// Returns the default break policy for Lithos.
+    /// Returns the default break policy for Traces.
     ///
     /// Defaults to `NormalizeAsText`, which converts soft breaks to spaces and
     /// hard breaks to newlines for downstream text processing.

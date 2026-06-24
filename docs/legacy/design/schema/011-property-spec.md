@@ -16,14 +16,14 @@ tags: [schema, validation, refactor, security, performance, type-driven-design]
 
 The schema subsystem defines properties with type-specific validation rules.
 
-The module [lithos-core/src/schema/property_spec.rs](../../lithos-core/src/schema/property_spec.rs) is the center of that validation:
+The module [traces-core/src/schema/property_spec.rs](../../traces-core/src/schema/property_spec.rs) is the center of that validation:
 
 - It defines the _validated_ `*Spec` types that carry invariants and are used for runtime validation.
 - It validates runtime metadata values (`validate`) using `serde_json::Value` as a universal IR.
 
 Primary consumers:
 
-- [lithos-core/src/schema/property.rs](../../lithos-core/src/schema/property.rs): `Property::validate()` compiles persisted `PropertySpecDef` into validated `PropertySpec`. `Property::validate_value()` calls `spec.validate()` (scalar) or loops and validates array items.
+- [traces-core/src/schema/property.rs](../../traces-core/src/schema/property.rs): `Property::validate()` compiles persisted `PropertySpecDef` into validated `PropertySpec`. `Property::validate_value()` calls `spec.validate()` (scalar) or loops and validates array items.
 
 Primary integration point (design intent):
 
@@ -136,7 +136,7 @@ Example (YAML-like):
 Raw specs (`RawPropertySpec`) are validated/compiled when building `Property` (and by extension when building schema definitions). This produces a validated `PropertySpec` that is safe to use on hot paths.
 
 ```rust
-use lithos_core::schema::raw::{NumberSpecDef, RawPropertySpec};
+use traces_core::schema::raw::{NumberSpecDef, RawPropertySpec};
 
 let def = RawPropertySpec::Number(NumberSpecDef {
   min: Some(0.0),
@@ -152,8 +152,8 @@ let spec = def.try_into_validated()?;
 Metadata values are validated using `serde_json::Value`.
 
 ```rust
-use lithos_core::schema::property_spec::PropertySpec;
-use lithos_core::schema::raw::{RawPropertySpec, StringSpecDef};
+use traces_core::schema::property_spec::PropertySpec;
+use traces_core::schema::raw::{RawPropertySpec, StringSpecDef};
 
 let def = RawPropertySpec::String(StringSpecDef {
   min_length: Some(2),
@@ -200,7 +200,7 @@ Design stance:
 
 To keep the schema context maintainable, organize the code so definition types, validated types, and shared helpers are separated:
 
-- `lithos-core/src/schema/property_spec/mod.rs`: public re-exports + module docs.
+- `traces-core/src/schema/property_spec/mod.rs`: public re-exports + module docs.
 - `schema/raw.rs`: `RawPropertySpec` and its per-variant `*SpecDef` structs (Serde-only input types).
 - `property_spec/validated.rs`: `PropertySpec` and `*Spec` structs + `validate`.
 - `property_spec/path.rs`: `VaultRelPath` + `validate_vault_rel_path`.
@@ -466,7 +466,7 @@ Containment rule:
 
 This keeps validation deterministic and avoids reliance on filesystem state.
 
-Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-relative paths in Lithos should be treated as _syntactic_ “vault paths” (not OS paths). The implementation should explicitly validate components (rejecting `Prefix`/`RootDir`/`ParentDir`) so behavior is consistent across OSes.
+Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-relative paths in Traces should be treated as _syntactic_ “vault paths” (not OS paths). The implementation should explicitly validate components (rejecting `Prefix`/`RootDir`/`ParentDir`) so behavior is consistent across OSes.
 
 #### 3.5.3 Regex caching
 
@@ -734,7 +734,7 @@ Current implementation snapshot:
 
 - Raw schema inputs are defined in `schema::raw`.
 - `RawPropertyInline` carries `spec: PropertySpecDef` (current code).
-- The main implementation lives in a single file: `lithos-core/src/schema/property_spec.rs`.
+- The main implementation lives in a single file: `traces-core/src/schema/property_spec.rs`.
 
 Change list (if/when needed):
 

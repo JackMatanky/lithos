@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-19
 **Purpose**: Comprehensive review of all pipeline stages to inform typestate pattern implementation
-**Scope**: PropertyBank and Schema pipelines in `lithos-core/src/schema/`
+**Scope**: PropertyBank and Schema pipelines in `traces-core/src/schema/`
 
 ---
 
@@ -914,9 +914,9 @@ self.source.read_with(path, |path, content| {
 
 **Files to Modify**:
 
-- `lithos-core/src/schema/raw/mod.rs` - Add `RawPropertyMap<T>`, update both Raw types
-- `lithos-core/src/schema/ingestor.rs` - Update to use `validate_version()` only
-- `lithos-core/src/schema/bank.rs` - Update `try_from` to work with `PropertyName` keys
+- `traces-core/src/schema/raw/mod.rs` - Add `RawPropertyMap<T>`, update both Raw types
+- `traces-core/src/schema/ingestor.rs` - Update to use `validate_version()` only
+- `traces-core/src/schema/bank.rs` - Update `try_from` to work with `PropertyName` keys
 - Tests in all files
 
 ---
@@ -2269,7 +2269,7 @@ impl<'config, R: Repository> Builder<'config, R> {
 
 ### 5.2 Error Handling in State Machines
 
-**Decision**: Use existing `SchemaIngestionError`, `SchemaRepositoryError`, and `SchemaLoaderError` from `lithos-core/src/schema/error.rs`.
+**Decision**: Use existing `SchemaIngestionError`, `SchemaRepositoryError`, and `SchemaLoaderError` from `traces-core/src/schema/error.rs`.
 
 **No new error types needed** - the existing hierarchy covers all pipeline stages:
 

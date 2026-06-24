@@ -4,7 +4,7 @@ Source digest: `docs/refs/digests/obsidian_obsidian-tasks-digest.txt`
 
 This reference captures the Tasks plugin data model, task-line semantics, and
 query language as used by Obsidian users. It prioritizes behavior that impacts
-Lithos parsing, indexing, and query compatibility.
+Traces parsing, indexing, and query compatibility.
 
 ## Task Line Basics
 
@@ -265,11 +265,11 @@ Query elements that can be hidden/shown:
 - `limit <number>` (or `limit to <number> tasks`) caps total results.
 - `limit groups <number>` caps items per group (ignored without grouping).
 
-## Lithos Alignment Notes
+## Traces Alignment Notes
 
 - The Tasks plugin is a strong reference for emoji-based task metadata and
   query expectations in Obsidian ecosystems.
-- Support for Dataview format is partial; if Lithos aims for compatibility,
+- Support for Dataview format is partial; if Traces aims for compatibility,
   it should handle both emoji and bracketed inline fields.
 - Query composition rules (global query, file defaults, local block) mirror
   how users expect layered filters to behave.

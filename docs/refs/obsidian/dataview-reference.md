@@ -2,7 +2,7 @@
 
 Source digest: `docs/refs/digests/obsidian_blacksmithgu-obsidian-dataview-digest.txt`
 
-This reference summarizes Dataview behavior that impacts Lithos data modeling,
+This reference summarizes Dataview behavior that impacts Traces data modeling,
 indexing, and query semantics.
 
 ## Dataview Scope and Guarantees
@@ -361,16 +361,16 @@ DataArray is a proxied array with immutable transforms and field swizzling.
 - Access: `first`, `last`, `to(key)`, `expand(key)`, `array()`
 - Field swizzling: `dataArray.field` maps and flattens field across elements.
 
-## Lithos Alignment Notes
+## Traces Alignment Notes
 
-## Lithos Alignment Notes
+## Traces Alignment Notes
 
 - Treat frontmatter and inline fields as first-class metadata sources.
 - Preserve key normalization rules (spaces, casing, formatting tokens).
 - Model implicit fields for pages, lists, and tasks to keep parity.
 - Include task shorthand emoji mappings in the parser.
 - Treat Dataview as a read-only indexer with a second-phase view layer; align
-  with Lithos projection-cache design rather than primary storage.
+  with Traces projection-cache design rather than primary storage.
 - Align query semantics with DQL pipeline execution and function vectorization.
 
 ## Appendix A: Function Catalog (compact)

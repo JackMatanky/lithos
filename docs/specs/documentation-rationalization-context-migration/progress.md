@@ -38,17 +38,17 @@
 - **Status:** complete
 - Actions taken:
   - Created root `CONTEXT-MAP.md`.
-  - Created module context files in `lithos-core/src/{config,note,schema,template,db,fs}/CONTEXT.md` and `lithos-cli/src/CONTEXT.md`.
+  - Created module context files in `traces-core/src/{config,note,schema,template,db,fs}/CONTEXT.md` and `traces-cli/src/CONTEXT.md`.
   - Locked sequencing decision: refine context docs first, reorganize `docs/` second.
 - Files created/modified:
   - `CONTEXT-MAP.md` (created)
-  - `lithos-core/src/config/CONTEXT.md` (created)
-  - `lithos-core/src/note/CONTEXT.md` (created)
-  - `lithos-core/src/schema/CONTEXT.md` (created)
-  - `lithos-core/src/template/CONTEXT.md` (created)
-  - `lithos-core/src/db/CONTEXT.md` (created)
-  - `lithos-core/src/fs/CONTEXT.md` (created)
-  - `lithos-cli/src/CONTEXT.md` (created)
+  - `traces-core/src/config/CONTEXT.md` (created)
+  - `traces-core/src/note/CONTEXT.md` (created)
+  - `traces-core/src/schema/CONTEXT.md` (created)
+  - `traces-core/src/template/CONTEXT.md` (created)
+  - `traces-core/src/db/CONTEXT.md` (created)
+  - `traces-core/src/fs/CONTEXT.md` (created)
+  - `traces-cli/src/CONTEXT.md` (created)
 
 ### Phase 4: Context Refinement (Current)
 - **Status:** complete
@@ -61,13 +61,13 @@
   - `task_plan.md` (updated)
   - `findings.md` (updated)
   - `progress.md` (updated)
-  - `lithos-core/src/config/CONTEXT.md` (updated)
-  - `lithos-core/src/note/CONTEXT.md` (updated)
-  - `lithos-core/src/schema/CONTEXT.md` (updated)
-  - `lithos-core/src/template/CONTEXT.md` (updated)
-  - `lithos-core/src/db/CONTEXT.md` (updated)
-  - `lithos-core/src/fs/CONTEXT.md` (updated)
-  - `lithos-cli/src/CONTEXT.md` (updated)
+  - `traces-core/src/config/CONTEXT.md` (updated)
+  - `traces-core/src/note/CONTEXT.md` (updated)
+  - `traces-core/src/schema/CONTEXT.md` (updated)
+  - `traces-core/src/template/CONTEXT.md` (updated)
+  - `traces-core/src/db/CONTEXT.md` (updated)
+  - `traces-core/src/fs/CONTEXT.md` (updated)
+  - `traces-cli/src/CONTEXT.md` (updated)
 
 ### Phase 5: Docs Reorganization (Next)
 - **Status:** in_progress
@@ -77,9 +77,9 @@
   - Tightened schema/note/config context vocabulary and invariants based on follow-up review.
 - Files created/modified:
   - `task_plan.md` (updated)
-  - `lithos-core/src/schema/CONTEXT.md` (updated)
-  - `lithos-core/src/note/CONTEXT.md` (updated)
-  - `lithos-core/src/config/CONTEXT.md` (updated)
+  - `traces-core/src/schema/CONTEXT.md` (updated)
+  - `traces-core/src/note/CONTEXT.md` (updated)
+  - `traces-core/src/config/CONTEXT.md` (updated)
   - `CONTEXT-MAP.md` (updated)
 
 ### Phase 6: Next-Step Planning

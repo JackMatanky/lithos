@@ -247,7 +247,7 @@ fn test_with_artifact_output() {
 
 ### Project Context Reference
 
-- Lithos requires consistent test utilities across hexagonal architecture layers
+- Traces requires consistent test utilities across hexagonal architecture layers
 - CQRS patterns need specialized utilities for command/query separation testing
 - Async-first design demands tokio-compatible utility functions
 - Event-driven architecture requires utilities for event verification and flow testing

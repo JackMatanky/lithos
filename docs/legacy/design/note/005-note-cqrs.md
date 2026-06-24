@@ -20,10 +20,10 @@ The note bounded context uses a CQRS split:
 
 Current implementation lives in:
 
-- `lithos-core/src/note/ports.rs` (traits `Command`, `Query`)
-- `lithos-core/src/note/db_command.rs` (DB-backed command adapter)
-- `lithos-core/src/note/db_query.rs` (DB-backed query adapter)
-- `lithos-core/src/db.rs` (redb + rkyv primitives)
+- `traces-core/src/note/ports.rs` (traits `Command`, `Query`)
+- `traces-core/src/note/db_command.rs` (DB-backed command adapter)
+- `traces-core/src/note/db_query.rs` (DB-backed query adapter)
+- `traces-core/src/db.rs` (redb + rkyv primitives)
 
 Persistence design:
 
@@ -83,10 +83,10 @@ Typical usage from application code (adapters + ports):
 ```rust
 use std::sync::Arc;
 
-use lithos_core::note::db_command::CommandAdapter;
-use lithos_core::note::db_query::QueryAdapter;
-use lithos_core::note::paths::NotePath;
-use lithos_core::note::ports::{Command as _, Query as _};
+use traces_core::note::db_command::CommandAdapter;
+use traces_core::note::db_query::QueryAdapter;
+use traces_core::note::paths::NotePath;
+use traces_core::note::ports::{Command as _, Query as _};
 
 let cmd = CommandAdapter::new(&db, &config);
 let qry = QueryAdapter::new(Arc::new(db));
@@ -138,7 +138,7 @@ Design rule: the API must make it obvious which tier is being used.
 
 ### 2.3 Read-Optimized Projections (Indexes)
 
-For Lithos, “instant queries” are usually made instant by persisting **read-optimized projections** (a.k.a. indexes / denormalized tables). These are not “extra features”; they are the normal way to avoid loading and deserializing full `Note` values for lookups.
+For Traces, “instant queries” are usually made instant by persisting **read-optimized projections** (a.k.a. indexes / denormalized tables). These are not “extra features”; they are the normal way to avoid loading and deserializing full `Note` values for lookups.
 
 Core ideas:
 

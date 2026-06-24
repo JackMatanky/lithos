@@ -1,4 +1,4 @@
-//! Handler for the `lithos doctor` subcommand.
+//! Handler for the `traces doctor` subcommand.
 //!
 //! This module provides [`run_doctor`], which calls the full bootstrap
 //! pipeline and discovery only, then writes a diagnostics section
@@ -21,7 +21,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
 //                       Command Handler                       //
 // ----------------------------------------------------------- //
 
-/// Runs the `lithos doctor` command handler.
+/// Runs the `traces doctor` command handler.
 ///
 /// Calls the full bootstrap pipeline to verify config health, then runs
 /// discovery only to obtain candidate paths for display. Writes a
@@ -284,17 +284,17 @@ mod doctor_handler {
         error::CliError,
     };
 
-    /// Creates a temp vault dir with `lithos.toml` and returns bootstrapper
+    /// Creates a temp vault dir with `traces.toml` and returns bootstrapper
     /// plus flags pointing at it.
     fn make_vault()
     -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
         let dir = tempfile::tempdir().expect("vault dir");
-        let config_path = dir.path().join("lithos.toml");
+        let config_path = dir.path().join("traces.toml");
         // Must contain a non-default field so `InMemoryRepository` takes the
         // Rebuild path rather than UseCached (empty TOML → "No active config
         // version found").
         std::fs::write(&config_path, "[template]\ndirectory = \"templates\"")
-            .expect("write lithos.toml");
+            .expect("write traces.toml");
         let flags = DiscoveryFlags::new(
             Some(config_path.as_path()),
             Some(dir.path()),
@@ -426,20 +426,20 @@ mod doctor_handler {
 
     #[test]
     fn is_registered_as_top_level_subcommand_not_under_config() {
-        // `lithos doctor` must parse as a top-level subcommand.
-        let cli = Cli::try_parse_from(["lithos", "doctor"])
-            .expect("lithos doctor should parse as top-level subcommand");
+        // `traces doctor` must parse as a top-level subcommand.
+        let cli = Cli::try_parse_from(["traces", "doctor"])
+            .expect("traces doctor should parse as top-level subcommand");
         assert!(
             matches!(cli.command, crate::cli::Command::Doctor),
             "expected Command::Doctor variant, got: {:?}",
             cli.command
         );
 
-        // `lithos config doctor` must fail — doctor is not under config.
-        let result = Cli::try_parse_from(["lithos", "config", "doctor"]);
+        // `traces config doctor` must fail — doctor is not under config.
+        let result = Cli::try_parse_from(["traces", "config", "doctor"]);
         assert!(
             result.is_err(),
-            "lithos config doctor should fail (doctor is not a config \
+            "traces config doctor should fail (doctor is not a config \
              subcommand)"
         );
 

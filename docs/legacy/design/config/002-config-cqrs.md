@@ -25,10 +25,10 @@ The config context uses a CQRS split:
 
 Current implementation lives in:
 
-- `lithos-core/src/config/ports.rs` (traits `Command`, `Query`)
-- `lithos-core/src/config/command.rs` (DB-backed command implementation)
-- `lithos-core/src/config/query.rs` (DB-backed query implementation)
-- `lithos-core/src/config/aggregate.rs` (`Config::build` merge + validation)
+- `traces-core/src/config/ports.rs` (traits `Command`, `Query`)
+- `traces-core/src/config/command.rs` (DB-backed command implementation)
+- `traces-core/src/config/query.rs` (DB-backed query implementation)
+- `traces-core/src/config/aggregate.rs` (`Config::build` merge + validation)
 
 Persistence design:
 
@@ -120,8 +120,8 @@ pub enum ConfigIngestError {
 Typical usage from application code:
 
 ```rust
-use lithos_core::config::{command, query};
-use lithos_core::config::ports::{Command, Query};
+use traces_core::config::{command, query};
+use traces_core::config::ports::{Command, Query};
 
 let cmd = command::Command::new(&db);
 let qry = query::Query::new(&db);

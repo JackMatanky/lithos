@@ -246,7 +246,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 - **No detected conflicts**: Implementation aligns with established patterns from Epic 4 (PathValidator/FormatDispatcher)
 
 ### TDD Methodology
-This story follows strict Test-Driven Development (TDD) methodology aligned with Lithos testing standards:
+This story follows strict Test-Driven Development (TDD) methodology aligned with Traces testing standards:
 
 **TDD Cycle for Each Subtask:**
 1. **RED**: Write failing test that demonstrates the required behavior

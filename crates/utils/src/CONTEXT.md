@@ -1,6 +1,6 @@
 # Utils
 
-The Utils context defines stable, outward-facing utility contracts shared across `lithos-core` contexts. It exists to provide reusable primitives without exposing crate-internal implementation internals.
+The Utils context defines stable, outward-facing utility contracts shared across `traces-core` contexts. It exists to provide reusable primitives without exposing crate-internal implementation internals.
 
 ## Language
 

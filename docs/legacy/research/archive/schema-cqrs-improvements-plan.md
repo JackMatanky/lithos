@@ -235,7 +235,7 @@ pub fn get_property_by_id(&self, id: PropertyId) -> Result<Option<Property>, Sch
 **Fix in `Resolver::resolve()`**:
 
 ```rust
-// lithos-core/src/schema/resolver.rs (around line 126)
+// traces-core/src/schema/resolver.rs (around line 126)
 
 // Track which schemas are new vs existing
 let is_new_schema = !known_parents.contains_key(&id);
@@ -363,7 +363,7 @@ pub type EventId = Uuid; // UUID v7 for time-ordered IDs
 **Event Store Trait**:
 
 ```rust
-// New file: lithos-core/src/schema/event_store.rs
+// New file: traces-core/src/schema/event_store.rs
 pub trait EventStore {
     type Error: std::error::Error;
 
@@ -458,7 +458,7 @@ impl SchemaService<'_> {
 **Event Bus**:
 
 ```rust
-// New file: lithos-core/src/schema/event_bus.rs
+// New file: traces-core/src/schema/event_bus.rs
 pub trait EventHandler: Send + Sync {
     fn handle(&self, event: &Events) -> Result<(), Box<dyn std::error::Error>>;
 }

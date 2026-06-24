@@ -8,10 +8,10 @@
 
 ## SYNC-FIRST ARCHITECTURE
 
-Lithos follows a **sync-first architecture**. The core domain and business logic is entirely synchronous with no async dependencies.
+Traces follows a **sync-first architecture**. The core domain and business logic is entirely synchronous with no async dependencies.
 
-- **Zero async in domain**: `lithos-core` has zero async dependencies (no `tokio`, `async-trait`, etc.)
-- **Synchronous tests**: All tests in `lithos-core` are standard synchronous Rust tests.
+- **Zero async in domain**: `traces-core` has zero async dependencies (no `tokio`, `async-trait`, etc.)
+- **Synchronous tests**: All tests in `traces-core` are standard synchronous Rust tests.
 - **Filesystem operations**: Use `std::fs` and `std::io` directly.
 - **Database operations**: `redb` and `moka` are synchronous.
 
@@ -25,7 +25,7 @@ Tests must produce the same result regardless of the environment or execution or
 
 ## VALIDATION CHECKLIST
 
-- [ ] No `tokio::test` in `lithos-core` (unless specifically justified for infra adapters)
+- [ ] No `tokio::test` in `traces-core` (unless specifically justified for infra adapters)
 - [ ] Random data uses fixed seeds
 - [ ] Filesystem tests use `TempDir`
 - [ ] No reliance on system clock for logic (mock time if needed)

@@ -32,7 +32,7 @@
 //!
 //! // Flexible validator for config files (allows dotfile symlinks).
 //! let validator = PathValidator::new_flexible();
-//! assert!(validator.validate("config/lithos.toml").is_ok());
+//! assert!(validator.validate("config/traces.toml").is_ok());
 //! assert!(validator.validate("../../etc/passwd").is_err());
 //!
 //! // Strict validator for vault files (enforces root boundary).
@@ -745,7 +745,7 @@ mod tests {
             #[test]
             fn accepts_relative_paths() {
                 let v = Validator::new_flexible();
-                v.validate("config/lithos.toml")
+                v.validate("config/traces.toml")
                     .expect("relative path should be valid");
             }
         }

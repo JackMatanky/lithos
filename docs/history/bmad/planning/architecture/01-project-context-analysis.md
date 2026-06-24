@@ -1,6 +1,6 @@
 ---
 title: "Project Context Analysis"
-description: "Analysis of project requirements, constraints, and architectural context for Lithos"
+description: "Analysis of project requirements, constraints, and architectural context for Traces"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-01-23"
@@ -93,7 +93,7 @@ These requirements drive a modular architecture with isolated business contexts 
 
 **CLI Complexity:** Rich interactive experiences with fuzzy finding, suggesters, multi-selection, progressive help, and single-word commands requiring sophisticated terminal interaction patterns. The CLI-first approach is viable with intelligent interfaces where schemas drive UX - enums become select lists, dates get formatters, with progressive complexity for different user expertise levels.
 
-**Storage & Persistence:** **Redb + rkyv** for embedded persistence within `lithos-core`, enabling zero-copy deserialization essential for performance.
+**Storage & Persistence:** **Redb + rkyv** for embedded persistence within `traces-core`, enabling zero-copy deserialization essential for performance.
 
 **Async Runtime:** Embrace Rust's async capabilities for CLI responsiveness, but use a **Sync-First** core domain to maximize compiler optimizations and simplicity, bridging to async only at the edges.
 
@@ -105,7 +105,7 @@ These requirements drive a modular architecture with isolated business contexts 
 
 **Type Safety:** Type-driven design - enforce invariants through the type system, private fields by default, validation at construction, newtype wrappers for domain constraints. Make illegal states unrepresentable.
 
-**Architecture:** **Single-Crate Core** (`lithos-core`) to minimize zero-copy friction, with a thin CLI driver (`lithos-cli`). This replaces the traditional multi-crate workspace to prioritize performance and simplicity while maintaining logical modularity.
+**Architecture:** **Single-Crate Core** (`traces-core`) to minimize zero-copy friction, with a thin CLI driver (`traces-cli`). This replaces the traditional multi-crate workspace to prioritize performance and simplicity while maintaining logical modularity.
 
 - **Logical Boundaries:** Enforced via visibility modifiers and module boundaries
 - **Business Contexts:** note, schema, template are isolated (no cross-imports)

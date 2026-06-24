@@ -21,7 +21,7 @@
 //!   (extends/excludes), and inline properties.
 //! - Outputs: Resolved schemas persisted in `RedbStorage` with expanded
 //!   references and inheritance chains.
-//! - Assumptions: Files follow lithos schema format (1.0), `property_bank` is
+//! - Assumptions: Files follow traces schema format (1.0), `property_bank` is
 //!   available for resolution.
 //!
 //! # Scenarios

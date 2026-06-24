@@ -1,6 +1,6 @@
 # CI/CD Configuration and Maintenance Guide
 
-This document details the CI/CD pipeline configuration for the Lithos project.
+This document details the CI/CD pipeline configuration for the Traces project.
 
 ## Overview
 

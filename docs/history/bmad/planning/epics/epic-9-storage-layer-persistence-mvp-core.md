@@ -32,7 +32,7 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 - **Implementation Approach**: Extend Epic 5 cache module with storage-specific table builders, not a separate storage layer
 - **Observability**: All storage operations use `#[tracing::instrument]` per architecture.md FR40 (audit logging)
 - **Tracing Levels**: `info` for transactions/backups/recovery, `debug` for individual operations, `error` for corruption/failures, `warn` for rollbacks/clean slate
-- **Storage Tables** (all share same `.lithos/storage.redb` database file):
+- **Storage Tables** (all share same `.traces/storage.redb` database file):
   - `notes` table: PathBuf → `Entry<Note>` (main entity storage) - **Direct Redb only** (random access pattern, no benefit from memory cache)
   - `schema_index` table: SchemaName → `Entry<Vec<PathBuf>>` (fileClass queries) - **Use CacheCoordinator** (frequent reads during queries)
   - `alias_index` table: Alias → `Entry<PathBuf>` (wiki-link resolution) - **Use CacheCoordinator** (frequent wiki-link lookups)
@@ -44,7 +44,7 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
   - **CQRS separation**: Query/Command adapters per table with `.build_reader()` / `.build_writer()`
 - **Epic 5 Entry Wrapper**: All values wrapped in `Entry<V>` struct providing `{ value: V, timestamp: u64, metadata: HashMap<String, String> }`
 - **Error Handling**: Reuses Epic 5 `CacheError` enum with existing variants (IoError, SerializationError, BackendError)
-- **Backup Strategy**: Periodic snapshots to `.lithos/backups/` with configurable retention
+- **Backup Strategy**: Periodic snapshots to `.traces/backups/` with configurable retention
 - **Migration Strategy**: Schema versioning with forward/backward compatibility checks
 - **May Create**: ADR for storage schema patterns if design decisions need documentation
 
@@ -367,7 +367,7 @@ So that storage corruption is detected and recovered gracefully.
 **Given** corruption is detected during read operations
 **When** I implement recovery in `crates/adapters/src/spi/cache/recovery.rs` (extending Epic 5 cache module)
 **Then** clean slate protocol triggers automatic rebuild from vault markdown files
-**And** recovery process scans `.lithos/backups/` for recent snapshot before full rebuild
+**And** recovery process scans `.traces/backups/` for recent snapshot before full rebuild
 **And** recovery preserves user data (vault files) while recreating corrupted indexes
 
 **Given** clean slate protocol requires full vault re-index
@@ -388,9 +388,9 @@ So that storage corruption is detected and recovered gracefully.
 **Given** storage errors are raised
 **When** errors propagate to application layer
 **Then** miette diagnostic messages suggest recovery actions:
-- Corruption → "Run `lithos rebuild-index` to recover"
+- Corruption → "Run `traces rebuild-index` to recover"
 - OutOfSpace → "Free up X MB of disk space"
-- PermissionDenied → "Check file permissions on .lithos/ directory"
+- PermissionDenied → "Check file permissions on .traces/ directory"
 
 **Given** storage errors must not lose user data
 **When** errors occur during write operations
@@ -408,7 +408,7 @@ So that storage corruption can be recovered without losing vault data.
 
 **Given** storage database can become corrupted
 **When** I implement backup strategy in `crates/adapters/src/spi/cache/backup.rs` (extending Epic 5 cache module)
-**Then** periodic snapshots are created in `.lithos/backups/storage-{timestamp}.redb`
+**Then** periodic snapshots are created in `.traces/backups/storage-{timestamp}.redb`
 **And** backups are triggered every 100 write transactions or daily (whichever comes first)
 **And** backup creation uses Redb's atomic snapshot feature without blocking operations
 
@@ -440,8 +440,8 @@ So that storage corruption can be recovered without losing vault data.
 
 **Given** clean slate protocol is the ultimate fallback
 **When** I implement rebuild process
-**Then** corrupted database is moved to `.lithos/corrupted/{timestamp}/` for forensics
-**And** new empty database is created at `.lithos/storage.redb`
+**Then** corrupted database is moved to `.traces/corrupted/{timestamp}/` for forensics
+**And** new empty database is created at `.traces/storage.redb`
 **And** Epic 10 indexing scans entire vault and rebuilds all indexes
 **And** rebuild progress is logged via `tracing::info!(files_processed, total_files, percent_complete, "Storage rebuild progress")`
 
@@ -474,7 +474,7 @@ So that storage format can change safely across versions without data loss.
 
 **Acceptance Criteria:**
 
-**Given** storage schema will evolve across lithos versions
+**Given** storage schema will evolve across traces versions
 **When** I implement migration framework in `crates/adapters/src/spi/cache/migrations.rs` (extending Epic 5 cache module)
 **Then** `SchemaVersion` metadata is stored in dedicated `_metadata` table
 **And** current schema version is `const STORAGE_SCHEMA_V1: u32 = 1` for MVP
@@ -500,13 +500,13 @@ So that storage format can change safely across versions without data loss.
 
 **Given** schema version mismatch is detected
 **When** I implement version validation
-**Then** newer schema version (future lithos) → error: "Database created by newer version, upgrade lithos"
-**And** older schema version (past lithos) → automatic migration attempt
+**Then** newer schema version (future traces) → error: "Database created by newer version, upgrade traces"
+**And** older schema version (past traces) → automatic migration attempt
 **And** schema version matches current → no migration needed
 
 **Given** migrations must preserve user data integrity
 **When** I implement migration validation
-**Then** pre-migration backup is created automatically in `.lithos/backups/pre-migration-v{N}.redb`
+**Then** pre-migration backup is created automatically in `.traces/backups/pre-migration-v{N}.redb`
 **And** post-migration validation confirms data integrity (row counts, checksums)
 **And** validation failure triggers automatic rollback and error report
 
@@ -520,7 +520,7 @@ So that storage format can change safely across versions without data loss.
 **When** I implement rollback support
 **Then** `down()` migrations allow schema downgrade for version rollback
 **And** downgrade preserves data where possible, warns on data loss
-**And** downgrade validation ensures older lithos versions can read downgraded schema
+**And** downgrade validation ensures older traces versions can read downgraded schema
 
 ## Story 9.8: Implement Storage Performance Benchmarking
 
@@ -531,7 +531,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **Acceptance Criteria:**
 
 **Given** NFR2 requires 1000-note indexing in <2 seconds
-**When** I implement write performance benchmarks in `lithos-core/benches/storage_write.rs`
+**When** I implement write performance benchmarks in `traces-core/benches/storage_write.rs`
 **Then** benchmark `batch_insert_1000_notes` measures total time for 1000 sequential inserts
 **And** benchmark `batch_insert_parallel` measures time for batched transaction writes
 **And** benchmark validates <2 second total time requirement
@@ -543,7 +543,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **And** parallel batch writes across multiple transactions complete in <2 seconds total
 
 **Given** NFR1 requires query operations <500ms
-**When** I implement read performance benchmarks in `lithos-core/benches/storage_read.rs`
+**When** I implement read performance benchmarks in `traces-core/benches/storage_read.rs`
 **Then** benchmark `lookup_by_path` measures single note retrieval time
 **And** benchmark `query_by_schema` measures fileClass filtering performance
 **And** benchmark `query_metadata` measures metadata filtering performance
@@ -556,7 +556,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **And** complex queries (metadata filtering) complete in <100ms typical, <500ms worst-case
 
 **Given** NFR9 requires memory usage <500MB
-**When** I implement memory benchmarks in `lithos-core/benches/storage_memory.rs`
+**When** I implement memory benchmarks in `traces-core/benches/storage_memory.rs`
 **Then** benchmark `memory_usage_1000_notes` measures peak memory during full vault load
 **And** benchmark uses criterion with memory profiling enabled
 **And** benchmark validates total memory (Redb cache + Arc<Note> references) stays <500MB
@@ -672,7 +672,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 9 public components are implemented
 **When** I verify test coverage

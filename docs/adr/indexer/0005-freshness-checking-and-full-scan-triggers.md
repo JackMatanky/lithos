@@ -55,7 +55,7 @@ Terminology is critical: "incremental" is overloaded (incremental scan? incremen
 | Trigger | Scope | Detection | Example |
 |---------|-------|-----------|---------|
 | **Uninitialized DB** | Full Vault | Automatic | Empty `FILE_VIEWS` table → first run |
-| **Explicit `--force`** | Vault OR Context | User CLI flag | `lithos index --force` (vault)<br>`lithos schema --force` (context) |
+| **Explicit `--force`** | Vault OR Context | User CLI flag | `traces index --force` (vault)<br>`traces schema --force` (context) |
 | **Database Corruption** | Full Vault | Automatic | redb integrity check fails |
 | **Internal Database Migration** | Full Vault | Automatic | Version table mismatch vs binary |
 | **Config Boundary Changes** | Vault OR Context | Automatic | `DiscoveryConfigSpec` boundary hash changed |
@@ -167,5 +167,5 @@ Config changes trigger full scans to prevent index corruption:
 
 - PRD: `.scratch/centralized-discovery-processor/PRD.md` (Section 8: Reindex Policy)
 - Handoff: `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/handoff-centralized-discovery-continued.md` (Question 6)
-- Current Vault Processor: `lithos-core/src/vault/processor.rs` (freshness checking implementation)
-- FileMetadata Methods: `lithos-core/src/fs/metadata.rs` (`is_timestamp_match`, `is_size_match`)
+- Current Vault Processor: `traces-core/src/vault/processor.rs` (freshness checking implementation)
+- FileMetadata Methods: `traces-core/src/fs/metadata.rs` (`is_timestamp_match`, `is_size_match`)

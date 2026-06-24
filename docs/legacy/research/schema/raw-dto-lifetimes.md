@@ -1,6 +1,6 @@
 # Research: Lifetimes in Raw DTOs for High-Performance Ingestion
 
-This document outlines best practices for implementing lifetimes in 'Raw' Data Transfer Objects (DTOs) within a parsing/ingestion pipeline, specifically targeting the `RawNote<'a>` implementation in Lithos.
+This document outlines best practices for implementing lifetimes in 'Raw' Data Transfer Objects (DTOs) within a parsing/ingestion pipeline, specifically targeting the `RawNote<'a>` implementation in Traces.
 
 ## 1. `Cow<'a, str>` vs `&'a str` vs `String`
 

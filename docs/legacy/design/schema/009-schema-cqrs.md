@@ -23,8 +23,8 @@ The schema context persists and retrieves:
 
 Current state (inventory):
 
-- `lithos-core/src/schema/ports.rs` defines command/query traits.
-- `lithos-core/src/schema/command.rs` and `lithos-core/src/schema/query.rs` provide DB-backed implementations.
+- `traces-core/src/schema/ports.rs` defines command/query traits.
+- `traces-core/src/schema/command.rs` and `traces-core/src/schema/query.rs` provide DB-backed implementations.
 - The current port signatures do not fully align with the concrete implementations.
 - Some operations are stringly-typed (schema name as `&str`) even though validated `SchemaName` exists.
 - **Missing**: Resolution metadata storage and staleness-aware query operations.
@@ -140,8 +140,8 @@ pub enum SchemaQueryError {
 Concrete-first usage pattern (preferred for performance + ergonomics):
 
 ```rust
-use lithos_core::schema::{command, query};
-use lithos_core::schema::ports::{Command, Query};
+use traces_core::schema::{command, query};
+use traces_core::schema::ports::{Command, Query};
 
 let cmd = command::Command::new(&db);
 let qry = query::Query::new(&db);
@@ -505,7 +505,7 @@ pub enum SchemaQueryError {
 }
 ```
 
-**Design rules** (Rust API Guidelines + Lithos rules):
+**Design rules** (Rust API Guidelines + Traces rules):
 
 - Preserve error structure; avoid `.to_string()` conversions in core.
 - Wrap underlying errors as `source` where applicable (`#[from]`).

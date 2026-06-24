@@ -2,7 +2,7 @@
 
 ## Overview
 
-Establish a unified multi-layer caching architecture as a generic SPI utility for the lithos service. This epic implements the Cache trait interface, concrete implementations for Moka (memory cache) and Redb (disk cache), and a coordinator for read-through/write-through strategies. This foundation enables high-performance caching for schema resolution, configuration management, query results, and template execution.
+Establish a unified multi-layer caching architecture as a generic SPI utility for the traces service. This epic implements the Cache trait interface, concrete implementations for Moka (memory cache) and Redb (disk cache), and a coordinator for read-through/write-through strategies. This foundation enables high-performance caching for schema resolution, configuration management, query results, and template execution.
 
 **FRs covered:** Architecture requirements (caching infrastructure per ADR 0016)
 
@@ -320,7 +320,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Acceptance Criteria:**
 
 **Given** benchmarking infrastructure exists per ADR 013
-**When** I create `lithos-core/benches/cache_benchmarks.rs`
+**When** I create `traces-core/benches/cache_benchmarks.rs`
 **Then** it includes benchmark suites for:
 
 - `MokaCache` standalone operations
@@ -382,7 +382,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guides during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 5 public components are implemented (Cache trait, MokaCache, RedbCache, Coordinator)
 **When** I verify test coverage

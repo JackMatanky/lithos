@@ -1,10 +1,10 @@
 # Schema Documentation
 
-This document provides comprehensive guidance for creating and using schemas in Lithos to define note structure and validation rules.
+This document provides comprehensive guidance for creating and using schemas in Traces to define note structure and validation rules.
 
 ## What are Schemas?
 
-Schemas in Lithos define the structure and validation rules for your notes. They ensure consistent frontmatter properties, automatic validation during note creation, and property reuse across your vault.
+Schemas in Traces define the structure and validation rules for your notes. They ensure consistent frontmatter properties, automatic validation during note creation, and property reuse across your vault.
 
 ### Purpose
 
@@ -253,7 +253,7 @@ contact (extends person + phone, address)
 
 ### Cycle Detection
 
-Lithos detects circular inheritance and reports an error:
+Traces detects circular inheritance and reports an error:
 
 ```
 Error: Circular inheritance detected in schema chain: contact -> person -> contact
@@ -300,7 +300,7 @@ Use `$ref` to reference properties defined in the property bank.
 
 ## Validation
 
-Lithos automatically validates notes against their schema during creation.
+Traces automatically validates notes against their schema during creation.
 
 ### When Validation Occurs
 
@@ -542,7 +542,7 @@ phone: {{ prompt "phone" "Phone Number" "" }}
 5. **Generate note:**
    ```bash
    cd my-vault
-   lithos new contact
+   traces new contact
    ```
 
 6. **Resulting note** (`contact.md`):

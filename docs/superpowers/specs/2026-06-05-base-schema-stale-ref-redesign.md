@@ -101,7 +101,7 @@ Present
   - Stale timestamp + content match + bank change -> `Stale` resolution.
   - Stale timestamp + content mismatch + bank change -> `Stale` resolution with combined deltas.
 - **Integration**:
-  - `lithos-core/tests/base_processor_integration.rs` (new file).
+  - `traces-core/tests/base_processor_integration.rs` (new file).
   - Test 1: Cold start -> bank change -> targeted update.
   - Test 2: Two schemas -> same bank target change -> both update.
 

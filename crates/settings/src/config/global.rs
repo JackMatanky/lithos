@@ -623,9 +623,9 @@ mod tests {
         #[test]
         fn trusted_vault_path_to_dir_path_fails_for_nonexistent() {
             let path = if cfg!(windows) {
-                "C:\\_lithos_test_nonexistent"
+                "C:\\_traces_test_nonexistent"
             } else {
-                "/_lithos_test_nonexistent_dir_2026"
+                "/_traces_test_nonexistent_dir_2026"
             };
             let tvp = TrustedVaultPath::try_new(PathBuf::from(path))
                 .expect("syntactic validation should pass");

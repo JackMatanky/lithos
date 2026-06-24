@@ -155,12 +155,12 @@ mod tests {
             fn returns_flag_variant_message_transparently() {
                 let err = DiscoveryError::from(
                     FlagOverrideError::GlobalConfigPathNotFound {
-                        path: PathBuf::from("/missing/lithos.toml"),
+                        path: PathBuf::from("/missing/traces.toml"),
                     },
                 );
                 assert_eq!(
                     err.to_string(),
-                    "Explicit config file path not found: /missing/lithos.toml"
+                    "Explicit config file path not found: /missing/traces.toml"
                 );
             }
 
@@ -221,11 +221,11 @@ mod tests {
             #[test]
             fn returns_global_config_path_not_found_message() {
                 let err = FlagOverrideError::GlobalConfigPathNotFound {
-                    path: PathBuf::from("/missing/lithos.toml"),
+                    path: PathBuf::from("/missing/traces.toml"),
                 };
                 assert_eq!(
                     err.to_string(),
-                    "Explicit config file path not found: /missing/lithos.toml"
+                    "Explicit config file path not found: /missing/traces.toml"
                 );
             }
 
@@ -279,12 +279,12 @@ mod tests {
             #[test]
             fn returns_global_config_path_not_found_message() {
                 let err = EnvironmentOverrideError::GlobalConfigPathNotFound {
-                    path: PathBuf::from("/missing/lithos.toml"),
+                    path: PathBuf::from("/missing/traces.toml"),
                 };
                 assert_eq!(
                     err.to_string(),
                     "Environment config file path not found: \
-                     /missing/lithos.toml"
+                     /missing/traces.toml"
                 );
             }
 

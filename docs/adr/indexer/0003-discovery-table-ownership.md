@@ -167,5 +167,5 @@ All three indexes are used by multiple contexts, confirming they are general-pur
 
 - PRD: `.scratch/centralized-discovery-processor/PRD.md` (Section 9: Table Ownership & Repository Pattern)
 - Handoff: `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/handoff-centralized-discovery-continued.md` (Question 7)
-- Current Vault Tables: `lithos-core/src/vault/storage/tables.rs`
+- Current Vault Tables: `traces-core/src/vault/storage/tables.rs`
 - GitNexus Analysis: Index usage patterns across contexts

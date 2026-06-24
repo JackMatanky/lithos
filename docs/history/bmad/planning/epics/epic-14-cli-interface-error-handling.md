@@ -2,7 +2,7 @@
 
 ## Overview
 
-Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
+Users can execute traces commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 
 **FRs covered:** FR41 (command structure), FR42 (help), FR43-47 (subcommands), FR48 (diagnostics), FR49-50 (interactive), FR30-31 (cross-platform), FR40 (audit)
 
@@ -33,23 +33,23 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
   - File errors → Clickable paths in supported terminals
   - Network errors → Retry suggestions with exponential backoff guidance
 - **Command Structure**:
-  - `lithos template` - Template management (new, list, execute)
-  - `lithos schema` - Schema operations (list, validate, create)
-  - `lithos vault` - Vault operations (index, search, validate)
-  - `lithos config` - Configuration management (show, set, reset)
-  - Single-word shortcuts: `lithos new`, `lithos search`
+  - `traces template` - Template management (new, list, execute)
+  - `traces schema` - Schema operations (list, validate, create)
+  - `traces vault` - Vault operations (index, search, validate)
+  - `traces config` - Configuration management (show, set, reset)
+  - Single-word shortcuts: `traces new`, `traces search`
 - **May Create**: ADR for CLI error recovery patterns if complex coordination emerges
 
 ## Story 14.1: Implement Clap-based CLI Command Structure
 
-As a user, I want a well-structured CLI with subcommands for all major lithos operations,
+As a user, I want a well-structured CLI with subcommands for all major traces operations,
 So that I can navigate and execute commands intuitively.
 
 **Acceptance Criteria:**
 
 **Given** Clap v4 provides derive macros per ADR 005
 **When** I implement CLI structure in `crates/cli/src/app.rs`
-**Then** `LithosApp` struct uses `#[derive(Parser)]` with subcommands:
+**Then** `TracesApp` struct uses `#[derive(Parser)]` with subcommands:
 - `Template(TemplateCommands)` - template operations
 - `Schema(SchemaCommands)` - schema operations
 - `Vault(VaultCommands)` - vault operations
@@ -63,7 +63,7 @@ So that I can navigate and execute commands intuitively.
 - `Validate { template: PathBuf }` - validate template syntax
 
 **Given** global options must be available to all subcommands
-**When** I define `LithosApp` struct
+**When** I define `TracesApp` struct
 **Then** global fields include:
 - `#[arg(short, long)]` verbose: bool - enable verbose output
 - `#[arg(long)]` vault_path: Option<PathBuf> - override vault location
@@ -72,12 +72,12 @@ So that I can navigate and execute commands intuitively.
 
 **Given** Clap performance must meet ADR 005 baseline
 **When** I benchmark CLI parsing
-**Then** `LithosApp::parse()` completes in <50μs for simple commands
+**Then** `TracesApp::parse()` completes in <50μs for simple commands
 **And** complex nested commands parse in <200μs
 **And** parsing benchmarks are tracked in CI/CD
 
 **Given** help generation must be instant per NFR4
-**When** user runs `lithos --help` or `lithos template --help`
+**When** user runs `traces --help` or `traces template --help`
 **Then** help text displays in <100ms
 **And** help includes command examples and common use cases
 **And** Clap's built-in help formatting is customized for consistency
@@ -98,13 +98,13 @@ So that I can create notes from the command line.
 **Acceptance Criteria:**
 
 **Given** Epic 12 provides TemplateExecutor service
-**When** I implement `lithos template new <name>` command
+**When** I implement `traces template new <name>` command
 **Then** it injects TemplateExecutor via dependency injection
 **And** executes template interactively using Dialoguer prompts
 **And** saves output to vault with schema validation
 
 **Given** template execution is interactive (FR49, FR50)
-**When** user runs `lithos template new contact`
+**When** user runs `traces template new contact`
 **Then** CLI prompts for template variables using Dialoguer:
 - Text input for string variables
 - Select for enum variables (from schema or template-defined)
@@ -125,14 +125,14 @@ So that I can create notes from the command line.
 - `yaml` - YAML frontmatter + content
 
 **Given** template listing must be fast and informative
-**When** user runs `lithos template list`
+**When** user runs `traces template list`
 **Then** output includes columns: Name, Description, Schema, Last Modified
 **And** list is sorted alphabetically by default
 **And** `--format json` outputs machine-readable template metadata
 **And** list command completes in <500ms for typical template directories
 
 **Given** Epic 12 template validation is available
-**When** user runs `lithos template validate <path>`
+**When** user runs `traces template validate <path>`
 **Then** validation checks:
 - MiniJinja syntax correctness
 - Variable definitions match schema
@@ -156,7 +156,7 @@ So that I can perform vault maintenance from the command line.
 **Acceptance Criteria:**
 
 **Given** Epic 10 provides IndexerService
-**When** I implement `lithos vault index` command
+**When** I implement `traces vault index` command
 **Then** it injects IndexerService and triggers full vault re-index
 **And** displays progress indicator for vaults >100 files (NFR2: complete in <2s for 1000 notes)
 **And** progress shows: "Indexed 573/1000 notes (57%)..."
@@ -175,12 +175,12 @@ So that I can perform vault maintenance from the command line.
 **And** `--strict` flag fails indexing on first error
 
 **Given** Epic 11 provides QueryService
-**When** I implement `lithos vault search <query>` command
+**When** I implement `traces vault search <query>` command
 **Then** it injects QueryService and executes search against Epic 9 storage indexes
 **And** search supports query syntax:
-- Simple text: `lithos vault search "project management"`
-- Schema filter: `lithos vault search --schema contact "John"`
-- Metadata filter: `lithos vault search --tag rust --status active`
+- Simple text: `traces vault search "project management"`
+- Schema filter: `traces vault search --schema contact "John"`
+- Metadata filter: `traces vault search --tag rust --status active`
 
 **Given** search results must be user-friendly
 **When** search returns results
@@ -193,7 +193,7 @@ So that I can perform vault maintenance from the command line.
 **And** results are paginated for large result sets (default 20 per page)
 
 **Given** vault validation checks schema compliance
-**When** user runs `lithos vault validate`
+**When** user runs `traces vault validate`
 **Then** validation checks all notes against their declared schemas (Epic 7)
 **And** reports validation errors grouped by schema
 **And** output includes:
@@ -202,7 +202,7 @@ So that I can perform vault maintenance from the command line.
 - Notes without schemas (info-level)
 
 **Given** vault statistics are useful for maintenance
-**When** user runs `lithos vault stats`
+**When** user runs `traces vault stats`
 **Then** output includes:
 - Total note count
 - Notes by schema (breakdown)
@@ -217,11 +217,11 @@ So that I can perform vault maintenance from the command line.
 As a user, I want CLI commands to manage schemas and validate notes, so that I can maintain schema definitions from the command line.
 **Acceptance Criteria:**
 
-- **Given** the `lithos schema` subcommand
-- **When** I run `lithos schema list`
+- **Given** the `traces schema` subcommand
+- **When** I run `traces schema list`
 - **Then** it shows all available schema definitions.
-- **And** `lithos schema validate <file>` validates a specific note against its schema.
-- **And** `lithos schema create <name>` launches the schema creation workflow.
+- **And** `traces schema validate <file>` validates a specific note against its schema.
+- **And** `traces schema create <name>` launches the schema creation workflow.
   **References:** FR43
 
 ### Story 14.5: [Adapters/API] Configuration CLI Commands
@@ -229,11 +229,11 @@ As a user, I want CLI commands to manage schemas and validate notes, so that I c
 As a user, I want CLI commands to manage application configuration, so that I can set preferences and view current settings.
 **Acceptance Criteria:**
 
-- **Given** the `lithos config` subcommand
-- **When** I run `lithos config show`
+- **Given** the `traces config` subcommand
+- **When** I run `traces config show`
 - **Then** it displays the current configuration hierarchy (global → user → project → vault).
-- **And** `lithos config set <key> <value>` allows setting configuration values.
-- **And** `lithos config reset` restores default configuration.
+- **And** `traces config set <key> <value>` allows setting configuration values.
+- **And** `traces config reset` restores default configuration.
   **References:** FR46
 
 ## Story 14.6: Implement Miette-based Error Diagnostics
@@ -253,8 +253,8 @@ So that I can understand and resolve issues quickly.
 **When** I convert domain errors to CLI errors
 **Then** error context includes:
 - Source file path and line number (when applicable)
-- User-actionable suggestions (e.g., "Run `lithos vault index` to rebuild")
-- Related documentation links (e.g., "See: https://lithos.dev/docs/schemas")
+- User-actionable suggestions (e.g., "Run `traces vault index` to rebuild")
+- Related documentation links (e.g., "See: https://traces.dev/docs/schemas")
 - Severity level (error, warning, info)
 
 **Given** file errors must be clickable in terminals
@@ -292,8 +292,8 @@ error: invalid property type
 **When** I implement diagnostic suggestions
 **Then** file not found → "Create file or check path"
 **And** permission denied → "Run with elevated permissions or check file ownership"
-**And** invalid schema → "Validate schema with `lithos schema validate <file>`"
-**And** vault not indexed → "Run `lithos vault index` to build search index"
+**And** invalid schema → "Validate schema with `traces schema validate <file>`"
+**And** vault not indexed → "Run `traces vault index` to build search index"
 
 **Given** error output must respect terminal capabilities
 **When** CLI runs in different environments
@@ -305,23 +305,23 @@ error: invalid property type
 
 ### Story 14.7: [Adapters/API] Comprehensive Help System
 
-As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use lithos without leaving the terminal.
+As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use traces without leaving the terminal.
 **Acceptance Criteria:**
 
-- **Given** any lithos command
+- **Given** any traces command
 - **When** I add `--help` or `-h`
 - **Then** it shows detailed usage information with examples.
-- **And** `lithos help <topic>` provides in-depth documentation for specific features.
+- **And** `traces help <topic>` provides in-depth documentation for specific features.
 - **And** help text includes command-line examples and common use cases.
   **References:** FR42
 
 ### Story 14.8: [Adapters/API] Cross-Platform Terminal Support
 
-As a user, I want lithos to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
+As a user, I want traces to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
 **Acceptance Criteria:**
 
 - **Given** the terminal environment
-- **When** lithos runs on different platforms
+- **When** traces runs on different platforms
 - **Then** it detects and adapts to terminal capabilities (colors, Unicode, etc.).
 - **And** file paths are handled correctly for each platform's conventions.
 - **And** CLI behavior is consistent across supported platforms (macOS primary, Linux).
@@ -344,10 +344,10 @@ As an administrator, I want basic audit logging for template execution and criti
 As a power user, I want single-word shortcuts for common operations, so that I can execute frequent commands quickly.
 **Acceptance Criteria:**
 
-- **Given** common lithos operations
-- **When** I use shortcuts like `lithos new`
+- **Given** common traces operations
+- **When** I use shortcuts like `traces new`
 - **Then** it launches the template picker for creating new notes.
-- **And** `lithos search <query>` performs a vault search.
+- **And** `traces search <query>` performs a vault search.
 - **And** shortcuts are documented in the help system.
   **References:** FR47
 
@@ -379,7 +379,7 @@ So that complex operations can be safely rolled back and system state remains co
 **And** final summary reports: "Rollback completed with 1 warning (system may be inconsistent)"
 
 **Given** system corruption detected (Epic 9 storage, Epic 11 cache, or Epic 7 schema)
-**When** user runs `lithos vault repair`
+**When** user runs `traces vault repair`
 **Then** repair sequence:
 1. Validate Epic 9 storage integrity (rkyv checksums)
 2. Rebuild Epic 11 cache from Epic 9 storage (clean slate protocol)
@@ -407,9 +407,9 @@ So that complex operations can be safely rolled back and system state remains co
 **When** user encounters errors
 **Then** CLI suggests context-specific recovery:
 - Single note validation error → "Fix schema or skip with --force"
-- Index corruption → "Run `lithos vault repair --index-only`"
-- Storage corruption → "Run `lithos vault repair --full` (WARNING: rebuilds from files)"
-- Config errors → "Run `lithos config reset` to restore defaults"
+- Index corruption → "Run `traces vault repair --index-only`"
+- Storage corruption → "Run `traces vault repair --full` (WARNING: rebuilds from files)"
+- Config errors → "Run `traces config reset` to restore defaults"
 
 **Given** detailed logging is required for troubleshooting
 **When** recovery operations run
@@ -418,11 +418,11 @@ So that complex operations can be safely rolled back and system state remains co
 - Component-by-component rollback steps
 - Errors encountered during rollback
 - Final system state (consistent/inconsistent)
-**And** logs written to `.lithos/logs/recovery-{timestamp}.log`
+**And** logs written to `.traces/logs/recovery-{timestamp}.log`
 
 **Given** Epic 6 ConfigCache supports rollback
 **When** config update fails
-**Then** `lithos config rollback` restores previous valid snapshot
+**Then** `traces config rollback` restores previous valid snapshot
 **And** rollback uses Epic 6 ConfigCache snapshot history (last 10 versions)
 **And** user confirms rollback: "Restore config from 2025-01-27 14:32:15? [y/N]"
 
@@ -464,7 +464,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 14 public components are implemented
 **When** I verify test coverage

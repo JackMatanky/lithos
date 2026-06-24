@@ -6,7 +6,7 @@
 
 **Architecture:** Replace the current split (`parser` + `extractor` + `scanner`) with a parser-owned 3-phase pipeline: parse (`stream/structure/text`) -> lexical selection + recognition (`parser::lexical` + scanner recognizer) -> raw assembly (`parser::assemble`). Eliminate duplicated scannability logic (`TextNode::is_scannable`, extractor range filtering, scanner policy flags) by making `TextContext` factual and using `SourceByteRangeIndex` as the only lexical scan boundary carrier.
 
-**Tech Stack:** Rust, pulldown-cmark, existing Lithos parser IR (`RangedEvent`, `DocTree`, `TextSequence`), existing scanner state-machine rules.
+**Tech Stack:** Rust, pulldown-cmark, existing Traces parser IR (`RangedEvent`, `DocTree`, `TextSequence`), existing scanner state-machine rules.
 
 ---
 
@@ -44,9 +44,9 @@
 ### Task 1: Introduce Parser-Owned Factual Context Model
 
 **Files:**
-- Modify: `lithos-core/src/note/parser/text.rs`
-- Modify: `lithos-core/src/note/parser/mod.rs` (tests that reference scannability semantics)
-- Test: `lithos-core/src/note/parser/text.rs` (existing unit tests + new context tests)
+- Modify: `traces-core/src/note/parser/text.rs`
+- Modify: `traces-core/src/note/parser/mod.rs` (tests that reference scannability semantics)
+- Test: `traces-core/src/note/parser/text.rs` (existing unit tests + new context tests)
 
 - [ ] **Step 1: Replace `TextContext` enum with factual flags**
 
@@ -88,7 +88,7 @@ Expected: parser text tests pass with no `is_scannable` references.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lithos-core/src/note/parser/text.rs lithos-core/src/note/parser/mod.rs
+git add traces-core/src/note/parser/text.rs traces-core/src/note/parser/mod.rs
 git commit -m "refactor(parser): make text context factual and remove node scannability"
 ```
 
@@ -97,10 +97,10 @@ git commit -m "refactor(parser): make text context factual and remove node scann
 ### Task 2: Add Parser Lexical Phase (`parser/lexical.rs`)
 
 **Files:**
-- Create: `lithos-core/src/note/parser/lexical.rs`
-- Modify: `lithos-core/src/note/parser/mod.rs`
-- Modify: `lithos-core/src/note/position.rs` (if needed for index ergonomics)
-- Test: `lithos-core/src/note/parser/lexical.rs` (new tests)
+- Create: `traces-core/src/note/parser/lexical.rs`
+- Modify: `traces-core/src/note/parser/mod.rs`
+- Modify: `traces-core/src/note/position.rs` (if needed for index ergonomics)
+- Test: `traces-core/src/note/parser/lexical.rs` (new tests)
 
 - [ ] **Step 1: Define policy surface and artifact kind**
 
@@ -169,7 +169,7 @@ Expected: lexical tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add lithos-core/src/note/parser/lexical.rs lithos-core/src/note/parser/mod.rs lithos-core/src/note/position.rs
+git add traces-core/src/note/parser/lexical.rs traces-core/src/note/parser/mod.rs traces-core/src/note/position.rs
 git commit -m "feat(parser): add lexical phase with centralized scan policy"
 ```
 
@@ -178,9 +178,9 @@ git commit -m "feat(parser): add lexical phase with centralized scan policy"
 ### Task 3: Purify Scanner into Recognizer-Only API
 
 **Files:**
-- Modify: `lithos-core/src/note/scanner.rs`
-- Modify: `lithos-core/src/note/parser/lexical.rs`
-- Test: `lithos-core/src/note/scanner.rs`
+- Modify: `traces-core/src/note/scanner.rs`
+- Modify: `traces-core/src/note/parser/lexical.rs`
+- Test: `traces-core/src/note/scanner.rs`
 
 - [ ] **Step 1: Change `scan_ranges` signature to accept `SourceByteRangeIndex`**
 
@@ -213,7 +213,7 @@ Expected: scanner tests pass with same semantics.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lithos-core/src/note/scanner.rs lithos-core/src/note/parser/lexical.rs
+git add traces-core/src/note/scanner.rs traces-core/src/note/parser/lexical.rs
 git commit -m "refactor(scanner): make scanner recognizer-only with range index input"
 ```
 
@@ -222,10 +222,10 @@ git commit -m "refactor(scanner): make scanner recognizer-only with range index 
 ### Task 4: Move Raw Assembly into Parser (`parser/assemble.rs`)
 
 **Files:**
-- Create: `lithos-core/src/note/parser/assemble.rs`
-- Modify: `lithos-core/src/note/parser/mod.rs`
-- Modify: `lithos-core/src/note/extractor.rs` (deprecate / thin wrapper during migration)
-- Test: `lithos-core/src/note/parser/mod.rs` tests
+- Create: `traces-core/src/note/parser/assemble.rs`
+- Modify: `traces-core/src/note/parser/mod.rs`
+- Modify: `traces-core/src/note/extractor.rs` (deprecate / thin wrapper during migration)
+- Test: `traces-core/src/note/parser/mod.rs` tests
 
 - [ ] **Step 1: Copy `BlockExtractor` logic into parser-owned assembler type**
 
@@ -266,7 +266,7 @@ Expected: existing parser behavior tests pass (including link/tag exclusion scen
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lithos-core/src/note/parser/assemble.rs lithos-core/src/note/parser/mod.rs lithos-core/src/note/extractor.rs
+git add traces-core/src/note/parser/assemble.rs traces-core/src/note/parser/mod.rs traces-core/src/note/extractor.rs
 git commit -m "refactor(parser): move raw note assembly into parser submodule"
 ```
 
@@ -275,9 +275,9 @@ git commit -m "refactor(parser): move raw note assembly into parser submodule"
 ### Task 5: Remove Overlap and Delete Legacy Extractor
 
 **Files:**
-- Delete: `lithos-core/src/note/extractor.rs`
-- Modify: `lithos-core/src/note/mod.rs` (if module re-exports exist)
-- Modify: `lithos-core/src/note/parser/mod.rs` docs/comments
+- Delete: `traces-core/src/note/extractor.rs`
+- Modify: `traces-core/src/note/mod.rs` (if module re-exports exist)
+- Modify: `traces-core/src/note/parser/mod.rs` docs/comments
 - Test: parser + note integration suites
 
 - [ ] **Step 1: Remove final callsites to `note::extractor`**
@@ -317,10 +317,10 @@ git commit -m "refactor(note): remove legacy extractor and finalize parser-owned
 ### Task 6: Hardening Invariants and Regression Coverage
 
 **Files:**
-- Modify: `lithos-core/src/note/parser/mod.rs` tests
-- Modify: `lithos-core/src/note/parser/text.rs` tests
-- Modify: `lithos-core/src/note/scanner.rs` tests
-- Create: `lithos-core/tests/note_lexical_policy_integration.rs`
+- Modify: `traces-core/src/note/parser/mod.rs` tests
+- Modify: `traces-core/src/note/parser/text.rs` tests
+- Modify: `traces-core/src/note/scanner.rs` tests
+- Create: `traces-core/tests/note_lexical_policy_integration.rs`
 
 - [ ] **Step 1: Add invariant tests for factual context + policy matrix**
 
@@ -360,7 +360,7 @@ Expected: all invariants hold.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lithos-core/tests/note_lexical_policy_integration.rs lithos-core/src/note/parser/mod.rs lithos-core/src/note/parser/text.rs lithos-core/src/note/scanner.rs
+git add traces-core/tests/note_lexical_policy_integration.rs traces-core/src/note/parser/mod.rs traces-core/src/note/parser/text.rs traces-core/src/note/scanner.rs
 git commit -m "test(note): add lexical policy invariants and non-leakage regressions"
 ```
 

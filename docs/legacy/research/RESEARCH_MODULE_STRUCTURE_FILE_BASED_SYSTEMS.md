@@ -45,7 +45,7 @@ Based on external research (rust-analyzer architecture, matklad’s ARCHITECTURE
 - **I/O is pushed to the outermost layer** (the `rust-analyzer` crate handles LSP and serialization).
 - **Invariants are documented explicitly** (“this crate never does I/O”, “this crate is tree-independent”).
 
-**Lesson for Lithos:** For read-heavy systems, **separate input ingestion (FS/IO) from pure domain logic**, and clearly document boundaries. Treat each module boundary as an invariant contract.
+**Lesson for Traces:** For read-heavy systems, **separate input ingestion (FS/IO) from pure domain logic**, and clearly document boundaries. Treat each module boundary as an invariant contract.
 
 ### 1.2 matklad: ARCHITECTURE.md as a Structural Tool
 
@@ -59,7 +59,7 @@ Based on external research (rust-analyzer architecture, matklad’s ARCHITECTURE
   - **Invariants** (often defined by *absence* of something)
   - **Boundaries** (where rules change)
 
-**Lesson for Lithos:** Use the doc as the authoritative guide for module layout. Keep it stable and short, and encode “what is NOT allowed” (e.g., “note does not import schema”).
+**Lesson for Traces:** Use the doc as the authoritative guide for module layout. Keep it stable and short, and encode “what is NOT allowed” (e.g., “note does not import schema”).
 
 ### 1.3 Elegant APIs: Traits for I/O Boundaries, Not Business Logic
 
@@ -69,7 +69,7 @@ Based on external research (rust-analyzer architecture, matklad’s ARCHITECTURE
 - Rust favors **simple, ergonomic APIs** with minimal abstraction layers.
 - Builders and explicit constructors are preferred over heavy frameworks.
 
-**Lesson for Lithos:** Ports/Adapters should exist only for **filesystem, database, and external services**. Domain logic should be plain functions and structs.
+**Lesson for Traces:** Ports/Adapters should exist only for **filesystem, database, and external services**. Domain logic should be plain functions and structs.
 
 ### 1.4 Rust Book: Modules for Privacy and Structure
 
@@ -79,7 +79,7 @@ Based on external research (rust-analyzer architecture, matklad’s ARCHITECTURE
 - The **filesystem layout mirrors the module tree**.
 - Privacy is the default; public APIs are explicit.
 
-**Lesson for Lithos:** Organize contexts by module with **public API at the top** and private internal submodules beneath.
+**Lesson for Traces:** Organize contexts by module with **public API at the top** and private internal submodules beneath.
 
 ---
 
@@ -253,7 +253,7 @@ From rust-analyzer:
 - **Input facts are stored separately** from derived data.
 - Derived data should be recomputable and **not depend on I/O**.
 
-**For Lithos:**
+**For Traces:**
 - Raw files are input facts.
 - Domain types are derived but stable.
 - Database is a cache (derived data).
@@ -264,7 +264,7 @@ From rust-analyzer:
 - **Serialization belongs at the edge** (LSP layer).
 - Inner modules should avoid serialization constraints.
 
-**For Lithos:**
+**For Traces:**
 - JSON serialization should live in CLI only.
 - Core domain types should be pure, serializable only if needed for caching.
 
@@ -284,7 +284,7 @@ From rust-analyzer:
 
 ---
 
-## 7. Practical Rules for Lithos (Derived From Research)
+## 7. Practical Rules for Traces (Derived From Research)
 
 1. **Modules are the first boundary.** Start by splitting responsibilities into modules, not traits.
 2. **Ports only for I/O.** Use traits for `FileReader`, `Repository`, and similar boundaries.
@@ -295,7 +295,7 @@ From rust-analyzer:
 
 ---
 
-## 8. Open Questions for Lithos (To Address Later)
+## 8. Open Questions for Traces (To Address Later)
 
 1. Should schema resolution live in its own submodule or be part of loader?
 2. Which contexts need true indexing submodules (note vs schema)?
@@ -308,7 +308,7 @@ From rust-analyzer:
 
 The external research consistently emphasizes **module structure first, ports/adapters second**. File-based, read-heavy Rust systems keep business logic in plain modules and reserve trait abstraction for I/O seams. Submodules should reflect stable responsibilities and pipeline phases, not theoretical layers.
 
-**Actionable outcome for Lithos:**
+**Actionable outcome for Traces:**
 - Use context modules with internal submodules for raw/domain/loader.
 - Add ports/adapters only where the system touches the outside world.
 - Keep the module graph simple, enforce invariants in docs, and optimize only when profiling demands it.

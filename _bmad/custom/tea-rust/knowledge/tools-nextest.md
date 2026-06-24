@@ -2,7 +2,7 @@
 
 ## CONTEXT
 
-- **Tool**: `cargo-nextest` - Primary test runner for Lithos
+- **Tool**: `cargo-nextest` - Primary test runner for Traces
 - **Purpose**: Fast, parallel test execution with superior isolation
 - **Configuration**: `.config/nextest.toml`
 
@@ -183,7 +183,7 @@ cargo nextest run -- --exclude test_slow
 cargo nextest run -E 'test(/\bparse/) & !test(/\bslow/)'
 
 # Run tests in specific crate
-cargo nextest run -p lithos-core
+cargo nextest run -p traces-core
 ```
 
 ## COMPARISON: nextest vs cargo test

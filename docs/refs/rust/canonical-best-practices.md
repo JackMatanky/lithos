@@ -2,7 +2,7 @@
 
 **Source (read-only reference):** https://canonical.github.io/rust-best-practices/
 
-This document maps Canonical’s guidance into **reviewable rules** for Lithos.
+This document maps Canonical’s guidance into **reviewable rules** for Traces.
 It is written in our own words (no verbatim copying) and is intended to complement:
 - [docs/refs/rust/style.md](style.md) (style + organization)
 - [docs/refs/rust/idioms.md](idioms.md) (Rust Design Patterns idioms)
@@ -34,7 +34,7 @@ Before merging or calling a change “done”, ensure:
 - Tests pass (`mise run test`).
 - Prefer the full gate when in doubt (`mise run verify`).
 
-If code is feature-gated, ensure lints and tests cover all relevant feature combinations (Canonical calls this out explicitly; Lithos’s `mise` tasks are the authoritative entry point).
+If code is feature-gated, ensure lints and tests cover all relevant feature combinations (Canonical calls this out explicitly; Traces’s `mise` tasks are the authoritative entry point).
 
 ## 2) Cosmetic discipline (spacing + grouping)
 
@@ -236,7 +236,7 @@ Struct fields:
 
 ## 10) Unsafe discipline
 
-Lithos policy: unsafe is forbidden in production code (workspace-level lints).
+Traces policy: unsafe is forbidden in production code (workspace-level lints).
 
 If a narrow, future exception is ever considered:
 - Minimize `unsafe` scopes.
@@ -250,8 +250,8 @@ If a narrow, future exception is ever considered:
 Module roots:
 - Canonical prefers `mod.rs` as the module root for multi-file modules and treats module roots as “manifest-like” (module declarations + re-exports, minimal glue).
 
-Lithos divergence (intentional):
-- Lithos generally prefers Rust 2018+ “file + folder” layout (a `foo.rs` module root alongside a `foo/` directory) as documented in [docs/refs/rust/module-system.md](module-system.md).
+Traces divergence (intentional):
+- Traces generally prefers Rust 2018+ “file + folder” layout (a `foo.rs` module root alongside a `foo/` directory) as documented in [docs/refs/rust/module-system.md](module-system.md).
 
 How to reconcile (recommended):
 - Treat whatever is the module root (`mod.rs` or `foo.rs`) as manifest-like: declarations + re-exports, minimal glue.

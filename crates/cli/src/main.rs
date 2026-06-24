@@ -1,6 +1,6 @@
-//! # Lithos CLI Binary
+//! # Traces CLI Binary
 //!
-//! This binary provides the command-line interface for Lithos, a CLI-first
+//! This binary provides the command-line interface for Traces, a CLI-first
 //! templating and schema system for Obsidian vaults. It handles argument
 //! parsing, configuration loading, and delegates to application services.
 //!
@@ -20,7 +20,7 @@
 //! ## Example
 //!
 //! ```bash
-//! lithos --version
+//! traces --version
 //! ```
 //!
 //! # Errors
@@ -48,7 +48,7 @@ use crate::{
     error::CliError,
 };
 
-/// Runs the Lithos CLI application and returns the appropriate exit code.
+/// Runs the Traces CLI application and returns the appropriate exit code.
 ///
 /// Parses CLI arguments, constructs the bootstrap runner, builds discovery
 /// flags, and dispatches to the appropriate command handler.  Errors from
@@ -123,7 +123,7 @@ fn run_main() -> Result<(), CliError> {
         } => {
             match command {
                 None => {
-                    // `lithos config` — show resolved configuration summary.
+                    // `traces config` — show resolved configuration summary.
                     run_config(
                         &bootstrapper,
                         flags,
@@ -135,7 +135,7 @@ fn run_main() -> Result<(), CliError> {
                     )
                 }
                 Some(ConfigSubcommand::Files) => {
-                    // `lithos config files` — list discovered config file
+                    // `traces config files` — list discovered config file
                     // candidates.
                     run_config_files(
                         &bootstrapper,
@@ -204,19 +204,19 @@ mod tests {
 
     #[test]
     fn main_parses_doctor_subcommand_successfully() {
-        let result = Cli::try_parse_from(["lithos", "doctor"]);
+        let result = Cli::try_parse_from(["traces", "doctor"]);
         assert!(result.is_ok());
     }
 
     #[test]
     fn main_parses_config_subcommand_successfully() {
-        let result = Cli::try_parse_from(["lithos", "config"]);
+        let result = Cli::try_parse_from(["traces", "config"]);
         assert!(result.is_ok());
     }
 
     #[test]
     fn main_parses_config_files_subcommand_successfully() {
-        let result = Cli::try_parse_from(["lithos", "config", "files"]);
+        let result = Cli::try_parse_from(["traces", "config", "files"]);
         assert!(result.is_ok());
     }
 }

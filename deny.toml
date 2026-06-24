@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Filename:    lithos/deny.toml
+# Filename:    traces/deny.toml
 # Docs:        https://embarkstudios.github.io/cargo-deny/
 # Description: Configuration for cargo-deny to audit dependencies, licenses,
 #              advisories, and sources.

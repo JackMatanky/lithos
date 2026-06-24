@@ -200,7 +200,7 @@ _No tests run yet_
 7. ✅ Re-ran `cargo test --lib` (988 passed)
 
 **Scope reduction outcome**:
-- `RawConfig` references in `lithos-core/src` dropped from 36 to 21.
+- `RawConfig` references in `traces-core/src` dropped from 36 to 21.
 - Remaining references are concentrated in `config/aggregate.rs`, `config/merger.rs` tests/helper, and `config/raw.rs`.
 
 ---
@@ -224,8 +224,8 @@ _No builds run yet_
    - Kept raw-version serialization helpers at builder boundary
 3. ✅ Updated builder pipeline to resolve then execute plan
 4. ✅ Ran targeted tests:
-   - `cargo test -p lithos-core config::merger::tests`
-   - `cargo test -p lithos-core config::builder::tests`
+   - `cargo test -p traces-core config::merger::tests`
+   - `cargo test -p traces-core config::builder::tests`
 5. ✅ Ran full quality gate:
    - `mise run verify` passed (unit + integration + e2e + doctests)
 
@@ -528,7 +528,7 @@ Refactored loader.rs to use processor+merger pipeline, removing all figment code
 Removed figment dependency from project entirely.
 
 **Changes:**
-- Removed figment from lithos-core/Cargo.toml
+- Removed figment from traces-core/Cargo.toml
 - Removed ConfigIngestError::Figment variant
 - Removed From<figment::Error> for ConfigIngestError
 
@@ -902,7 +902,7 @@ All success criteria met. Ready for integration.
 
 **Verification:**
 - ✅ `cargo test --lib` passes: 985 passed, 0 failed
-- ✅ `rg "\\bRawConfig\\b" lithos-core/src` returns no matches
+- ✅ `rg "\\bRawConfig\\b" traces-core/src` returns no matches
 
 ### 18:50 - Phase 6D started (builder module migration)
 
@@ -1010,9 +1010,9 @@ All success criteria met. Ready for integration.
 
 **Verification:**
 - ✅ Targeted tests pass:
-  - `cargo test -p lithos-core config::processor::tests`
-  - `cargo test -p lithos-core config::merger::tests`
-  - `cargo test -p lithos-core config::discovery::tests`
+  - `cargo test -p traces-core config::processor::tests`
+  - `cargo test -p traces-core config::merger::tests`
+  - `cargo test -p traces-core config::discovery::tests`
 - ✅ Full verification green: `mise run verify`
   - unit: 988/988 passed
   - integration: 36/36 passed
@@ -1030,7 +1030,7 @@ All success criteria met. Ready for integration.
 ### 20:30 - Post-rename verification
 
 **Verification actions:**
-- ✅ Ran `cargo test -p lithos-core config::merger::tests`
+- ✅ Ran `cargo test -p traces-core config::merger::tests`
 - ✅ Ran full quality gate: `mise run verify`
 
 **Result:**

@@ -30,7 +30,7 @@ scope: "Unit test boundaries and patterns"
 ## Execution
 
 - Use `mise run test:unit` for unit suites and `mise run test` for full verification.
-- Run targeted modules while iterating (for example `cargo test -p lithos-core schema::property`).
+- Run targeted modules while iterating (for example `cargo test -p traces-core schema::property`).
 - Prefer `nextest` output for diagnosis; names should be readable without opening source.
 
 ## Suite planning (before writing tests)

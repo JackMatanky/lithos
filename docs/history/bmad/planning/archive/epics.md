@@ -18,11 +18,11 @@ inputDocuments:
     category: lessons_learned
 ---
 
-# lithos - Epic Breakdown
+# traces - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for lithos, decomposing the requirements from the PRD, UX Design, Architecture, and Go implementation lessons learned into implementable stories.
+This document provides the complete epic and story breakdown for traces, decomposing the requirements from the PRD, UX Design, Architecture, and Go implementation lessons learned into implementable stories.
 
 ## Requirements Inventory
 
@@ -85,13 +85,13 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR40: Users can audit template execution and data access patterns
 
 #### Command Line Interface (FR41-FR47)
-- FR41: Users can execute lithos commands with subcommands for templates, schemas, and vaults
+- FR41: Users can execute traces commands with subcommands for templates, schemas, and vaults
 - FR42: Users can access comprehensive help and documentation from the CLI
 - FR43: Users can view status and configuration of templates and schemas
 - FR44: Users can manage vault operations (index, search, validate) from command line
 - FR45: Users can run templates with various output formats and destinations
 - FR46: Users can configure CLI behavior and preferences
-- FR47: Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection)
+- FR47: Users can execute most important commands with single words (e.g., `traces new` opens fuzzy picker for template selection)
 
 #### Error Handling & Recovery (FR48-FR50)
 - FR48: Users can receive clear, actionable error messages when operations fail
@@ -301,7 +301,7 @@ So that the project has clear separation between domain, application, infrastruc
 **When** I run the workspace initialization commands
 **Then** a Cargo workspace is created with the following structure:
 ```
-lithos/
+traces/
 ├── Cargo.toml (workspace configuration)
 ├── crates/
 │   ├── domain/ (pure business logic, no I/O)
@@ -523,7 +523,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 
 As a developer or user discovering the project,
 I want a clear overview of the project with setup instructions,
-So that I can quickly understand what lithos is and how to get started.
+So that I can quickly understand what traces is and how to get started.
 
 **Acceptance Criteria:**
 
@@ -1053,12 +1053,12 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Then** test code follows same quality standards as production code
 
 ## Epic 6: Configuration Management System **[PHASE 1.5]**
-Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
+Users can configure traces through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
 - Figment-based hierarchical config per ADR 009 using Epic 4 loading foundation
 - ConfigPort and mocks created in this epic
-- Sample config files based on JSON schema (lithos-specific)
+- Sample config files based on JSON schema (traces-specific)
 - User documentation for configuration
 
 ### Story 6.1: Create Config Domain Interface and Port
@@ -1083,7 +1083,7 @@ So that configuration can be loaded through a well-defined contract following he
 
 ### Story 6.2: Implement Hierarchical Configuration Loading
 
-As a user configuring lithos,
+As a user configuring traces,
 I want hierarchical configuration that respects precedence rules,
 So that I can override settings at different levels (global, user, project, vault).
 
@@ -1123,7 +1123,7 @@ So that I can identify and fix configuration issues quickly.
 
 ### Story 6.4: Implement Configuration Versioning and Migration
 
-As a developer maintaining lithos,
+As a developer maintaining traces,
 I want configuration versioning and migration support,
 So that configuration files can evolve safely across versions without breaking user setups.
 
@@ -1143,14 +1143,14 @@ So that configuration files can evolve safely across versions without breaking u
 
 ### Story 6.5: Create Sample Configuration Files
 
-As a user getting started with lithos,
+As a user getting started with traces,
 I want sample configuration files based on a complete JSON schema,
 So that I can understand configuration options and get started quickly with validated configs.
 
 **Acceptance Criteria:**
 
 **Given** I need sample configurations
-**When** I create a complete JSON schema for lithos configuration
+**When** I create a complete JSON schema for traces configuration
 **Then** the schema defines all possible configuration options with types, defaults, and validation rules
 
 **Given** the JSON schema exists
@@ -1162,7 +1162,7 @@ So that I can understand configuration options and get started quickly with vali
 **Then** all samples pass validation and demonstrate all major configuration features
 
 **Given** users have sample configs
-**When** they start lithos using Epic 4's file loading
+**When** they start traces using Epic 4's file loading
 **Then** configurations load successfully and demonstrate expected behavior
 
 ### Story 6.6: Review Epic 6 Test Suite
@@ -1205,9 +1205,9 @@ As a user who has made configuration mistakes, I want the system to provide clea
 
 ### Story 6.7: Document Configuration System for Users
 
-As a user configuring lithos,
+As a user configuring traces,
 I want comprehensive documentation for configuration options,
-So that I can understand and customize lithos behavior effectively.
+So that I can understand and customize traces behavior effectively.
 
 **Acceptance Criteria:**
 
@@ -1220,7 +1220,7 @@ So that I can understand and customize lithos behavior effectively.
 **Then** it covers hierarchical loading, validation rules, and troubleshooting
 
 **Given** users read the documentation
-**When** they configure lithos
+**When** they configure traces
 **Then** they can successfully customize behavior without developer assistance
 ## Epic 7: Schema System & Validation **[MVP CORE]**
 
@@ -1346,7 +1346,7 @@ So that I can understand schema capabilities and use them as templates.
 **Acceptance Criteria:**
 
 **Given** docs/schemas/ contains JSON schema examples
-**When** I create sample schemas for lithos
+**When** I create sample schemas for traces
 **Then** samples demonstrate all property types (string, number, bool, date, file)
 
 **Given** samples are created
@@ -1405,7 +1405,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 As a user creating schemas,
 I want comprehensive documentation for schema creation and usage,
-So that I can effectively define and use schemas in lithos.
+So that I can effectively define and use schemas in traces.
 
 **Acceptance Criteria:**
 
@@ -2629,11 +2629,11 @@ As a user, I want a beautiful and responsive fuzzy-search interface in my termin
 **References:** FR15, FR16
 
 #### Story 12.8: [Test] Obsidian Templater Template Conversion & Fixtures
-As a developer, I want to use real-world Obsidian templates as test fixtures, so that I can verify Lithos provides a viable migration path for power users.
+As a developer, I want to use real-world Obsidian templates as test fixtures, so that I can verify Traces provides a viable migration path for power users.
 **Acceptance Criteria:**
 - **Given** the templates in `docs/refs/obsidian/00_system/`
-- **When** I convert `42_00_action_item.md` to Lithos format
-- **Then** the Lithos implementation must achieve the same metadata generation and file placement as the original.
+- **When** I convert `42_00_action_item.md` to Traces format
+- **Then** the Traces implementation must achieve the same metadata generation and file placement as the original.
 - **And** the automated schema-derived queries must match the output of the original manual Javascript queries.
 **References:** NFR20
 
@@ -2859,7 +2859,7 @@ As a user, I want clear instructions on how to use advanced template features li
 **References:** NFR13
 
 ## Epic 14: CLI Interface & Error Handling
-Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
+Users can execute traces commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
 - Clap for CLI, miette for diagnostics per ADR 005
@@ -2870,7 +2870,7 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 - User CLI documentation
 
 #### Story 14.1: [Adapters/API] Clap-based CLI Command Structure
-As a user, I want a well-structured CLI with subcommands for all major lithos operations, so that I can navigate and execute commands intuitively.
+As a user, I want a well-structured CLI with subcommands for all major traces operations, so that I can navigate and execute commands intuitively.
 **Acceptance Criteria:**
 - **Given** the clap crate for CLI parsing
 - **When** I define the CLI structure
@@ -2882,41 +2882,41 @@ As a user, I want a well-structured CLI with subcommands for all major lithos op
 #### Story 14.2: [Adapters/API] Template Execution CLI Commands
 As a user, I want CLI commands to execute templates with various output options, so that I can create notes from the command line.
 **Acceptance Criteria:**
-- **Given** the `lithos template` subcommand
-- **When** I run `lithos template new <template-name>`
+- **Given** the `traces template` subcommand
+- **When** I run `traces template new <template-name>`
 - **Then** it launches the interactive template execution for the specified template.
-- **And** `lithos template list` shows available templates.
+- **And** `traces template list` shows available templates.
 - **And** output options like `--output <file>` and `--format <markdown|json>` are supported.
 **References:** FR45, FR47
 
 #### Story 14.3: [Adapters/API] Vault Management CLI Commands
 As a user, I want CLI commands to manage vault operations like indexing and searching, so that I can perform vault maintenance from the command line.
 **Acceptance Criteria:**
-- **Given** the `lithos vault` subcommand
-- **When** I run `lithos vault index`
+- **Given** the `traces vault` subcommand
+- **When** I run `traces vault index`
 - **Then** it indexes the current vault and updates the search index.
-- **And** `lithos vault search <query>` performs searches across indexed notes.
-- **And** `lithos vault validate` checks schema compliance across the vault.
+- **And** `traces vault search <query>` performs searches across indexed notes.
+- **And** `traces vault validate` checks schema compliance across the vault.
 **References:** FR44
 
 #### Story 14.4: [Adapters/API] Schema Management CLI Commands
 As a user, I want CLI commands to manage schemas and validate notes, so that I can maintain schema definitions from the command line.
 **Acceptance Criteria:**
-- **Given** the `lithos schema` subcommand
-- **When** I run `lithos schema list`
+- **Given** the `traces schema` subcommand
+- **When** I run `traces schema list`
 - **Then** it shows all available schema definitions.
-- **And** `lithos schema validate <file>` validates a specific note against its schema.
-- **And** `lithos schema create <name>` launches the schema creation workflow.
+- **And** `traces schema validate <file>` validates a specific note against its schema.
+- **And** `traces schema create <name>` launches the schema creation workflow.
 **References:** FR43
 
 #### Story 14.5: [Adapters/API] Configuration CLI Commands
 As a user, I want CLI commands to manage application configuration, so that I can set preferences and view current settings.
 **Acceptance Criteria:**
-- **Given** the `lithos config` subcommand
-- **When** I run `lithos config show`
+- **Given** the `traces config` subcommand
+- **When** I run `traces config show`
 - **Then** it displays the current configuration hierarchy (global → user → project → vault).
-- **And** `lithos config set <key> <value>` allows setting configuration values.
-- **And** `lithos config reset` restores default configuration.
+- **And** `traces config set <key> <value>` allows setting configuration values.
+- **And** `traces config reset` restores default configuration.
 **References:** FR46
 
 #### Story 14.6: [Adapters/API] Miette-based Error Diagnostics
@@ -2930,20 +2930,20 @@ As a user, I want clear, actionable error messages when operations fail, so that
 **References:** FR48
 
 #### Story 14.7: [Adapters/API] Comprehensive Help System
-As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use lithos without leaving the terminal.
+As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use traces without leaving the terminal.
 **Acceptance Criteria:**
-- **Given** any lithos command
+- **Given** any traces command
 - **When** I add `--help` or `-h`
 - **Then** it shows detailed usage information with examples.
-- **And** `lithos help <topic>` provides in-depth documentation for specific features.
+- **And** `traces help <topic>` provides in-depth documentation for specific features.
 - **And** help text includes command-line examples and common use cases.
 **References:** FR42
 
 #### Story 14.8: [Adapters/API] Cross-Platform Terminal Support
-As a user, I want lithos to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
+As a user, I want traces to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
 **Acceptance Criteria:**
 - **Given** the terminal environment
-- **When** lithos runs on different platforms
+- **When** traces runs on different platforms
 - **Then** it detects and adapts to terminal capabilities (colors, Unicode, etc.).
 - **And** file paths are handled correctly for each platform's conventions.
 - **And** CLI behavior is consistent across supported platforms (macOS primary, Linux).
@@ -2962,10 +2962,10 @@ As an administrator, I want basic audit logging for template execution and criti
 #### Story 14.10: [Adapters/API] Single-Word Command Shortcuts
 As a power user, I want single-word shortcuts for common operations, so that I can execute frequent commands quickly.
 **Acceptance Criteria:**
-- **Given** common lithos operations
-- **When** I use shortcuts like `lithos new`
+- **Given** common traces operations
+- **When** I use shortcuts like `traces new`
 - **Then** it launches the template picker for creating new notes.
-- **And** `lithos search <query>` performs a vault search.
+- **And** `traces search <query>` performs a vault search.
 - **And** shortcuts are documented in the help system.
 **References:** FR47
 
@@ -3276,7 +3276,7 @@ Users have comprehensive documentation, starter templates, sample schemas, and m
 - Note: Documentation created at story-level in epics; this consolidates and polishes
 
 #### Story 16.1: [Docs] Installation and Setup Guide
-As a new user, I want clear installation instructions and setup guidance, so that I can get lithos running quickly on my system.
+As a new user, I want clear installation instructions and setup guidance, so that I can get traces running quickly on my system.
 **Acceptance Criteria:**
 - **Given** the completed system
 - **When** I create the installation guide
@@ -3286,7 +3286,7 @@ As a new user, I want clear installation instructions and setup guidance, so tha
 **References:** NFR28
 
 #### Story 16.2: [Docs] Quick Start Tutorial
-As a new user, I want a hands-on tutorial to create my first note with lithos, so that I can experience the core functionality immediately.
+As a new user, I want a hands-on tutorial to create my first note with traces, so that I can experience the core functionality immediately.
 **Acceptance Criteria:**
 - **Given** the completed system
 - **When** I create the quick start guide
@@ -3306,11 +3306,11 @@ As a new user, I want ready-to-use templates and schemas for common use cases, s
 **References:** NFR20
 
 #### Story 16.4: [Docs] Migration Guide from Obsidian
-As an existing Obsidian user, I want guidance on migrating my workflow to lithos, so that I can transition smoothly with minimal disruption.
+As an existing Obsidian user, I want guidance on migrating my workflow to traces, so that I can transition smoothly with minimal disruption.
 **Acceptance Criteria:**
 - **Given** the template conversion examples
 - **When** I create the migration guide
-- **Then** it maps Obsidian concepts to lithos equivalents (Templater → lithos templates).
+- **Then** it maps Obsidian concepts to traces equivalents (Templater → traces templates).
 - **And** it provides conversion examples for common template patterns.
 - **And** it addresses compatibility considerations and limitations.
 **References:** NFR20
@@ -3326,7 +3326,7 @@ As a power user, I want comprehensive documentation of all features and configur
 **References:** NFR13
 
 #### Story 16.6: [Docs] API Documentation for Developers
-As a developer extending lithos, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
+As a developer extending traces, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
 **Acceptance Criteria:**
 - **Given** the system architecture
 - **When** I create the API documentation

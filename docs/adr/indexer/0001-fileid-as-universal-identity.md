@@ -10,7 +10,7 @@ stakeholders: [Core Team]
 
 ## Context
 
-Lithos previously maintained separate identity types for each context: `SchemaId` for schemas, `NoteId` for notes, and `TemplateId` for templates. Each context maintained its own path-to-ID index (`SCHEMA_ID_BY_PATH`, `NOTE_ID_BY_PATH`) in parallel with the vault's `FILE_ID_BY_PATH` table. This duplication created maintenance overhead and coupling—when a file moved, multiple index tables required coordinated updates.
+Traces previously maintained separate identity types for each context: `SchemaId` for schemas, `NoteId` for notes, and `TemplateId` for templates. Each context maintained its own path-to-ID index (`SCHEMA_ID_BY_PATH`, `NOTE_ID_BY_PATH`) in parallel with the vault's `FILE_ID_BY_PATH` table. This duplication created maintenance overhead and coupling—when a file moved, multiple index tables required coordinated updates.
 
 Schema inheritance was modeled as `SchemaId → SchemaId` edges, despite the fact that schemas are just markdown files with specific structure. The conceptual mismatch (treating file-backed entities as if they had independent identity) complicated the inheritance graph and made it unclear whether identity survived file moves.
 

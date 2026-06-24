@@ -82,7 +82,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 ### Phase 0: Dependency Management
 - [x] Task 0: Add required dependencies to `crates/adapters/Cargo.toml`
   - [x] Subtask 0.1: Add `moka = { version = "0.12", features = ["future"] }` to `[dependencies]`
-  - [x] Subtask 0.2: Run `cargo check -p lithos-adapters` to verify dependency resolution
+  - [x] Subtask 0.2: Run `cargo check -p traces-adapters` to verify dependency resolution
 
 ### Phase 1: Test Infrastructure and Scaffolding
 - [x] Task 1: Initialize implementation file and verify module linkage
@@ -172,7 +172,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 8.1: Run `mise run test:coverage` and verify `MokaCache` logic is fully exercised
   - [x] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
   - [x] Subtask 8.3: Run `mise run lint` one final time to verify zero warnings/errors
-  - [x] Subtask 8.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 8.4: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 

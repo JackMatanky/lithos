@@ -1,5 +1,5 @@
 #![feature(trivial_bounds)]
-//! Shared utility contracts exposed by `lithos-core`.
+//! Shared utility contracts exposed by `traces-core`.
 //!
 //! This module provides domain-agnostic primitives with stable semantics that
 //! can be consumed across bounded contexts without importing crate-internal

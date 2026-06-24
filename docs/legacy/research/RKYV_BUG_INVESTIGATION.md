@@ -200,7 +200,7 @@ Each spec has nested data (e.g., StringSpec has Vec<String> for options).
 
 ## BREAKTHROUGH FINDINGS ✅
 
-### Tests Created (lithos-core/tests/rkyv_debug.rs)
+### Tests Created (traces-core/tests/rkyv_debug.rs)
 
 1. ✅ **two_simple_schemas_no_properties** - PASSES
 2. ✅ **two_schemas_with_one_property** - PASSES
@@ -295,10 +295,10 @@ for result in table_ref.iter()? {
 
 ## Code Locations to Check
 
-**Schema definition**: `lithos-core/src/schema/aggregate.rs:73-92`
-**Storage save**: `lithos-core/src/schema/storage.rs:634-655`
-**Serialization**: `lithos-core/src/db/writer.rs:539`
-**Deserialization**: `lithos-core/src/db/reader.rs:449-465`
+**Schema definition**: `traces-core/src/schema/aggregate.rs:73-92`
+**Storage save**: `traces-core/src/schema/storage.rs:634-655`
+**Serialization**: `traces-core/src/db/writer.rs:539`
+**Deserialization**: `traces-core/src/db/reader.rs:449-465`
 
 ## References
 

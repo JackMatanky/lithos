@@ -1,6 +1,6 @@
 # Mise Task Orchestration Guide
 
-This guide provides best practices for configuring mise task orchestration in Lithos, building on the existing `.mise/tasks/` infrastructure established by previous stories.
+This guide provides best practices for configuring mise task orchestration in Traces, building on the existing `.mise/tasks/` infrastructure established by previous stories.
 
 ## Overview
 
@@ -198,7 +198,7 @@ mise run --timing test
 mise run --env test
 ```
 
-## Integration with Lithos Architecture
+## Integration with Traces Architecture
 
 ### Hexagonal Architecture Support
 - Tasks support port/adapter testing patterns
@@ -215,4 +215,4 @@ mise run --env test
 - Concurrent testing with proper isolation
 - Performance monitoring for async operations
 
-This guide provides the foundation for efficient mise task orchestration in Lithos, maximizing development productivity while maintaining code quality and environment consistency.
+This guide provides the foundation for efficient mise task orchestration in Traces, maximizing development productivity while maintaining code quality and environment consistency.

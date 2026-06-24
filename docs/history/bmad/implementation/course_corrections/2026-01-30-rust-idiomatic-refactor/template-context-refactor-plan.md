@@ -99,8 +99,8 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Verify starting point: `mise run test` passes
 
 **Task 1.1: Create Adapter Module Structure**
-- [ ] Create directory: `mkdir -p lithos-core/src/template/adapter`
-- [ ] Create `lithos-core/src/template/adapter/mod.rs`:
+- [ ] Create directory: `mkdir -p traces-core/src/template/adapter`
+- [ ] Create `traces-core/src/template/adapter/mod.rs`:
   ```rust
   //! MiniJinja adapter layer for template compilation and rendering.
 
@@ -112,11 +112,11 @@ We cannot break existing functionality while refactoring. This plan provides an 
   pub use filters::FilterRegistry;
   pub use source_generator::SourceGenerator;
   ```
-- [ ] Update `lithos-core/src/template/mod.rs`: Add `pub mod adapter;`
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Update `traces-core/src/template/mod.rs`: Add `pub mod adapter;`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 1.2: Implement TemplateEngine**
-- [ ] Create `lithos-core/src/template/adapter/engine.rs` with:
+- [ ] Create `traces-core/src/template/adapter/engine.rs` with:
   ```rust
   use minijinja::{Environment, UndefinedBehavior, AutoEscape};
   use std::sync::Arc;
@@ -211,10 +211,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 1.3: Implement FilterRegistry**
-- [ ] Create `lithos-core/src/template/adapter/filters.rs` with complete filters:
+- [ ] Create `traces-core/src/template/adapter/filters.rs` with complete filters:
   ```rust
   use minijinja::Environment;
   use regex::Regex;
@@ -408,10 +408,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 1.4: Add Integration Tests**
-- [ ] Create `lithos-core/src/template/adapter/engine.rs` (add at end of file):
+- [ ] Create `traces-core/src/template/adapter/engine.rs` (add at end of file):
   ```rust
   #[cfg(test)]
   mod tests {
@@ -463,7 +463,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Add filter tests in `lithos-core/src/template/adapter/filters.rs`:
+- [ ] Add filter tests in `traces-core/src/template/adapter/filters.rs`:
   ```rust
   #[cfg(test)]
   mod tests {
@@ -574,7 +574,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Verify starting point: `mise run test` passes
 
 **Task 2.1: Add TemplateBlock and BlockStrategy Types**
-- [ ] Create `lithos-core/src/template/block.rs`:
+- [ ] Create `traces-core/src/template/block.rs`:
   ```rust
   //! Template block metadata for composition.
 
@@ -675,12 +675,12 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Update `lithos-core/src/template/mod.rs`: Add `pub mod block;` and `pub use block::{TemplateBlock, BlockStrategy};`
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Update `traces-core/src/template/mod.rs`: Add `pub mod block;` and `pub use block::{TemplateBlock, BlockStrategy};`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 2.2: Update Template Entity**
-- [ ] Backup current `aggregate.rs`: `cp lithos-core/src/template/aggregate.rs lithos-core/src/template/aggregate.rs.backup`
-- [ ] Update `Template` struct in `lithos-core/src/template/aggregate.rs`:
+- [ ] Backup current `aggregate.rs`: `cp traces-core/src/template/aggregate.rs traces-core/src/template/aggregate.rs.backup`
+- [ ] Update `Template` struct in `traces-core/src/template/aggregate.rs`:
   - [ ] Add field: `extends: Option<Box<str>>,`
   - [ ] Add field: `blocks: Vec<TemplateBlock>,`
   - [ ] Mark deprecated: Add `#[deprecated]` to `content: String` field
@@ -696,10 +696,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Deprecate old methods:
   - [ ] Add `#[deprecated(note = "Use TemplateEngine::validate_syntax instead")]` to `Template::validate()`
   - [ ] Add `#[deprecated(note = "Use MiniJinja native {% extends %} instead")]` to `Template::compose()` if it exists
-- [ ] Verify compiles: `cargo check -p lithos-core` (warnings expected for deprecated fields)
+- [ ] Verify compiles: `cargo check -p traces-core` (warnings expected for deprecated fields)
 
 **Task 2.3: Update InputSpec**
-- [ ] Add method to `lithos-core/src/template/variable.rs`:
+- [ ] Add method to `traces-core/src/template/variable.rs`:
   ```rust
   impl InputSpec {
       /// Returns filter names to apply at render time.
@@ -766,10 +766,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
   }
   ```
 - [ ] Deprecate old validation: Add `#[deprecated(note = "Use MiniJinja filters for validation")]` to `validate_value()` if it exists
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 2.4: Update Domain Tests**
-- [ ] Update tests in `lithos-core/src/template/aggregate.rs`:
+- [ ] Update tests in `traces-core/src/template/aggregate.rs`:
   ```rust
   #[cfg(test)]
   mod tests {
@@ -833,7 +833,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Add tests for InputSpec in `lithos-core/src/template/variable.rs`:
+- [ ] Add tests for InputSpec in `traces-core/src/template/variable.rs`:
   ```rust
   #[cfg(test)]
   mod tests {
@@ -951,7 +951,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Verify starting point: `mise run test` passes
 
 **Task 3.1: Implement SourceGenerator**
-- [ ] Create `lithos-core/src/template/adapter/source_generator.rs`:
+- [ ] Create `traces-core/src/template/adapter/source_generator.rs`:
   ```rust
   //! Generates MiniJinja source code from Template metadata.
 
@@ -1181,12 +1181,12 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Update `lithos-core/src/template/adapter/mod.rs`: Add `pub mod source_generator;` and `pub use source_generator::SourceGenerator;`
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Update `traces-core/src/template/adapter/mod.rs`: Add `pub mod source_generator;` and `pub use source_generator::SourceGenerator;`
+- [ ] Verify compiles: `cargo check -p traces-core`
 - [ ] Run tests: `mise run test:unit:template`
 
 **Task 3.2: Integrate with TemplateEngine**
-- [ ] Update `lithos-core/src/template/adapter/engine.rs`, add method:
+- [ ] Update `traces-core/src/template/adapter/engine.rs`, add method:
   ```rust
   impl TemplateEngine {
       /// Compiles a template from domain metadata.
@@ -1203,10 +1203,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 3.3: Add Round-Trip Tests**
-- [ ] Add end-to-end tests in `lithos-core/src/template/adapter/engine.rs`:
+- [ ] Add end-to-end tests in `traces-core/src/template/adapter/engine.rs`:
   ```rust
   #[cfg(test)]
   mod integration_tests {
@@ -1436,7 +1436,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Verify starting point: `mise run test` passes
 
 **Task 4.1: Implement TemplateCatalog**
-- [ ] Create `lithos-core/src/template/catalog.rs`:
+- [ ] Create `traces-core/src/template/catalog.rs`:
   ```rust
   //! Template lifecycle manager (load → compile → cache → render).
 
@@ -1774,14 +1774,14 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Update `lithos-core/src/template/mod.rs`: Add `pub mod catalog;` and `pub use catalog::TemplateCatalog;`
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Update `traces-core/src/template/mod.rs`: Add `pub mod catalog;` and `pub use catalog::TemplateCatalog;`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 4.2: Update Storage to Support FakeTemplateStorage (if needed)**
 - [ ] Verify `FakeTemplateStorage` exists in ports module (should exist from Phase 2)
 - [ ] If not, implement minimal `FakeTemplateStorage` for tests:
   ```rust
-  // In lithos-core/src/template/ports.rs or similar
+  // In traces-core/src/template/ports.rs or similar
 
   /// In-memory template storage for testing.
   #[derive(Clone, Default)]
@@ -1867,7 +1867,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Verify compiles: `cargo check -p lithos-core`
+- [ ] Verify compiles: `cargo check -p traces-core`
 
 **Task 4.3: Run Integration Tests**
 - [ ] Run tests: `mise run test:unit:template`
@@ -1929,7 +1929,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Understand closure pattern: `with_archived<F, R>(id, f) where F: for<'a> FnOnce(&'a Self::Archived<'a>) -> R`
 
 **Task 5.2: Update TemplateQueryPort Trait**
-- [ ] Add GAT to `TemplateQueryPort` in `lithos-core/src/template/ports.rs`:
+- [ ] Add GAT to `TemplateQueryPort` in `traces-core/src/template/ports.rs`:
   ```rust
   pub trait TemplateQueryPort: Send + Sync {
       /// Archived template type (zero-copy access)
@@ -2054,10 +2054,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Verify starting point: `mise run test` passes
 
 **Task 6.1: Delete Deprecated Files**
-- [ ] Delete `lithos-core/src/template/syntax.rs` (PlaceholderSyntax)
-- [ ] Delete `lithos-core/src/template/validation.rs` (old domain validation)
-- [ ] Delete `lithos-core/src/template/composition.rs` (old manual composition) if exists
-- [ ] Verify these files are gone: `ls lithos-core/src/template/`
+- [ ] Delete `traces-core/src/template/syntax.rs` (PlaceholderSyntax)
+- [ ] Delete `traces-core/src/template/validation.rs` (old domain validation)
+- [ ] Delete `traces-core/src/template/composition.rs` (old manual composition) if exists
+- [ ] Verify these files are gone: `ls traces-core/src/template/`
 
 **Task 6.2: Remove Deprecated Fields from Template**
 - [ ] Remove `#[deprecated] content: String` field from Template struct
@@ -2070,13 +2070,13 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Remove `#[deprecated] InputSpec::validate_value()` method if exists
 
 **Task 6.4: Clean Up Imports**
-- [ ] Remove `pub mod syntax;` from `lithos-core/src/template/mod.rs`
-- [ ] Remove `pub mod validation;` from `lithos-core/src/template/mod.rs`
-- [ ] Remove `pub mod composition;` from `lithos-core/src/template/mod.rs`
+- [ ] Remove `pub mod syntax;` from `traces-core/src/template/mod.rs`
+- [ ] Remove `pub mod validation;` from `traces-core/src/template/mod.rs`
+- [ ] Remove `pub mod composition;` from `traces-core/src/template/mod.rs`
 - [ ] Remove any unused `use` statements throughout template module
 
 **Task 6.5: Update Public Exports**
-- [ ] Review `lithos-core/src/template/mod.rs` exports
+- [ ] Review `traces-core/src/template/mod.rs` exports
 - [ ] Ensure only new API is exported (TemplateCatalog, TemplateBlock, BlockStrategy, etc.)
 - [ ] Remove exports for deleted types (PlaceholderSyntax, etc.)
 
@@ -2087,8 +2087,8 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] Run `mise run verify` → Full quality gate passes
 
 **Phase 6 Verification:**
-- [ ] No deprecated code remains (`rg "#\[deprecated\]" lithos-core/src/template/` returns nothing)
-- [ ] No deleted files remain (`ls lithos-core/src/template/{syntax,validation,composition}.rs` fails)
+- [ ] No deprecated code remains (`rg "#\[deprecated\]" traces-core/src/template/` returns nothing)
+- [ ] No deleted files remain (`ls traces-core/src/template/{syntax,validation,composition}.rs` fails)
 - [ ] All tests pass with zero warnings
 - [ ] Codebase is clean and production-ready
 - [ ] Commit: `git add -A && git commit -m "Phase 6: Delete deprecated code (cleanup complete)"`

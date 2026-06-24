@@ -11,7 +11,7 @@ date_implemented: 2026-01-11
 
 ## Context
 
-As the Lithos project grows, we need a structured way to document and review architectural decisions. The current ADRs were created during the planning phase but lack a formal review process and automated validation. We need to ensure that all future decisions are thoroughly reviewed for completeness, correctness, and consistency.
+As the Traces project grows, we need a structured way to document and review architectural decisions. The current ADRs were created during the planning phase but lack a formal review process and automated validation. We need to ensure that all future decisions are thoroughly reviewed for completeness, correctness, and consistency.
 
 ## Decision
 

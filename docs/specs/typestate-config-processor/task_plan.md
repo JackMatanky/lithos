@@ -49,7 +49,7 @@
 **Objective**: Implement `config::processor` module with typestate pattern.
 
 **Tasks**:
-- [x] Create `lithos-core/src/config/processor.rs` module skeleton
+- [x] Create `traces-core/src/config/processor.rs` module skeleton
 - [x] Define ConfigType trait (generic abstraction)
 - [x] Implement GlobalConfig and VaultConfig marker types
 - [x] Define 3 stage markers (Comparison, Analysis, Completed)
@@ -104,7 +104,7 @@
 **Objective**: Remove figment from dependencies and verify build.
 
 **Tasks**:
-- [ ] Remove `figment` from `lithos-core/Cargo.toml`
+- [ ] Remove `figment` from `traces-core/Cargo.toml`
 - [ ] Remove `figment` imports from all files
 - [ ] Run `cargo build` to verify no missing symbols
 - [ ] Run full test suite (`mise run test`)
@@ -148,8 +148,8 @@
 ## Notes
 
 - Reference implementations:
-  - `lithos-core/src/note/processor.rs` (simpler typestate)
-  - `lithos-core/src/schema/property_bank_processor.rs` (dual-dimension typestate)
+  - `traces-core/src/note/processor.rs` (simpler typestate)
+  - `traces-core/src/schema/property_bank_processor.rs` (dual-dimension typestate)
 - Current figment usage is in `loader.rs:415-439` only
 - Merging precedence: defaults < global < vault (vault has highest priority)
 - Must preserve exact merging semantics for backward compatibility

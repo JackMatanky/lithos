@@ -1,4 +1,4 @@
-//! Resolved platform and application directories for Lithos.
+//! Resolved platform and application directories for Traces.
 //!
 //! [`AppDirs`] merges [`EnvVars`](crate::discovery::EnvVars) overrides with XDG
 //! platform defaults from [`crate`].
@@ -22,10 +22,10 @@ use crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 // AppDirs
 // ---------------------------------------------------------------------------
 
-/// Resolved Lithos application directories.
+/// Resolved Traces application directories.
 ///
 /// Merges [`EnvVars`](crate::discovery::EnvVars) overrides with XDG platform
-/// defaults, applying the `"lithos"` suffix to platform base directories.
+/// defaults, applying the `"traces"` suffix to platform base directories.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppDirs {
     cache: PathBuf,
@@ -37,9 +37,9 @@ impl AppDirs {
     /// Resolve app directories from env captures and platform defaults.
     ///
     /// Precedence per directory:
-    /// - **cache**: `vars.cache_dir` → `XDG_CACHE_HOME / "lithos"`
-    /// - **config**: `XDG_CONFIG_HOME / "lithos"`
-    /// - **`system_config`**: `/etc/lithos` (unix), `%PROGRAMDATA%/Lithos`
+    /// - **cache**: `vars.cache_dir` → `XDG_CACHE_HOME / "traces"`
+    /// - **config**: `XDG_CONFIG_HOME / "traces"`
+    /// - **`system_config`**: `/etc/traces` (unix), `%PROGRAMDATA%/Traces`
     ///   (win)
     #[inline]
     #[must_use]
@@ -47,8 +47,8 @@ impl AppDirs {
         let cache = vars
             .cache_dir()
             .cloned()
-            .unwrap_or_else(|| XDG_CACHE_HOME.join("lithos"));
-        let config = XDG_CONFIG_HOME.join("lithos");
+            .unwrap_or_else(|| XDG_CACHE_HOME.join("traces"));
+        let config = XDG_CONFIG_HOME.join("traces");
         let system_config = platform_system_config();
         Self {
             cache,
@@ -57,21 +57,21 @@ impl AppDirs {
         }
     }
 
-    /// Resolved Lithos cache directory.
+    /// Resolved Traces cache directory.
     #[inline]
     #[must_use]
     pub fn cache(&self) -> &PathBuf {
         &self.cache
     }
 
-    /// Resolved Lithos global config directory.
+    /// Resolved Traces global config directory.
     #[inline]
     #[must_use]
     pub fn config(&self) -> &PathBuf {
         &self.config
     }
 
-    /// System-wide Lithos config directory.
+    /// System-wide Traces config directory.
     #[inline]
     #[must_use]
     pub fn system_config(&self) -> Option<&PathBuf> {
@@ -90,13 +90,13 @@ impl AppDirs {
     reason = "signature matches non-unix variant"
 )]
 fn platform_system_config() -> Option<PathBuf> {
-    Some(PathBuf::from("/etc/lithos"))
+    Some(PathBuf::from("/etc/traces"))
 }
 
 /// System-wide config directory.
 #[cfg(windows)]
 fn platform_system_config() -> Option<PathBuf> {
-    Some(PathBuf::from(r"C:\ProgramData\Lithos"))
+    Some(PathBuf::from(r"C:\ProgramData\Traces"))
 }
 
 /// System-wide config directory (other platforms: none).
@@ -114,11 +114,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uses_xdg_config_home_plus_lithos_when_no_env_overrides() {
+        fn uses_xdg_config_home_plus_traces_when_no_env_overrides() {
             let vars = EnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
-            let expected = XDG_CONFIG_HOME.join("lithos");
+            let expected = XDG_CONFIG_HOME.join("traces");
             assert_eq!(dirs.config(), &expected);
             assert!(!dirs.cache().as_os_str().is_empty());
         }
@@ -138,23 +138,23 @@ mod tests {
         }
 
         #[test]
-        fn cache_falls_back_to_xdg_cache_home_plus_lithos() {
+        fn cache_falls_back_to_xdg_cache_home_plus_traces() {
             let vars = EnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
-            let expected = XDG_CACHE_HOME.join("lithos");
+            let expected = XDG_CACHE_HOME.join("traces");
             assert_eq!(dirs.cache(), &expected);
         }
 
         #[cfg(unix)]
         #[test]
-        fn system_config_is_etc_lithos_on_unix() {
+        fn system_config_is_etc_traces_on_unix() {
             let vars = EnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
             assert_eq!(
                 dirs.system_config(),
-                Some(&PathBuf::from("/etc/lithos"))
+                Some(&PathBuf::from("/etc/traces"))
             );
         }
     }

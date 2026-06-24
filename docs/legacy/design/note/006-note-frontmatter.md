@@ -78,7 +78,7 @@ Frontmatter supports two primary usage patterns:
 1. **Unknown type (runtime inspection)**
 
 ```rust
-use lithos_core::note::value::FieldValue;
+use traces_core::note::value::FieldValue;
 
 let value = FieldValue::String("hello".to_owned());
 
@@ -92,8 +92,8 @@ if value.is_string() {
 Today (strict extraction with errors):
 
 ```rust
-use lithos_core::note::frontmatter::Frontmatter;
-use lithos_core::note::value::FieldValue;
+use traces_core::note::frontmatter::Frontmatter;
+use traces_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -107,8 +107,8 @@ assert_eq!(priority, Some(5.0));
 Proposed additions (strict extraction, with errors):
 
 ```rust
-use lithos_core::note::frontmatter::{Frontmatter, FrontmatterError};
-use lithos_core::note::value::FieldValue;
+use traces_core::note::frontmatter::{Frontmatter, FrontmatterError};
+use traces_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -130,11 +130,11 @@ assert_eq!(aliases_lenient, Some(vec!["ok".to_owned()]));
 Configured keys remain supported:
 
 ```rust
-use lithos_core::config::aggregate::Config;
-use lithos_core::config::global::Global;
-use lithos_core::config::vault::Vault;
-use lithos_core::note::frontmatter::Frontmatter;
-use lithos_core::note::value::FieldValue;
+use traces_core::config::aggregate::Config;
+use traces_core::config::global::Global;
+use traces_core::config::vault::Vault;
+use traces_core::note::frontmatter::Frontmatter;
+use traces_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -433,19 +433,19 @@ Design stance (Rust-idiomatic + note-context-aware): avoid “nesting for its ow
 
 Preferred (near-term):
 
-- Keep a single public module file: `lithos-core/src/note/frontmatter.rs`.
-- Keep `FrontmatterError` owned by the note context in `lithos-core/src/note/error.rs`.
+- Keep a single public module file: `traces-core/src/note/frontmatter.rs`.
+- Keep `FrontmatterError` owned by the note context in `traces-core/src/note/error.rs`.
 - Keep configured-key helpers (`title`, `file_class`, `aliases`) colocated with `Frontmatter` (they are note concerns and depend only on cross-cutting config).
 
 If/when the file becomes too large, split **flat** before splitting **deep**:
 
 - Option A (flat files, no directory nesting):
-  - `lithos-core/src/note/frontmatter.rs` (public API + `Frontmatter`)
-  - `lithos-core/src/note/frontmatter_value.rs` (`FieldValue` + inspection)
-  - `lithos-core/src/note/frontmatter_convert.rs` (local conversion traits + impls)
+  - `traces-core/src/note/frontmatter.rs` (public API + `Frontmatter`)
+  - `traces-core/src/note/frontmatter_value.rs` (`FieldValue` + inspection)
+  - `traces-core/src/note/frontmatter_convert.rs` (local conversion traits + impls)
 
 - Option B (one-level directory) only if Option A becomes awkward:
-  - `lithos-core/src/note/frontmatter/mod.rs` re-exporting a small set of items
+  - `traces-core/src/note/frontmatter/mod.rs` re-exporting a small set of items
   - `value.rs`, `convert.rs` as internal modules
 
 Both options keep module depth shallow and respect the existing note context layout (aggregate/error/events/task/etc.).
@@ -584,7 +584,7 @@ This appendix is intentionally implementation-specific. Remove it once the code 
 
 Current implementation snapshot:
 
-- Implementation is in `lithos-core/src/note/frontmatter.rs` (single file).
+- Implementation is in `traces-core/src/note/frontmatter.rs` (single file).
 - `Frontmatter::new` returns `Result<Self, NoteError>` but is currently infallible.
 - Strict accessors already exist: `try_get`, `try_get_required`, `try_get_ref`, `try_get_required_ref`.
 - Conversions are implemented via local traits `FromFieldValue` / `FromFieldValueRef`.

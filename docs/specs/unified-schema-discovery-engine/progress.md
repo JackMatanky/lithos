@@ -97,7 +97,7 @@
   - Verified all tests pass: `mise run test:unit:schema`
 
 - Files created/modified:
-  - lithos-core/src/schema/discovery.rs (REFACTORED) - New type structure + decomposed methods
+  - traces-core/src/schema/discovery.rs (REFACTORED) - New type structure + decomposed methods
   - task_plan.md (updated) - Marked Phase 3 complete
   - progress.md (updated) - This file
 
@@ -124,11 +124,11 @@
   - Verified all tests pass: `mise run test:unit:schema`
 
 - Files modified:
-  - lithos-core/src/schema/builder.rs (REFACTORED)
-  - lithos-core/src/schema/discovery.rs (FIXED)
-  - lithos-core/src/schema/storage.rs (UPDATED TRAIT)
-  - lithos-core/src/schema/testing.rs (UPDATED TEST DOUBLE)
-  - lithos-core/src/schema/mod.rs (EXPORTED DISCOVERY)
+  - traces-core/src/schema/builder.rs (REFACTORED)
+  - traces-core/src/schema/discovery.rs (FIXED)
+  - traces-core/src/schema/storage.rs (UPDATED TRAIT)
+  - traces-core/src/schema/testing.rs (UPDATED TEST DOUBLE)
+  - traces-core/src/schema/mod.rs (EXPORTED DISCOVERY)
   - task_plan.md (updated)
   - progress.md (updated)
 

@@ -1,7 +1,7 @@
 ---
 title: "File Ingestion Refactor - Implementation Plan"
 description: "Step-by-step implementation plan for refactoring file ingestion to use Service Layer pattern"
-author: "Lithos Development Team"
+author: "Traces Development Team"
 date: "2026-02-16"
 status: "active"
 related_docs:
@@ -48,7 +48,7 @@ Before marking this refactor complete:
 
 ### 1.1: Create FileSource Trait
 
-**File**: `lithos-core/src/fs/source.rs` (new file)
+**File**: `traces-core/src/fs/source.rs` (new file)
 
 **Tasks**:
 
@@ -95,7 +95,7 @@ fn fs_file_source_returns_error_for_missing_file() { /* ... */ }
 
 ### 1.2: Create File Parsers
 
-**File**: `lithos-core/src/fs/parsers.rs` (new file)
+**File**: `traces-core/src/fs/parsers.rs` (new file)
 
 **Tasks**:
 
@@ -142,7 +142,7 @@ fn parse_note_file_delegates_to_existing_parser() { /* ... */ }
 
 ### 1.3: Add ParseError Type
 
-**File**: `lithos-core/src/fs/error.rs` (modify existing)
+**File**: `traces-core/src/fs/error.rs` (modify existing)
 
 **Tasks**:
 
@@ -178,7 +178,7 @@ fn parse_note_file_delegates_to_existing_parser() { /* ... */ }
 
 ### 1.4: Update fs/mod.rs
 
-**File**: `lithos-core/src/fs/mod.rs` (modify existing)
+**File**: `traces-core/src/fs/mod.rs` (modify existing)
 
 **Tasks**:
 
@@ -241,13 +241,13 @@ mise run lint
 
 1. **Create directory structure**:
    ```bash
-   mkdir -p lithos-core/src/application/services
+   mkdir -p traces-core/src/application/services
    ```
 
 2. **Create module files**:
-   - `lithos-core/src/application/mod.rs`
-   - `lithos-core/src/application/services/mod.rs`
-   - `lithos-core/src/application/error.rs`
+   - `traces-core/src/application/mod.rs`
+   - `traces-core/src/application/services/mod.rs`
+   - `traces-core/src/application/error.rs`
 
 3. **Add to lib.rs**:
    ```rust
@@ -258,7 +258,7 @@ mise run lint
 
 ### 2.2: Create IngestionError Type
 
-**File**: `lithos-core/src/application/error.rs` (new file)
+**File**: `traces-core/src/application/error.rs` (new file)
 
 **Tasks**:
 
@@ -292,7 +292,7 @@ mise run lint
 
 ### 2.3: Implement SchemaIngestionService
 
-**File**: `lithos-core/src/application/services/schema_ingestion.rs` (new file)
+**File**: `traces-core/src/application/services/schema_ingestion.rs` (new file)
 
 **Tasks**:
 
@@ -446,7 +446,7 @@ fn schema_ingestion_service_handles_partial_directory_failures() {
 
 ### 2.4: Implement TemplateIngestionService
 
-**File**: `lithos-core/src/application/services/template_ingestion.rs` (new file)
+**File**: `traces-core/src/application/services/template_ingestion.rs` (new file)
 
 **Tasks**:
 
@@ -491,7 +491,7 @@ fn schema_ingestion_service_handles_partial_directory_failures() {
 
 ### 2.5: Implement NoteIngestionService
 
-**File**: `lithos-core/src/application/services/note_ingestion.rs` (new file)
+**File**: `traces-core/src/application/services/note_ingestion.rs` (new file)
 
 **Tasks**:
 
@@ -527,7 +527,7 @@ fn schema_ingestion_service_handles_partial_directory_failures() {
 
 ### 2.6: Export Services
 
-**File**: `lithos-core/src/application/services/mod.rs` (new file)
+**File**: `traces-core/src/application/services/mod.rs` (new file)
 
 **Tasks**:
 
@@ -545,7 +545,7 @@ fn schema_ingestion_service_handles_partial_directory_failures() {
    pub use note_ingestion::NoteIngestionService;
    ```
 
-**File**: `lithos-core/src/application/mod.rs` (new file)
+**File**: `traces-core/src/application/mod.rs` (new file)
 
 **Tasks**:
 
@@ -601,14 +601,14 @@ mise run lint
 
 ### 3.1: Create Benchmark File
 
-**File**: `lithos-core/benches/file_ingestion.rs` (new file)
+**File**: `traces-core/benches/file_ingestion.rs` (new file)
 
 **Tasks**:
 
 1. **Add benchmark setup**:
    ```rust
    use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-   use lithos_core::{
+   use traces_core::{
        fs::{FsFileSource, InMemoryFileSource},
        application::SchemaIngestionService,
        db::Database,
@@ -781,16 +781,16 @@ mise run lint
 
 3. **Update "Where Does This Code Go?" section**:
    ```markdown
-   **File ingestion orchestration?** → `lithos-core/src/application/services/`
-   **File source abstraction?** → `lithos-core/src/fs/source.rs`
-   **File parsing logic?** → `lithos-core/src/fs/parsers.rs`
+   **File ingestion orchestration?** → `traces-core/src/application/services/`
+   **File source abstraction?** → `traces-core/src/fs/source.rs`
+   **File parsing logic?** → `traces-core/src/fs/parsers.rs`
    ```
 
 ---
 
 ### 4.2: Add Architecture Tests
 
-**File**: `lithos-core/tests/architecture.rs` (new file)
+**File**: `traces-core/tests/architecture.rs` (new file)
 
 **Tasks**:
 
@@ -936,7 +936,7 @@ mise run adr:validate
 
 ### 5.1: Audit Config Ports
 
-**File**: `lithos-core/src/config/ports.rs`
+**File**: `traces-core/src/config/ports.rs`
 
 **Tasks**:
 
@@ -946,13 +946,13 @@ mise run adr:validate
 
 2. **Document findings**:
    - Current status: Config ports appear clean (no file I/O methods found)
-   - Verify by searching for `Path` imports: `grep -n "use std::path" lithos-core/src/config/ports.rs`
+   - Verify by searching for `Path` imports: `grep -n "use std::path" traces-core/src/config/ports.rs`
 
 ---
 
 ### 5.2: Verify Config Ingestion Pattern
 
-**File**: `lithos-core/src/config/ingest.rs`
+**File**: `traces-core/src/config/ingest.rs`
 
 **Tasks**:
 
@@ -974,7 +974,7 @@ mise run adr:validate
 
 ### 5.3: Create ConfigIngestionService (If Needed)
 
-**File**: `lithos-core/src/application/services/config_ingestion.rs` (new file, only if pattern doesn't match)
+**File**: `traces-core/src/application/services/config_ingestion.rs` (new file, only if pattern doesn't match)
 
 **Tasks**:
 
@@ -1029,7 +1029,7 @@ mise run adr:validate
 **Verification Commands**:
 ```bash
 mise run test:unit:config
-grep -r "std::fs" lithos-core/src/config/ports.rs  # Should return nothing
+grep -r "std::fs" traces-core/src/config/ports.rs  # Should return nothing
 ```
 
 **Output**: Config context validated as clean. Pattern proven with real example.
@@ -1048,13 +1048,13 @@ grep -r "std::fs" lithos-core/src/config/ports.rs  # Should return nothing
 2. **Manual verification**:
    ```bash
    # Check for file I/O in ports
-   grep -r "std::fs" lithos-core/src/*/ports.rs
+   grep -r "std::fs" traces-core/src/*/ports.rs
 
    # Check for Path parameters in port traits
-   grep -r "fn.*&Path" lithos-core/src/*/ports.rs
+   grep -r "fn.*&Path" traces-core/src/*/ports.rs
 
    # Verify all services exist
-   ls lithos-core/src/application/services/
+   ls traces-core/src/application/services/
    ```
 
 3. **Performance verification**:
@@ -1127,7 +1127,7 @@ Infrastructure (db::Database)
 **Symptom**: `ports_must_not_import_std_fs` test fails on existing code
 
 **Solution**:
-1. Find violating port file: `grep -r "std::fs" lithos-core/src/*/ports.rs`
+1. Find violating port file: `grep -r "std::fs" traces-core/src/*/ports.rs`
 2. Move file I/O logic to application service
 3. Update port to only have database operations
 4. Verify with architecture test
@@ -1181,7 +1181,7 @@ These optimizations are **not** part of this refactor:
 ### Key Files Created
 
 ```
-lithos-core/src/
+traces-core/src/
 ├── application/
 │   ├── mod.rs (new)
 │   ├── error.rs (new)
@@ -1194,10 +1194,10 @@ lithos-core/src/
     ├── source.rs (new)
     └── parsers.rs (new, extract from existing parsers.rs)
 
-lithos-core/tests/
+traces-core/tests/
 └── architecture.rs (new)
 
-lithos-core/benches/
+traces-core/benches/
 └── file_ingestion.rs (new)
 
 docs/
@@ -1224,7 +1224,7 @@ mise run test:bench:core
 mise run verify
 
 # Check for port violations
-grep -r "std::fs" lithos-core/src/*/ports.rs
+grep -r "std::fs" traces-core/src/*/ports.rs
 ```
 
 ### Success Metrics

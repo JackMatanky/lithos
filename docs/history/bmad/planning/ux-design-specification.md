@@ -15,7 +15,7 @@ inputDocuments:
     category: project_doc
 ---
 
-# UX Design Specification lithos
+# UX Design Specification traces
 
 **Author:** Jack
 **Date:** 2026-01-05
@@ -26,7 +26,7 @@ inputDocuments:
 
 ### Project Vision
 
-Lithos is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosystem into seamless terminal-based knowledge management. It empowers users to create sophisticated templates and schemas without leaving their preferred development environment, solving the workflow friction of context-switching between Obsidian's plugins and external tools.
+Traces is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosystem into seamless terminal-based knowledge management. It empowers users to create sophisticated templates and schemas without leaving their preferred development environment, solving the workflow friction of context-switching between Obsidian's plugins and external tools.
 
 ### Target Users
 
@@ -44,7 +44,7 @@ Lithos is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosyste
 
 ### Design Opportunities
 
-- **Simple Commands with Intelligent Fallbacks:** Core operations accessible through single words (e.g., `lithos new`) with smart defaults and progressive enhancement—specific when needed, simple when possible
+- **Simple Commands with Intelligent Fallbacks:** Core operations accessible through single words (e.g., `traces new`) with smart defaults and progressive enhancement—specific when needed, simple when possible
 - **Modal Template/Schema Assembly:** Interactive builders that help users construct templates and schemas from scratch by piecing together components: schema selection for frontmatter structure, predefined values/functions for field population, existing templates as reusable content blocks
 - **Contextual Intelligence:** Schema-aware inputs that anticipate user needs based on vault structure and provide smart suggestions for file selections, enum values, and date formatting
 - **Progressive Help Systems:** Multi-tier guidance from inline prompts for beginners to comprehensive documentation for experts, with contextual help triggered by user actions
@@ -81,7 +81,7 @@ Lithos is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosyste
 
 ### Defining Experience
 
-Lithos delivers a CLI-first knowledge management experience that makes sophisticated template and schema operations feel effortless and natural. The core user action is template creation and execution—users should feel like they're working with an intelligent assistant that understands their vault structure and anticipates their needs.
+Traces delivers a CLI-first knowledge management experience that makes sophisticated template and schema operations feel effortless and natural. The core user action is template creation and execution—users should feel like they're working with an intelligent assistant that understands their vault structure and anticipates their needs.
 
 ### Platform Strategy
 
@@ -113,7 +113,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 ### Comparative Experience Analysis
 
-| Criteria                | Lithos CLI MVP                                    | Obsidian GUI                 | Generic CLI Tools                | LSP-Enhanced Editors                |
+| Criteria                | Traces CLI MVP                                    | Obsidian GUI                 | Generic CLI Tools                | LSP-Enhanced Editors                |
 | ----------------------- | ------------------------------------------------- | ---------------------------- | -------------------------------- | ----------------------------------- |
 | Template Creation Speed | Effortlessly fast (<5 min first template)         | Medium (visual but manual)   | Slow (requires coding expertise) | Fast (intelligent but editor-bound) |
 | Error Recovery          | Educational (teaches while fixing)                | Good (visual feedback)       | Poor (cryptic, unhelpful)        | Good (contextual IDE help)          |
@@ -121,7 +121,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 | Power/Flexibility       | Unlimited (full scripting/automation)             | Medium (plugin limitations)  | High (but requires expertise)    | High (language ecosystem)           |
 | Context Awareness       | Deeply intelligent (schema + vault relationships) | Good (visual link following) | Minimal (text-only)              | Excellent (semantic understanding)  |
 
-**Recommended:** Lithos uniquely combines CLI's automation power with Obsidian's relationship intelligence and LSP's modern assistance—delivering what users need: reliable, scriptable knowledge management that scales from personal use to enterprise automation.
+**Recommended:** Traces uniquely combines CLI's automation power with Obsidian's relationship intelligence and LSP's modern assistance—delivering what users need: reliable, scriptable knowledge management that scales from personal use to enterprise automation.
 
 ### Design Opportunity Transformations
 
@@ -235,7 +235,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 ### Comparative Analysis of Inspiring Tools
 
-| Criteria        | Lithos Needs       | Git       | ripgrep   | fzf       | neovim    | Best Fit    | Validation Metrics                     |
+| Criteria        | Traces Needs       | Git       | ripgrep   | fzf       | neovim    | Best Fit    | Validation Metrics                     |
 | --------------- | ------------------ | --------- | --------- | --------- | --------- | ----------- | -------------------------------------- |
 | Fuzzy Search    | Template discovery | Partial   | No        | Excellent | Good      | fzf         | 95% user satisfaction, <200ms response |
 | Progressive UX  | Beginner to expert | Excellent | Good      | Good      | Excellent | Git/neovim  | 80% feature adoption within 2 weeks    |
@@ -243,7 +243,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 | Contextual Help | Error guidance     | Good      | Limited   | Limited   | Excellent | neovim      | 90% error resolution without docs      |
 | Learning Curve  | Adoption ease      | Medium    | Low       | Low       | Medium    | ripgrep/fzf | <30 min to first successful use        |
 
-**Key Insights:** fzf provides the core fuzzy finding Lithos needs, ripgrep shows performance expectations, Git demonstrates progressive complexity, neovim illustrates LSP integration potential. Validation through user interviews shows 85% of developers report increased productivity after adopting similar patterns.
+**Key Insights:** fzf provides the core fuzzy finding Traces needs, ripgrep shows performance expectations, Git demonstrates progressive complexity, neovim illustrates LSP integration potential. Validation through user interviews shows 85% of developers report increased productivity after adopting similar patterns.
 
 ### Anti-Patterns to Avoid
 
@@ -265,10 +265,10 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 **Adapt Creatively (Medium-High Confidence, Requires Customization):**
 
-- lazygit's staged complexity approach for Lithos' modal template creation (break complex operations into 3-5 clear steps)
+- lazygit's staged complexity approach for Traces' modal template creation (break complex operations into 3-5 clear steps)
 - GitHub CLI's interactive prompts for schema-driven form building (adaptive guidance based on user expertise)
 - Cargo's reliability messaging for large vault operation feedback (progress indicators with time estimates)
-- ripgrep's performance standards for all Lithos operations (under 500ms for typical use)
+- ripgrep's performance standards for all Traces operations (under 500ms for typical use)
 - bat's enhancement philosophy for terminal-first feature additions (add value without disrupting core workflows)
 - zoxide's usage-based ordering for fuzzy picker results (top 5-10 most used templates first, then alphabetical)
 
@@ -286,7 +286,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 ### Design System Choice
 
-Hybrid CLI Approach - combining established conventions from successful tools (Git, ripgrep, mise) with custom enhancements for Lithos' schema-driven capabilities.
+Hybrid CLI Approach - combining established conventions from successful tools (Git, ripgrep, mise) with custom enhancements for Traces' schema-driven capabilities.
 
 ### Rationale for Selection
 
@@ -297,23 +297,23 @@ Hybrid CLI Approach - combining established conventions from successful tools (G
 
 ### Implementation Approach
 
-- **Command Structure:** Mise-inspired subcommands (`lithos new`, `lithos find`, `lithos schema`) with clean, memorable names
+- **Command Structure:** Mise-inspired subcommands (`traces new`, `traces find`, `traces schema`) with clean, memorable names
 - **Default Behavior:** Interactive fuzzy pickers for template/schema selection, usage-based ordering (top 5-10 most used first)
 - **Flag Strategy:** Flags modify default interactive behavior (e.g., `--non-interactive`, `--schema schema-name`)
-- **Help System:** Multi-level help from inline hints (`lithos --help`) to comprehensive documentation (`lithos help advanced`)
+- **Help System:** Multi-level help from inline hints (`traces --help`) to comprehensive documentation (`traces help advanced`)
 
 ### Customization Strategy
 
 - **Base Conventions:** Git/ripgrep patterns for core CLI behavior
 - **Mise Inspiration:** Clean subcommand structure and approachable command names
-- **Lithos-Specific:** Schema-driven interactions and fuzzy picker enhancements
+- **Traces-Specific:** Schema-driven interactions and fuzzy picker enhancements
 - **Progressive Complexity:** Simple defaults with advanced options available
 
 ## Design Direction Decision
 
 ### Design Directions Explored
 
-Two primary design directions reflecting Lithos' dual nature:
+Two primary design directions reflecting Traces' dual nature:
 
 **Terminal CLI Direction:** Optimized for compact terminal windows with concise, efficient output and minimal screen usage.
 
@@ -329,7 +329,7 @@ Hybrid approach combining both directions:
 
 ### Design Rationale
 
-Terminal CLI direction ensures usability in constrained terminal environments where screen real estate is limited. Modal IDE direction leverages the richer capabilities of modern editors for enhanced productivity. The hybrid ensures Lithos works well everywhere users need it.
+Terminal CLI direction ensures usability in constrained terminal environments where screen real estate is limited. Modal IDE direction leverages the richer capabilities of modern editors for enhanced productivity. The hybrid ensures Traces works well everywhere users need it.
 
 ### Implementation Approach
 
@@ -381,7 +381,7 @@ Terminal CLI direction ensures usability in constrained terminal environments wh
 
 ### Template Creation and Selection Flow (Alex & Maya)
 
-**Entry:** User types `lithos new`
+**Entry:** User types `traces new`
 **Initial Display:** Fuzzy picker with top 5-10 most-used templates, usage-ordered
 **Interaction:** Type to filter or arrow keys to navigate
 **Decision Point:** Select existing template or create new one
@@ -412,7 +412,7 @@ Terminal CLI direction ensures usability in constrained terminal environments wh
 
 ### Cross-Environment Template Sharing Flow (Jordan)
 
-**Entry:** `lithos publish` or community template discovery
+**Entry:** `traces publish` or community template discovery
 **Validation:** Schema and template compatibility checking
 **Packaging:** Git-based distribution with metadata
 **Discovery:** Community registry with filtering and ratings
@@ -421,7 +421,7 @@ Terminal CLI direction ensures usability in constrained terminal environments wh
 
 ### First-Time User Onboarding Flow (Maya)
 
-**Entry:** `lithos init` or first run
+**Entry:** `traces init` or first run
 **Assessment:** Interactive questions about experience level and needs
 **Setup:** Guided configuration with sample templates and schemas
 **Tutorial:** Progressive introduction to core concepts
@@ -633,7 +633,7 @@ Based on user journeys and design direction, we need specialized terminal intera
 
 ### Color System
 
-Lithos uses semantic color roles that inherit from the user's terminal/IDE theme, ensuring seamless integration:
+Traces uses semantic color roles that inherit from the user's terminal/IDE theme, ensuring seamless integration:
 
 - Primary: Maps to terminal's primary/accent color
 - Success: Maps to terminal's green (typically #00FF00 or theme equivalent)
@@ -677,7 +677,7 @@ Theme-agnostic design ensuring readability across all terminal configurations:
 
 ### Defining Experience
 
-The defining experience for Lithos is intelligent template and schema selection through fuzzy finding—the moment users feel like they're working with an AI assistant that understands their vault and anticipates their needs.
+The defining experience for Traces is intelligent template and schema selection through fuzzy finding—the moment users feel like they're working with an AI assistant that understands their vault and anticipates their needs.
 
 ### User Mental Model
 
@@ -698,7 +698,7 @@ This combines established fuzzy finding with novel schema intelligence. The fuzz
 
 **1. Initiation:**
 
-- User types `lithos new` (template) or `lithos schema` (schema creation/selection)
+- User types `traces new` (template) or `traces schema` (schema creation/selection)
 - System immediately presents fuzzy picker with top 5-10 most used options, ordered by recent usage
 - Pre-indexed common templates ensure instant response, no typing required for 80% of use cases
 

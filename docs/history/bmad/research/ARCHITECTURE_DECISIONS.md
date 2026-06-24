@@ -253,9 +253,9 @@ After Phase 1 (Discovery → RefsExpanded), partition schemas:
 **Must read before implementation**:
 1. `_bmad-output/schema-pipeline-review.md` - Complete pipeline analysis
 2. `docs/research/redb_tree_storage_research.md` - Storage optimization research
-3. `lithos-core/src/schema/error.rs` - Existing error hierarchy
-4. `lithos-core/src/schema/extender.rs` - Tree building logic
-5. `lithos-core/src/schema/merger.rs` - Property merging logic
+3. `traces-core/src/schema/error.rs` - Existing error hierarchy
+4. `traces-core/src/schema/extender.rs` - Tree building logic
+5. `traces-core/src/schema/merger.rs` - Property merging logic
 
 ---
 

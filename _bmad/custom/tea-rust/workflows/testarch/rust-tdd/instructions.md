@@ -7,7 +7,7 @@
 
 ## Overview
 
-Guide new Rust implementations through red-green-refactor while enforcing Lithos architecture, Rust-specific testing practices, adaptive scope expansion, and quality-first criteria.
+Guide new Rust implementations through red-green-refactor while enforcing Traces architecture, Rust-specific testing practices, adaptive scope expansion, and quality-first criteria.
 
 ---
 

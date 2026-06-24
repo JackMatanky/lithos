@@ -4,7 +4,7 @@ status: accepted
 date_proposed: 2026-06-08
 date_decided: 2026-06-08
 date_implemented:
-stakeholders: [lithos-core maintainers, schema maintainers, note maintainers, template maintainers]
+stakeholders: [traces-core maintainers, schema maintainers, note maintainers, template maintainers]
 ---
 
 # ADR 022: Cross-context read access through `IndexerReadRepository`
@@ -37,7 +37,7 @@ table definitions directly.
 
 - The Indexer is the sole writer of `FILES` and `DIRS`.
 - Other contexts receive an `IndexerReadRepository` reference at the
-  application-service level (injected via `lithos-core::app`).
+  application-service level (injected via `traces-core::app`).
 - `FILES` / `DIRS` table definitions and key schema remain private to the
   Indexer's storage adapter.
 - If a downstream context adapter needs a combined traversal that the port
@@ -98,5 +98,5 @@ downstream adapters can build their own read-only accessors.
 
 - ADR 016 — segregated repository traits (port ownership rule)
 - ADR 018 — explicit redb adapter seam (adapter injection precedent)
-- ADR 021 — `lithos-core::app` composition root (injection site for `IndexerReadRepository`)
+- ADR 021 — `traces-core::app` composition root (injection site for `IndexerReadRepository`)
 - `.scratch/filesystem-indexer/PRD.md` Section 10 — `FILES`/`DIRS` table ownership

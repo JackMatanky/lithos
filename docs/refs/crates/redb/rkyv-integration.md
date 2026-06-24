@@ -410,14 +410,14 @@ impl redb::Key for CompositeKey {
 ```rust
 // Use descriptive, namespaced names
 const SCHEMAS: TableDefinition<&str, StoredSchema> =
-    TableDefinition::new("lithos:schemas:v1");
+    TableDefinition::new("traces:schemas:v1");
 
 const NOTES: TableDefinition<&str, StoredNote> =
-    TableDefinition::new("lithos:notes:v1");
+    TableDefinition::new("traces:notes:v1");
 
 // Version suffix allows schema evolution
 const SCHEMAS_V2: TableDefinition<&str, StoredSchemaV2> =
-    TableDefinition::new("lithos:schemas:v2");
+    TableDefinition::new("traces:schemas:v2");
 ```
 
 ### Multimap vs Regular Table

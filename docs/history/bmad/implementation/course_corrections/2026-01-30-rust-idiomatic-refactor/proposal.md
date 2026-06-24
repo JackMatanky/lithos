@@ -47,9 +47,9 @@ We are moving from a strict **Interface-Defined Architecture** (Hexagonal) to a 
 
 - **Total File Displacement**: **100% of source code** in `crates/domain`, `crates/app`, and `crates/adapters` will be physically moved.
   - _Old:_ `crates/domain/src/...`
-  - _New:_ `crates/lithos-core/src/domain/...` (logical module)
+  - _New:_ `crates/traces-core/src/domain/...` (logical module)
 - **Import Apocalypse**: Every single file in the project will require import rewrites.
-  - External crate imports (e.g., `use domain::...`) must become internal module imports (`use crate::...` or `use lithos_core::...`).
+  - External crate imports (e.g., `use domain::...`) must become internal module imports (`use crate::...` or `use traces_core::...`).
   - `use` statements across the entire test suite and benchmarks will break and require manual reconstruction.
 - **Workspace Demolition**: The root `Cargo.toml` workspace definition will be deleted and recreated. The build graph is being fundamentally altered.
 
@@ -73,7 +73,7 @@ We are moving from a strict **Interface-Defined Architecture** (Hexagonal) to a 
 
 **Selected Option: Option 3 - Strategic Pivot (Single-Crate Architecture)**
 
-We must pivot to a **Single-Crate "Core" Architecture** (`lithos-core`) + separate Binary Crates (`lithos-cli`, `lithos-lsp`).
+We must pivot to a **Single-Crate "Core" Architecture** (`traces-core`) + separate Binary Crates (`traces-cli`, `traces-lsp`).
 
 ### Rationale
 
@@ -103,7 +103,7 @@ We must pivot to a **Single-Crate "Core" Architecture** (`lithos-core`) + separa
 #### OLD (Current Multi-Crate Architecture)
 
 ```
-lithos/
+traces/
 ├── Cargo.toml (workspace root)
 ├── crates/
 │   ├── domain/
@@ -124,10 +124,10 @@ lithos/
 #### NEW (Single-Core Architecture)
 
 ```
-lithos/
+traces/
 ├── Cargo.toml (workspace root)
 ├── crates/
-│   ├── lithos-core/
+│   ├── traces-core/
 │   │   ├── Cargo.toml (single compilation unit)
 │   │   └── src/
 │   │       ├── lib.rs
@@ -172,11 +172,11 @@ lithos/
 │   │       ├── db.rs           # Zero-copy database layer (see Proposals 4 & 5)
 │   │       └── <context>/      # Domain contexts with static methods
 │   │
-│   ├── lithos-cli/
+│   ├── traces-cli/
 │   │   ├── Cargo.toml (separate binary)
 │   │   └── src/
 │   │
-│   └── lithos-lsp/            # Phase 2
+│   └── traces-lsp/            # Phase 2
 │       ├── Cargo.toml (separate binary)
 │       └── src/
 ```
@@ -188,7 +188,7 @@ Dependency Flow:
 fs/ is generic infrastructure with no domain knowledge
 db.rs provides zero-copy primitives with no domain knowledge
 <context>/ contains domain types with static methods that use Database
-lithos-cli orchestrates db + contexts
+traces-cli orchestrates db + contexts
 
 Domain contexts (note/, schema/, etc.) depend on NOTHING internal except db.rs
 ```
@@ -234,7 +234,7 @@ Domain contexts (note/, schema/, etc.) depend on NOTHING internal except db.rs
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum LithosError {
+pub enum TracesError {
     #[error(transparent)]
     Note(#[from] note::NoteError),
 
@@ -251,12 +251,12 @@ pub enum LithosError {
 #### Epic-Level Impact
 
 - Epic 3 (Domain):
-  - Move from `crates/domain/src/config/` -> `lithos-core/src/config.rs` + `config/` folder
+  - Move from `crates/domain/src/config/` -> `traces-core/src/config.rs` + `config/` folder
   - Add `config/error.rs`, `config/events.rs` (co-located, not centralized)
   - Remove centralized `domain/src/errors.rs`, `domain/src/events.rs`
 
 - Epic 5 (Cache):
-  - Replace `crates/adapters/src/spi/cache/` with `lithos-core/src/db.rs`
+  - Replace `crates/adapters/src/spi/cache/` with `traces-core/src/db.rs`
   - NO cache/ folder (see Proposals 4 & 5)
   - Database layer provides zero-copy primitives
 
@@ -265,7 +265,7 @@ pub enum LithosError {
   - Use `Database` type from `db.rs` (no separate storage module)
 
 - ALL Epics:
-  - Update imports from `use domain::config::...` to `use lithos_core::config::...`
+  - Update imports from `use domain::config::...` to `use traces_core::config::...`
   - Replace "Hexagonal Architecture" references with "Dependency Flow Architecture (dependencies point inward)"
   - Replace centralized error references with co-located per-context errors
 
@@ -276,22 +276,22 @@ OLD (Centralized - incorrect)
 crates/domain/src/errors.rs
 
 NEW (Co-located - correct)
-lithos-core/src/note/error.rs
-lithos-core/src/schema/error.rs
-lithos-core/src/db/error.rs
+traces-core/src/note/error.rs
+traces-core/src/schema/error.rs
+traces-core/src/db/error.rs
 
 OPTIONAL (Top-level composition)
-lithos-core/src/lib.rs (LithosError via #[from])
+traces-core/src/lib.rs (TracesError via #[from])
 ```
 
 **Note**: Later proposals refine portions of this structure. See Proposals 4 & 5 for database layer and CQRS pattern decisions.
 
 | Feature        | Current (Multi-Crate)   | Proposed (Single-Core)                     |
 | :------------- | :---------------------- | :----------------------------------------- |
-| **Root**       | Workspace with 4 crates | Workspace with `lithos-core`, `lithos-cli` |
+| **Root**       | Workspace with 4 crates | Workspace with `traces-core`, `traces-cli` |
 | **Boundaries** | Physical (Crates)       | Logical (Modules + Visibility)             |
 | **Layers**     | Physical Crates         | Logical Modules                            |
-| **CLI**        | `crates/cli`            | `crates/lithos-cli` (remains separate)     |
+| **CLI**        | `crates/cli`            | `crates/traces-cli` (remains separate)     |
 
 ### 2. Error Type Consolidation (Co-Located Errors)
 
@@ -349,7 +349,7 @@ pub enum NoteError {
 
 ```rust
 #[derive(thiserror::Error, Debug)]
-pub enum LithosError {
+pub enum TracesError {
     #[error(transparent)]
     Note(#[from] note::NoteError),
 
@@ -436,16 +436,16 @@ crates/
 │           └── spi/
 │               └── mod.rs            # DELETE (empty)
 │
-├── app/                              # DELETE (merge into lithos-core)
+├── app/                              # DELETE (merge into traces-core)
 ├── adapters/                         # DELETE (replaced by db.rs)
-└── cli/                              # RENAME to lithos-cli/
+└── cli/                              # RENAME to traces-cli/
 ```
 
 ##### NEW (Single-Crate with Rust 2018+ pattern)
 
 ```
 crates/
-└── lithos-core/
+└── traces-core/
     ├── Cargo.toml
     └── src/
         ├── lib.rs
@@ -543,7 +543,7 @@ Dependencies flow INWARD (toward domain contexts):
 
 fs/ and db.rs are generic infrastructure with no domain knowledge
 <context>/ contains domain types with static methods that use Database
-lithos-cli depends on context types and Database
+traces-cli depends on context types and Database
 
 Domain contexts (note/, schema/, config/, template/) depend on NOTHING internal except db.rs
 ```
@@ -556,8 +556,8 @@ Domain contexts (note/, schema/, config/, template/) depend on NOTHING internal 
 | Co-locate ports                         | 4 files            | Move ports/config.rs -> config/ports.rs, etc.     |
 | Co-locate errors                        | 4 new files        | Extract from errors.rs -> config/error.rs, etc.   |
 | Keep events as-is                       | 4 files            | Already co-located                                |
-| Physical relocation                     | ALL files          | Move to lithos-core/src/                          |
-| Update imports                          | ALL consuming code | use domain::config:: -> use lithos_core::config:: |
+| Physical relocation                     | ALL files          | Move to traces-core/src/                          |
+| Update imports                          | ALL consuming code | use domain::config:: -> use traces_core::config:: |
 | Remove centralized ports/ and errors.rs | 2 folders          | Delete after migration                            |
 
 #### File Count Summary
@@ -590,10 +590,10 @@ A: crates/domain/src/ports/config.rs
 
 ```
 Q: Where is the Config aggregate?
-A: lithos-core/src/config.rs (direct access - main entry point)
+A: traces-core/src/config.rs (direct access - main entry point)
 
 Q: Where is Repository trait?
-A: lithos-core/src/config/ports.rs (co-located with Config context)
+A: traces-core/src/config/ports.rs (co-located with Config context)
 ```
 
 **Note**: Later proposals refine portions of this structure. See Proposals 4 & 5 for database layer and CQRS pattern decisions.
@@ -631,7 +631,7 @@ A: lithos-core/src/config/ports.rs (co-located with Config context)
 **Architecture**:
 
 ```
-lithos-core/src/
+traces-core/src/
 ├── db.rs                       # Zero-copy database layer (NO traits)
 │   ├── pub struct Database     # Concrete type (not trait)
 │   ├── pub struct ArchivedGuard<'txn, V>  # Zero-copy Deref wrapper
@@ -932,7 +932,7 @@ db.rs (uses redb + rkyv, NO domain knowledge)
 note/aggregate.rs (pure domain, NO db import)
 note/indexing.rs (uses Database, implements save/find methods)
   ↑
-lithos-cli (orchestrates db + contexts)
+traces-cli (orchestrates db + contexts)
 ```
 
 ---
@@ -1213,8 +1213,8 @@ Error handling is inconsistent (mix of anyhow, color-eyre, and planned miette). 
 
 **Proposed Rule**
 
-- Library/Core (lithos-core): `thiserror` only
-- CLI (lithos-cli): `miette` for reporting
+- Library/Core (traces-core): `thiserror` only
+- CLI (traces-cli): `miette` for reporting
 - No `anyhow` or `color-eyre` in library crates to avoid type erasure in library APIs
 - `anyhow` allowed only in main.rs if needed for quick prototyping
 
@@ -1343,7 +1343,7 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 - [x] Document co-located error pattern:
   - `note/error.rs`, `schema/error.rs`, etc.
   - NO centralized `errors.rs`
-  - Optional top-level `LithosError` composition
+  - Optional top-level `TracesError` composition
 - [x] Update epic stories to reference context-specific errors
 
 **1.4 Serde Feature Flag Strategy (Proposal 10) - ✅ DONE**
@@ -1375,8 +1375,8 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 
 - [ ] Update `Cargo.toml` workspace definition
   - Remove: `crates/domain`, `crates/app`, `crates/adapters`
-  - Add: `crates/lithos-core`, `crates/lithos-cli`
-- [ ] Create `crates/lithos-core/Cargo.toml` with dependencies:
+  - Add: `crates/traces-core`, `crates/traces-cli`
+- [ ] Create `crates/traces-core/Cargo.toml` with dependencies:
   - `redb` (persistence)
   - `rkyv` (zero-copy serialization)
   - `thiserror` (structured errors)
@@ -1389,9 +1389,9 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 
 **2.2 Directory Structure Creation**
 
-- [ ] Create `crates/lithos-core/src/` directory structure:
+- [ ] Create `crates/traces-core/src/` directory structure:
   ```
-  lithos-core/src/
+  traces-core/src/
   ├── lib.rs
   ├── db.rs (stub only)
   ├── fs/ (utilities)
@@ -1408,7 +1408,7 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 #### Acceptance Criteria
 
 - [ ] `cargo check` passes with new workspace structure
-- [ ] `crates/lithos-core` exists and compiles (with empty lib.rs)
+- [ ] `crates/traces-core` exists and compiles (with empty lib.rs)
 
 ---
 
@@ -1450,10 +1450,10 @@ For **each** context (config → note → schema → template), in order:
    - Optional: `ports.rs` (only if traits needed, Proposal 5)
 
 3. **Verify and Commit**:
-   - Run `cargo check -p lithos-core` - must pass
-   - Run `cargo clippy -p lithos-core` - must pass (no errors)
-   - Stage: `git add lithos-core/src/<context>.rs lithos-core/src/<context>/`
-   - Commit: `git commit -m "feat(config): migrate config context to lithos-core"`
+   - Run `cargo check -p traces-core` - must pass
+   - Run `cargo clippy -p traces-core` - must pass (no errors)
+   - Stage: `git add traces-core/src/<context>.rs traces-core/src/<context>/`
+   - Commit: `git commit -m "feat(config): migrate config context to traces-core"`
    - **All pre-commit hooks must pass**
 
 4. **Proceed to next context only after clean commit**
@@ -1504,12 +1504,12 @@ During each context migration:
 
 #### Acceptance Criteria
 
-- [ ] All domain contexts migrated to `lithos-core/src/`
-- [ ] NO `mod.rs` files remain in `lithos-core/src/`
+- [ ] All domain contexts migrated to `traces-core/src/`
+- [ ] NO `mod.rs` files remain in `traces-core/src/`
 - [ ] All contexts have `error.rs` co-located
 - [ ] Each context has its own commit with passing pre-commit hooks
-- [ ] `cargo check -p lithos-core` passes after each context
-- [ ] `cargo clippy -p lithos-core` passes (no errors) after each context
+- [ ] `cargo check -p traces-core` passes after each context
+- [ ] `cargo clippy -p traces-core` passes (no errors) after each context
 
 ---
 
@@ -1523,7 +1523,7 @@ During each context migration:
 
 **4.1 Database Placeholder (Stub)**
 
-- [ ] Create stub `crates/lithos-core/src/db.rs`:
+- [ ] Create stub `crates/traces-core/src/db.rs`:
   ```rust
   pub struct Database;
   impl Database {
@@ -1581,9 +1581,9 @@ For each context:
 
 **5.1 CLI Restructure**
 
-- [ ] Rename `crates/cli` → `crates/lithos-cli`
+- [ ] Rename `crates/cli` → `crates/traces-cli`
 - [ ] Update CLI `Cargo.toml`:
-  - Depend on `lithos-core`
+  - Depend on `traces-core`
   - Add `miette` for error reporting (Proposal 8)
   - Remove `async-trait`, `tokio` (unless needed for concurrency)
 
@@ -1637,7 +1637,7 @@ For each context:
 
 **6.1 Implement db.rs Infrastructure**
 
-- [ ] Update `crates/lithos-core/src/db.rs` (replace stub):
+- [ ] Update `crates/traces-core/src/db.rs` (replace stub):
 - [ ] Implement `Database` struct:
   - Wraps `redb::Database`
   - Constructor: `Database::open(path: &Path) -> Result<Self>`
@@ -1887,7 +1887,7 @@ pub enum FieldValue {
 - [ ] Add `put_json<K, V>()` method to `db.rs`
 - [ ] Add `get_json<K, V>()` method to `db.rs`
 - [ ] Add `DbError` variants for JSON serialization errors
-- [ ] Add `serde_json` dependency to lithos-core
+- [ ] Add `serde_json` dependency to traces-core
 
 **7.2 Update Note CQRS Implementations**
 

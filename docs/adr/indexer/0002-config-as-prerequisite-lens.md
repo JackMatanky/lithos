@@ -10,7 +10,7 @@ stakeholders: [Core Team]
 
 ## Context
 
-Lithos previously had a circular dependency: the local configuration file defined the vault root path, but the vault root was needed to locate the configuration file. This created a bootstrapping problem that was hacked around with hardcoded search paths.
+Traces previously had a circular dependency: the local configuration file defined the vault root path, but the vault root was needed to locate the configuration file. This created a bootstrapping problem that was hacked around with hardcoded search paths.
 
 The initial centralized discovery design proposed treating config as a discovery consumer: "Discovery scans the vault → finds config files → Config processor parses them." This is architecturally backwards. Configuration defines HOW discovery should run (which file formats to index, which paths to exclude), so config must be resolved BEFORE discovery executes.
 
@@ -27,9 +27,9 @@ The technical forces at play:
 ### Ascending Discovery Algorithm
 
 Starting from CWD, traverse upward to `/` (or boundary like `.git`), stopping at the first directory containing:
-- `lithos.{toml|json|yaml|yml}`
-- `.lithos.{toml|json|yaml|yml}`
-- `.lithos/config.{toml|json|yaml|yml}`
+- `traces.{toml|json|yaml|yml}`
+- `.traces.{toml|json|yaml|yml}`
+- `.traces/config.{toml|json|yaml|yml}`
 
 If no vault found, fall back to global "trusted paths" (e.g., `~/Documents/`). CLI overrides (`--vault <path>`) take precedence over ascending discovery.
 
@@ -121,7 +121,7 @@ let config = ConfigBuilder::load(vault_root, repository)
 ### Research Findings
 
 - **Cross-platform path analysis** (`.scratch/CROSS_PLATFORM_PATH_FINDINGS.md`): Forward slashes work universally on Windows/macOS/Linux, confirming that `PathKey` can use forward slashes without OS-specific logic.
-- **Existing config builder analysis** (`lithos-core/src/config/builder.rs`): Current implementation already performs discovery inside `ConfigBuilder::load()`, confirming the circular dependency exists in production.
+- **Existing config builder analysis** (`traces-core/src/config/builder.rs`): Current implementation already performs discovery inside `ConfigBuilder::load()`, confirming the circular dependency exists in production.
 
 ### Ascending Discovery Precedent
 
@@ -149,4 +149,4 @@ Git uses a similar algorithm: traverse upward from CWD to find `.git/` directory
 
 - PRD: `.scratch/centralized-discovery-processor/PRD.md` (Section 7: Orchestration Policy)
 - Handoff: `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/handoff-centralized-discovery-continued.md` (Question 5)
-- Existing Config Builder: `lithos-core/src/config/builder.rs` (lines 201-272)
+- Existing Config Builder: `traces-core/src/config/builder.rs` (lines 201-272)

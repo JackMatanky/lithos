@@ -560,7 +560,7 @@ Every project should have `ARCHITECTURE.md` that explains:
 # Architecture
 
 ## Overview
-lithos is a structured notes system...
+traces is a structured notes system...
 
 ## Codemap
 - `src/schema/` - Schema definition and validation
@@ -730,16 +730,16 @@ fn process(&self, id: &str) -> Result<Cow<'_, str>> {
 | **Type-state** | State machines, protocol enforcement | Simple state tracking | HTTP libraries |
 | **Builder pattern** | Many optional params | < 3 params | std::fs::OpenOptions |
 | **Repository pattern** | Abstract over storage | Storage is trivial | Web backends |
-| **CQRS** | **Event sourcing required** | **FILE-BASED SYSTEMS** | **❌ Lithos** |
+| **CQRS** | **Event sourcing required** | **FILE-BASED SYSTEMS** | **❌ Traces** |
 
 ---
 
-## 10. Recommendations for Lithos
+## 10. Recommendations for Traces
 
 ### 10.1 Suggested Architecture
 
 ```
-lithos-core/
+traces-core/
 ├── schema/
 │   ├── mod.rs          # Public API
 │   ├── types.rs        # Schema, Field, etc.
@@ -846,6 +846,6 @@ impl<S: Repository> SchemaService<S> {
 5. **Iterator-based pipelines** for data transformation
 6. **Ownership system** that encodes resource management in types
 
-For Lithos specifically: **Drop the CQRS ports**. Use simple module boundaries, trait-based storage abstraction (without Command/Query split), and pipeline patterns for file processing.
+For Traces specifically: **Drop the CQRS ports**. Use simple module boundaries, trait-based storage abstraction (without Command/Query split), and pipeline patterns for file processing.
 
 The code will be simpler, more idiomatic, easier to test, and just as maintainable - if not more so.

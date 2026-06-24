@@ -21,7 +21,7 @@ tags:
 
 ## Executive Summary
 
-This document provides **comprehensive performance research** for ensuring file ingestion in Lithos scales efficiently from 100 to 100,000 files. Based on analysis of high-performance Rust tools (ripgrep, fd-find, rust-analyzer, cargo) and our current architecture, we provide concrete optimization strategies, performance targets, and a phased implementation roadmap.
+This document provides **comprehensive performance research** for ensuring file ingestion in Traces scales efficiently from 100 to 100,000 files. Based on analysis of high-performance Rust tools (ripgrep, fd-find, rust-analyzer, cargo) and our current architecture, we provide concrete optimization strategies, performance targets, and a phased implementation roadmap.
 
 **Key Findings:**
 
@@ -83,7 +83,7 @@ File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → C
 
 1. **File I/O dominates** (200-500 µs vs 3.5 µs parsing): Optimization must focus on I/O parallelism
 2. **Database writes are 2nd bottleneck** (50-200 µs): Transaction batching provides 10-50x speedup
-3. **Parsing is NOT the bottleneck**: Current 3.5 µs/file is already excellent (see benchmark: `lithos-core/benches/note_parsing.rs`)
+3. **Parsing is NOT the bottleneck**: Current 3.5 µs/file is already excellent (see benchmark: `traces-core/benches/note_parsing.rs`)
 4. **Sequential processing overhead**: At 1K files, I/O latency = 200-500ms total (acceptable); at 100K files = 20-50s (needs parallelism)
 
 **Bottleneck Prioritization (by impact):**
@@ -125,7 +125,7 @@ Results Aggregation
 - **Throughput**: ~350K files/second (12-core CPU)
 - **Bottleneck**: Directory traversal metadata calls (`stat`, `readdir`) dominate for tiny files
 
-**Lessons for Lithos**:
+**Lessons for Traces**:
 
 - ✅ **Parallel walking is essential** for 10K+ files (4-8x speedup on typical 4-8 core machines)
 - ✅ **Work-stealing handles imbalanced trees**: Vault directories may have uneven file distribution
@@ -181,7 +181,7 @@ Results Collection
 - **Bottleneck**: Directory metadata syscalls (`readdir`, `stat`)
 - **Scaling**: Linear up to core count, then diminishing returns (I/O bound)
 
-**Lessons for Lithos**:
+**Lessons for Traces**:
 
 - ✅ **Parallel `readdir` crucial**: Most time spent in syscalls, not processing
 - ✅ **Thread count tuning**: For I/O-bound work, over-subscribe cores (2-3x)
@@ -218,7 +218,7 @@ Database (in-memory, query-based)
 - **Incremental update** (single file change): ~50-200ms
 - **Speedup factor**: **10-100x** for incremental vs full re-index
 
-**Lessons for Lithos**:
+**Lessons for Traces**:
 
 - ✅ **File watching essential** for interactive use cases (LSP server, live preview)
 - ✅ **Content-addressed caching**: Hash file content to detect true changes (mtime insufficient)
@@ -288,7 +288,7 @@ Artifact Cache (target/ directory)
 - **Incremental build** (single crate change): Seconds (10-100x faster)
 - **Parallelism speedup**: Near-linear up to core count (dependency graph allows)
 
-**Lessons for Lithos**:
+**Lessons for Traces**:
 
 - ✅ **Fingerprint-based caching**: mtime + content hash prevents unnecessary re-parsing
 - ✅ **Dependency graph**: Schema/template changes may require re-parsing dependent notes (future)
@@ -324,7 +324,7 @@ Changed Files
 - **Index lookup**: O(log n) binary search in sorted index file
 - **Bottleneck**: `stat()` syscalls for untracked file detection
 
-**Lessons for Lithos**:
+**Lessons for Traces**:
 
 - ✅ **mtime + size caching**: Store in DB to detect changes without reading file content
 - ✅ **Parallel stat calls**: Use rayon to parallelize `metadata()` checks
@@ -337,7 +337,7 @@ Changed Files
 
 ### Existing Benchmarks
 
-**Source**: `lithos-core/benches/note_parsing.rs`
+**Source**: `traces-core/benches/note_parsing.rs`
 
 **Measured Performance** (from criterion output):
 
@@ -747,7 +747,7 @@ pub fn parse_large_file(path: &Path, config: &Config) -> Result<Note, Error> {
 
 ### Workload Characterization
 
-**Lithos File Ingestion**:
+**Traces File Ingestion**:
 
 ```
 For each file:
@@ -1179,7 +1179,7 @@ fn generate_realistic_note(index: usize) -> String {
 2. **Implement parallel file walking**:
 
    ```rust
-   // lithos-core/src/fs/walk.rs
+   // traces-core/src/fs/walk.rs
    use rayon::prelude::*;
    use ignore::WalkBuilder;
 
@@ -1204,7 +1204,7 @@ fn generate_realistic_note(index: usize) -> String {
 3. **Parallel parsing + batched DB writes**:
 
    ```rust
-   // lithos-core/src/note/service/ingest.rs
+   // traces-core/src/note/service/ingest.rs
    pub fn ingest_vault_parallel(
        vault_path: &Path,
        db: &Database,
@@ -1230,7 +1230,7 @@ fn generate_realistic_note(index: usize) -> String {
 
 4. **Add batched DB insert**:
    ```rust
-   // lithos-core/src/db/transaction.rs
+   // traces-core/src/db/transaction.rs
    impl WriteTransaction {
        pub fn batch_insert_notes(&mut self, notes: Vec<Note>) -> Result<(), Error> {
            for note in notes {
@@ -1267,7 +1267,7 @@ fn generate_realistic_note(index: usize) -> String {
 2. **Store file metadata in DB**:
 
    ```rust
-   // lithos-core/src/db/schema.rs
+   // traces-core/src/db/schema.rs
    pub struct FileMetadata {
        pub path: PathBuf,
        pub mtime: SystemTime,
@@ -1278,7 +1278,7 @@ fn generate_realistic_note(index: usize) -> String {
 3. **Implement change detection**:
 
    ```rust
-   // lithos-core/src/fs/watch.rs
+   // traces-core/src/fs/watch.rs
    pub fn watch_vault(
        vault_path: &Path,
        db: &Database,

@@ -12,7 +12,7 @@ date_updated: 2026-03-10
 
 ## Context
 
-The Lithos project requires serialization capabilities for multiple purposes:
+The Traces project requires serialization capabilities for multiple purposes:
 
 - **Storage Persistence**: Long-term data storage in Redb database (zero-copy with rkyv)
 - **API Communication**: JSON responses for CLI output and potential future LSP
@@ -20,7 +20,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 - **Debugging/Development**: Human-readable formats for logging and development tools
 - **Interoperability**: Integration with external systems
 
-**Key Constraint**: Lithos is a **library-first** architecture (`lithos-core` library + binary crates). The domain must have **zero external dependencies** to maximize reusability and compilation speed.
+**Key Constraint**: Traces is a **library-first** architecture (`traces-core` library + binary crates). The domain must have **zero external dependencies** to maximize reusability and compilation speed.
 
 **Challenge**: Serialization dependencies (serde, rkyv) are only needed at application boundaries (CLI output, storage), not in core domain logic.
 
@@ -70,7 +70,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 ### Feature Flag Pattern
 
 ```toml
-// In lithos-core/Cargo.toml
+// In traces-core/Cargo.toml
 [features]
 default = []
 serde = ["dep:serde"]
@@ -98,7 +98,7 @@ pub struct Schema {
 **CLI Binary** (needs JSON output):
 ```toml
 [dependencies]
-lithos-core = { path = "../lithos-core", features = ["serde"] }
+traces-core = { path = "../traces-core", features = ["serde"] }
 ```
 
 **Storage Layer** (uses domain type directly or optional `*View` if needed):

@@ -1,15 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "note-metadata.schema.json",
-  "title": "Lithos Note Schema",
-  "description": "Defines the format of a Lithos note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: #property_bank/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
+  "title": "Traces Note Schema",
+  "description": "Defines the format of a Traces note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: #property_bank/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
   "type": "object",
   "required": ["properties"],
   "additionalProperties": false,
   "properties": {
     "$version": {
       "title": "Schema Version",
-      "description": "The version of the Lithos schema format this file uses. Optional - defaults to '1.0' if not specified. Used for migration and compatibility checking when upgrading to future versions.",
+      "description": "The version of the Traces schema format this file uses. Optional - defaults to '1.0' if not specified. Used for migration and compatibility checking when upgrading to future versions.",
       "type": "string",
       "const": "1.0",
       "default": "1.0",
@@ -325,13 +325,13 @@
         },
         "min": {
           "title": "Minimum Value",
-          "description": "The minimum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "description": "The minimum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Traces.",
           "type": "number",
           "examples": [0, 1, -100]
         },
         "max": {
           "title": "Maximum Value",
-          "description": "The maximum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "description": "The maximum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Traces.",
           "type": "number",
           "examples": [100, 10, 5]
         }
