@@ -167,3 +167,99 @@ review.
 - CLI guide compliance: flags preferred over args, standard names (`--dry-run`),
   full-length flags (`--rebuild`, `--format`), no overloaded single-letter,
   exit code table, lead-with-examples help.
+
+---
+
+## TDD Plan (10 tracer-bullet cycles)
+
+### Cycle 1: Rename `reindex` → `rebuild`
+
+**Files:** `crates/indexer/src/scan.rs`
+
+- Rename field, constructor param, and accessor from `reindex` → `rebuild`.
+- Update callers in `crates/app/src/index.rs` and tests.
+
+**Tests:** `rebuild()` returns true when set; `default()` is false.
+
+### Cycle 2: Parse + dispatch `traces index`
+
+**Files:** `crates/cli/src/cli.rs`, `crates/cli/src/main.rs`, `crates/cli/src/commands/mod.rs`, `crates/cli/src/commands/index.rs` (NEW)
+
+- Add `#[derive(clap::Args)] struct IndexArgs`, wire `Index(IndexArgs)` to `Command` enum, add stub handler.
+
+**Tests:** `traces index` parses; `traces config index` fails.
+
+### Cycle 3: Arg parsing
+
+**Files:** `crates/cli/src/cli.rs`
+
+- Add `--rebuild`, `--path <path>`, `--dry-run` to `IndexArgs`.
+
+**Tests:** Each flag parses correctly; unknown flags fail.
+
+### Cycle 4: Flag → model mapping
+
+**Files:** `crates/cli/src/commands/index.rs`
+
+- Build `IndexCommand` from args. `--path` is vault-relative (resolved as `vault_root / rel_path`).
+
+**Tests:** Each flag combination produces correct `IndexScope`/`IndexOptions`.
+
+### Cycle 5: Handler success output — human
+
+**Files:** `crates/cli/src/commands/index.rs`
+
+- Bootstrap → `run_discovery_only()` → `cache_root().path()` as `PathBuf`.
+- Convert at `run_index` call: `DirPath::try_new(cache_root.path())` (ponytail: `DirPath` after bootstrapper owns creation).
+- Format: `scanned: N`, `new: N`, `fresh: N`, `stale: N`, `deleted: N`, `failed: N`.
+
+**Tests:** Summary labels and values match spec.
+
+### Cycle 6: Handler success output — JSON
+
+**Files:** `crates/cli/src/commands/index.rs`
+
+- `--format json` serializes `IndexReport` fields.
+
+**Tests:** JSON has correct keys/values.
+
+### Cycle 7: Error mapping
+
+**Files:** `crates/cli/src/error.rs`
+
+- Define `IndexCommandError` (4 variants, miette). Map `IndexerError` → `IndexCommandError`. Add `CliError::Index(IndexCommandError)` variant.
+
+**Tests:** Each error source maps to correct variant with correct help text.
+
+### Cycle 8: Error output
+
+**Files:** `crates/cli/src/commands/index.rs`
+
+- Miette renders diagnostics; JSON error format for `--format json`.
+
+**Tests:** Each variant renders expected human and JSON output.
+
+### Cycle 9: Exit codes
+
+**Files:** `crates/cli/src/error.rs`
+
+- `ScanPathNotFound`→2, `ScanAccessDenied`→3, `StorageFailure`→2, `ScanIoError`→3.
+
+**Tests:** Each variant returns correct code; existing exit code tests pass.
+
+### Cycle 10: End-to-end integration
+
+**Files:** `crates/app/tests/index.rs` (extend)
+
+- Real vault index with correct counts; `--rebuild` all-New; `--path` restricts; `--dry-run` no writes; help text example.
+
+### Files touched
+
+| File | Change |
+| --- | --- |
+| `crates/indexer/src/scan.rs` | Rename `reindex` → `rebuild` |
+| `crates/cli/src/cli.rs` | Add `Index(IndexArgs)`, define `IndexArgs` |
+| `crates/cli/src/main.rs` | Wire `Command::Index` dispatch |
+| `crates/cli/src/commands/mod.rs` | Add `pub(crate) mod index;` |
+| `crates/cli/src/commands/index.rs` | **NEW:** Handler + output + error mapping |
+| `crates/cli/src/error.rs` | Add `IndexCommandError`, `CliError::Index`, exit codes |
