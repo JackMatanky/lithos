@@ -6,17 +6,10 @@
 //! [`Committed`]) carry the resolved write target as the
 //! artifact moves toward a committed vault file.
 
-#![allow(
-    dead_code,
-    reason = "the write-pipeline transitions are exercised by tests here; \
-              production wiring lands with the Template Service/Processor \
-              (issues 04/07/08)"
-)]
-
-use trace_fs::{FileWriter, WriteTarget, error::WriteTargetError};
+use trace_fs::{FileWriter, WriteTarget};
 
 use super::TemplateName;
-use crate::error::{TemplateArtifactError, TemplateWriteError};
+use crate::error::TemplateArtifactError;
 
 /// Marker state for an artifact that has rendered text but no output target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,9 +30,23 @@ impl TargetResolved {
     }
 }
 
-/// Marker state for an artifact that has been committed to the vault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Committed;
+/// State for an artifact that has been committed to the vault.
+///
+/// Carries the validated [`WriteTarget`] the artifact was written to so the
+/// committed path can be returned to the caller without re-resolving the
+/// target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Committed(WriteTarget);
+
+impl Committed {
+    /// Returns the resolved vault-relative write target the artifact was
+    /// committed to.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn path(&self) -> &WriteTarget {
+        &self.0
+    }
+}
 
 /// Template output artifact in a typed pipeline state.
 ///
@@ -66,6 +73,7 @@ impl TemplateArtifact<Rendered> {
     }
 
     /// Returns the source template name used to render this artifact.
+    #[cfg(test)]
     #[inline]
     #[must_use]
     pub(crate) const fn template(&self) -> &TemplateName {
@@ -73,6 +81,7 @@ impl TemplateArtifact<Rendered> {
     }
 
     /// Returns the rendered artifact content.
+    #[cfg(test)]
     #[inline]
     #[must_use]
     pub(crate) fn content(&self) -> &str {
@@ -84,30 +93,50 @@ impl TemplateArtifact<Rendered> {
     ///
     /// Validation is performed by [`WriteTarget::try_new`], which rejects
     /// absolute paths, `..` traversal, empty paths, current-dir (`.`), and
-    /// hidden components (leading `.`). Rejections are mapped to named
-    /// [`TemplateArtifactError`] variants by [`map_path_error`].
+    /// hidden components (leading `.`).
     ///
     /// # Errors
     ///
-    /// Returns [`TemplateArtifactError::AbsolutePathRejected`] for absolute
-    /// paths, [`TemplateArtifactError::TraversalRejected`] for `..` traversal,
-    /// and [`TemplateArtifactError::InvalidPath`] for any other invalid path.
+    /// Returns [`TemplateArtifactError::Path`] wrapping the underlying
+    /// [`trace_fs::error::WriteTargetError`] when the path fails validation.
     pub(crate) fn try_resolve_target(
         self,
         path: &str,
     ) -> Result<TemplateArtifact<TargetResolved>, TemplateArtifactError> {
-        match WriteTarget::try_new(path) {
-            Ok(target) => Ok(TemplateArtifact {
-                template: self.template,
-                content: self.content,
-                state: TargetResolved(target),
-            }),
-            Err(err) => Err(map_path_error(err)),
-        }
+        let target = WriteTarget::try_new(path)?;
+        Ok(TemplateArtifact {
+            template: self.template,
+            content: self.content,
+            state: TargetResolved(target),
+        })
     }
 }
 
 impl TemplateArtifact<TargetResolved> {
+    /// Returns the resolved vault-relative write target.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn target_path(&self) -> &WriteTarget {
+        self.state.path()
+    }
+
+    /// Consumes the artifact and returns the owned rendered content.
+    #[inline]
+    #[must_use]
+    pub(crate) fn into_content(self) -> String {
+        self.content
+    }
+
+    /// Returns the byte length of the rendered content.
+    ///
+    /// String lengths are always `usize`. On any supported platform `usize`
+    /// fits in `u64`, so the saturating conversion preserves the value.
+    #[inline]
+    #[must_use]
+    pub(crate) fn content_len(&self) -> u64 {
+        u64::try_from(self.content.len()).unwrap_or(u64::MAX)
+    }
+
     /// Atomically writes the rendered content to the resolved target,
     /// advancing the artifact from [`TargetResolved`] to the terminal
     /// [`Committed`] state.
@@ -126,31 +155,27 @@ impl TemplateArtifact<TargetResolved> {
         self,
         writer: &impl FileWriter,
     ) -> Result<TemplateArtifact<Committed>, TemplateArtifactError> {
-        writer.create_new(self.state.path(), self.content.as_bytes()).map_err(
-            |source| {
-                TemplateArtifactError::Write(TemplateWriteError::from(source))
-            },
-        )?;
+        writer.create_new(self.state.path(), self.content.as_bytes())?;
 
+        let TemplateArtifact {
+            template,
+            content,
+            state,
+        } = self;
         Ok(TemplateArtifact {
-            template: self.template,
-            content: self.content,
-            state: Committed,
+            template,
+            content,
+            state: Committed(state.0),
         })
     }
 }
 
-/// Maps a [`WriteTargetError`] from target-path validation to a named
-/// [`TemplateArtifactError`] variant.
-fn map_path_error(err: WriteTargetError) -> TemplateArtifactError {
-    match err {
-        WriteTargetError::Absolute(_) => {
-            TemplateArtifactError::AbsolutePathRejected(err)
-        }
-        WriteTargetError::Traversal(_) => {
-            TemplateArtifactError::TraversalRejected(err)
-        }
-        other => TemplateArtifactError::InvalidPath(other),
+impl TemplateArtifact<Committed> {
+    /// Returns the validated write target the artifact was committed to.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn committed_path(&self) -> &WriteTarget {
+        self.state.path()
     }
 }
 
@@ -191,8 +216,11 @@ mod tests {
         }
 
         #[test]
-        fn committed_is_zero_sized() {
-            assert_eq!(std::mem::size_of::<Committed>(), 0);
+        fn committed_holds_write_target() {
+            let target = WriteTarget::try_new("notes/x.md")
+                .expect("expected valid write target");
+            let state = Committed(target.clone());
+            assert_eq!(state.path(), &target);
         }
 
         #[test]
@@ -264,9 +292,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::AbsolutePathRejected(
-                    WriteTargetError::Absolute(_)
-                ))
+                Err(TemplateArtifactError::Path(WriteTargetError::Absolute(_)))
             ));
         }
 
@@ -281,14 +307,14 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::TraversalRejected(
-                    WriteTargetError::Traversal(_)
-                ))
+                Err(TemplateArtifactError::Path(WriteTargetError::Traversal(
+                    _
+                )))
             ));
         }
 
         #[test]
-        fn rejects_invalid_path() {
+        fn rejects_empty_path() {
             let artifact = TemplateArtifact::rendered(
                 template_name("greeting"),
                 "Hello Alice".to_owned(),
@@ -298,9 +324,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::InvalidPath(
-                    WriteTargetError::Empty
-                ))
+                Err(TemplateArtifactError::Path(WriteTargetError::Empty))
             ));
         }
 
@@ -315,9 +339,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::InvalidPath(
-                    WriteTargetError::Hidden(_)
-                ))
+                Err(TemplateArtifactError::Path(WriteTargetError::Hidden(_)))
             ));
         }
 
@@ -332,9 +354,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::InvalidPath(
-                    WriteTargetError::CurrentDir(_)
-                ))
+                Err(TemplateArtifactError::Path(WriteTargetError::CurrentDir(
+                    _
+                )))
             ));
         }
     }
@@ -345,8 +367,8 @@ mod tests {
         use trace_fs::FsWriter;
 
         use super::{
-            super::super::error::{TemplateArtifactError, TemplateWriteError},
-            TemplateArtifact, template_name,
+            super::super::error::TemplateArtifactError, TemplateArtifact,
+            template_name,
         };
 
         #[test]
@@ -373,6 +395,28 @@ mod tests {
         }
 
         #[test]
+        fn commit_preserves_target_on_committed_state() {
+            let dir = TempDir::new().expect("expected temp dir");
+            let writer = FsWriter::new(dir.path());
+            let artifact = TemplateArtifact::rendered(
+                template_name("greeting"),
+                "Hello".to_owned(),
+            )
+            .try_resolve_target("sub/x.md")
+            .expect("resolve");
+
+            let committed = artifact.commit(&writer).expect("commit");
+            assert_eq!(
+                committed
+                    .committed_path()
+                    .as_path()
+                    .to_str()
+                    .expect("path utf8"),
+                "sub/x.md"
+            );
+        }
+
+        #[test]
         fn rejects_existing_file() {
             let dir = TempDir::new().expect("expected temp dir");
             std::fs::create_dir_all(dir.path().join("sub"))
@@ -391,9 +435,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                Err(TemplateArtifactError::Write(
                     trace_fs::error::WriteError::AlreadyExists { .. }
-                )))
+                ))
             ));
             assert_eq!(
                 std::fs::read_to_string(dir.path().join("sub/x.md"))
@@ -434,9 +478,9 @@ mod tests {
             #[cfg(unix)]
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                Err(TemplateArtifactError::Write(
                     trace_fs::error::WriteError::Io { .. }
-                )))
+                ))
             ));
         }
     }
@@ -447,8 +491,8 @@ mod tests {
         use trace_fs::FsWriter;
 
         use super::{
-            super::super::error::{TemplateArtifactError, TemplateWriteError},
-            TemplateArtifact, template_name,
+            super::super::error::TemplateArtifactError, TemplateArtifact,
+            template_name,
         };
 
         #[test]
@@ -494,9 +538,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(TemplateArtifactError::Write(TemplateWriteError::Write(
+                Err(TemplateArtifactError::Write(
                     trace_fs::error::WriteError::AlreadyExists { .. }
-                )))
+                ))
             ));
             assert_eq!(
                 std::fs::read_to_string(dir.path().join("notes/out.md"))

@@ -184,6 +184,55 @@ impl WriteRepository for RedbRepository {
             })
             .map_err(crate::error::TemplateRepositoryError::from)
     }
+
+    #[inline]
+    fn delete_many_templates(
+        &self,
+        paths: &[PathKey],
+    ) -> Result<(), crate::error::TemplateRepositoryError> {
+        self.store
+            .write(|tx| {
+                let mut path_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
+                let mut templates_table =
+                    tx.try_open_table(TEMPLATES.definition())?;
+                let mut name_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
+                let mut views_table =
+                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
+
+                for path in paths {
+                    // Always remove the view; orphaned views without a
+                    // matching template aggregate are still valid input.
+                    let _ = views_table.remove(DbPathKey::from(path))?;
+
+                    // Resolve the template ID via the path index, then look
+                    // up the aggregate so we know which name index entry to
+                    // remove. Missing entries are skipped silently.
+                    let Some(id) = path_index
+                        .remove(DbPathKey::from(path))?
+                        .map(|guard| guard.value())
+                    else {
+                        continue;
+                    };
+
+                    let name = templates_table
+                        .get(id)?
+                        .map(|g| {
+                            Template::from_bytes(g.value())
+                                .map(|t| t.name().as_str().to_owned())
+                        })
+                        .transpose()?;
+                    if let Some(name) = name {
+                        let _ = name_index.remove(name.as_str())?;
+                    }
+                    let _ = templates_table.remove(id)?;
+                }
+
+                Ok(())
+            })
+            .map_err(crate::error::TemplateRepositoryError::from)
+    }
 }
 
 // ----------------------------------------------------------- //

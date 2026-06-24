@@ -28,14 +28,18 @@ pub(crate) mod storage;
 pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
-pub use engine::TemplateEngineError;
+pub use engine::{
+    TemplateEngine, TemplateEngineError, mini_jinja::MiniJinjaEngine,
+};
 pub use error::{
     TemplateArtifactError, TemplateBodyError, TemplateError, TemplateNameError,
-    TemplateRepositoryError, TemplateWriteError,
+    TemplateRepositoryError,
 };
 pub use raw::RawTemplate;
 pub use repository::{ReadRepository, Repository, WriteRepository};
-pub use service::TemplateService;
+pub use service::{
+    CreateInput, CreateTemplateOutcome, RenderedTemplate, TemplateService,
+};
 pub use views::RawTemplateView;
 
 // ============================================================================

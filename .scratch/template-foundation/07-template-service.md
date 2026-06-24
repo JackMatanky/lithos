@@ -2,8 +2,8 @@
 title: 07-template-service
 category: enhancement
 label: ready-for-agent
-status: open
-branch:
+status: implemented
+branch: feat/07-template-service
 merge_commit:
 date_created: 2026-06-11
 date_completed:
@@ -368,3 +368,75 @@ Each cycle: write one failing test → implement minimum code to pass → move o
 | Dead code allowances removed | Warning-free build |
 | Existing `load()` tests pass | Adapted suite |
 | `mise run test` passes | Full suite |
+
+---
+
+## Implementation Notes
+
+Implemented on branch `feat/07-template-service` (worktree `.worktrees/07-template-service`). 2161/2161 workspace tests pass; `cargo clippy --all-targets --all-features --locked -- -D warnings` is clean.
+
+### Public API surface (lib.rs re-exports)
+
+```rust
+pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
+pub use engine::{TemplateEngine, TemplateEngineError, mini_jinja::MiniJinjaEngine};
+pub use error::{TemplateArtifactError, TemplateBodyError, TemplateError,
+                TemplateNameError, TemplateRepositoryError};
+pub use raw::RawTemplate;
+pub use repository::{ReadRepository, Repository, WriteRepository};
+pub use service::{CreateInput, CreateTemplateOutcome, RenderedTemplate, TemplateService};
+pub use views::RawTemplateView;
+```
+
+### Deviations from the original TDD plan (approved during implementation)
+
+1. **`create()` return type — `CreateTemplateOutcome` enum (not `WriteTarget`).** The plan's design table specified `Result<WriteTarget, TemplateError>` while slice 7 said "dry run returns rendered string" — these conflict for a single method. Approved resolution:
+    ```rust
+    #[non_exhaustive]
+    pub enum CreateTemplateOutcome {
+        Preview { output_path: WriteTarget, rendered: RenderedTemplate },
+        Created { output_path: WriteTarget, bytes_written: u64 },
+    }
+    ```
+    `create()` signature: `fn create(&mut self, templates: &HashMap<TemplateName, Template>, input: &CreateInput) -> Result<CreateTemplateOutcome, TemplateError>`. Note `templates` is passed in rather than stored, so a single `load()` map can drive many `create()` calls without re-querying the repository.
+
+2. **`TemplateEngine::render` returns `String`, not `TemplateArtifact<Rendered>`.** Keeps the artifact typestate (`Rendered`/`TargetResolved`/`Committed`) `pub(crate)`. The service constructs the artifact internally via `TemplateArtifact::rendered(template.name().clone(), rendered_text)` before driving `try_resolve_target` → `commit`. Reduces public surface; engine port stays narrow.
+
+3. **Repository gains two batch methods beyond the plan** (driven by review feedback after first pass):
+    - `find_template_ids_by_paths(paths: &[PathKey]) -> Result<Vec<Option<TemplateId>>, _>` — same-length contract, mirrors `find_raw_template_views_by_paths`.
+    - `delete_many_templates(paths: &[PathKey]) -> Result<(), _>` — single-transaction batch delete of both `Template` aggregates (resolved via path index) and matching `RawTemplateView` rows. Idempotent on missing entries.
+
+   `load()`'s orphan cleanup collapses from a per-path loop of three round-trips (`find_template_id_by_path` + `delete_template` + `delete_raw_template_view`) to a single `delete_many_templates(&deleted_paths)` call.
+
+4. **Renamed `ReadRepository::list_raw_template_view_paths` → `list_template_path_keys`.** The previous name leaked the storage-table identity into the port API. Returned values are vault-relative template path keys; one per persisted template.
+
+5. **`Committed` state holds a `WriteTarget`.** Per slice 4 of the plan; exposed via `committed_path() -> &WriteTarget`. Service clones it into `CreateTemplateOutcome::Created.output_path`.
+
+### Visibility decisions
+
+| Type / item                                                                          | Visibility | Reason                                                                                                                  |
+| ------------------------------------------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `TemplateService<R, W, E>`, `CreateInput`, `CreateTemplateOutcome`, `RenderedTemplate` | `pub`        | Public API surface — CLI / composition root feed in and consume                                                          |
+| `TemplateEngine` trait, `MiniJinjaEngine`                                              | `pub`        | Engine port and adapter; composition root injects `MiniJinjaEngine`                                                       |
+| `TemplateArtifact<S>`, `Rendered`, `TargetResolved`, `Committed`                         | `pub(crate)` | Typestate pipeline lives inside the service. Engine returns `String`; the service wraps internally.                       |
+| `TemplateArtifact::{rendered, try_resolve_target, commit, target_path, into_content, content_len, committed_path}` | `pub(crate)` | Internal pipeline drivers                                                                                                |
+| `TemplateArtifact::{template, content}` (on `Rendered`)                                 | `pub(crate)` + `#[cfg(test)]` | Test-only accessors                                                                                          |
+
+### Production-code constraints honored
+
+- No `unwrap()` / `expect()` / `panic!` / `unreachable!` outside `#[cfg(test)]`.
+- No `minijinja` types appear in `TemplateService` signatures or `TemplateError` public API (enforced by the existing policy tests in `lib.rs`).
+- Dry-run path never touches `self.writer`.
+- `#[allow(dead_code)]` removed from `artifact.rs`, `engine/mod.rs`, `engine/mini_jinja.rs`.
+- `#[cfg_attr(test, allow(dead_code))]` removed from `check_batch_existence` (had a production caller via `load()`).
+
+### Test coverage delta
+
+- 5 baseline files (`error.rs`, `lib.rs`, `artifact.rs`, `engine/mod.rs`, `service.rs`) plus 4 storage/engine sibling files modified (`storage/read.rs`, `storage/write.rs`, `storage/testing.rs`, `engine/mini_jinja.rs`, `repository.rs`).
+- Net 220 unit tests in `trace-template` (up from 200 baseline).
+- New service tests: `create::{returns_not_found_when_template_name_missing_from_map, renders_and_commits_file_to_disk, dry_run_returns_preview_without_writing_file, propagates_engine_error_when_template_source_is_invalid, rejects_{absolute,traversal,hidden,empty,current_dir}_output_path, rejects_existing_destination_file, returns_loaded_map_with_template_name_keys}`, plus `load::deletes_only_orphaned_paths_when_one_template_remains` and `construction::new_constructs_with_all_fields`.
+- New repository tests: `find_template_ids_by_paths_{preserves_order_with_nones, empty_slice}` and `delete_many_templates_{removes_aggregate_and_view_for_each_path, is_idempotent_on_missing_paths, removes_view_when_aggregate_absent, empty_slice}`.
+
+### Follow-up work (not done here)
+
+- `RAW_TEMPLATE_VIEWS` should be a `UuidTable` to match `RAW_SCHEMA_VIEWS`. Out of scope for this issue — belongs in a dedicated storage-layer issue alongside any related migration concerns.

@@ -203,6 +203,20 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
+    fn find_template_ids_by_paths(
+        &self,
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<TemplateId>>, TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeRead)?;
+
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_template_ids_by_paths")?;
+        self.harness.counters().inc_read();
+
+        Ok(paths.iter().map(|path| path_to_id.get(path).copied()).collect())
+    }
+
+    #[inline]
     fn find_template_by_path(
         &self,
         path: &PathKey,
@@ -244,12 +258,12 @@ impl ReadRepository for InMemoryRepository {
     }
 
     #[inline]
-    fn list_raw_template_view_paths(
+    fn list_template_path_keys(
         &self,
     ) -> Result<Vec<PathKey>, TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
-        let views = read_lock(&self.raw_views, "list_raw_template_view_paths")?;
+        let views = read_lock(&self.raw_views, "list_template_path_keys")?;
         self.harness.counters().inc_read();
 
         Ok(views.keys().cloned().collect())
@@ -368,6 +382,40 @@ impl WriteRepository for InMemoryRepository {
 
         for view in views {
             view_map.insert(view.path().clone(), view.clone());
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn delete_many_templates(
+        &self,
+        paths: &[PathKey],
+    ) -> Result<(), TemplateRepositoryError> {
+        self.harness.fail_at(FailurePoint::BeforeWrite)?;
+
+        let mut templates =
+            write_lock(&self.templates, "delete_many_templates (templates)")?;
+        self.harness.counters().inc_write();
+
+        let mut name_to_id =
+            write_lock(&self.name_to_id, "delete_many_templates (name_to_id)")?;
+        self.harness.counters().inc_write();
+
+        let mut path_to_id =
+            write_lock(&self.path_to_id, "delete_many_templates (path_to_id)")?;
+        self.harness.counters().inc_write();
+
+        let mut views =
+            write_lock(&self.raw_views, "delete_many_templates (raw_views)")?;
+        self.harness.counters().inc_write();
+
+        for path in paths {
+            if let Some(id) = path_to_id.remove(path)
+                && let Some(template) = templates.remove(&id)
+            {
+                name_to_id.remove(template.name());
+            }
+            views.remove(path);
         }
         Ok(())
     }
@@ -943,6 +991,104 @@ mod tests {
             fn save_many_empty_slice() {
                 let repo = InMemoryRepository::new();
                 repo.save_many_raw_template_views(&[]).unwrap();
+            }
+
+            #[test]
+            fn find_template_ids_by_paths_preserves_order_with_nones() {
+                let repo = InMemoryRepository::new();
+                let alpha = test_template("alpha");
+                let beta = test_template("beta");
+                repo.save_template(&alpha).unwrap();
+                repo.save_template(&beta).unwrap();
+
+                let missing = PathKey::try_new("templates/missing.md").unwrap();
+                let paths =
+                    vec![alpha.path().clone(), missing, beta.path().clone()];
+
+                let ids = repo.find_template_ids_by_paths(&paths).unwrap();
+
+                assert_eq!(ids.len(), 3);
+                assert_eq!(ids.first().copied().flatten(), Some(*alpha.id()));
+                assert_eq!(ids.get(1).copied().flatten(), None);
+                assert_eq!(ids.get(2).copied().flatten(), Some(*beta.id()));
+            }
+
+            #[test]
+            fn find_template_ids_by_paths_empty_slice() {
+                let repo = InMemoryRepository::new();
+                let ids = repo.find_template_ids_by_paths(&[]).unwrap();
+                assert!(ids.is_empty());
+            }
+
+            #[test]
+            fn delete_many_templates_removes_aggregate_and_view_for_each_path()
+            {
+                let repo = InMemoryRepository::new();
+                let alpha = test_template("alpha");
+                let beta = test_template("beta");
+                repo.save_template(&alpha).unwrap();
+                repo.save_template(&beta).unwrap();
+                repo.save_raw_template_view(&test_view("templates/alpha.md"))
+                    .unwrap();
+                repo.save_raw_template_view(&test_view("templates/beta.md"))
+                    .unwrap();
+
+                repo.delete_many_templates(&[
+                    alpha.path().clone(),
+                    beta.path().clone(),
+                ])
+                .unwrap();
+
+                assert!(
+                    repo.find_template_by_path(alpha.path()).unwrap().is_none()
+                );
+                assert!(
+                    repo.find_template_by_path(beta.path()).unwrap().is_none()
+                );
+                assert!(
+                    repo.find_raw_template_view(alpha.path())
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    repo.find_raw_template_view(beta.path()).unwrap().is_none()
+                );
+            }
+
+            #[test]
+            fn delete_many_templates_is_idempotent_on_missing_paths() {
+                let repo = InMemoryRepository::new();
+                let missing = PathKey::try_new("templates/ghost.md").unwrap();
+
+                repo.delete_many_templates(std::slice::from_ref(&missing))
+                    .unwrap();
+                // Second call must not error either.
+                repo.delete_many_templates(std::slice::from_ref(&missing))
+                    .unwrap();
+            }
+
+            #[test]
+            fn delete_many_templates_removes_view_when_aggregate_absent() {
+                let repo = InMemoryRepository::new();
+                // Orphan view: raw template view exists but no template
+                // aggregate (mirrors load() finding the orphan).
+                let path = PathKey::try_new("templates/orphan.md").unwrap();
+                repo.save_raw_template_view(&test_view("templates/orphan.md"))
+                    .unwrap();
+
+                repo.delete_many_templates(std::slice::from_ref(&path))
+                    .unwrap();
+
+                assert!(
+                    repo.find_raw_template_view(&path).unwrap().is_none(),
+                    "orphan raw template view should be deleted"
+                );
+            }
+
+            #[test]
+            fn delete_many_templates_empty_slice() {
+                let repo = InMemoryRepository::new();
+                repo.delete_many_templates(&[]).unwrap();
             }
         }
     }

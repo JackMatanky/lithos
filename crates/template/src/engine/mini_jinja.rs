@@ -5,24 +5,19 @@
 //! uses template names as lookup keys after `compile` registers supplied
 //! source.
 
-#![allow(dead_code, reason = "template service wiring lands in a later slice")]
-
 use std::collections::HashMap;
 
 use minijinja::{AutoEscape, Environment, UndefinedBehavior};
 
 use super::{TemplateEngine, TemplateEngineError};
-use crate::{
-    Template,
-    artifact::{Rendered, TemplateArtifact},
-};
+use crate::Template;
 
 /// MiniJinja-backed implementation of the template engine port.
 ///
 /// The environment is owned directly because foundation rendering is
 /// single-process and does not need shared mutable ownership or
 /// synchronization.
-pub(crate) struct MiniJinjaEngine {
+pub struct MiniJinjaEngine {
     env: Environment<'static>,
 }
 
@@ -33,7 +28,7 @@ impl MiniJinjaEngine {
     /// so Markdown characters render unchanged.
     #[inline]
     #[must_use]
-    pub(crate) fn configured() -> Self {
+    pub fn configured() -> Self {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_auto_escape_callback(|_| AutoEscape::None);
@@ -66,21 +61,17 @@ impl TemplateEngine for MiniJinjaEngine {
         &self,
         template: &Template,
         context: &HashMap<String, String>,
-    ) -> Result<TemplateArtifact<Rendered>, TemplateEngineError> {
+    ) -> Result<String, TemplateEngineError> {
         let loaded = self.env.get_template(template.name().as_ref()).map_err(
             |source| TemplateEngineError::Render {
                 name: template.name().as_ref().to_owned(),
                 source,
             },
         )?;
-        let rendered_text = loaded.render(context).map_err(|source| {
-            TemplateEngineError::Render {
-                name: template.name().as_ref().to_owned(),
-                source,
-            }
-        })?;
-
-        Ok(TemplateArtifact::rendered(template.name().clone(), rendered_text))
+        loaded.render(context).map_err(|source| TemplateEngineError::Render {
+            name: template.name().as_ref().to_owned(),
+            source,
+        })
     }
 }
 
@@ -146,7 +137,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_rendered_artifact_when_context_provides_variable() {
+        fn returns_rendered_text_when_context_provides_variable() {
             let mut engine = MiniJinjaEngine::configured();
             let template = template("greeting", "Hello {{ name }}");
             engine
@@ -155,29 +146,11 @@ mod tests {
             let context =
                 HashMap::from([("name".to_owned(), "Alice".to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&template, &context)
                 .expect("expected template to render");
 
-            assert_eq!(artifact.content(), "Hello Alice");
-        }
-
-        #[test]
-        fn returns_artifact_with_template_name_when_context_provides_variable()
-        {
-            let mut engine = MiniJinjaEngine::configured();
-            let template = template("greeting", "Hello {{ name }}");
-            engine
-                .compile(&template)
-                .expect("expected template source to compile");
-            let context =
-                HashMap::from([("name".to_owned(), "Alice".to_owned())]);
-
-            let artifact = engine
-                .render(&template, &context)
-                .expect("expected template to render");
-
-            assert_eq!(artifact.template(), template.name());
+            assert_eq!(text, "Hello Alice");
         }
 
         #[test]
@@ -209,11 +182,11 @@ mod tests {
             let context =
                 HashMap::from([("markdown".to_owned(), markdown.to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&template, &context)
                 .expect("expected markdown to render");
 
-            assert_eq!(artifact.content(), markdown);
+            assert_eq!(text, markdown);
         }
 
         #[test]
@@ -227,11 +200,11 @@ mod tests {
             let context =
                 HashMap::from([("name".to_owned(), "Alice".to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&changed, &context)
                 .expect("expected compiled source to render");
 
-            assert_eq!(artifact.content(), "Hello Alice");
+            assert_eq!(text, "Hello Alice");
         }
 
         #[test]

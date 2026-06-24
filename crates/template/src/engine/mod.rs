@@ -5,25 +5,23 @@
 //! rendering, leaving repository lookup, target resolution, conflict checks,
 //! and file commits to the Template service/write pipeline.
 
-#![allow(dead_code, reason = "template service wiring lands in a later slice")]
-
 use std::collections::HashMap;
 
-use super::{
-    Template,
-    artifact::{Rendered, TemplateArtifact},
-};
+use super::Template;
 
 mod error;
-pub(crate) mod mini_jinja;
+pub mod mini_jinja;
 
 pub use error::TemplateEngineError;
 
 /// Rendering-engine boundary for checking and rendering supplied templates.
 ///
 /// The trait intentionally has no `Clone`, `Send`, `Sync`, or `'static` bounds;
-/// concrete orchestration needs should drive future bounds.
-pub(crate) trait TemplateEngine {
+/// concrete orchestration needs should drive future bounds. `render` returns
+/// the rendered text only — the [`crate::TemplateService`] wraps it in a
+/// [`crate::artifact::TemplateArtifact`] before driving the write pipeline,
+/// keeping the artifact typestate confined to the crate.
+pub trait TemplateEngine {
     /// Registers and checks the supplied template source in the engine.
     ///
     /// # Errors
@@ -35,7 +33,8 @@ pub(crate) trait TemplateEngine {
         template: &Template,
     ) -> Result<(), TemplateEngineError>;
 
-    /// Renders a compiled template with a flat string context.
+    /// Renders a compiled template with a flat string context, returning the
+    /// rendered text.
     ///
     /// # Errors
     ///
@@ -45,5 +44,5 @@ pub(crate) trait TemplateEngine {
         &self,
         template: &Template,
         context: &HashMap<String, String>,
-    ) -> Result<TemplateArtifact<Rendered>, TemplateEngineError>;
+    ) -> Result<String, TemplateEngineError>;
 }

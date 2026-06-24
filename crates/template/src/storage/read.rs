@@ -124,6 +124,33 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
+    fn find_template_ids_by_paths(
+        &self,
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<TemplateId>>, crate::error::TemplateRepositoryError>
+    {
+        self.store
+            .read(|tx| {
+                let Some(path_table) = tx.try_open_table(
+                    crate::storage::tables::TEMPLATE_ID_BY_PATH.definition(),
+                )?
+                else {
+                    return Ok(vec![None; paths.len()]);
+                };
+
+                let mut results = Vec::with_capacity(paths.len());
+                for path in paths {
+                    let id = path_table
+                        .get(DbPathKey::from(path))?
+                        .map(|guard| guard.value());
+                    results.push(id);
+                }
+                Ok(results)
+            })
+            .map_err(crate::error::TemplateRepositoryError::from)
+    }
+
+    #[inline]
     fn find_template_by_path(
         &self,
         path: &PathKey,
@@ -208,7 +235,7 @@ impl ReadRepository for RedbRepository {
     }
 
     #[inline]
-    fn list_raw_template_view_paths(
+    fn list_template_path_keys(
         &self,
     ) -> Result<Vec<PathKey>, crate::error::TemplateRepositoryError> {
         self.store

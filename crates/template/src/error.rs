@@ -45,6 +45,15 @@ pub enum TemplateError {
     /// A template engine error.
     #[error(transparent)]
     Engine(#[from] TemplateEngineError),
+    /// A template artifact pipeline error.
+    #[error(transparent)]
+    Artifact(#[from] TemplateArtifactError),
+    /// A requested template name was not found in the loaded template set.
+    #[error("template not found: {name}")]
+    NotFound {
+        /// Name of the missing template.
+        name: String,
+    },
 }
 
 // ============================================================================
@@ -110,48 +119,25 @@ pub enum TemplatePathError {
 }
 
 // ============================================================================
-// TemplateWriteError
-// ============================================================================
-
-/// Errors returned when writing a template artifact to the filesystem.
-///
-/// Wraps [`trace_fs::error::WriteError`] so atomic file-creation failures
-/// surface through the template error hierarchy without leaking `fs` internals
-/// into call sites.
-#[derive(Debug, thiserror::Error)]
-pub enum TemplateWriteError {
-    /// An atomic file-creation failure from the filesystem layer.
-    #[error(transparent)]
-    Write(#[from] trace_fs::error::WriteError),
-}
-
-// ============================================================================
 // TemplateArtifactError
 // ============================================================================
 
 /// Errors returned while resolving and committing a template artifact through
 /// the write pipeline.
 ///
-/// Target-resolution rejections (absolute paths, `..` traversal, and other
-/// invalid paths) and commit-time write failures surface here. The wrapped
-/// variants use explicit construction rather than `#[from]` conversions, so
-/// each pipeline transition names the error it produces.
+/// `Path` covers all target-validation rejections from
+/// [`trace_fs::error::WriteTargetError`] — absolute, traversal, hidden, empty,
+/// and current-dir. `Write` covers commit-time write failures from
+/// [`trace_fs::error::WriteError`] — `AlreadyExists` and `Io`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TemplateArtifactError {
-    /// An absolute target path was rejected during target resolution.
-    #[error("absolute target path rejected: {}", .0.to_string())]
-    AbsolutePathRejected(#[source] trace_fs::error::WriteTargetError),
-    /// A target path containing `..` traversal was rejected.
-    #[error("traversal target path rejected: {}", .0.to_string())]
-    TraversalRejected(#[source] trace_fs::error::WriteTargetError),
-    /// A target path failed validation for a reason other than being absolute
-    /// or containing traversal (e.g. empty, or a `.` current-dir component).
+    /// A target path was rejected during target resolution.
     #[error(transparent)]
-    InvalidPath(trace_fs::error::WriteTargetError),
+    Path(#[from] trace_fs::error::WriteTargetError),
     /// A filesystem write failed while committing the artifact.
     #[error(transparent)]
-    Write(TemplateWriteError),
+    Write(#[from] trace_fs::error::WriteError),
 }
 
 // ============================================================================
@@ -189,6 +175,10 @@ pub enum TemplateRepositoryError {
     /// Returned when a template is not found by its path.
     #[error("template path not found: {0}")]
     NotFoundByPath(PathKey),
+
+    /// Returned when a template is not found by its derived name.
+    #[error("template name not found: {0}")]
+    NotFoundByName(super::aggregate::TemplateName),
 }
 
 // ----------------------------------------------------------- //
@@ -261,92 +251,64 @@ mod tests {
         }
     }
 
-    mod template_write_error {
-        use std::io;
-
-        use super::*;
-
-        #[test]
-        fn preserves_already_exists_variant() {
-            let write_err = trace_fs::error::WriteError::AlreadyExists {
-                path: PathBuf::from("note.md"),
-            };
-            let template_err: TemplateWriteError = write_err.into();
-            assert!(matches!(
-                template_err,
-                TemplateWriteError::Write(
-                    trace_fs::error::WriteError::AlreadyExists { .. }
-                )
-            ));
-        }
-
-        #[test]
-        fn preserves_io_variant() {
-            let io_err = io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "permission denied",
-            );
-            let write_err = trace_fs::error::WriteError::Io {
-                path: PathBuf::from("note.md"),
-                source: io_err,
-            };
-            let template_err: TemplateWriteError = write_err.into();
-            assert!(matches!(
-                template_err,
-                TemplateWriteError::Write(
-                    trace_fs::error::WriteError::Io { .. }
-                )
-            ));
-        }
-    }
-
     mod template_artifact_error {
         use std::error::Error;
 
         use super::*;
 
         #[test]
-        fn absolute_path_rejected_displays_path() {
-            let err = TemplateArtifactError::AbsolutePathRejected(
-                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
-                    "/abs/x.md",
-                )),
+        fn path_variant_wraps_write_target_error() {
+            let target_err = trace_fs::error::WriteTargetError::Absolute(
+                PathBuf::from("/abs/x.md"),
             );
-            let msg = err.to_string();
-            assert!(
-                msg.contains("/abs/x.md"),
-                "Display should contain the rejected path, got: {msg}"
+            let err: TemplateArtifactError = target_err.into();
+            assert!(matches!(
+                err,
+                TemplateArtifactError::Path(
+                    trace_fs::error::WriteTargetError::Absolute(_)
+                )
+            ));
+        }
+
+        #[test]
+        fn write_variant_wraps_write_error() {
+            let write_err = trace_fs::error::WriteError::AlreadyExists {
+                path: PathBuf::from("note.md"),
+            };
+            let err: TemplateArtifactError = write_err.into();
+            assert!(matches!(
+                err,
+                TemplateArtifactError::Write(
+                    trace_fs::error::WriteError::AlreadyExists { .. }
+                )
+            ));
+        }
+
+        #[test]
+        fn path_variant_preserves_display() {
+            let inner = trace_fs::error::WriteTargetError::Absolute(
+                PathBuf::from("/abs/x.md"),
+            );
+            let inner_msg = inner.to_string();
+            let err = TemplateArtifactError::Path(inner);
+            assert_eq!(
+                err.to_string(),
+                inner_msg,
+                "transparent Path variant should forward inner Display"
             );
         }
 
         #[test]
-        fn traversal_rejected_displays_path() {
-            let err = TemplateArtifactError::TraversalRejected(
-                trace_fs::error::WriteTargetError::Traversal(PathBuf::from(
-                    "../escape.md",
-                )),
-            );
-            let msg = err.to_string();
-            assert!(
-                msg.contains("../escape.md"),
-                "Display should contain the rejected path, got: {msg}"
-            );
-        }
-
-        #[test]
-        fn write_preserves_source() {
-            // The `Io` variant carries an underlying source; `transparent`
-            // forwards `source()` straight through to it.
+        fn write_variant_preserves_source() {
             let io_err = std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "permission denied",
             );
-            let write_err =
-                TemplateWriteError::Write(trace_fs::error::WriteError::Io {
+            let err =
+                TemplateArtifactError::Write(trace_fs::error::WriteError::Io {
                     path: PathBuf::from("note.md"),
                     source: io_err,
                 });
-            let err = TemplateArtifactError::Write(write_err);
             assert!(
                 err.source().is_some(),
                 "transparent Write variant should forward its source"
@@ -354,25 +316,35 @@ mod tests {
         }
 
         #[test]
-        fn invalid_path_preserves_source() {
-            let path_err = trace_fs::error::WriteTargetError::Empty;
-            let inner_msg = path_err.to_string();
-            let err = TemplateArtifactError::InvalidPath(path_err);
-            assert_eq!(
-                err.to_string(),
-                inner_msg,
-                "transparent InvalidPath variant should forward the inner                  error's Display unchanged"
-            );
-        }
-
-        #[test]
         fn implements_error_trait() {
-            let err = TemplateArtifactError::AbsolutePathRejected(
+            let err = TemplateArtifactError::Path(
                 trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
                     "/abs/x.md",
                 )),
             );
             let _: &dyn std::error::Error = &err;
+        }
+    }
+
+    mod template_repository_error {
+        use std::path::Path;
+
+        use super::*;
+        use crate::aggregate::TemplateName;
+
+        #[test]
+        fn not_found_by_name_displays_name() {
+            let name = TemplateName::try_new(
+                Path::new("templates/daily.md"),
+                Path::new("templates"),
+            )
+            .expect("derivable template name");
+            let err = TemplateRepositoryError::NotFoundByName(name);
+            let msg = err.to_string();
+            assert!(
+                msg.contains("daily"),
+                "Display should contain the template name, got: {msg}"
+            );
         }
     }
 
@@ -492,6 +464,29 @@ mod tests {
                 err.source().is_some(),
                 "source() should return Some for Body variant"
             );
+        }
+
+        #[test]
+        fn not_found_displays_name() {
+            let err = TemplateError::NotFound {
+                name: "daily".to_owned(),
+            };
+            let msg = err.to_string();
+            assert!(
+                msg.contains("daily"),
+                "Display should contain the missing template name, got: {msg}"
+            );
+        }
+
+        #[test]
+        fn artifact_variant_wraps_template_artifact_error() {
+            let artifact_err = TemplateArtifactError::Path(
+                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
+                    "/abs/x.md",
+                )),
+            );
+            let template_err: TemplateError = artifact_err.into();
+            assert!(matches!(template_err, TemplateError::Artifact(_)));
         }
     }
 }
