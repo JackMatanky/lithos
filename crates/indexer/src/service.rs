@@ -57,7 +57,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// Run a single indexing pass.
     ///
     /// 1. Resolve scope → root + filters.
-    /// 2. If `reindex`, clear all persisted state.
+    /// 2. If `rebuild`, clear all persisted state.
     /// 3. Fused scan + classify loop (streaming via `ScannerPort::walk`).
     /// 4. Detect deletions (diff `all_paths()` vs `seen_paths`).
     /// 5. Persist indexed and deleted records (skip if `dry_run`).
@@ -73,7 +73,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         let root = scope.root();
         let filters = scope.filters();
 
-        if opts.reindex() {
+        if opts.rebuild() {
             self.repo.clear()?;
         }
 
@@ -434,7 +434,7 @@ mod tests {
         }
 
         #[test]
-        fn reindex_clears_repo_before_scan() {
+        fn rebuild_clears_repo_before_scan() {
             let vault = make_vault_root();
             let key = PathKey::try_new("notes/doc.md").unwrap();
             let repo = repo_with_file(&key);
@@ -451,7 +451,7 @@ mod tests {
             };
             let opts = IndexOptions::new(true, false);
             let result = service.run(&scope, opts).expect("run should succeed");
-            // After reindex, existing record was cleared so both dir and file
+            // After rebuild, existing record was cleared so both dir and file
             // are New
             assert_eq!(result.report().new_count(), 2);
         }
@@ -671,7 +671,7 @@ mod tests {
         }
 
         #[test]
-        fn reindex_no_deletions() {
+        fn rebuild_no_deletions() {
             let key = PathKey::try_new("doc.md").unwrap();
             let repo = repo_with_file(&key);
             let vault = make_vault_root();
@@ -823,7 +823,7 @@ mod tests {
         }
 
         #[test]
-        fn partial_scope_and_reindex() {
+        fn partial_scope_and_rebuild() {
             let tmp = tempfile::TempDir::new().unwrap();
             let vault = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
             let repo = empty_repo();

@@ -33,6 +33,22 @@ pub(crate) struct Cli {
     pub(crate) command: Command,
 }
 
+/// Arguments for the `index` subcommand.
+#[derive(Debug, Args, PartialEq, Eq)]
+pub(crate) struct IndexArgs {
+    /// Discard current cache and perform a full rebuild.
+    #[arg(long)]
+    pub(crate) rebuild: bool,
+
+    /// Only index files under this path (relative to vault root).
+    #[arg(long, short)]
+    pub(crate) path: Option<PathBuf>,
+
+    /// Run the index process but do not save results to cache.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+}
+
 /// Bootstrap/loading flags shared by all commands.
 ///
 /// These flags control how vault and config file discovery is performed before
@@ -62,6 +78,8 @@ pub(crate) enum Command {
     },
     /// Run health checks on the current environment.
     Doctor,
+    /// Index templates and layouts in the current vault.
+    Index(IndexArgs),
 }
 
 /// Sub-subcommands available under `config`.
@@ -191,5 +209,61 @@ mod arg_parsing {
         let cli = parse(&["traces", "--vault", "/my/vault", "doctor"])
             .expect("valid args");
         assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/my/vault")));
+    }
+
+    #[test]
+    fn parses_index_subcommand() {
+        let cli = parse(&["traces", "index"]).expect("valid args");
+        assert!(matches!(cli.command, Command::Index(_)));
+    }
+
+    #[test]
+    fn index_subcommand_fails_under_config() {
+        let result = parse(&["traces", "config", "index"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_index_args_all_flags() {
+        let cli = parse(&[
+            "traces",
+            "index",
+            "--rebuild",
+            "--path",
+            "sub/dir",
+            "--dry-run",
+        ])
+        .expect("valid args");
+        assert!(
+            matches!(cli.command, Command::Index(_)),
+            "Expected Index subcommand"
+        );
+        let Command::Index(args) = cli.command else {
+            return;
+        };
+        assert!(args.rebuild);
+        assert_eq!(args.path, Some(PathBuf::from("sub/dir")));
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn index_args_defaults() {
+        let cli = parse(&["traces", "index"]).expect("valid args");
+        assert!(
+            matches!(cli.command, Command::Index(_)),
+            "Expected Index subcommand"
+        );
+        let Command::Index(args) = cli.command else {
+            return;
+        };
+        assert!(!args.rebuild);
+        assert_eq!(args.path, None);
+        assert!(!args.dry_run);
+    }
+
+    #[test]
+    fn index_rejects_unknown_flags() {
+        let result = parse(&["traces", "index", "--unknown"]);
+        assert!(result.is_err());
     }
 }

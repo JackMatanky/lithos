@@ -36,6 +36,10 @@ pub(crate) enum CliError {
         #[source]
         source: std::io::Error,
     },
+
+    /// An invalid explicit path was provided.
+    #[error("invalid path: {0}")]
+    InvalidPath(String),
 }
 
 impl CliError {
@@ -63,7 +67,7 @@ impl CliError {
             Self::Bootstrap(AppError::Discovery(discovery_err)) => {
                 exit_code_for_discovery(discovery_err)
             }
-            Self::Bootstrap(AppError::Config(_)) => 2,
+            Self::Bootstrap(AppError::Config(_)) | Self::InvalidPath(_) => 2,
             Self::Bootstrap(AppError::Indexer(_))
             | Self::Write {
                 ..

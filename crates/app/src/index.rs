@@ -10,9 +10,10 @@ use std::sync::Arc;
 
 use trace_db::Store;
 use trace_fs::DirPath;
+pub use trace_indexer::{IndexOptions, IndexResult, IndexScope, ScanFilters};
 use trace_indexer::{
-    IndexOptions, IndexResult, IndexScope, IndexerError, IndexerService,
-    RedbRepository, scanner::WalkdirAdapter, storage::INDEX_DB_FILENAME,
+    IndexerError, IndexerService, RedbRepository, scanner::WalkdirAdapter,
+    storage::INDEX_DB_FILENAME,
 };
 
 use crate::error::AppError;
