@@ -19,38 +19,106 @@ Status: ready-for-agent
 
 ## What to build
 
-Implement `TemplateService` — the use-case orchestrator that wires together the processor, engine, and artifact pipeline into two primary operations:
+Implement `TemplateService` — the use-case orchestrator that wires together the repository, engine, and artifact pipeline into two primary operations:
 
-**`load()`** — Orchestrates the `TemplateProcessor` pipeline to ingest/index templates from the configured source into the repository. Ensures templates are available for subsequent `create()` calls.
+**`load(&self)`** — Orchestrates the `TemplateProcessor` pipeline to ingest/index templates from the configured source into the repository. Returns a `HashMap<TemplateName, Template>` for downstream use by `create()`. Wires up the deferred batch deletion from issue 04.
 
-**`create()`** — Orchestrates a full render-to-commit flow:
-1. Look up the named `Template` from the repository
-2. Build a `MiniJinjaEngine` from all persisted templates (implicit compile-time validation — if the source is broken, `compile` catches it here)
-3. Call `engine.render(template, context)` with the supplied `HashMap<String, String>` context
-4. Drive the `TemplateArtifact` typestate pipeline: `Rendered → TargetResolved → ReadyToCommit → Committed`
+**`create(&mut self)`** — Orchestrates a full render-to-commit flow:
+1. Look up the named `Template` from the in-memory map (populated by `load()`) — fail-fast with `NotFound` before engine compilation
+2. Compile all templates from the map into `self.engine` (implicit compile-time validation — broken source is caught here)
+3. Call `self.engine.render(template, context)` with the supplied `HashMap<String, String>` context
+4. Drive the `TemplateArtifact` typestate pipeline: `Rendered → TargetResolved → Committed`
 5. Return the created vault-relative path on success
 
 A `--dry-run` variant of `create()` performs steps 1–3 only (renders but does not commit) and returns the rendered string.
 
 `TemplateService` owns: lookup, validation workflow, rendering orchestration, target resolution, conflict checks, and commit orchestration. None of that logic leaks into the engine port or the artifact states.
 
-Error types:
-- `TemplateError` — primary use-case error surface (missing template, load failure, engine failure, path validation failure, write failure)
-- `TemplateEngineError` embedded as a variant or cause within `TemplateError`
-- No `TemplateDiagnostic` — rely on well-written Rust error chains
+### Architecture
+
+`TemplateService` is a **stateful struct** composing its ports via uniform generic parameters per the hexagonal architecture pattern:
+
+```rust
+pub struct TemplateService<R, W, E> {
+    repository: R,
+    writer: W,
+    engine: E,
+    config: TemplateConfigSpec,
+}
+```
+
+Where:
+- `R: ReadRepository + WriteRepository` — template persistence
+- `W: FileWriter` — filesystem writes
+- `E: TemplateEngine` — rendering engine (constructed once, templates compile/accumulate across calls)
+- `config: TemplateConfigSpec` — provides vault root via `self.config.root()`, no separate `vault_root` field needed
+- `load()` returns `HashMap<TemplateName, Template>` which `create()` uses for both lookup and compilation in one pass
+
+All three generic dependencies use the same pattern: trait bounds + struct fields. No `Box<dyn ...>`, no factory closures, no double indirection. The composition root (main / test setup) injects concrete implementations:
+
+```rust
+// Production: MiniJinjaEngine injected at the composition root
+let service = TemplateService::new(
+    redb_repo,
+    Writer::new(vault_root),
+    MiniJinjaEngine::new(),
+    config,
+);
+
+// Test: mock engine injected the same way
+let mock = MockTemplateEngine::new();
+let service = TemplateService::new(repo, writer, mock, config);
+```
+
+This refactors the existing zero-field `TemplateService` whose methods accepted `config` and `repository` as ad-hoc parameters.
+
+### Why `&mut self` for `create()`
+
+`TemplateEngine::compile(&mut self, ...)` takes `&mut self` because registering a template mutates engine internal state. `create()` needs `&mut self` to call `self.engine.compile()`. `load()` stays `&self` — it doesn't touch the engine.
+
+### Error model
+
+Two separate error layers, each with its own variants:
+
+**Repository port** (`TemplateRepositoryError`):
+- `NotFoundById(TemplateId)` — existing
+- `NotFoundByPath(PathKey)` — existing
+- `NotFoundByName(TemplateName)` — new, for consistency with existing `*ById`/`*ByPath` variants
+
+**Service/use-case** (`TemplateError`):
+- `NotFound { name: String }` — new. Service detects a miss from the map. This is **not** on `TemplateEngineError` because the service resolves the template *before* the engine is involved.
+- `Engine(TemplateEngineError)` — existing. Wraps compile/render failures.
+- `Artifact(TemplateArtifactError)` — new. Wraps artifact pipeline errors.
+
+Engine does **not** get a `NotFound` variant — it only receives an already-fetched `&Template`. A request for a template that wasn't compiled is a programming error surfacing as `TemplateEngineError::Render`.
+
+**Simplified `TemplateArtifactError`** (replaces the current over-named variants):
+```rust
+pub enum TemplateArtifactError {
+    #[error(transparent)]
+    Path(WriteTargetError),        // absolute, traversal, hidden, empty, current-dir
+    #[error(transparent)]
+    Write(WriteError),             // AlreadyExists, Io
+}
+```
+No `TemplateWriteError` wrapper, no `AbsolutePathRejected`/`TraversalRejected`/`InvalidPath` named variants — `WriteTargetError` and `WriteError` already preserve those distinctions.
 
 ## Acceptance criteria
 
-- [ ] `TemplateService` exposes `load()` and `create()` (and a dry-run variant)
-- [ ] `create()` returns the created vault-relative path on success
-- [ ] Dry-run returns the rendered string without writing any file
-- [ ] Missing template name returns a `TemplateError` (not a panic or unwrap)
-- [ ] Engine compile/render failures surface as `TemplateError` wrapping `TemplateEngineError`
-- [ ] Absolute path and traversal path rejections surface as `TemplateError`
-- [ ] Destination already exists surfaces as `TemplateError`
-- [ ] No MiniJinja types appear in `TemplateService` method signatures or `TemplateError` variants
+- [ ] `TemplateService<R, W, E>` stateful struct with uniform generics: `repository`, `writer`, `engine`, `config`
+- [ ] `load(&self)` refactored to use `self.*` fields; returns `HashMap<TemplateName, Template>`
+- [ ] `load()` handles batch deletion of raw template views for cached paths absent from scan (TODO from issue 04)
+- [ ] `create(&mut self)` takes `&mut self` (for `engine.compile`), uses the template map directly
+- [ ] Engine instance is a generic field `E: TemplateEngine`, injected at construction like repo and writer
+- [ ] Missing template name returns `TemplateError::NotFound { name }` (no panic, no unwrap)
+- [ ] Engine compile/render failures surface as `TemplateError::Engine(TemplateEngineError)`
+- [ ] Absolute, traversal, hidden-file, empty, and current-dir output paths each return `TemplateError::Artifact(WriteTargetError::…)`
+- [ ] Destination already exists returns `TemplateError::Artifact(WriteError::AlreadyExists { … })`
+- [ ] No MiniJinja types appear in `TemplateService` method signatures or `TemplateError` public API
 - [ ] No `unwrap()` or `panic!` in service code
-- [ ] Tests cover: `load()` orchestration with repository interactions, `create()` success path end-to-end (rendered content written, correct path returned), dry-run returns rendered string without file creation, missing template error, engine failure propagation, target path validation errors, `AlreadyExists` error propagation
+- [ ] `#[allow(dead_code)]` removed from `artifact.rs` and `engine/mod.rs`
+- [ ] Tests cover: `load()` orchestration with repository interactions, batch deletion, `create()` success path end-to-end, dry-run, missing template, engine failure propagation, all path rejection types, `AlreadyExists` propagation
+- [ ] `mise run test` passes
 
 ## Blocked by
 
@@ -61,69 +129,100 @@ Error types:
 
 ---
 
-> *This was generated by AI during triage.*
+> *This was generated by AI during triage and refined during architectural review.*
 
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Implement `TemplateService` — use-case orchestrator wiring processor, engine, and artifact pipeline into `load()` and `create()` operations
+**Summary:** Implement `TemplateService` — use-case orchestrator wiring repository, engine, and artifact pipeline into `load()` and `create()` operations
 
 **Current behavior:**
-No `TemplateService` exists. The processor, engine, and artifact pipeline from issues 04–06 are complete as isolated components but have no orchestration layer connecting them into usable use cases.
+`TemplateService` exists as a zero-field struct with `load()` taking `config` and `repository` as method parameters. Returns `Vec<Template>`. No `create()` method exists. The processor, engine, and artifact pipeline from issues 04–06 are complete as isolated components but have no production caller wiring them together.
 
 **Desired behavior:**
-`TemplateService` lives in `lithos-core/src/template/service.rs` and provides two primary methods:
+`TemplateService<R, W, E>` lives in `crates/template/src/service.rs` and is a stateful struct composing its ports via uniform generics:
 
-**`load(&self) -> Result<(), TemplateError>`**
-- Constructs and runs the `TemplateProcessor` pipeline (Discovery → Completed) using `TemplateConfigSpec`
-- Persists the resulting `Template` aggregates and `RawTemplateView`s via the `WriteRepository` trait
-- Ensures the repository is up-to-date before any `create()` call
+```rust
+pub struct TemplateService<R, W, E> {
+    repository: R,
+    writer: W,
+    engine: E,
+    config: TemplateConfigSpec,
+}
+```
 
-**`create(&self, input: CreateTemplateInput) -> Result<CreatedTemplatePath, TemplateError>`**
-where `CreateTemplateInput` holds at minimum: template name (`TemplateName` or `&str`), output path (vault-relative `&str` or `PathBuf`), and context (`HashMap<String, String>`)
+Where `R: ReadRepository + WriteRepository`, `W: FileWriter`, `E: TemplateEngine`.
+
+**`load(&self) -> Result<HashMap<TemplateName, Template>, TemplateError>`**
+- Constructs and runs the `TemplateProcessor` pipeline (Discovery → Completed) using `self.config`
+- Persists the resulting `Template` aggregates and `RawTemplateView`s via `self.repository`
+- After all templates are processed, performs batch deletion of cached `RawTemplateView` paths absent from the current scan (wires the TODO at `service.rs:62-63`)
+- Returns a `HashMap<TemplateName, Template>` keyed by derived template name — `create()` uses this map for both lookup and compilation, avoiding separate `find_template_by_name` + `list_templates` repository calls
+
+**`create(&mut self, input: CreateTemplateInput) -> Result<CreatedTemplatePath, TemplateError>`**
+where `CreateTemplateInput` holds: template name (`TemplateName`), output path (vault-relative `&str` or `PathBuf`), and context (`HashMap<String, String>`)
 
 Steps:
-1. Look up the named `Template` by `TemplateName` via `ReadRepository::find_template_by_name`; return `TemplateError::NotFound` if absent
-2. Fetch all templates via `ReadRepository::list_templates`; construct `MiniJinjaEngine` from all of them (implicit compile-time validation — broken source is caught here via `compile`)
-3. Call `engine.render(template, &context)`; map `TemplateEngineError` → `TemplateError::Engine`
-4. Drive `TemplateArtifact` pipeline: `Rendered → TargetResolved → ReadyToCommit → Committed`; map path and write errors to `TemplateError`
-5. Return the created vault-relative path
+1. Look up the named `Template` from the map; return `TemplateError::NotFound { name }` if absent
+2. Compile all templates from the map into `self.engine` (implicit compile-time validation — broken source is caught here via `compile`)
+3. Call `self.engine.render(template, &context)`; map `TemplateEngineError` → `TemplateError::Engine`
+4. Drive `TemplateArtifact` pipeline: `Rendered → TargetResolved → Committed`
+5. Map `TemplateArtifactError` → `TemplateError::Artifact(TemplateArtifactError)`
+6. Return the committed vault-relative path
 
-**`create_dry_run(&self, input: DryRunInput) -> Result<String, TemplateError>`** (or a flag on `CreateTemplateInput`):
+**`create_dry_run(&mut self, input: DryRunInput) -> Result<String, TemplateError>`** (or a flag on `CreateTemplateInput`):
 - Performs steps 1–3 of `create()` only (no artifact pipeline)
 - Returns the rendered string without writing any file
 
-**`TemplateError`** — the primary use-case error enum; covers at minimum:
-- `NotFound { name: String }`
-- `Engine(TemplateEngineError)`
-- `Repository(TemplateRepositoryError)`
-- `PathValidation(TemplateArtifactError)` (absolute path, traversal)
-- `AlreadyExists { path: PathBuf }`
-- `Write(/* io error */)`
+**What changes in the error types:**
 
-No `TemplateDiagnostic`. No `unwrap()` or `panic!` in service code. No `minijinja` types in method signatures or `TemplateError` variants.
+| Error | Variant | Layer |
+|-------|---------|-------|
+| `TemplateRepositoryError` | `NotFoundByName(TemplateName)` (new) | Repository port |
+| `TemplateError` | `NotFound { name: String }` (new) | Service / use-case |
+| `TemplateError` | `Artifact(TemplateArtifactError)` (new) | Service / use-case |
+| `TemplateArtifactError` | `Path(WriteTargetError)` (simplified) | Artifact pipeline |
+| `TemplateArtifactError` | `Write(WriteError)` (simplified) | Artifact pipeline |
+
+Removed: `TemplateWriteError` wrapper, `AbsolutePathRejected`, `TraversalRejected`, `InvalidPath` named variants.
 
 **Key interfaces:**
-- `TemplateService` — owns a `Box<dyn ReadRepository + WriteRepository>` (or generic `R: Repository`) and `TemplateConfigSpec`; the `TemplateEngine` is constructed per-call inside `create()` (build-once per invocation)
-- `CreateTemplateInput` — new request type; all fields Lithos-owned (no `minijinja` types)
-- `CreatedTemplatePath` — new response type or type alias for the vault-relative path that was committed
-- `TemplateError` — new error enum; must not expose `minijinja` types in variants or `Display` output
-- `TemplateProcessor` from issue-04, `MiniJinjaEngine` from issue-05, `TemplateArtifact` from issue-06 — composed internally
-- Tests use the in-memory test double from issue-03
+- `TemplateService<R, W, E>` — stateful struct; all three generics use the same direct-injection pattern
+- `CreateTemplateInput` — new request type; all fields Traces-owned
+- `CreatedTemplatePath` — newtype/alias for the committed vault-relative path
+- `TemplateEngine` — generic `E` field, compiled with all templates from map inside `create()`
+- Tests use `InMemoryRepository` + mock engine or `MiniJinjaEngine` directly
+
+**Wire deferred batch deletion:**
+At `crates/template/src/service.rs:62-63`, replace the TODO to iterate `_deleted_paths` and call `repository.delete_raw_template_view(path)?`. Template aggregate deletion needs ID resolution — the agent should decide whether to add `find_template_id_by_path` calls or batch-delete views only.
+
+**Remove `#[allow(dead_code)]`:**
+1. `crates/template/src/artifact.rs:9-14` — `create()` exercises the pipeline
+2. `crates/template/src/engine/mod.rs:8` — `create()` calls `compile` and `render`
 
 **Acceptance criteria:**
-- [ ] `TemplateService::load()` runs the full processor pipeline and returns `Ok(())` on success
-- [ ] `TemplateService::load()` handles batch template deletion after all templates in the directory are processed (Deletions deferred from issue-04)
-- [ ] `TemplateService::create()` returns the committed vault-relative path on success
-- [ ] `TemplateService::create_dry_run()` (or equivalent) returns the rendered string without writing any file
-- [ ] Missing template name returns `TemplateError::NotFound` (no panic, no unwrap)
-- [ ] Engine compile/render failures return `TemplateError::Engine` wrapping `TemplateEngineError`
-- [ ] Absolute output path returns `TemplateError::PathValidation` (or equivalent)
-- [ ] Traversal output path returns `TemplateError::PathValidation`
-- [ ] Destination already exists returns `TemplateError::AlreadyExists`
-- [ ] No `minijinja` types appear in `TemplateService` method signatures or `TemplateError` public API
+- [ ] `TemplateService<R, W, E>` with `repository`, `writer`, `engine`, `config` fields
+- [ ] `new()` constructor taking all four dependencies
+- [ ] `load(&self)` refactored to use `self.*` fields; returns `HashMap<TemplateName, Template>`
+- [ ] `load()` wires batch deletion of orphaned raw template views
+- [ ] `create(&mut self)` uses map for lookup + compilation, drives artifact pipeline
+- [ ] `create_dry_run(&mut self)` renders without writing any file
+- [ ] Missing template name returns `TemplateError::NotFound { name }`
+- [ ] Engine compile/render failures return `TemplateError::Engine(TemplateEngineError)`
+- [ ] Absolute path → `TemplateError::Artifact(WriteTargetError::Absolute(…))`
+- [ ] Traversal path → `TemplateError::Artifact(WriteTargetError::Traversal(…))`
+- [ ] Hidden-file path → `TemplateError::Artifact(WriteTargetError::Hidden(…))`
+- [ ] Empty path → `TemplateError::Artifact(WriteTargetError::Empty)`
+- [ ] Current-dir path → `TemplateError::Artifact(WriteTargetError::CurrentDir(…))`
+- [ ] Already exists → `TemplateError::Artifact(WriteError::AlreadyExists { … })`
+- [ ] No `minijinja` types in `TemplateService` method signatures or `TemplateError` public API
 - [ ] No `unwrap()` or `panic!` in service code
-- [ ] Tests cover: `load()` orchestration and repository interaction, `create()` success path end-to-end (content written, correct path returned), dry-run returns rendered string without file creation, missing template error, engine failure propagation, absolute path rejection, traversal rejection, `AlreadyExists` propagation
+- [ ] `#[allow(dead_code)]` removed from `artifact.rs` — pipeline has production caller
+- [ ] `#[allow(dead_code)]` removed from `engine/mod.rs` — engine has production caller
+- [ ] `TemplateRepositoryError::NotFoundByName` added
+- [ ] `TemplateError::Artifact(TemplateArtifactError)` and `TemplateError::NotFound { name }` added
+- [ ] `TemplateArtifactError` simplified to `Path(WriteTargetError)` + `Write(WriteError)` — no `TemplateWriteError` wrapper, no named validation variants
+- [ ] Tests cover: `load()` orchestration and repository interactions, batch deletion, `create()` end-to-end, dry-run, missing template, engine failure, all 5 path rejection types, `AlreadyExists`
 - [ ] `mise run test` passes
 
 **Out of scope:**
@@ -131,75 +230,40 @@ No `TemplateDiagnostic`. No `unwrap()` or `panic!` in service code. No `minijinj
 - Interactive prompts, declared inputs, or `inputs.*` namespace
 - Multi-file packs or `TemplateArtifactSet`
 - redb storage adapter
-- CLI adapter (issue-08)
+- CLI adapter (issue 08)
 
 ---
 
 ## Deferred from issue 06 (artifact write pipeline review)
 
-The adversarial review of issue 06 (see its "Adversarial Review" section)
-intentionally left the following work for this issue, because it requires the
-`TemplateService` to exist. Issue 06 ships the typestate pipeline behind a
-`FileWriter` port with a `WriteTarget` newtype, but with **no production caller**
-(`#![allow(dead_code)]` on `artifact.rs`). Issue 07 is where the pipeline gets
-wired and the allow is removed.
-
-### Design context carried over from 06
-
-- The FS write port is a trait named **`FileWriter`** (in `crates/fs`),
-  implemented for the crate-private `Writer`. `TemplateService` depends on this
-  trait, never on the concrete writer.
-- The validated write-target newtype is **`WriteTarget`** (wraps `Path`/`PathBuf`,
-  not normalized). It owns all path policy (absolute / `..` traversal / hidden /
-  empty rejection) at construction — `PathValidator` is being removed.
-- The pipeline is **`Rendered → TargetResolved → Committed`** (the `ReadyToCommit`
-  stage and `try_check_conflict` were dropped; parent-dir creation is folded into
-  `commit`).
-- Transitions **consume `self`** and take `&impl FileWriter`. `create()` is the
-  only caller that drives the sequence — this is how the CONTEXT invariant
-  "Template Service owns target resolution, conflict checks, and commit
-  orchestration" is satisfied.
+The adversarial review of issue 06 intentionally left work for this issue, because it requires `TemplateService` to exist. Issue 06 ships the typestate pipeline behind a `FileWriter` port with a `WriteTarget` newtype, but with **no production caller** (`#[allow(dead_code)]` on `artifact.rs`). Issue 07 is where the pipeline gets wired and the allow is removed.
 
 ### Work this issue must do (in addition to the existing AC above)
 
-1. **Inject the `FileWriter` port + vault root as service dependencies.** The
-   constructor section (Key interfaces) currently lists only `Repository` +
-   `TemplateConfigSpec`. `create()` writes to disk, so `TemplateService` must
-   also hold the vault root and a `FileWriter` (construct the FS writer from the
-   root, or accept the port). Add this to `TemplateService`'s fields.
-2. **Drive the collapsed pipeline.** Step 4 of `create()` is now
-   `Rendered → TargetResolved → Committed` (two transitions, not three):
-   `artifact.try_resolve_target(output_path)?.commit(&file_writer)?`.
-3. **Map `TemplateArtifactError` → `TemplateError`.** Reuse the existing 06 error
-   types (`TemplateArtifactError`, `TemplateWriteError`) — do not invent a
-   parallel hierarchy. `TemplateError::PathValidation` wraps
-   `TemplateArtifactError`'s `AbsolutePathRejected` / `TraversalRejected` /
-   `InvalidPath`; `AlreadyExists` and other write failures wrap
-   `TemplateWriteError`.
-4. **Extend the path-rejection acceptance criteria.** The current ACs cover only
-   absolute + traversal. Add cases for **hidden-file** targets (e.g.
-   `.config/x.md`), **empty**, and **current-dir** (`./x.md`) output paths — all
-   must surface as `TemplateError::PathValidation`, validated through the Service
-   (these are now rejected at `try_resolve_target` by `WriteTarget`, fast and
-   honestly — not as a late `Io` error).
-5. **`CreatedTemplatePath` is the validated target type**, not a raw `PathBuf` —
-   prefer returning the `WriteTarget` (or its `&Path`) that was committed.
-6. **Remove `#![allow(dead_code)]` from `crates/template/src/artifact.rs`** once
-   `create()` exercises the pipeline; confirm the pipeline is no longer dead.
-7. **Do not depend on `WriteError::Fs`** — that variant was removed in 06.
+1. **Refactor `TemplateService` to stateful composition with uniform generics.** Change from zero-field struct to `TemplateService<R, W, E>` holding `repository`, `writer`, `engine`, `config`. All three ports use the same generic-field pattern.
+2. **Change `load()` to return `HashMap<TemplateName, Template>`** instead of `Vec<Template>`. Update existing tests.
+3. **Change `create()` to `&mut self`** (engine `compile` needs `&mut self`). Look up target template from the map before touching the engine. Compile all templates from the map. The engine instance persists across `create()` calls — templates accumulate (re-compiling an already-registered name updates it in-place).
+4. **Drive the collapsed pipeline.** `artifact.try_resolve_target(output_path)?.commit(&self.writer)?`.
+5. **Add `TemplateError::NotFound { name }`** for missing template.
+6. **Add `TemplateRepositoryError::NotFoundByName(TemplateName)`** for port-layer consistency.
+7. **Add `TemplateError::Artifact(TemplateArtifactError)`** wrapping the simplified error.
+8. **Simplify `TemplateArtifactError`** — drop `TemplateWriteError`, drop named validation variants, use `Path(WriteTargetError)` and `Write(WriteError)`.
+9. **Wire batch deletion in `load()`.** After processing all discovered templates, iterate `_deleted_paths` and call `repository.delete_raw_template_view(path)?`.
+10. **Extend path-rejection ACs** for hidden-file, empty, and current-dir output paths.
+11. **`CreatedTemplatePath`** returns a `WriteTarget` or `&Path`, not a raw `PathBuf`.
+12. **Remove `#[allow(dead_code)]`** from both `artifact.rs` and `engine/mod.rs`.
 
 ### Updated acceptance criteria (supersede/extend the list above)
 
-- [ ] `TemplateService` holds a `FileWriter` (or vault root to build one) in
-      addition to the repository and config spec
-- [ ] `create()` drives `Rendered → TargetResolved → Committed` via the
-      `FileWriter` port, with the Service owning the orchestration
-- [ ] Absolute, traversal, **hidden-file**, **empty**, and **current-dir** output
-      paths each return `TemplateError::PathValidation`
-- [ ] Destination already exists returns `TemplateError::AlreadyExists`
-- [ ] `TemplateError` wraps the existing `TemplateArtifactError` /
-      `TemplateWriteError` from issue 06 (no parallel error hierarchy)
-- [ ] `#![allow(dead_code)]` is removed from `artifact.rs`; the pipeline has a
-      production caller
-- [ ] No `minijinja` types and no concrete `Writer` type in `TemplateService`
-      signatures or `TemplateError` public API
+- [ ] `TemplateService<R, W, E>` with `repository`, `writer`, `engine`, `config` fields
+- [ ] `load(&self)` returns `HashMap<TemplateName, Template>`; existing tests updated
+- [ ] `load()` wires batch deletion for orphaned raw template views
+- [ ] `create(&mut self)` uses map for lookup + compilation, renders, drives artifact pipeline
+- [ ] Engine injected as generic `E: TemplateEngine` at construction — same pattern as repo and writer
+- [ ] All 5 path rejection types return `TemplateError::Artifact(WriteTargetError::…)`
+- [ ] `AlreadyExists` returns `TemplateError::Artifact(WriteError::AlreadyExists { … })`
+- [ ] Missing template returns `TemplateError::NotFound { name }`
+- [ ] `TemplateArtifactError` simplified: `Path(WriteTargetError)` + `Write(WriteError)`; no `TemplateWriteError`, no named variants
+- [ ] `TemplateRepositoryError::NotFoundByName(TemplateName)` added
+- [ ] `#[allow(dead_code)]` removed from both `artifact.rs` and `engine/mod.rs`
+- [ ] No `minijinja` types and no concrete `Writer` type in `TemplateService` signatures or `TemplateError` public API
