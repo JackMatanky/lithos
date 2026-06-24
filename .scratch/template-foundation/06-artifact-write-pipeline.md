@@ -241,8 +241,8 @@ before `PathValidator` is deleted).
 **B. `FileWriter` port that accepts `WriteTarget`** (fixes C2, I4, I2).
 - Define `pub trait FileWriter { fn create_new(&self, target: &WriteTarget, contents: &[u8]) -> Result<(), WriteError>; }`
   in `crates/fs/src/writer.rs`.
-- **Revert `Writer`/`new`/`create_new`/`create_dir_all` to `pub(crate)`**.
-- Add a thin public adapter `CreateFileWriter(pub(crate) Writer)` that implements `FileWriter` and exposes only `new(root)`. This is the only public struct.
+- **Strip the `Writer` God Object**: Remove the embedded `Validator` (since `WriteTarget` now owns validation) and delete all speculative dead code (`atomic_write`, `rename`, `remove_file`).
+- **Implement the port directly**: Implement `FileWriter` directly on the simplified `pub struct Writer { root: PathBuf }`, eliminating the need for a wrapper adapter.
 - With validity guaranteed by `WriteTarget`, `Writer::create_new` stops
   validating; it can no longer emit a validation-as-`Io` error.
 
@@ -291,3 +291,7 @@ the `FileWriter` port + vault root into `TemplateService`.
 > The litmus test: do **not** merge `Writer` flipped to `pub` for dead code. If
 > the port/`WriteTarget` work is not done in 06, keep `Writer` `pub(crate)` and
 > hold the pipeline's FS dependency until 07 builds the port.
+
+### Implementation Notes
+- **Interface Segregation**: By implementing the narrow `FileWriter` trait, the Template domain is protected from full filesystem capabilities, while avoiding the "cheap wrapper" anti-pattern.
+- **YAGNI**: Speculative methods from `Writer` were removed rather than hidden. If features like atomic replacement are needed later, they should be implemented via trait ports rather than bloating a single `Writer` struct.
