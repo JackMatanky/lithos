@@ -145,3 +145,154 @@ One fallible transition per tracer bullet.
 - Overwrite, skip, rename, append, or other conflict policies
 - Template service, processor, or CLI (issues 04, 07, 08)
 - Any engine integration
+
+---
+
+## Adversarial Review (post-implementation)
+
+The first implementation landed, compiles, lints clean, formats clean, and passes
+the full suite (2149 nextest + doctests). An adversarial review against
+`rust-best-practices`, the FS/Template `CONTEXT.md` boundaries, and
+`docs/engineering/testing/unit*.md` found the suite green but the design unsound
+in several places. Severities and `file:line` below are against the initial
+implementation.
+
+### Findings
+
+**Critical — architecture / boundaries**
+
+- **C1. Domain model depends on a concrete FS adapter.** `artifact.rs` imports
+  `trace_fs::FsWriter` and passes `&FsWriter` into transitions
+  (`artifact.rs:18,149,188`). No port/trait. This is a hexagonal inversion and
+  contradicts the Template `CONTEXT.md` invariant that the **Template Service**
+  owns "target resolution, conflict checks, and commit orchestration".
+- **C2. An FS adapter was promoted to `pub` solely to serve dead code.**
+  `fs/lib.rs:82` plus `writer.rs:22,41,61,121` flipped `Writer`/`new`/
+  `create_new`/`create_dir_all` from `pub(crate)` to `pub`. The entire pipeline
+  has **no production caller** (only `engine/mini_jinja.rs:83` constructs
+  `TemplateArtifact<Rendered>`); the `pub` surface exists only for tests.
+
+**Important**
+
+- **I1. `&self` + `.clone()` is the wrong ownership model for a typestate.**
+  Transitions take `&self` and clone `template`/`content` at every stage
+  (`artifact.rs:123-124,164-165,198-199`). This defeats single-use linearity and
+  heap-copies the rendered body up to 3×. Should consume `self` by value.
+- **I2. Validation failures are laundered as `WriteError::Io`.**
+  `writer.rs:108-112` maps every `Validator` rejection (traversal/hidden/absolute)
+  into `io::Error(InvalidInput)` → `WriteError::Io`, so a forbidden target reads
+  as a disk I/O error. Dishonest on a security-relevant path.
+- **I3. `try_check_conflict` is redundant and misnamed.** `Writer::create_new`
+  already creates parent dirs (`writer.rs:73-80`), so the middle stage's
+  `create_dir_all` (`artifact.rs:158-160`) is repeated by commit anyway, and by
+  its own docstring it performs **no** conflict check (`artifact.rs:135`).
+- **I4. Path taxonomy round-trips through raw `&str`/`Path`.** The validated
+  newtype is discarded via `as_str()` → `Path::new` (`artifact.rs:152-153,192`)
+  and re-validated by the writer (ADR-020 violation; double validation).
+- **I5. Test modules ignore the canonical matrix.** `try_resolve_target` →
+  `validation`, `commit` → `create` (`unit-naming.md`); the new `write_error`
+  module (`fs/error.rs:647`) is flat where its neighbours use
+  `formatting`/`conversions` submodules.
+- **I6. Failure-path coverage gaps.** No test for dir-creation failure, the
+  `commit` non-`AlreadyExists` Io branch, `InvalidPath` via `./x` current-dir, or
+  a hidden-file target.
+
+**Minor**
+
+- **M1. `WriteError::Fs(#[from] FsError)` is unused** (constructed only in the
+  test at `fs/error.rs:690`) — speculative public surface (YAGNI).
+- **M2. `AbsolutePathRejected`/`TraversalRejected` sever the error source chain**
+  (`error.rs:144,147`; `artifact.rs:227-232` discards the originating
+  `PathError`).
+- **M3. Act-phase `expect`** in `creates_file_with_content` /
+  `writes_file_end_to_end` (`artifact.rs:466,534`) — documented anti-pattern.
+- **M4. Non-end-to-end `pipeline` tests.** `pipeline::rejects_absolute_path` /
+  `rejects_traversal_path` (`artifact.rs:546,561`) duplicate the single-step
+  resolve tests and fail at the first transition.
+- **M5. `accessors` module mislabeled** — holds an equality test and a private
+  `state` field test (`artifact.rs:610`).
+- **M6. Stale docs.** `writer.rs:5,19-20` and `fs/lib.rs:14,57` still describe
+  only "atomic replace semantics", not `create_new`. Variant docs missing on
+  `TemplateReadError::Read`/`TemplatePathError::Path`/`TemplateDirScanError::Scan`
+  (`error.rs:94,108,168`).
+
+### Remediation plan
+
+Context: the project is deleting `PathValidator` in favour of a newtype design,
+so path policy must move into the target newtype or it is lost. Approved design
+decisions for this remediation:
+
+- The FS write port is a trait named **`FileWriter`**.
+- The validated write-target newtype is named **`WriteTarget`**, wraps
+  `Path`/`PathBuf` (not `Box<str>`), and is **not** normalized — it preserves
+  the caller's separators and works with the writer as-is.
+- The pipeline collapses to **`Rendered → TargetResolved → Committed`**:
+  drop the `ReadyToCommit` state and `try_check_conflict`; **fold parent-dir
+  creation into `commit`**.
+
+**A. `WriteTarget` owns all path policy** (fixes I2, I4, M-security; required
+before `PathValidator` is deleted).
+- Add `WriteTarget` in `crates/fs` wrapping `PathBuf`, with
+  `try_new(impl AsRef<Path>)` rejecting **absolute**, **`..` traversal**,
+  **hidden components** (leading `.`), and **empty**. No normalization;
+  `as_path() -> &Path`.
+- Move the hidden-file rule out of the validator and into this constructor
+  **before** `PathValidator` is removed (otherwise hidden-file protection is a
+  silent regression). Add a hidden/restricted error representation (new
+  `PathError` variant or a `WriteTarget`-specific error) for the constructor to
+  return.
+
+**B. `FileWriter` port that accepts `WriteTarget`** (fixes C2, I4, I2).
+- Define `trait FileWriter { fn create_new(&self, target: &WriteTarget, contents: &[u8]) -> Result<(), WriteError>; }`
+  in `crates/fs`; implement it for `Writer`.
+- **Revert `Writer`/`new`/`create_new`/`create_dir_all` to `pub(crate)`**; export
+  only the `FileWriter` trait and a factory. Public surface becomes the
+  intentional port, not the whole adapter.
+- With validity guaranteed by `WriteTarget`, `Writer::create_new` stops
+  validating; it can no longer emit a validation-as-`Io` error.
+
+**C. Collapse the pipeline + ownership** (fixes C1, I1, I3).
+- States: `Rendered → TargetResolved(WriteTarget) → Committed`. Remove
+  `ReadyToCommit` and `try_check_conflict`.
+- `try_resolve_target(self, &str) -> Result<TemplateArtifact<TargetResolved>, TemplateArtifactError>`
+  constructs `WriteTarget::try_new` and maps its error (absolute →
+  `AbsolutePathRejected`, traversal → `TraversalRejected`, catch-all incl.
+  hidden/empty/current-dir → `InvalidPath`).
+- `commit(self, writer: &impl FileWriter) -> Result<TemplateArtifact<Committed>, TemplateArtifactError>`
+  calls `writer.create_new(target, content.as_bytes())`; parent-dir creation
+  happens inside `create_new`.
+- All transitions **consume `self`** (no clones). The artifact depends only on
+  the `FileWriter` port, never on the concrete adapter; the **Template Service**
+  (issue 07) is the only caller that drives the sequence.
+
+**D. Error-model cleanup** (fixes M1, M2).
+- Remove `WriteError::Fs(#[from] FsError)` and its test.
+- Restore the source chain on `AbsolutePathRejected`/`TraversalRejected`
+  (carry `#[source]`) or document them as deliberately terminal.
+
+**E. Tests** (fixes I5, I6, M3, M4, M5).
+- Rename modules to canonical (`validation`, `create`; split `accessors` into
+  `equality`/`state`); give `write_error` `formatting`/`conversions` submodules.
+- Add failure-path tests: dir-creation failure, `commit` non-`AlreadyExists` Io,
+  `InvalidPath` via `./x`, hidden-file target rejected at `try_resolve_target`.
+- Remove the two non-end-to-end `pipeline::rejects_*` duplicates; fix Act-phase
+  `expect`.
+
+**F. Docs** (fixes M6).
+- Update `writer.rs` / `fs/lib.rs` headers to mention `create_new`; add variant
+  docs on the template wrapper enums.
+
+### Split: fix in 06 vs defer to 07
+
+**Fix in this issue (06):** A, B, C (the typestate shape, `FileWriter`,
+`WriteTarget`, consume-`self`, collapsed states), D, E, F. These are about the
+quality and boundary of the code 06 ships and do not need the Service.
+
+**Defer to issue 07 (see that issue's "Deferred from issue 06" section):** the
+production caller that drives the pipeline, removing `#![allow(dead_code)]` from
+`artifact.rs`, mapping `TemplateArtifactError` → `TemplateError`, and injecting
+the `FileWriter` port + vault root into `TemplateService`.
+
+> The litmus test: do **not** merge `Writer` flipped to `pub` for dead code. If
+> the port/`WriteTarget` work is not done in 06, keep `Writer` `pub(crate)` and
+> hold the pipeline's FS dependency until 07 builds the port.
