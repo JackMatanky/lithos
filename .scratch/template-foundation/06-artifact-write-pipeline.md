@@ -232,22 +232,17 @@ decisions for this remediation:
 
 **A. `WriteTarget` owns all path policy** (fixes I2, I4, M-security; required
 before `PathValidator` is deleted).
-- Add `WriteTarget` in `crates/fs` wrapping `PathBuf`, with
-  `try_new(impl AsRef<Path>)` rejecting **absolute**, **`..` traversal**,
+- Add `WriteTargetError` in `crates/fs/src/error.rs` as a standalone enum with `Empty`, `Absolute(PathBuf)`, `Traversal(PathBuf)`, `CurrentDir(PathBuf)`, and `Hidden(PathBuf)` variants. Keep this separate from `WriteError` (which is I/O only).
+- Add `WriteTarget` in `crates/fs/src/path.rs` wrapping `PathBuf`, with
+  `try_new(impl AsRef<Path>) -> Result<Self, WriteTargetError>` rejecting **absolute**, **`..` traversal**,
   **hidden components** (leading `.`), and **empty**. No normalization;
   `as_path() -> &Path`.
-- Move the hidden-file rule out of the validator and into this constructor
-  **before** `PathValidator` is removed (otherwise hidden-file protection is a
-  silent regression). Add a hidden/restricted error representation (new
-  `PathError` variant or a `WriteTarget`-specific error) for the constructor to
-  return.
 
 **B. `FileWriter` port that accepts `WriteTarget`** (fixes C2, I4, I2).
-- Define `trait FileWriter { fn create_new(&self, target: &WriteTarget, contents: &[u8]) -> Result<(), WriteError>; }`
-  in `crates/fs`; implement it for `Writer`.
-- **Revert `Writer`/`new`/`create_new`/`create_dir_all` to `pub(crate)`**; export
-  only the `FileWriter` trait and a factory. Public surface becomes the
-  intentional port, not the whole adapter.
+- Define `pub trait FileWriter { fn create_new(&self, target: &WriteTarget, contents: &[u8]) -> Result<(), WriteError>; }`
+  in `crates/fs/src/writer.rs`.
+- **Revert `Writer`/`new`/`create_new`/`create_dir_all` to `pub(crate)`**.
+- Add a thin public adapter `CreateFileWriter(pub(crate) Writer)` that implements `FileWriter` and exposes only `new(root)`. This is the only public struct.
 - With validity guaranteed by `WriteTarget`, `Writer::create_new` stops
   validating; it can no longer emit a validation-as-`Io` error.
 
@@ -262,13 +257,12 @@ before `PathValidator` is deleted).
   calls `writer.create_new(target, content.as_bytes())`; parent-dir creation
   happens inside `create_new`.
 - All transitions **consume `self`** (no clones). The artifact depends only on
-  the `FileWriter` port, never on the concrete adapter; the **Template Service**
-  (issue 07) is the only caller that drives the sequence.
+  the `FileWriter` port, never on the concrete adapter.
 
 **D. Error-model cleanup** (fixes M1, M2).
 - Remove `WriteError::Fs(#[from] FsError)` and its test.
 - Restore the source chain on `AbsolutePathRejected`/`TraversalRejected`
-  (carry `#[source]`) or document them as deliberately terminal.
+  (carry `#[source] WriteTargetError`).
 
 **E. Tests** (fixes I5, I6, M3, M4, M5).
 - Rename modules to canonical (`validation`, `create`; split `accessors` into
@@ -277,9 +271,10 @@ before `PathValidator` is deleted).
   `InvalidPath` via `./x`, hidden-file target rejected at `try_resolve_target`.
 - Remove the two non-end-to-end `pipeline::rejects_*` duplicates; fix Act-phase
   `expect`.
+- Use `CreateFileWriter::new` in `artifact.rs` tests.
 
 **F. Docs** (fixes M6).
-- Update `writer.rs` / `fs/lib.rs` headers to mention `create_new`; add variant
+- Update `writer.rs` / `fs/lib.rs` headers to mention `create_new` and `CreateFileWriter`; add variant
   docs on the template wrapper enums.
 
 ### Split: fix in 06 vs defer to 07
