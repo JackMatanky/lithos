@@ -267,3 +267,104 @@ The adversarial review of issue 06 intentionally left work for this issue, becau
 - [ ] `TemplateRepositoryError::NotFoundByName(TemplateName)` added
 - [ ] `#[allow(dead_code)]` removed from both `artifact.rs` and `engine/mod.rs`
 - [ ] No `minijinja` types and no concrete `Writer` type in `TemplateService` signatures or `TemplateError` public API
+
+---
+
+## TDD Plan
+
+### Design Decisions (from architectural review)
+
+| Decision | Choice |
+|---|---|
+| Input struct | Single `CreateInput` with `dry_run: bool` (matches Indexer pattern) |
+| Return type | `WriteTarget` — already validated, `as_path()` for CLI display |
+| `Committed` state | Holds `WriteTarget`, exposed as `committed_path() -> &WriteTarget` |
+| Batch deletion | Delete both `RawTemplateView` and `Template` aggregates |
+| Dry run gate | `if !input.dry_run { commit }` |
+
+### Target interface
+
+```rust
+pub struct CreateInput {
+    pub name: TemplateName,
+    pub output_path: String,
+    pub context: HashMap<String, String>,
+    pub dry_run: bool,
+}
+
+pub struct TemplateService<R, W, E> {
+    repository: R,
+    writer: W,
+    engine: E,
+    config: TemplateConfigSpec,
+}
+
+impl<R: ReadRepository + WriteRepository, W: FileWriter, E: TemplateEngine>
+    TemplateService<R, W, E>
+{
+    pub fn new(
+        repository: R,
+        writer: W,
+        engine: E,
+        config: TemplateConfigSpec,
+    ) -> Self;
+
+    pub fn load(&self)
+        -> Result<HashMap<TemplateName, Template>, TemplateError>;
+
+    pub fn create(&mut self, input: CreateInput)
+        -> Result<WriteTarget, TemplateError>;
+}
+```
+
+### Vertical slices (red-green-refactor)
+
+Each cycle: write one failing test → implement minimum code to pass → move on.
+
+| # | Slice | RED test | GREEN work |
+|---|---|---|---|
+| **0a** | `NotFoundByName` error | `not_found_by_name_displays_name` | Add `NotFoundByName(TemplateName)` to `TemplateRepositoryError` |
+| **0b** | `NotFound` + `Artifact` errors | `not_found_displays_name`, `artifact_variant_wraps` | Add `NotFound { name }` and `Artifact(TemplateArtifactError)` to `TemplateError` |
+| **0c** | Simplify `TemplateArtifactError` | `path_variant_wraps_write_target_error`, `write_variant_wraps_write_error` | Replace named variants with `Path(WriteTargetError)` + `Write(WriteError)`. Remove `TemplateWriteError`. Update `map_path_error()`. Update `lib.rs` exports. |
+| **1** | Tracer bullet: stateful struct + `new()` | `constructs_with_all_fields` | `TemplateService<R, W, E>` with fields, `new()` constructor. Trait bounds on `impl` block. |
+| **2** | `load()` refactored to use fields, returns `HashMap` | `load_returns_empty_map_when_empty_dir` | Move `config`/`repository` to `self.*`. Return `HashMap<TemplateName, Template>`. Unused `W`+`E` params. |
+| **3** | `load()` batch deletion | `load_deletes_orphaned_templates_and_views` | Replace TODO: for each `_deleted_path`, `find_template_id_by_path`, `delete_template`, `delete_raw_template_view`. |
+| **4** | `Committed` holds `WriteTarget` | `committed_holds_write_target`, `commit_preserves_target` | Change `Committed` to `Committed(WriteTarget)`. `commit()` clones target into new state. |
+| **5** | `create()` — not found | `create_returns_not_found_when_template_missing` | Define `CreateInput`. Lookup from map. Return `TemplateError::NotFound`. |
+| **6** | `create()` — render + commit | `create_renders_and_commits_file` | `engine.compile` all map templates, `engine.render`, `try_resolve_target().commit()`. Extract `WriteTarget`. |
+| **7** | `create()` — dry run | `dry_run_renders_without_writing` | Gate: `if !input.dry_run { commit }`. Return rendered string. |
+| **8** | `create()` — engine errors | `create_propagates_engine_error` | Map `TemplateEngineError` → `TemplateError::Engine`. |
+| **9** | `create()` — 5 path rejections | `rejects_absolute`, `traversal`, `hidden`, `empty`, `current_dir` | Each returns `TemplateError::Artifact(WriteTargetError::…)` |
+| **10** | `create()` — AlreadyExists | `rejects_existing_file` | `WriteError::AlreadyExists` → `TemplateError::Artifact(WriteError::…)` |
+| **11** | Dead code removal | No new clippy dead_code warnings | Remove `#[allow(dead_code)]` from `artifact.rs:9-14` and `engine/mod.rs:8` |
+| **12** | Update existing tests | All `load` tests pass | Adapt for stateful struct, HashMap return, generic params |
+| **13** | Quality gate | — | `mise run fmt && mise run lint && mise run test` |
+
+### Files changed
+
+| File | Changes |
+|---|---|
+| `crates/template/src/error.rs` | Add `NotFoundByName`, `NotFound`, `Artifact`. Simplify `TemplateArtifactError`. Remove `TemplateWriteError`. |
+| `crates/template/src/lib.rs` | Remove `TemplateWriteError` export. |
+| `crates/template/src/artifact.rs` | Remove `#[allow(dead_code)]`. `Committed` holds `WriteTarget`. Update `map_path_error` and `commit`. |
+| `crates/template/src/engine/mod.rs` | Remove `#[allow(dead_code)]`. |
+| `crates/template/src/service.rs` | Stateful struct with generics. `CreateInput`. `create()`. `load()` returns `HashMap`. Wire batch deletion. |
+
+### Test coverage matrix
+
+| Behavior | How verified |
+|---|---|
+| Stateful struct constructs | `new()` test |
+| `load()` uses `self.*` fields | No `config`/`repository` params |
+| `load()` returns `HashMap` | Return type assertion, downstream lookup |
+| `load()` deletes orphaned views + aggregates | Repo read returns `None` after load |
+| `create()` returns `NotFound` for missing name | Name not in map → error |
+| `create()` compiles all templates | Mock engine compile count |
+| `create()` renders + writes file | File exists on disk with content |
+| `create()` dry-run renders only | File absent, string matches |
+| `create()` propagates engine errors | Mock error → `TemplateError::Engine` |
+| 5 path rejection types | Each returns typed `WriteTargetError` |
+| `AlreadyExists` propagation | Pre-created file → typed error |
+| Dead code allowances removed | Warning-free build |
+| Existing `load()` tests pass | Adapted suite |
+| `mise run test` passes | Full suite |
