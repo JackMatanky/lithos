@@ -13,6 +13,7 @@
 use std::path::PathBuf;
 
 use trace_app::error::AppError;
+use trace_fs::{PathError, error::RootScopeError};
 use trace_indexer::{IndexerError, IndexerRepositoryError, ScannerError};
 use trace_settings::DiscoveryError;
 
@@ -52,6 +53,11 @@ pub(crate) enum CliError {
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub(crate) enum IndexCommandError {
+    /// The scan path or file does not exist on disk.
+    ///
+    /// Triggered when the scanner encounters a `NotFound` I/O error or when a
+    /// `PathError` indicates the path is invalid. The user should provide a
+    /// valid path or omit `--path` to scan the entire vault.
     #[error("{} does not exist", path.display())]
     #[diagnostic(help(
         "Provide a valid path, or omit --path to index the entire vault"
@@ -60,12 +66,21 @@ pub(crate) enum IndexCommandError {
         path: PathBuf,
     },
 
+    /// The scan path exists but is not readable.
+    ///
+    /// Triggered when the scanner encounters a `PermissionDenied` I/O error.
+    /// The user should grant read permission to the path.
     #[error("cannot read {}: permission denied", path.display())]
     #[diagnostic(help("Grant read permission: chmod +r {}", path.display()))]
     ScanAccessDenied {
         path: PathBuf,
     },
 
+    /// The index database encountered a storage-level failure.
+    ///
+    /// Triggered by [`IndexerRepositoryError::Storage`] or
+    /// [`IndexerRepositoryError::DuplicatePath`]. The user should rebuild
+    /// the database with `--rebuild`.
     #[error("index database error: {detail}")]
     #[diagnostic(help(
         "Run `traces index --rebuild` to recreate the database"
@@ -74,6 +89,11 @@ pub(crate) enum IndexCommandError {
         detail: String,
     },
 
+    /// An I/O error occurred while scanning a filesystem path.
+    ///
+    /// Triggered by scanner traversal errors other than `NotFound` or
+    /// `PermissionDenied` (e.g. disk errors, connection resets). The user
+    /// should check disk health and retry.
     #[error("I/O error reading {}: {detail}", path.display())]
     #[diagnostic(help("Check disk space and filesystem health, then retry"))]
     ScanIoError {
@@ -85,9 +105,34 @@ pub(crate) enum IndexCommandError {
 impl From<IndexerError> for IndexCommandError {
     fn from(err: IndexerError) -> Self {
         match err {
-            IndexerError::Path(e) => IndexCommandError::ScanPathNotFound {
-                path: PathBuf::from(e.to_string()),
-            },
+            IndexerError::Path(e) => {
+                let path = match e {
+                    // ponytail: PathError::Empty intentionally falls through
+                    // to the wildcard arm
+                    PathError::NotAFile(p)
+                    | PathError::NotADirectory(p)
+                    | PathError::NotRelative(p)
+                    | PathError::NotAbsolute(p)
+                    | PathError::ParentTraversal(p)
+                    | PathError::CurrentDirComponent(p)
+                    | PathError::PlatformPrefix(p)
+                    | PathError::InvalidUtf8(p)
+                    | PathError::NoFileName(p)
+                    | PathError::NoStem(p) => p,
+                    PathError::RootScope(
+                        RootScopeError::PathOutsideVaultRootBoundary {
+                            path,
+                            ..
+                        },
+                    ) => path,
+                    // ponytail: PathError is #[non_exhaustive]; unknown
+                    // future variants default to empty path
+                    _ => PathBuf::new(),
+                };
+                IndexCommandError::ScanPathNotFound {
+                    path,
+                }
+            }
             IndexerError::Scanner(ScannerError::Traversal {
                 path,
                 source,
@@ -215,7 +260,7 @@ mod tests {
         error::ConfigError,
     };
 
-    use super::CliError;
+    use super::{CliError, IndexCommandError};
 
     mod conversions {
         use super::*;
@@ -231,6 +276,154 @@ mod tests {
             assert!(
                 matches!(cli_err, CliError::Bootstrap(AppError::Discovery(_))),
                 "expected CliError::Bootstrap(Discovery(..)), got: {cli_err:?}"
+            );
+        }
+    }
+
+    mod index_command_error {
+        use trace_db::DbError;
+        use trace_fs::error::RootScopeError;
+        use trace_indexer::{
+            IndexerError, IndexerRepositoryError, ScannerError,
+        };
+
+        use super::*;
+
+        fn assert_path_maps_to_scan_path_not_found(
+            path_error: PathError,
+            expected_path: &str,
+        ) {
+            let indexer_err = IndexerError::Path(path_error);
+            let cmd_err: IndexCommandError = indexer_err.into();
+            let expected = PathBuf::from(expected_path);
+            assert!(
+                matches!(&cmd_err, IndexCommandError::ScanPathNotFound { path } if *path == expected),
+                "expected ScanPathNotFound with path={expected_path:?}, got \
+                 {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn extracts_actual_path_from_not_a_directory() {
+            assert_path_maps_to_scan_path_not_found(
+                PathError::NotADirectory(PathBuf::from("/actual/path")),
+                "/actual/path",
+            );
+        }
+
+        #[test]
+        fn extracts_actual_path_from_not_a_file() {
+            assert_path_maps_to_scan_path_not_found(
+                PathError::NotAFile(PathBuf::from("/a/file")),
+                "/a/file",
+            );
+        }
+
+        #[test]
+        fn extracts_actual_path_from_not_relative() {
+            assert_path_maps_to_scan_path_not_found(
+                PathError::NotRelative(PathBuf::from("/abs/path")),
+                "/abs/path",
+            );
+        }
+
+        #[test]
+        fn extracts_actual_path_from_root_scope_error() {
+            let root_err = RootScopeError::PathOutsideVaultRootBoundary {
+                root: PathBuf::from("/vault"),
+                path: PathBuf::from("/outside/file"),
+            };
+            let path_error = PathError::RootScope(root_err);
+            let indexer_err = IndexerError::Path(path_error);
+            let cmd_err: IndexCommandError = indexer_err.into();
+            let expected = PathBuf::from("/outside/file");
+            assert!(
+                matches!(&cmd_err, IndexCommandError::ScanPathNotFound { path } if *path == expected),
+                "expected ScanPathNotFound with path=/outside/file, got \
+                 {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_not_found_traversal_to_scan_path_not_found() {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "file not found",
+            );
+            let scanner_err = ScannerError::Traversal {
+                path: PathBuf::from("/missing"),
+                source: io_err,
+            };
+            let indexer_err: IndexerError = scanner_err.into();
+            let cmd_err: IndexCommandError = indexer_err.into();
+            let expected = PathBuf::from("/missing");
+            assert!(
+                matches!(&cmd_err, IndexCommandError::ScanPathNotFound { path } if *path == expected),
+                "expected ScanPathNotFound with path=/missing, got {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_permission_denied_traversal_to_scan_access_denied() {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "access denied",
+            );
+            let scanner_err = ScannerError::Traversal {
+                path: PathBuf::from("/restricted"),
+                source: io_err,
+            };
+            let indexer_err: IndexerError = scanner_err.into();
+            let cmd_err: IndexCommandError = indexer_err.into();
+            let expected = PathBuf::from("/restricted");
+            assert!(
+                matches!(&cmd_err, IndexCommandError::ScanAccessDenied { path } if *path == expected),
+                "expected ScanAccessDenied with path=/restricted, got \
+                 {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_other_traversal_to_scan_io_error() {
+            let io_err = std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "connection reset",
+            );
+            let scanner_err = ScannerError::Traversal {
+                path: PathBuf::from("/broken"),
+                source: io_err,
+            };
+            let indexer_err: IndexerError = scanner_err.into();
+            let cmd_err: IndexCommandError = indexer_err.into();
+            let expected = PathBuf::from("/broken");
+            assert!(
+                matches!(&cmd_err, IndexCommandError::ScanIoError { path, .. } if *path == expected),
+                "expected ScanIoError with path=/broken, got {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_storage_error_from_repository() {
+            let db_err = DbError::Serialization("corrupt data".into());
+            let repo_err: IndexerRepositoryError = db_err.into();
+            let indexer_err: IndexerError = repo_err.into();
+            let cmd_err: IndexCommandError = indexer_err.into();
+            assert!(
+                matches!(&cmd_err, IndexCommandError::StorageFailure { detail } if detail.contains("corrupt")),
+                "expected StorageFailure with detail containing 'corrupt', \
+                 got {cmd_err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_duplicate_path_from_repository() {
+            let path_key = trace_fs::PathKey::try_new("dup").unwrap();
+            let repo_err = IndexerRepositoryError::DuplicatePath(path_key);
+            let indexer_err: IndexerError = repo_err.into();
+            let cmd_err: IndexCommandError = indexer_err.into();
+            assert!(
+                matches!(&cmd_err, IndexCommandError::StorageFailure { detail } if detail.contains("duplicate")),
+                "expected StorageFailure with 'duplicate', got {cmd_err:?}"
             );
         }
     }
