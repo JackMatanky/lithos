@@ -39,67 +39,6 @@ pub enum FsError {
     RootScope(#[from] RootScopeError),
 }
 
-/// Errors related to path construction and name extraction.
-///
-/// These errors occur when validating or constructing path types (`FilePath`,
-/// `DirPath`, `FileName`, `BaseName`) or converting from raw path strings.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "PathError clarifies this is path-specific within the error \
-              module"
-)]
-pub enum PathError {
-    /// The path string is empty.
-    #[error("Path is empty")]
-    Empty,
-
-    /// Expected a file, but path does not refer to one.
-    #[error("Path does not refer to a file: {0}")]
-    NotAFile(PathBuf),
-
-    /// Expected a directory, but path does not refer to one.
-    #[error("Path does not refer to a directory: {0}")]
-    NotADirectory(PathBuf),
-
-    /// Expected a relative path, but got an absolute path.
-    #[error("Expected relative path, got absolute: {0}")]
-    NotRelative(PathBuf),
-
-    /// Expected an absolute path, but got a relative path.
-    #[error("Expected absolute path, got relative: {0}")]
-    NotAbsolute(PathBuf),
-
-    /// Path contains parent traversal component (`..`).
-    #[error("Path contains parent traversal (..): {0}")]
-    ParentTraversal(PathBuf),
-
-    /// Path contains current directory component (`.`).
-    #[error("Path contains current directory component (.): {0}")]
-    CurrentDirComponent(PathBuf),
-
-    /// Path contains platform-specific prefix (e.g., `C:` on Windows).
-    #[error("Path contains platform prefix: {0}")]
-    PlatformPrefix(PathBuf),
-
-    /// Path is not valid UTF-8.
-    #[error("Path contains invalid UTF-8: {0:?}")]
-    InvalidUtf8(PathBuf),
-
-    /// Path has no filename component.
-    #[error("Path has no filename component: {0}")]
-    NoFileName(PathBuf),
-
-    /// Path has no stem (basename without extension).
-    #[error("Path has no stem: {0}")]
-    NoStem(PathBuf),
-
-    /// Path failed vault root boundary scoping.
-    #[error(transparent)]
-    RootScope(#[from] RootScopeError),
-}
-
 /// Errors related to file input access operations.
 ///
 /// These errors occur when reading files, accessing metadata, or when paths
@@ -193,6 +132,92 @@ pub enum ScanError {
     /// Path construction failed during scan.
     #[error(transparent)]
     Path(#[from] PathError),
+}
+
+/// Errors that occur during write target validation.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum WriteTargetError {
+    /// The target path is empty.
+    #[error("Write target path is empty")]
+    Empty,
+
+    /// The target path is absolute.
+    #[error("Write target cannot be absolute: {0}")]
+    Absolute(PathBuf),
+
+    /// The target path contains traversal components (`..`).
+    #[error("Write target contains traversal components (..): {0}")]
+    Traversal(PathBuf),
+
+    /// The target path contains a current directory component (`.`).
+    #[error("Write target contains current directory component (.): {0}")]
+    CurrentDir(PathBuf),
+
+    /// The target path contains a hidden component (leading `.`).
+    #[error("Write target contains hidden component: {0}")]
+    Hidden(PathBuf),
+}
+
+/// Errors related to path construction and name extraction.
+///
+/// These errors occur when validating or constructing path types (`FilePath`,
+/// `DirPath`, `FileName`, `BaseName`) or converting from raw path strings.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "PathError clarifies this is path-specific within the error \
+              module"
+)]
+pub enum PathError {
+    /// The path string is empty.
+    #[error("Path is empty")]
+    Empty,
+
+    /// Expected a file, but path does not refer to one.
+    #[error("Path does not refer to a file: {0}")]
+    NotAFile(PathBuf),
+
+    /// Expected a directory, but path does not refer to one.
+    #[error("Path does not refer to a directory: {0}")]
+    NotADirectory(PathBuf),
+
+    /// Expected a relative path, but got an absolute path.
+    #[error("Expected relative path, got absolute: {0}")]
+    NotRelative(PathBuf),
+
+    /// Expected an absolute path, but got a relative path.
+    #[error("Expected absolute path, got relative: {0}")]
+    NotAbsolute(PathBuf),
+
+    /// Path contains parent traversal component (`..`).
+    #[error("Path contains parent traversal (..): {0}")]
+    ParentTraversal(PathBuf),
+
+    /// Path contains current directory component (`.`).
+    #[error("Path contains current directory component (.): {0}")]
+    CurrentDirComponent(PathBuf),
+
+    /// Path contains platform-specific prefix (e.g., `C:` on Windows).
+    #[error("Path contains platform prefix: {0}")]
+    PlatformPrefix(PathBuf),
+
+    /// Path is not valid UTF-8.
+    #[error("Path contains invalid UTF-8: {0:?}")]
+    InvalidUtf8(PathBuf),
+
+    /// Path has no filename component.
+    #[error("Path has no filename component: {0}")]
+    NoFileName(PathBuf),
+
+    /// Path has no stem (basename without extension).
+    #[error("Path has no stem: {0}")]
+    NoStem(PathBuf),
+
+    /// Path failed vault root boundary scoping.
+    #[error(transparent)]
+    RootScope(#[from] RootScopeError),
 }
 
 /// Errors related to vault root boundary scope.
@@ -891,28 +916,4 @@ mod tests {
             }
         }
     }
-}
-/// Errors that occur during write target validation.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum WriteTargetError {
-    /// The target path is empty.
-    #[error("Write target path is empty")]
-    Empty,
-
-    /// The target path is absolute.
-    #[error("Write target cannot be absolute: {0}")]
-    Absolute(PathBuf),
-
-    /// The target path contains traversal components (`..`).
-    #[error("Write target contains traversal components (..): {0}")]
-    Traversal(PathBuf),
-
-    /// The target path contains a current directory component (`.`).
-    #[error("Write target contains current directory component (.): {0}")]
-    CurrentDir(PathBuf),
-
-    /// The target path contains a hidden component (leading `.`).
-    #[error("Write target contains hidden component: {0}")]
-    Hidden(PathBuf),
 }
