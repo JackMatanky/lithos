@@ -1181,6 +1181,93 @@ impl DirFragment for RelativeDirPath {
     }
 }
 
+/// A validated target path for writing files.
+///
+/// Ensures the path is relative, does not contain traversal components (`..`),
+/// does not contain current directory components (`.`), and does not contain
+/// hidden components (leading `.`).
+/// Does not normalize separators, preserving caller intent.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WriteTarget(PathBuf);
+
+impl WriteTarget {
+    /// Creates a new validated write target path.
+    ///
+    /// # Errors
+    /// Returns `WriteTargetError` if the path fails validation.
+    #[inline]
+    pub fn try_new<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<Self, crate::error::WriteTargetError> {
+        let path = path.as_ref();
+
+        if path.as_os_str().is_empty() {
+            return Err(crate::error::WriteTargetError::Empty);
+        }
+
+        if path.is_absolute() || Self::is_windows_absolute(path) {
+            return Err(crate::error::WriteTargetError::Absolute(
+                path.to_path_buf(),
+            ));
+        }
+
+        for component in path.components() {
+            match component {
+                Component::ParentDir => {
+                    return Err(crate::error::WriteTargetError::Traversal(
+                        path.to_path_buf(),
+                    ));
+                }
+                Component::CurDir => {
+                    return Err(crate::error::WriteTargetError::CurrentDir(
+                        path.to_path_buf(),
+                    ));
+                }
+                Component::Normal(os_str) => {
+                    if os_str.to_str().is_some_and(|s| s.starts_with('.')) {
+                        return Err(crate::error::WriteTargetError::Hidden(
+                            path.to_path_buf(),
+                        ));
+                    }
+                }
+                Component::Prefix(_) | Component::RootDir => {
+                    return Err(crate::error::WriteTargetError::Absolute(
+                        path.to_path_buf(),
+                    ));
+                }
+            }
+        }
+
+        // `PathBuf::components()` normalizes away internal `.` components, so
+        // we check the string representation to ensure no explicit
+        // current-dir components exist.
+        if let Some(s) = path.to_str()
+            && (s.split('/').any(|segment| segment == ".")
+                || s.split('\\').any(|segment| segment == "."))
+        {
+            return Err(crate::error::WriteTargetError::CurrentDir(
+                path.to_path_buf(),
+            ));
+        }
+
+        Ok(Self(path.to_path_buf()))
+    }
+
+    /// Returns the underlying path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+
+    #[inline]
+    fn is_windows_absolute(path: &Path) -> bool {
+        let b = path.as_os_str().as_encoded_bytes();
+        b.first().is_some_and(u8::is_ascii_alphabetic)
+            && b.get(1) == Some(&b':')
+    }
+}
+
 struct RelativePathValidator;
 
 impl RelativePathValidator {
@@ -1352,6 +1439,79 @@ impl PathNormalizationContext {
 mod tests {
     use super::*;
 
+    mod write_target {
+        use super::*;
+        use crate::error::WriteTargetError;
+
+        mod constructor {
+            use super::*;
+
+            #[test]
+            fn rejects_empty() {
+                let err = WriteTarget::try_new("").unwrap_err();
+                assert!(matches!(err, WriteTargetError::Empty));
+            }
+
+            #[test]
+            fn accepts_valid_relative_path() {
+                let target = WriteTarget::try_new("notes/x.md").unwrap();
+                assert_eq!(target.as_path().to_str().unwrap(), "notes/x.md");
+            }
+
+            #[test]
+            fn accepts_nested_relative_path() {
+                let target =
+                    WriteTarget::try_new("sub/dir/notes/x.md").unwrap();
+                assert_eq!(
+                    target.as_path().to_str().unwrap(),
+                    "sub/dir/notes/x.md"
+                );
+            }
+
+            #[test]
+            fn rejects_absolute() {
+                let err = WriteTarget::try_new("/etc/passwd").unwrap_err();
+                assert!(matches!(err, WriteTargetError::Absolute(_)));
+
+                let err_win = WriteTarget::try_new("C:\\Windows").unwrap_err();
+                assert!(matches!(err_win, WriteTargetError::Absolute(_)));
+
+                let err_win_rel =
+                    WriteTarget::try_new("C:relative").unwrap_err();
+                assert!(matches!(err_win_rel, WriteTargetError::Absolute(_)));
+            }
+
+            #[test]
+            fn rejects_traversal() {
+                let err = WriteTarget::try_new("../escape.md").unwrap_err();
+                assert!(matches!(err, WriteTargetError::Traversal(_)));
+
+                let err_nested =
+                    WriteTarget::try_new("sub/../../escape.md").unwrap_err();
+                assert!(matches!(err_nested, WriteTargetError::Traversal(_)));
+            }
+
+            #[test]
+            fn rejects_current_dir() {
+                let err = WriteTarget::try_new("./notes.md").unwrap_err();
+                assert!(matches!(err, WriteTargetError::CurrentDir(_)));
+
+                let err_nested =
+                    WriteTarget::try_new("sub/./notes.md").unwrap_err();
+                assert!(matches!(err_nested, WriteTargetError::CurrentDir(_)));
+            }
+
+            #[test]
+            fn rejects_hidden_component() {
+                let err = WriteTarget::try_new(".secret").unwrap_err();
+                assert!(matches!(err, WriteTargetError::Hidden(_)));
+
+                let err_nested =
+                    WriteTarget::try_new("sub/.config/x.md").unwrap_err();
+                assert!(matches!(err_nested, WriteTargetError::Hidden(_)));
+            }
+        }
+    }
     mod relative_path {
         use super::*;
 

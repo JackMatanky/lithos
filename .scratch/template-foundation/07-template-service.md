@@ -132,3 +132,74 @@ No `TemplateDiagnostic`. No `unwrap()` or `panic!` in service code. No `minijinj
 - Multi-file packs or `TemplateArtifactSet`
 - redb storage adapter
 - CLI adapter (issue-08)
+
+---
+
+## Deferred from issue 06 (artifact write pipeline review)
+
+The adversarial review of issue 06 (see its "Adversarial Review" section)
+intentionally left the following work for this issue, because it requires the
+`TemplateService` to exist. Issue 06 ships the typestate pipeline behind a
+`FileWriter` port with a `WriteTarget` newtype, but with **no production caller**
+(`#![allow(dead_code)]` on `artifact.rs`). Issue 07 is where the pipeline gets
+wired and the allow is removed.
+
+### Design context carried over from 06
+
+- The FS write port is a trait named **`FileWriter`** (in `crates/fs`),
+  implemented for the crate-private `Writer`. `TemplateService` depends on this
+  trait, never on the concrete writer.
+- The validated write-target newtype is **`WriteTarget`** (wraps `Path`/`PathBuf`,
+  not normalized). It owns all path policy (absolute / `..` traversal / hidden /
+  empty rejection) at construction — `PathValidator` is being removed.
+- The pipeline is **`Rendered → TargetResolved → Committed`** (the `ReadyToCommit`
+  stage and `try_check_conflict` were dropped; parent-dir creation is folded into
+  `commit`).
+- Transitions **consume `self`** and take `&impl FileWriter`. `create()` is the
+  only caller that drives the sequence — this is how the CONTEXT invariant
+  "Template Service owns target resolution, conflict checks, and commit
+  orchestration" is satisfied.
+
+### Work this issue must do (in addition to the existing AC above)
+
+1. **Inject the `FileWriter` port + vault root as service dependencies.** The
+   constructor section (Key interfaces) currently lists only `Repository` +
+   `TemplateConfigSpec`. `create()` writes to disk, so `TemplateService` must
+   also hold the vault root and a `FileWriter` (construct the FS writer from the
+   root, or accept the port). Add this to `TemplateService`'s fields.
+2. **Drive the collapsed pipeline.** Step 4 of `create()` is now
+   `Rendered → TargetResolved → Committed` (two transitions, not three):
+   `artifact.try_resolve_target(output_path)?.commit(&file_writer)?`.
+3. **Map `TemplateArtifactError` → `TemplateError`.** Reuse the existing 06 error
+   types (`TemplateArtifactError`, `TemplateWriteError`) — do not invent a
+   parallel hierarchy. `TemplateError::PathValidation` wraps
+   `TemplateArtifactError`'s `AbsolutePathRejected` / `TraversalRejected` /
+   `InvalidPath`; `AlreadyExists` and other write failures wrap
+   `TemplateWriteError`.
+4. **Extend the path-rejection acceptance criteria.** The current ACs cover only
+   absolute + traversal. Add cases for **hidden-file** targets (e.g.
+   `.config/x.md`), **empty**, and **current-dir** (`./x.md`) output paths — all
+   must surface as `TemplateError::PathValidation`, validated through the Service
+   (these are now rejected at `try_resolve_target` by `WriteTarget`, fast and
+   honestly — not as a late `Io` error).
+5. **`CreatedTemplatePath` is the validated target type**, not a raw `PathBuf` —
+   prefer returning the `WriteTarget` (or its `&Path`) that was committed.
+6. **Remove `#![allow(dead_code)]` from `crates/template/src/artifact.rs`** once
+   `create()` exercises the pipeline; confirm the pipeline is no longer dead.
+7. **Do not depend on `WriteError::Fs`** — that variant was removed in 06.
+
+### Updated acceptance criteria (supersede/extend the list above)
+
+- [ ] `TemplateService` holds a `FileWriter` (or vault root to build one) in
+      addition to the repository and config spec
+- [ ] `create()` drives `Rendered → TargetResolved → Committed` via the
+      `FileWriter` port, with the Service owning the orchestration
+- [ ] Absolute, traversal, **hidden-file**, **empty**, and **current-dir** output
+      paths each return `TemplateError::PathValidation`
+- [ ] Destination already exists returns `TemplateError::AlreadyExists`
+- [ ] `TemplateError` wraps the existing `TemplateArtifactError` /
+      `TemplateWriteError` from issue 06 (no parallel error hierarchy)
+- [ ] `#![allow(dead_code)]` is removed from `artifact.rs`; the pipeline has a
+      production caller
+- [ ] No `minijinja` types and no concrete `Writer` type in `TemplateService`
+      signatures or `TemplateError` public API

@@ -11,7 +11,7 @@
 //!   extension filters, and depth control via [`DirScanner`].
 //! - **Root-scoped file access** — deterministic discovery, read pipelines, and
 //!   metadata access via [`FileReader`].
-//! - **Safe write orchestration** — atomic replace semantics via [`FsWriter`].
+//! - **Safe write orchestration** — atomic create semantics via [`FsWriter`].
 //! - **Structured data parsing** — JSON/TOML/YAML parsing with explicit format
 //!   detection and validation.
 //!
@@ -65,6 +65,7 @@ pub mod writer;
 pub use entry::{DirNode, FileNode, FsNode};
 pub use error::{
     FsError, ParseError, PathError, PathValidationError, ReadError, ScanError,
+    WriteError, WriteTargetError,
 };
 pub use format::{FileExtensionRef, FileFormat, StructuredFileFormat};
 pub use metadata::{DirMetadata, FileMetadata, FsMetadata, FsTimes};
@@ -73,8 +74,9 @@ pub use name::{
 };
 pub use path::{
     DirPath, FilePath, FsPath, FsPathRef, PathKey, RelativeDirPath,
-    RelativeFilePath, RelativePath,
+    RelativeFilePath, RelativePath, WriteTarget,
 };
 pub use reader::FileReader;
 pub use scanner::{DirScanInput, DirScanner};
 pub use validator::Validator as PathValidator;
+pub use writer::{FileWriter, Writer as FsWriter};

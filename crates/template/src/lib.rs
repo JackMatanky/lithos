@@ -30,8 +30,8 @@ pub(crate) mod views;
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
 pub use engine::TemplateEngineError;
 pub use error::{
-    TemplateBodyError, TemplateError, TemplateNameError,
-    TemplateRepositoryError,
+    TemplateArtifactError, TemplateBodyError, TemplateError, TemplateNameError,
+    TemplateRepositoryError, TemplateWriteError,
 };
 pub use raw::RawTemplate;
 pub use repository::{ReadRepository, Repository, WriteRepository};

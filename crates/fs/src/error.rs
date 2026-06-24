@@ -126,6 +126,36 @@ pub enum ReadError {
     RootScope(#[from] RootScopeError),
 }
 
+/// Errors related to atomic file creation operations.
+///
+/// These errors occur when creating a new file that must not already exist
+/// (TOCTOU-free `create_new` semantics), preserving the offending path and
+/// underlying I/O cause for actionable diagnostics.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "WriteError clarifies this is write-specific within the error \
+              module"
+)]
+pub enum WriteError {
+    /// The target file already exists and creation was refused.
+    #[error("File already exists: {path}")]
+    AlreadyExists {
+        /// The path that already exists.
+        path: PathBuf,
+    },
+
+    /// An I/O error occurred while creating or writing the file.
+    #[error("Failed to write {path}: {source}")]
+    Io {
+        /// The path that failed to be written.
+        path: PathBuf,
+        /// The underlying I/O error.
+        source: std::io::Error,
+    },
+}
+
 /// Errors related to directory traversal operations.
 ///
 /// These errors occur during walkdir traversal, glob pattern matching, or when
@@ -610,6 +640,88 @@ mod tests {
         }
     }
 
+    mod write_target_error {
+        use super::*;
+
+        #[test]
+        fn formats_empty_message() {
+            let error = WriteTargetError::Empty;
+            let msg = format!("{error}");
+            assert!(msg.to_lowercase().contains("empty"));
+        }
+
+        #[test]
+        fn formats_absolute_with_path() {
+            let error = WriteTargetError::Absolute(PathBuf::from("/abs/path"));
+            let msg = format!("{error}");
+            assert!(msg.contains("/abs/path"));
+            assert!(msg.to_lowercase().contains("absolute"));
+        }
+
+        #[test]
+        fn formats_traversal_with_path() {
+            let error = WriteTargetError::Traversal(PathBuf::from("../escape"));
+            let msg = format!("{error}");
+            assert!(msg.contains("../escape"));
+            assert!(msg.contains(".."));
+        }
+
+        #[test]
+        fn formats_current_dir_with_path() {
+            let error = WriteTargetError::CurrentDir(PathBuf::from("./here"));
+            let msg = format!("{error}");
+            assert!(msg.contains("./here"));
+        }
+
+        #[test]
+        fn formats_hidden_with_path() {
+            let error = WriteTargetError::Hidden(PathBuf::from(".secret"));
+            let msg = format!("{error}");
+            assert!(msg.contains(".secret"));
+            assert!(msg.to_lowercase().contains("hidden"));
+        }
+    }
+
+    mod write_error {
+        use std::io;
+
+        use super::*;
+
+        #[test]
+        fn already_exists_displays_path() {
+            let err = WriteError::AlreadyExists {
+                path: PathBuf::from("vault/note.md"),
+            };
+            let msg = format!("{err}");
+            assert!(msg.contains("vault/note.md"), "Expected path in: {msg}");
+        }
+
+        #[test]
+        fn io_displays_path_and_source() {
+            let err = WriteError::Io {
+                path: PathBuf::from("vault/note.md"),
+                source: io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "permission denied",
+                ),
+            };
+            let msg = format!("{err}");
+            assert!(msg.contains("vault/note.md"), "Expected path in: {msg}");
+            assert!(
+                msg.contains("permission denied"),
+                "Expected source in: {msg}"
+            );
+        }
+
+        #[test]
+        fn implements_error_trait() {
+            let err = WriteError::AlreadyExists {
+                path: PathBuf::from("file.txt"),
+            };
+            let _: &dyn std::error::Error = &err;
+        }
+    }
+
     mod scan_error {
         use super::*;
 
@@ -775,4 +887,28 @@ mod tests {
             }
         }
     }
+}
+/// Errors that occur during write target validation.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum WriteTargetError {
+    /// The target path is empty.
+    #[error("Write target path is empty")]
+    Empty,
+
+    /// The target path is absolute.
+    #[error("Write target cannot be absolute: {0}")]
+    Absolute(PathBuf),
+
+    /// The target path contains traversal components (`..`).
+    #[error("Write target contains traversal components (..): {0}")]
+    Traversal(PathBuf),
+
+    /// The target path contains a current directory component (`.`).
+    #[error("Write target contains current directory component (.): {0}")]
+    CurrentDir(PathBuf),
+
+    /// The target path contains a hidden component (leading `.`).
+    #[error("Write target contains hidden component: {0}")]
+    Hidden(PathBuf),
 }
