@@ -14,7 +14,7 @@ date_updated: 2026-03-10
 
 ## Context
 
-Lithos requires event-driven architecture to prevent god-object orchestration patterns (validated by past Go implementation experience). However, implementing a full 3-tier event bus (MPSC/Broadcast/Watch) from day one introduces unnecessary complexity before core domain logic is established.
+Traces requires event-driven architecture to prevent god-object orchestration patterns (validated by past Go implementation experience). However, implementing a full 3-tier event bus (MPSC/Broadcast/Watch) from day one introduces unnecessary complexity before core domain logic is established.
 
 The system must balance:
 - **Avoiding god-objects**: Direct orchestration leads to brittle coupling between aggregates
@@ -75,7 +75,7 @@ When performance profiling or feature requirements demand it, implement:
 
 - **Pros**: Perfect history for auditing and recovery, replay capability
 - **Cons**: Overkill for local CLI tool, significant storage and complexity overhead, not needed for current requirements
-- **Verdict**: Not appropriate for Lithos use case
+- **Verdict**: Not appropriate for Traces use case
 
 ## Technical Validation
 

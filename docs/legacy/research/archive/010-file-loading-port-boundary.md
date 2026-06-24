@@ -11,7 +11,7 @@ date_implemented: 2026-01-21
 
 ## Context
 
-Lithos needs a unified interface for loading TOML/JSON/YAML configuration files with format detection, security validation, and async I/O. The project follows hexagonal architecture with a strict rule that the domain layer remains pure and free of infrastructure concerns. This creates a boundary question: should the domain layer expose file format concepts, or should format detection and parsing live entirely in the adapter layer?
+Traces needs a unified interface for loading TOML/JSON/YAML configuration files with format detection, security validation, and async I/O. The project follows hexagonal architecture with a strict rule that the domain layer remains pure and free of infrastructure concerns. This creates a boundary question: should the domain layer expose file format concepts, or should format detection and parsing live entirely in the adapter layer?
 
 Evaluation criteria:
 
@@ -84,7 +84,7 @@ Adopt a text-only domain contract using `String` and keep all format detection, 
 
 The implementation intentionally **allows symlinks** for configuration files, as they are a legitimate and common pattern for:
 
-- Dotfiles management (e.g., `~/.config/lithos/config.toml` → `~/.dotfiles/lithos/config.toml`)
+- Dotfiles management (e.g., `~/.config/traces/config.toml` → `~/.dotfiles/traces/config.toml`)
 - Shared configuration across environments
 - Version-controlled configuration repositories
 

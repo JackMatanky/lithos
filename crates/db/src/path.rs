@@ -102,7 +102,7 @@ impl redb::Value for DbPathKey {
 
     #[inline]
     fn type_name() -> redb::TypeName {
-        redb::TypeName::new("lithos::PathKey")
+        redb::TypeName::new("traces::PathKey")
     }
 }
 

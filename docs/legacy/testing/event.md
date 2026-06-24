@@ -2,12 +2,12 @@
 
 # Event-Driven Testing Guidelines
 
-Tactical specification for testing the Lithos hybrid event bus and domain events.
+Tactical specification for testing the Traces hybrid event bus and domain events.
 
 ## 1. Key Principles
 
 ### Hybrid Plane Awareness
-Lithos uses a "Three Plane" [event architecture](../adr/004-event-orchestration.md). Tests must be explicit about which plane they are verifying.
+Traces uses a "Three Plane" [event architecture](../adr/004-event-orchestration.md). Tests must be explicit about which plane they are verifying.
 - **Data Plane (MPSC)**: Guaranteed delivery, strict ordering. Used for Indexing, Persistence. Test for *completeness* and *order*.
 - **Control Plane (Broadcast)**: Fire-and-forget, ephemeral. Used for Shutdown, Cache Invalidation. Test for *reachability* and *responsiveness*.
 - **State Plane (Watch)**: Last-value-wins. Used for UI updates, Status indicators. Test for *eventual correctness* (intermediate states may be skipped).

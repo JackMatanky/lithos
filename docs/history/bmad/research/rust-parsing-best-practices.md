@@ -776,7 +776,7 @@ fn parse_block() {
 
 ---
 
-## 12. Recommended Architecture for Lithos
+## 12. Recommended Architecture for Traces
 
 ### Multi-Phase Pipeline
 

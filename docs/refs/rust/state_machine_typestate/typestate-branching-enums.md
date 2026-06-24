@@ -280,7 +280,7 @@ pub type IResult<I, O, E> = Result<(I, O), Err<E>>;
 
 ### Pattern: Nested Result for Multi-Phase Validation
 
-Lithos-style example (from project context):
+Traces-style example (from project context):
 
 ```rust
 // Phase 1: Syntax validation (parsing)
@@ -803,12 +803,12 @@ impl HttpResponse<AfterHeaders> {
 }
 ```
 
-### Example 4: Lithos Schema Resolution (Multi-Phase Validation)
+### Example 4: Traces Schema Resolution (Multi-Phase Validation)
 
 **Branching strategy:** Nested Result for syntax vs semantic validation
 
 ```rust
-// From lithos-core architecture
+// From traces-core architecture
 pub mod raw {
     // Syntax-only validation
     pub struct RawSchema { /* ... */ }

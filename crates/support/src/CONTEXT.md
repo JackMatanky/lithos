@@ -1,6 +1,6 @@
 # Support
 
-The Support context defines crate-private implementation support used inside `lithos-core`. It exists to centralize internal building blocks that are shared internally but intentionally excluded from the public contract surface.
+The Support context defines crate-private implementation support used inside `traces-core`. It exists to centralize internal building blocks that are shared internally but intentionally excluded from the public contract surface.
 
 ## Language
 
@@ -13,7 +13,7 @@ A crate-private hashing type or operation used for change detection, indexing, o
 _Avoid_: exported hash API, external hashing contract
 
 **Crate-Private Boundary**:
-The visibility rule that allows use within `lithos-core` while disallowing external consumption.
+The visibility rule that allows use within `traces-core` while disallowing external consumption.
 _Avoid_: soft private convention, public-by-default
 
 **Support Facade**:

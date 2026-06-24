@@ -1,7 +1,7 @@
-# Lithos Config Module: Critical Issues & Architecture Review
+# Traces Config Module: Critical Issues & Architecture Review
 
 **Date:** 2026-03-04
-**Scope:** `lithos-core/src/config/` entire context module
+**Scope:** `traces-core/src/config/` entire context module
 **Status:** ✅ IMPLEMENTATION COMPLETE - All phases verified
 
 ---
@@ -153,7 +153,7 @@ The existing RawConfig structure works correctly with the TryFrom approach.
 
 ### 1.1 ingest.rs Belongs in Adapter Layer, Not Domain
 
-**Location:** `lithos-core/src/config/ingest.rs` (entire file)
+**Location:** `traces-core/src/config/ingest.rs` (entire file)
 **Severity:** CRITICAL
 **Status:** ✅ RESOLVED IN PLAN - Will move to `config/adapter/ingestor.rs` (Phase 2-3)
 
@@ -200,7 +200,7 @@ Command::rebuild_merged(config)    # Domain layer (pure persistence)
 
 ### 1.2 Command Orchestrates When It Should Be Pure
 
-**Location:** `lithos-core/src/config/command.rs:140`
+**Location:** `traces-core/src/config/command.rs:140`
 **Severity:** CRITICAL
 **Status:** ✅ RESOLVED IN PLAN - Will refactor in Phase 6
 
@@ -312,15 +312,15 @@ ConfigService::load(vault_root)
 
 | Priority | Path                                  | Description          |
 | -------- | ------------------------------------- | -------------------- |
-| 1        | `$LITHOS_GLOBAL_CONFIG`               | Environment override |
-| 2        | `$XDG_CONFIG_HOME/lithos/lithos.toml` | XDG config home      |
-| 3        | `$HOME/.config/lithos/lithos.toml`    | XDG default          |
-| 4        | `$HOME/.lithos/lithos.toml`           | Legacy user home     |
-| 5        | `/etc/lithos/lithos.toml`             | System-wide          |
+| 1        | `$TRACES_GLOBAL_CONFIG`               | Environment override |
+| 2        | `$XDG_CONFIG_HOME/traces/traces.toml` | XDG config home      |
+| 3        | `$HOME/.config/traces/traces.toml`    | XDG default          |
+| 4        | `$HOME/.traces/traces.toml`           | Legacy user home     |
+| 5        | `/etc/traces/traces.toml`             | System-wide          |
 
 **Key Point:** Global and vault configs are completely separate:
 
-- **Vault config:** `$VAULT_ROOT/.lithos/lithos.toml`
+- **Vault config:** `$VAULT_ROOT/.traces/traces.toml`
 - **Global config:** System/user paths (never inside vault)
 
 **Implementation:** Phase 2 - `ConfigIngestor::resolve_global_config_path()`
@@ -582,7 +582,7 @@ pub struct ConfigUpdated {
 ## 7. Target Directory Structure
 
 ```
-lithos-core/src/config/
+traces-core/src/config/
 ├── mod.rs                    # Public exports, db_table constants (+ CONFIG_METADATA)
 ├── aggregate.rs              # Config, Version (merged config)
 ├── ports.rs                  # CommandPort, QueryPort traits (+ staleness methods)
@@ -612,7 +612,7 @@ lithos-core/src/config/
 └── command.rs                # Domain command (refactored to accept Config)
 └── query.rs                  # Domain query
 
-lithos-core/src/application/
+traces-core/src/application/
 └── config.rs                 # ← NEW: ConfigService orchestration
 
 FILES TO DELETE:

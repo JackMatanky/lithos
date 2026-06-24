@@ -9,8 +9,8 @@ vault_path = "/Users/username/vaults/my-vault"
 # If omitted, defaults to the vault root directory name.
 name = "My Personal Vault"
 
-# Lithos schema version (vault-only)
-# If omitted, defaults to the current Lithos version.
+# Traces schema version (vault-only)
+# If omitted, defaults to the current Traces version.
 version = "0.1.0"
 
 # Log verbosity: "error", "warn", "info", "debug", "trace", or "none"

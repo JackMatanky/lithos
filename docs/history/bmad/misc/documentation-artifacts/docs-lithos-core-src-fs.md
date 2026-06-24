@@ -1,6 +1,6 @@
 ---
-project: lithos-rust
-target: lithos-core/src/fs
+project: traces-rust
+target: traces-core/src/fs
 date: 2026-02-19
 mode: create
 components: modules=5, structs=8, enums=5, functions=35, traits=0
@@ -11,12 +11,12 @@ compliance: rfc1574
 
 ## Crate Documentation
 
-Target is a module directory (`lithos-core/src/fs`) within the `lithos-core`
+Target is a module directory (`traces-core/src/fs`) within the `traces-core`
 crate, so crate-level docs are not generated here.
 
 ## Module Documentation
 
-### `lithos-core/src/fs/mod.rs`
+### `traces-core/src/fs/mod.rs`
 
 //! Filesystem-related utilities and infrastructure.
 //!
@@ -37,11 +37,11 @@ crate, so crate-level docs are not generated here.
 //! - **types**: TOML/JSON/YAML parsing helpers with explicit format guards.
 //! - **writer**: Root-scoped writes with atomic replace.
 
-### `lithos-core/src/fs/error.rs`
+### `traces-core/src/fs/error.rs`
 
 //! Error types for filesystem and parsing operations.
 
-### `lithos-core/src/fs/reader.rs`
+### `traces-core/src/fs/reader.rs`
 
 //! File system abstraction for testable file I/O.
 //!
@@ -50,7 +50,7 @@ crate, so crate-level docs are not generated here.
 //! adapters can perform deterministic file access without leaking filesystem
 //! details into domain logic.
 
-### `lithos-core/src/fs/types.rs`
+### `traces-core/src/fs/types.rs`
 
 //! File type markers and parsing helpers for structured formats.
 //!
@@ -59,7 +59,7 @@ crate, so crate-level docs are not generated here.
 //! helpers; Markdown is represented as a file type without detect/parse
 //! support.
 
-### `lithos-core/src/fs/validator.rs`
+### `traces-core/src/fs/validator.rs`
 
 //! **Security-Critical Path Validation Utilities.**
 //!
@@ -70,7 +70,7 @@ crate, so crate-level docs are not generated here.
 //! validation utilities before accessing the filesystem. Bypassing these checks
 //! creates critical security vulnerabilities.
 
-### `lithos-core/src/fs/writer.rs`
+### `traces-core/src/fs/writer.rs`
 
 //! Filesystem writer utilities for safe writes.
 //!

@@ -13,7 +13,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 ## Original Epic Acceptance Criteria
 
 **Given** benchmarking infrastructure exists per ADR 013
-**When** I create `lithos-core/benches/cache_benchmarks.rs` in the adapters crate
+**When** I create `traces-core/benches/cache_benchmarks.rs` in the adapters crate
 **Then** it includes benchmark suites for:
 
 - `MokaCache` standalone operations
@@ -86,9 +86,9 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ### Phase 1: Infrastructure Setup
 - [ ] Task 1: Initialize benchmarking structure in adapters crate
-  - [ ] Subtask 1.1: Create directory `lithos-core/benches/`
+  - [ ] Subtask 1.1: Create directory `traces-core/benches/`
   - [ ] Subtask 1.2: Add `[[bench]]` section to `crates/adapters/Cargo.toml` for `cache_benchmarks`
-  - [ ] Subtask 1.3: Create empty `lithos-core/benches/cache_benchmarks.rs`
+  - [ ] Subtask 1.3: Create empty `traces-core/benches/cache_benchmarks.rs`
   - [ ] Subtask 1.4: Write a failing benchmark that cannot import `criterion` or cache types
   - [ ] Subtask 1.5: Run `mise run test:bench:core` and verify failure (RED)
   - [ ] Subtask 1.6: Run `mise run lint` and fix all clippy warnings/errors
@@ -150,7 +150,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
   - [ ] Subtask 5.1: Run `mise run test:bench:core` to generate initial baselines in `target/criterion/`
   - [ ] Subtask 5.2: Run `mise run lint` one final time
   - [ ] Subtask 5.3: Run `mise run fmt` and verify formatting
-  - [ ] Subtask 5.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 5.4: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [ ] Subtask 5.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [ ] Subtask 5.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -162,7 +162,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 ## Dev Notes
 
 ### Architecture Compliance
-- **Performance First**: Benchmarks are first-class citizens in Lithos, following [Source: ADR 013: Benchmarking Strategy].
+- **Performance First**: Benchmarks are first-class citizens in Traces, following [Source: ADR 013: Benchmarking Strategy].
 - **NFR Verification**: These benchmarks directly validate the Non-Functional Requirements specified in the PRD (under 500ms operations, scale to 1000+ files).
 - **Tooling parity**: Use `criterion` as the standard benchmarking tool for all Rust components.
 
@@ -178,7 +178,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 - **dhat** (optional): For memory profiling if detailed analysis is needed.
 
 ### File Structure Requirements
-- **Location**: `lithos-core/benches/cache_benchmarks.rs`
+- **Location**: `traces-core/benches/cache_benchmarks.rs`
 - **Config**: Updated `Cargo.toml` in adapters crate.
 
 ### Project Structure Notes
@@ -210,5 +210,5 @@ None - Story created through systematic analysis of artifacts and project contex
 - Provided specific tasks for concurrent and memory usage measurements.
 
 ### File List
-- `lithos-core/benches/cache_benchmarks.rs` - Benchmark suite.
+- `traces-core/benches/cache_benchmarks.rs` - Benchmark suite.
 - `crates/adapters/Cargo.toml` - Configuration.

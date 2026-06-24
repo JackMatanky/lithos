@@ -7,8 +7,8 @@
 
 ## Research Findings
 - Two active worktrees exist:
-  - `/Users/jack/Documents/41_personal/lithos` on `main` at `2a00f493...`
-  - `/Users/jack/Documents/41_personal/lithos-schema-refactor` on `schema-refactor` at `623b2052...`
+  - `/Users/jack/Documents/41_personal/traces` on `main` at `2a00f493...`
+  - `/Users/jack/Documents/41_personal/traces-schema-refactor` on `schema-refactor` at `623b2052...`
 - Current branch in this workspace is `schema-refactor`; working tree is clean.
 - Divergence from merge base is substantial:
   - `main...schema-refactor` unique commits count = `183` (main) / `337` (schema-refactor).

@@ -1,13 +1,13 @@
 ---
-title: "Lithos Architecture Documentation"
-description: "Comprehensive architectural decisions and design for the Lithos CLI tool"
+title: "Traces Architecture Documentation"
+description: "Comprehensive architectural decisions and design for the Traces CLI tool"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-01-23"
 status: "active"
 ---
 
-# Lithos Architecture Documentation
+# Traces Architecture Documentation
 
 This documentation has been sharded into focused sections for better maintainability and navigation. Each section covers a specific aspect of the architectural design and implementation.
 

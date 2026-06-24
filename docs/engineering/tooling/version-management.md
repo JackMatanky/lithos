@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document establishes version management standards for the Lithos project to prevent dependency conflicts, ensure reproducible builds, and provide clear resolution strategies when version issues arise.
+This document establishes version management standards for the Traces project to prevent dependency conflicts, ensure reproducible builds, and provide clear resolution strategies when version issues arise.
 
 **Context from Epic 1:**
 - Version conflicts appeared in 30% of stories (3 out of 10)
@@ -103,7 +103,7 @@ env:
 | **CLI Tools** | Caret | `clap = "4.5"` | Active development, backward compatible |
 | **Security-Critical** | Exact (temporary) | `cargo-deny = "=0.19.0"` | Breaking changes identified, need explicit migration |
 | **Build Tools** | Caret | `criterion = "0.5"` | Dev dependency, less critical |
-| **Internal Crates** | Path | `lithos-domain = { path = "..." }` | Full control, version managed at workspace level |
+| **Internal Crates** | Path | `traces-domain = { path = "..." }` | Full control, version managed at workspace level |
 
 ### 2.2 Documenting Version Decisions
 

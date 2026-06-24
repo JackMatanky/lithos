@@ -181,21 +181,21 @@ Solutions:
 
 ## Cross-module impact analysis
 
-A full codebase search was performed to find every file outside `lithos-core/src/fs/` that
+A full codebase search was performed to find every file outside `traces-core/src/fs/` that
 references symbols changed by this refactor. Results are listed with their impact.
 
 ### Files outside fs/ that are affected
 
 | File                                          | Affected symbols                                                                      | Requires code change?                                                                                        |
 | --------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `lithos-core/src/note/aggregate.rs`           | `crate::fs::validate_vault_path` (line 369)                                           | **Yes** — step 4 replaces with inline validation                                                             |
-| `lithos-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23)                                                 | **No** — `pub(crate)` is visible within the same crate; no change required                                   |
-| `lithos-core/src/schema/adapter/ingestor.rs`  | `FileSource`, `parse_file` (lines 7, 54, 67, 105)                                     | **Yes** — steps 5h and 6i                                                                                    |
-| `lithos-core/src/schema/error.rs`             | `From<ParseError>` impl (line 254) — destructures `Box<Path>` and `Vec<&'static str>` | **No** — `PathBuf::to_string_lossy()` and `<[_]>::join()` both compile after step 1 changes                  |
-| `lithos-core/src/template/adapter/filters.rs` | `crate::fs::validate_vault_path` (line 216)                                           | **No** — uses `format!("{e}")` which works for any `Display` type; compiles after step 3 changes return type |
-| `lithos-core/src/application/mod.rs`          | doc comment mentions `FileSource` (line 31)                                           | **Minor** — update in step 10b, add to files-changed table                                                   |
-| `lithos-core/tests/architecture.rs`           | Uses `FileSource` only in assertion message strings                                   | **No** — not a Rust import; unaffected                                                                       |
-| `lithos-cli/src/`                             | Zero usages of any affected symbol                                                    | **No**                                                                                                       |
+| `traces-core/src/note/aggregate.rs`           | `crate::fs::validate_vault_path` (line 369)                                           | **Yes** — step 4 replaces with inline validation                                                             |
+| `traces-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23)                                                 | **No** — `pub(crate)` is visible within the same crate; no change required                                   |
+| `traces-core/src/schema/adapter/ingestor.rs`  | `FileSource`, `parse_file` (lines 7, 54, 67, 105)                                     | **Yes** — steps 5h and 6i                                                                                    |
+| `traces-core/src/schema/error.rs`             | `From<ParseError>` impl (line 254) — destructures `Box<Path>` and `Vec<&'static str>` | **No** — `PathBuf::to_string_lossy()` and `<[_]>::join()` both compile after step 1 changes                  |
+| `traces-core/src/template/adapter/filters.rs` | `crate::fs::validate_vault_path` (line 216)                                           | **No** — uses `format!("{e}")` which works for any `Display` type; compiles after step 3 changes return type |
+| `traces-core/src/application/mod.rs`          | doc comment mentions `FileSource` (line 31)                                           | **Minor** — update in step 10b, add to files-changed table                                                   |
+| `traces-core/tests/architecture.rs`           | Uses `FileSource` only in assertion message strings                                   | **No** — not a Rust import; unaffected                                                                       |
+| `traces-cli/src/`                             | Zero usages of any affected symbol                                                    | **No**                                                                                                       |
 
 ### Gap: steps 3 and 4 must be treated as an atomic unit
 
@@ -522,8 +522,8 @@ Remove `crate::fs` import from `note/aggregate.rs`.
 
 **What:**
 
-5a. Rename the file: `lithos-core/src/fs/parsers.rs` →
-`lithos-core/src/fs/types.rs`.
+5a. Rename the file: `traces-core/src/fs/parsers.rs` →
+`traces-core/src/fs/types.rs`.
 
 5b. Remove `Dispatcher` struct and its `impl` block entirely (lines 80–206).
 
@@ -619,8 +619,8 @@ and `parse` methods. Keep all existing tests, updating module path from
 
 **What:**
 
-6a. Rename the file: `lithos-core/src/fs/source.rs` →
-`lithos-core/src/fs/reader.rs`.
+6a. Rename the file: `traces-core/src/fs/source.rs` →
+`traces-core/src/fs/reader.rs`.
 
 6b. Rename `FileSource` → `FileReader` and `FsFileSource` → `OsFsReader`
 throughout the file. Remove `InMemoryFileSource` entirely
@@ -802,7 +802,7 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
 
 **What:**
 
-7a. Create `lithos-core/src/fs/writer.rs` with:
+7a. Create `traces-core/src/fs/writer.rs` with:
 
 ```rust
 pub trait FsWriter: Send + Sync {
@@ -939,7 +939,7 @@ Used by `validate_vault_path` (step 3c) and documented for external callers.
   with a helper that creates a `TempDir`, writes files to disk, and
   constructs `OsFsReader::new(temp_dir.path())`.
 
-9d. Remove `walkdir` from `lithos-core/Cargo.toml` `[dependencies]`
+9d. Remove `walkdir` from `traces-core/Cargo.toml` `[dependencies]`
 (it was only used in `list_files`, now replaced by `glob::glob()`).
 Confirm with `cargo check` before committing.
 
@@ -1015,24 +1015,24 @@ Step 10 (mod.rs + markdown.rs final cleanup)         ← needs all prior steps
 
 | File                                         | Step(s)     | Change                                                                                                                                                              |
 | -------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lithos-core/src/fs/error.rs`                | 1, 8        | `Box<Path>` → `PathBuf`; `Vec<&'static str>` → `&'static [&'static str]` in `UnsupportedFormat`; add `EmptyPath` variant                                            |
-| `lithos-core/src/fs/validator.rs`            | 2, 3, 8     | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed                    |
-| `lithos-core/src/fs/mod.rs`                  | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types                                                                           |
-| `lithos-core/src/fs/parsers.rs` → `types.rs` | 5           | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods                                                                     |
-| `lithos-core/src/fs/source.rs` → `reader.rs` | 6           | Rename; `FileSource` → `FileReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
-| `lithos-core/src/fs/writer.rs`               | 7           | New file: `FsWriter`, `OsFsWriter`, `atomic_write`                                                                                                                  |
-| `lithos-core/src/fs/markdown.rs`             | 10          | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged                                                                                            |
-| `lithos-core/Cargo.toml`                     | 9           | Remove `walkdir` from `[dependencies]`                                                                                                                              |
-| `lithos-core/src/note/aggregate.rs`          | 4           | Remove `crate::fs` import; inline domain validation                                                                                                                 |
-| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9     | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FileReader` abstraction; step 9: replace in-memory tests with `tempfile`       |
-| `lithos-core/src/application/mod.rs`         | 10          | Doc comment only: `FileSource` → `FileReader`                                                                                                                         |
+| `traces-core/src/fs/error.rs`                | 1, 8        | `Box<Path>` → `PathBuf`; `Vec<&'static str>` → `&'static [&'static str]` in `UnsupportedFormat`; add `EmptyPath` variant                                            |
+| `traces-core/src/fs/validator.rs`            | 2, 3, 8     | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed                    |
+| `traces-core/src/fs/mod.rs`                  | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types                                                                           |
+| `traces-core/src/fs/parsers.rs` → `types.rs` | 5           | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods                                                                     |
+| `traces-core/src/fs/source.rs` → `reader.rs` | 6           | Rename; `FileSource` → `FileReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
+| `traces-core/src/fs/writer.rs`               | 7           | New file: `FsWriter`, `OsFsWriter`, `atomic_write`                                                                                                                  |
+| `traces-core/src/fs/markdown.rs`             | 10          | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged                                                                                            |
+| `traces-core/Cargo.toml`                     | 9           | Remove `walkdir` from `[dependencies]`                                                                                                                              |
+| `traces-core/src/note/aggregate.rs`          | 4           | Remove `crate::fs` import; inline domain validation                                                                                                                 |
+| `traces-core/src/schema/adapter/ingestor.rs` | 5, 6, 9     | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FileReader` abstraction; step 9: replace in-memory tests with `tempfile`       |
+| `traces-core/src/application/mod.rs`         | 10          | Doc comment only: `FileSource` → `FileReader`                                                                                                                         |
 
 ### Files that do NOT need changes despite referencing affected symbols
 
 | File                                          | Symbol referenced                     | Reason no change needed                                                            |
 | --------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------- |
-| `lithos-core/src/template/adapter/filters.rs` | `validate_vault_path` (line 216)      | Uses only `format!("{e}")` — `PathValidationError: Display`; compiles after step 3 |
-| `lithos-core/src/schema/error.rs`             | `From<ParseError>` (line 254)         | `PathBuf::to_string_lossy()` and `<[_]>::join()` work for changed types            |
-| `lithos-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23) | `pub(crate)` is visible within the crate; no change needed                         |
-| `lithos-core/tests/architecture.rs`           | `FileSource` in string literals only  | Not a Rust import; assertion messages only                                         |
-| `lithos-cli/src/`                             | None                                  | No fs symbols used                                                                 |
+| `traces-core/src/template/adapter/filters.rs` | `validate_vault_path` (line 216)      | Uses only `format!("{e}")` — `PathValidationError: Display`; compiles after step 3 |
+| `traces-core/src/schema/error.rs`             | `From<ParseError>` (line 254)         | `PathBuf::to_string_lossy()` and `<[_]>::join()` work for changed types            |
+| `traces-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23) | `pub(crate)` is visible within the crate; no change needed                         |
+| `traces-core/tests/architecture.rs`           | `FileSource` in string literals only  | Not a Rust import; assertion messages only                                         |
+| `traces-cli/src/`                             | None                                  | No fs symbols used                                                                 |

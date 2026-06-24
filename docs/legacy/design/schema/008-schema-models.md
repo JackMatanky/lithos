@@ -23,12 +23,12 @@ The schema bounded context is responsible for:
 
 Current implementation lives under:
 
-- `lithos-core/src/schema/aggregate.rs` (`Schema`, `SchemaName`, `PropertyBank`)
-- `lithos-core/src/schema/property.rs` (`Property`, `PropertyName`)
-- `lithos-core/src/schema/property_spec.rs` (`PropertySpecDef`, `PropertySpec`, type-driven invariant helpers)
-- `lithos-core/src/schema/raw.rs` (`RawSchema`, `RawProperty*`)
-- `lithos-core/src/schema/resolver.rs` (resolution logic)
-- `lithos-core/src/schema/graph.rs` (inheritance graph)
+- `traces-core/src/schema/aggregate.rs` (`Schema`, `SchemaName`, `PropertyBank`)
+- `traces-core/src/schema/property.rs` (`Property`, `PropertyName`)
+- `traces-core/src/schema/property_spec.rs` (`PropertySpecDef`, `PropertySpec`, type-driven invariant helpers)
+- `traces-core/src/schema/raw.rs` (`RawSchema`, `RawProperty*`)
+- `traces-core/src/schema/resolver.rs` (resolution logic)
+- `traces-core/src/schema/graph.rs` (inheritance graph)
 
 The system aims to be lean and performant, with a strong zero-copy inclination.
 
@@ -424,7 +424,7 @@ pub struct SchemaName(Box<str>); // Private field!
 
 **Type-driven design rule**: The inner field MUST be private so callers cannot forge invalid values.
 
-**Rationale** (Rust API Guidelines + Lithos style rules):
+**Rationale** (Rust API Guidelines + Traces style rules):
 
 - Private fields enforce invariants by construction.
 - `Box<str>` is lean for immutable identifiers.

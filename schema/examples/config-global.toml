@@ -1,5 +1,5 @@
-# Global Lithos Configuration
-# Location: $LITHOS_GLOBAL_CONFIG (typically ~/.config/lithos/lithos.toml)
+# Global Traces Configuration
+# Location: $TRACES_GLOBAL_CONFIG (typically ~/.config/traces/traces.toml)
 #
 # Global config provides defaults shared across all vaults.
 # Vault configs can override most settings; some fields are global-only.

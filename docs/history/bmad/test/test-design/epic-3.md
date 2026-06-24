@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-**Scope:** Epic-Level test design for the Core Domain Models (Config, Note, Schema, Template) in the Lithos project. This covers stories 3.1, 3.2, 3.3, and 3.4.
+**Scope:** Epic-Level test design for the Core Domain Models (Config, Note, Schema, Template) in the Traces project. This covers stories 3.1, 3.2, 3.3, and 3.4.
 
 **Risk Summary:**
 

@@ -1,6 +1,6 @@
 # TEA Agent Knowledge Base: Rust Testing
 
-This directory contains modular knowledge files for the TEA agent to reference when working with Rust testing in the Lithos project.
+This directory contains modular knowledge files for the TEA agent to reference when working with Rust testing in the Traces project.
 
 ## Knowledge Module Index
 

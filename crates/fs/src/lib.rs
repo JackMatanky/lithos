@@ -1,5 +1,5 @@
 #![feature(trivial_bounds)]
-//! Filesystem infrastructure for the Lithos core library.
+//! Filesystem infrastructure for the Traces core library.
 //!
 //! This module centralises all file I/O policy so adapter layers depend on
 //! consistent, audited behaviour instead of ad-hoc `std::fs` calls. It

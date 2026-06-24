@@ -1,4 +1,4 @@
-# Lithos Architecture Testing Patterns
+# Traces Architecture Testing Patterns
 
 ## Context Isolation Testing
 
@@ -603,4 +603,4 @@ mod error_handling_tests {
 }
 ```
 
-This Lithos architecture testing guide provides comprehensive patterns for testing bounded contexts, port-based CQRS, zero-copy patterns, and type-driven development while maintaining architectural constraints and quality standards.
+This Traces architecture testing guide provides comprehensive patterns for testing bounded contexts, port-based CQRS, zero-copy patterns, and type-driven development while maintaining architectural constraints and quality standards.

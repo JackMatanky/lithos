@@ -1,6 +1,6 @@
 ---
 title: "Implementation Patterns & Consistency Rules"
-description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
+description: "Development patterns, naming conventions, and consistency rules for Traces implementation"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-03-11"
@@ -23,7 +23,7 @@ section: "Implementation Standards"
 
 ## Overview
 
-**Purpose:** Ensure multiple AI agents write compatible, consistent code for the Lithos file-based CLI tool with key-value database.
+**Purpose:** Ensure multiple AI agents write compatible, consistent code for the Traces file-based CLI tool with key-value database.
 
 **Architecture Summary:**
 
@@ -224,7 +224,7 @@ pub trait CommandPort { /* ... */ }
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
-│ CLI LAYER (lithos-cli)                                  │
+│ CLI LAYER (traces-cli)                                  │
 │ - Orchestrates cross-context workflows                  │
 │ - Can import any context                                │
 └──────────────────────┬──────────────────────────────────┘
@@ -490,8 +490,8 @@ pub fn validate_new(value: T) -> Result<Self, Error> { /* ... */ }
 
 ```rust
 // Crates/Packages
-lithos-core     // kebab-case in Cargo.toml
-lithos_core     // snake_case in Rust imports
+traces-core     // kebab-case in Cargo.toml
+traces_core     // snake_case in Rust imports
 
 // Modules & Files
 note.rs, schema.rs, loader.rs  // snake_case
@@ -596,7 +596,7 @@ async fn main() -> miette::Result<()> {
     }).await??;
 }
 
-// ❌ NEVER #[async_trait] in lithos-core
+// ❌ NEVER #[async_trait] in traces-core
 // ❌ NEVER async methods in Repository traits
 ```
 
@@ -808,7 +808,7 @@ File → [parse] → Raw* → [validate] → Domain → [persist] → Database
 | `String` for validated text            | Newtype wrapper (e.g., `SchemaName(Box<str>)`) |
 | `unwrap()` / `expect()` in production  | `?` operator with `Result<T, E>`               |
 | Business contexts importing each other | Use infrastructure or CLI orchestration        |
-| `#[async_trait]` in `lithos-core`      | Sync-first core, async at edges                |
+| `#[async_trait]` in `traces-core`      | Sync-first core, async at edges                |
 | Creating `*View` prematurely           | Use `Archived<Domain>` first, profile          |
 | Methods on `Raw*` types                | `TryFrom<Raw*>` for validation boundary        |
 | CQRS split (Query/Command traits)      | Unified `Repository` trait                     |

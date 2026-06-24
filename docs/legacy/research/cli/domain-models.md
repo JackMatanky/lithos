@@ -2,7 +2,7 @@
 
 ## Overview
 
-Lithos divides Epic 3 domain modeling into four bounded contexts: Note, Schema, Config, and Template. Together they define the language for metadata-bearing notes, schema-driven validation, hierarchical configuration, and template composition while preserving domain purity and hexagonal boundaries.
+Traces divides Epic 3 domain modeling into four bounded contexts: Note, Schema, Config, and Template. Together they define the language for metadata-bearing notes, schema-driven validation, hierarchical configuration, and template composition while preserving domain purity and hexagonal boundaries.
 
 The domain layer stays I/O free and focuses on invariants, semantic validation, and event emission. Adapters interpret vault files and configuration formats, while application services orchestrate cross-context contracts such as schema validation for notes and variable validation for templates.
 

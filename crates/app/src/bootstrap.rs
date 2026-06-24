@@ -52,7 +52,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// `anchor` is the working directory and is always required. `flags` and
     /// `env` are optional overrides from the CLI and environment respectively;
     /// pass `None` for either when no user-supplied override is present.
-    /// `cache_dir` is the resolved `LITHOS_CACHE_DIR` value (already read by
+    /// `cache_dir` is the resolved `TRACES_CACHE_DIR` value (already read by
     /// the caller); pass `None` when the env var is absent.
     ///
     /// When `env` is `None`, the bootstrapper constructs a fresh
@@ -139,7 +139,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// - `flags`: Optional CLI flag overrides (explicit vault/config paths,
     ///   suppress-global flag). Pass `None` when no user-supplied flags are
     ///   present.
-    /// - `env`: Optional environment variable overrides (`LITHOS_VAULT`,
+    /// - `env`: Optional environment variable overrides (`TRACES_VAULT`,
     ///   ceiling dirs). Pass `None` when no env overrides are present.
     /// - `anchor`: The working directory to use as the starting point for
     ///   ascending vault discovery. Must refer to an existing directory on the
@@ -267,8 +267,8 @@ mod tests {
                 let cwd = tempfile::tempdir().expect("cwd dir");
                 let cli_vault = tempfile::tempdir().expect("cli vault dir");
                 let env_vault = tempfile::tempdir().expect("env vault dir");
-                let cli_config = cli_vault.path().join("lithos.toml");
-                let env_config = env_vault.path().join("lithos.toml");
+                let cli_config = cli_vault.path().join("traces.toml");
+                let env_config = env_vault.path().join("traces.toml");
                 std::fs::write(&cli_config, "").expect("write cli config");
                 std::fs::write(&env_config, "").expect("write env config");
                 let ceilings = OsStr::new("/work:/home");
@@ -425,7 +425,7 @@ mod tests {
             #[test]
             fn returns_context_with_no_cache_dir_when_none_env_given_and_var_unset()
              {
-                // Verify that passing None for env when LITHOS_CACHE_DIR is not
+                // Verify that passing None for env when TRACES_CACHE_DIR is not
                 // set in the process environment produces an env with no
                 // cache_dir. We cannot guarantee the var is unset in all CI
                 // environments, so we inject an explicit DiscoveryEnv instead.
@@ -578,7 +578,7 @@ mod tests {
                 DirPath::try_new(std::path::PathBuf::from("/tmp/vault"))
                     .expect("valid dir"),
                 {
-                    let p = std::path::PathBuf::from("/tmp/vault/lithos.toml");
+                    let p = std::path::PathBuf::from("/tmp/vault/traces.toml");
                     std::fs::create_dir_all("/tmp/vault").ok();
                     std::fs::write(&p, "").ok();
                     FilePath::try_new(p).expect("valid file")
@@ -636,7 +636,7 @@ mod tests {
             // drives the `Rebuild` path which saves the config before
             // returning it.
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             std::fs::write(
                 &config_path,
                 "[template]\ndirectory = \"templates\"",
@@ -711,7 +711,7 @@ mod tests {
         #[test]
         fn propagates_config_error() {
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             // "not = [toml" is an unclosed array literal — invalid TOML.
             // The parser returns a `TomlParse` error which is converted via
             // `ConfigIngestError → ConfigError::Ingestion` and then wrapped as
@@ -768,8 +768,8 @@ mod tests {
             // files must have at least one non-default field value.
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
-            let vault_path = vault_root.path().join("lithos.toml");
-            let global_path = global_root.path().join("lithos.toml");
+            let vault_path = vault_root.path().join("traces.toml");
+            let global_path = global_root.path().join("traces.toml");
             std::fs::write(
                 &vault_path,
                 "[template]\ndirectory = \"vault-templates\"",
@@ -829,7 +829,7 @@ mod tests {
             // DiscoveryContext::new() which validates the anchor, so the error
             // surfaces before the port is ever called.
             let non_existent = std::path::PathBuf::from(
-                "/tmp/__lithos_test_nonexistent_anchor_dir__",
+                "/tmp/__traces_test_nonexistent_anchor_dir__",
             );
             // Ensure the path really doesn't exist.
             let _ = std::fs::remove_dir_all(&non_existent);
@@ -855,7 +855,7 @@ mod tests {
         #[test]
         fn returns_report_alongside_config() {
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             std::fs::write(
                 &config_path,
                 "[template]\ndirectory = \"templates\"",
@@ -962,7 +962,7 @@ mod tests {
                 DirPath::try_new(std::path::PathBuf::from("/tmp/vault"))
                     .expect("valid dir"),
                 {
-                    let p = std::path::PathBuf::from("/tmp/vault/lithos.toml");
+                    let p = std::path::PathBuf::from("/tmp/vault/traces.toml");
                     std::fs::create_dir_all("/tmp/vault").ok();
                     std::fs::write(&p, "").ok();
                     FilePath::try_new(p).expect("valid file")
@@ -1018,7 +1018,7 @@ mod tests {
         #[test]
         fn propagates_discovery_error_from_invalid_anchor() {
             let non_existent = std::path::PathBuf::from(
-                "/tmp/__lithos_test_nonexistent_anchor_dir_discovery_only__",
+                "/tmp/__traces_test_nonexistent_anchor_dir_discovery_only__",
             );
             let _ = std::fs::remove_dir_all(&non_existent);
 
@@ -1043,7 +1043,7 @@ mod tests {
             // NOT call Builder, so it must succeed even when the
             // discovered candidate path points to invalid TOML.
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             // "not = [toml" is an unclosed array — invalid TOML.
             std::fs::write(&config_path, "not = [toml").expect("write config");
             let vault_candidate = CandidatePath::new(
@@ -1092,7 +1092,7 @@ mod tests {
         #[test]
         fn returns_app_result_from_concrete_discovery_service() {
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             std::fs::write(&config_path, "").expect("write config");
             let flags = DiscoveryFlags::new(
                 Some(config_path.as_path()),
@@ -1134,7 +1134,7 @@ mod tests {
             use trace_settings::storage::testing::InMemoryRepository;
 
             let root = tempfile::tempdir().expect("vault root");
-            let config_path = root.path().join("lithos.toml");
+            let config_path = root.path().join("traces.toml");
             std::fs::write(
                 &config_path,
                 "[template]\ndirectory = \"templates\"",

@@ -11,7 +11,7 @@ stakeholders: [Jack (Architect), Development Team]
 
 ## Context
 
-Lithos is a local, file-based CLI application where the filesystem is the ultimate source of truth, and the local database is merely an expendable read-optimized projection/cache. State mutations occur externally (e.g., a user edits Markdown in Obsidian or Vim), and the domain is inherently tied to file I/O. The database can be wiped and rebuilt at any time.
+Traces is a local, file-based CLI application where the filesystem is the ultimate source of truth, and the local database is merely an expendable read-optimized projection/cache. State mutations occur externally (e.g., a user edits Markdown in Obsidian or Vim), and the domain is inherently tied to file I/O. The database can be wiped and rebuilt at any time.
 
 We need to manage these file-based states while achieving specific architectural goals:
 - **Testability:** The ability to mock I/O boundaries and unit test business logic without standing up a real database.

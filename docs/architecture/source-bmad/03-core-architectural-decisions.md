@@ -1,6 +1,6 @@
 ---
 title: "Core Architectural Decisions"
-description: "Key architectural decisions and technology choices for Lithos implementation"
+description: "Key architectural decisions and technology choices for Traces implementation"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-03-10"
@@ -13,7 +13,7 @@ section: "Architecture Decisions"
 
 **Critical Decisions (Block Implementation):**
 
-- **Workspace Shape:** `lithos-core` + `lithos-cli` single-core crate to enable zero-copy optimizations and reduce compilation overhead.
+- **Workspace Shape:** `traces-core` + `traces-cli` single-core crate to enable zero-copy optimizations and reduce compilation overhead.
 - **Files as Source of Truth:** The system architecture is fundamentally file-centric. Vault files are the authoritative source of truth. The database is a rebuildable, query-optimized projection.
 - **Idiomatic Rust Separation:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Repository` trait abstractions for I/O.
 - **Storage Engine:** Redb + rkyv (zero-copy structured KV) with a concrete `Database` type mapped through simple Repository traits. [ADR 006](docs/adr/006-persistence-cache-infrastructure.md)
@@ -69,7 +69,7 @@ section: "Architecture Decisions"
 
 ## Application Layer Architecture
 
-- **Location:** `lithos-core/src/application/`
+- **Location:** `traces-core/src/application/`
 - **Purpose:** Cross-context orchestration without creating monolithic god-objects.
 - **Key Components:**
   - **Loaders:** Context-specific ingestion orchestrators (e.g. `schema::Loader`) managing file-to-DB pipelines.

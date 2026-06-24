@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/JackMatanky/lithos/schemas/lithos-domain-schema.json",
-  "title": "Lithos Domain Models JSON Schema",
-  "description": "Comprehensive JSON schema for all Lithos domain models including Property, PropertySpec variants, Schema, PropertyBank, Note, and Template entities.",
+  "$id": "https://github.com/JackMatanky/traces/schemas/traces-domain-schema.json",
+  "title": "Traces Domain Models JSON Schema",
+  "description": "Comprehensive JSON schema for all Traces domain models including Property, PropertySpec variants, Schema, PropertyBank, Note, and Template entities.",
 
   "definitions": {
     "NoteID": {
@@ -353,7 +353,7 @@
         },
         "content": {
           "type": "string",
-          "description": "Raw template text containing Go text/template syntax with Lithos-specific function calls"
+          "description": "Raw template text containing Go text/template syntax with Traces-specific function calls"
         }
       },
       "required": ["id", "content"],
@@ -362,7 +362,7 @@
 
     "Config": {
       "type": "object",
-      "description": "Application configuration loaded from lithos.json and environment variables. Immutable value object.",
+      "description": "Application configuration loaded from traces.json and environment variables. Immutable value object.",
       "properties": {
         "vaultPath": {
           "type": "string",
@@ -372,12 +372,12 @@
         "templatesDir": {
           "type": "string",
           "description": "Path to templates directory. Default: {VaultPath}/templates/",
-          "examples": ["templates/", "/opt/lithos/templates"]
+          "examples": ["templates/", "/opt/traces/templates"]
         },
         "schemasDir": {
           "type": "string",
           "description": "Path to schemas directory. Default: {VaultPath}/schemas/",
-          "examples": ["schemas/", "/opt/lithos/schemas"]
+          "examples": ["schemas/", "/opt/traces/schemas"]
         },
         "propertyBankFile": {
           "type": "string",
@@ -386,8 +386,8 @@
         },
         "cacheDir": {
           "type": "string",
-          "description": "Path to index cache directory. Default: {VaultPath}/.lithos/cache/",
-          "examples": [".lithos/cache/", "/tmp/lithos-cache"]
+          "description": "Path to index cache directory. Default: {VaultPath}/.traces/cache/",
+          "examples": [".traces/cache/", "/tmp/traces-cache"]
         },
         "logLevel": {
           "type": "string",

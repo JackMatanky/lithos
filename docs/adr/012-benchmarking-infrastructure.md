@@ -11,7 +11,7 @@ date_implemented: TBD
 
 ## Context
 
-Lithos has performance requirements (NFR2) that must be maintained as the codebase evolves. The project involves complex operations like vault indexing, schema resolution, template rendering, and storage queries that could have performance implications. Epic 2 includes benchmark task in mise, but lacks defined patterns for benchmarking and performance regression detection.
+Traces has performance requirements (NFR2) that must be maintained as the codebase evolves. The project involves complex operations like vault indexing, schema resolution, template rendering, and storage queries that could have performance implications. Epic 2 includes benchmark task in mise, but lacks defined patterns for benchmarking and performance regression detection.
 
 Current challenges:
 
@@ -25,7 +25,7 @@ Current challenges:
 Implement benchmarking infrastructure using Criterion.rs with the following components:
 
 1. **Library Selection**: Criterion.rs for statistical benchmarking
-2. **Organization**: Benchmarks in `lithos-core/benches/` directory with categorized groups
+2. **Organization**: Benchmarks in `traces-core/benches/` directory with categorized groups
 3. **Infrastructure**: Baseline storage and regression detection
 4. **CI Integration**: Performance gates in CI pipeline
 5. **Categories**: Micro-benchmarks for core functions, integration benchmarks for end-to-end flows
@@ -76,8 +76,8 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 ### Decision-Making Analysis
 
 - **Statistical Rigor vs Simplicity**: Criterion's analysis prevents false positives from noise, but requires understanding of p-values and confidence intervals.
-- **NFR Alignment**: For Lithos NFR2 (performance), set thresholds: <5% regression triggers alert, >10% blocks release.
-- **Async Complexity**: Lithos event-driven architecture needs async benchmarks. Criterion handles this better than alternatives.
+- **NFR Alignment**: For Traces NFR2 (performance), set thresholds: <5% regression triggers alert, >10% blocks release.
+- **Async Complexity**: Traces event-driven architecture needs async benchmarks. Criterion handles this better than alternatives.
 - **ROI Calculation**: Setup: 1-2 days. Prevents performance issues saving 20-30% optimization time later. Payback in 2-3 major releases.
 - **Risk Assessment**: Without benchmarks, performance drifts undetected. With them, early optimization prevents technical debt.
 
@@ -100,7 +100,7 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 
 1. **Phase 1: Core Infrastructure (1 week)**
    - Add criterion.rs dependency and basic bench setup
-   - Create `lithos-core/benches/` directory structure with categories
+   - Create `traces-core/benches/` directory structure with categories
    - Implement async benchmarking patterns for tokio-based code
 
 2. **Phase 2: Benchmark Definition & Baselines (1 week)**

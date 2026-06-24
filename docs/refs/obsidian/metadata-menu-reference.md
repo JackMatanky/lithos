@@ -2,7 +2,7 @@
 
 Source digest: `docs/refs/digests/obsidian_mdelobelle-metadatamenu-digest.txt`
 
-This reference captures Metadata Menu concepts that inform Lithos schema design:
+This reference captures Metadata Menu concepts that inform Traces schema design:
 field typing, fileClass mapping, indexed paths for nested fields, and API
 operations for reading/writing metadata in notes.
 
@@ -52,7 +52,7 @@ Structured:
 - `Object` (parent field)
 - `Object List` (list of objects)
 
-Note: Metadata Menu supports nested fields via Object/Object List. Lithos MVP
+Note: Metadata Menu supports nested fields via Object/Object List. Traces MVP
 remains flat-only, but nested fields should remain in scope for future schema
 iterations.
 
@@ -353,7 +353,7 @@ Example (object list nesting):
   - `dx8Mth[0]____Y0dsfZ____hRlSsW`
 
 This indexedPath is the key for API operations that target nested fields.
-Lithos MVP does not support nested fields, but the indexedPath concept remains
+Traces MVP does not support nested fields, but the indexedPath concept remains
 relevant for future hierarchical metadata support.
 
 ## API Surface (MetadataMenu.api)
@@ -430,18 +430,18 @@ Bulk edits:
 - **Object / Object List**
   - Parent types that enable nested fields; only valid in frontmatter.
 
-## Lithos Alignment Notes
+## Traces Alignment Notes
 
 - FileClass is a concrete model for **schema-by-context**.
 - IndexedPath provides a stable, hierarchical addressing scheme for nested
-  data; Lithos schema module can adopt a similar path identity.
+  data; Traces schema module can adopt a similar path identity.
 - Field types and options map cleanly to a schema definition system:
   - validation rules
   - UI/editor controls
   - computed/derived fields (Lookup, Formula)
 - API methods emphasize **id-based targeting** over name-based targeting,
   which is critical once nesting and duplication exist.
-- Metadata Menu includes nested field types (Object/Object List), but Lithos
+- Metadata Menu includes nested field types (Object/Object List), but Traces
   MVP is flat-only. Keep nested semantics in mind for later expansions.
 
 ## Appendix A: Field Types -> Options and Controls
@@ -503,55 +503,55 @@ to edit each type.
   - Options: none (parent type)
   - Controls: modal to edit child fields, add/remove list items
 
-## Appendix B: Metadata Menu -> Lithos Schema Mapping
+## Appendix B: Metadata Menu -> Traces Schema Mapping
 
-Suggested conceptual mapping for Lithos schema module design.
+Suggested conceptual mapping for Traces schema module design.
 
 - Field Definition
   - Metadata Menu: `{ name, type, id, options, path }`
-  - Lithos: `Property` struct (base definition)
+  - Traces: `Property` struct (base definition)
   - Notes: Property + Property Specs drive concrete field typing
 
 - Field Type
   - Metadata Menu: `Input`, `Select`, `Object`, etc.
-  - Lithos: `PropertySpec` (type + constraints + UI/control hints)
+  - Traces: `PropertySpec` (type + constraints + UI/control hints)
 
 - FileClass
   - Metadata Menu: file-based class with fields + settings
-  - Lithos: schema file that assembles Properties + Property Specs
+  - Traces: schema file that assembles Properties + Property Specs
 
 - IndexedPath
   - Metadata Menu: hierarchical `id` path with list indices
-  - Lithos: `SchemaName` or `SchemaId` identity for schema references
+  - Traces: `SchemaName` or `SchemaId` identity for schema references
 
 - Preset Fields
   - Metadata Menu: global settings in `data.json`
-  - Lithos: Property Bank (shared Properties for schema reference)
+  - Traces: Property Bank (shared Properties for schema reference)
 
 - File Mapping
   - Metadata Menu: fileClass mapping via frontmatter
-  - Lithos: schema assignment via frontmatter or config-based mapping rules
+  - Traces: schema assignment via frontmatter or config-based mapping rules
 
 - Validation
   - Metadata Menu: per-field validation based on type + options
-  - Lithos: raw parse -> `Property` + `PropertySpec` validation
+  - Traces: raw parse -> `Property` + `PropertySpec` validation
 
 - Lookup / Formula
   - Metadata Menu: computed, persisted fields
-  - Lithos: derived field pipeline; explicitly model evaluation phase and
+  - Traces: derived field pipeline; explicitly model evaluation phase and
     persistence into projection cache
 
-## Appendix C: Lithos vs MetadataMenu Inheritance Comparison
+## Appendix C: Traces vs MetadataMenu Inheritance Comparison
 
 **See**: `INHERITANCE_COMPREHENSIVE_ANALYSIS.md` for detailed source code analysis.
 
-This appendix compares MetadataMenu's inheritance implementation with Lithos to understand design trade-offs and identify optimization opportunities.
+This appendix compares MetadataMenu's inheritance implementation with Traces to understand design trade-offs and identify optimization opportunities.
 
 ### Summary of Findings (2026-03-16)
 
 After thorough source code review of both systems:
 
-**✅ Lithos Already Supports**:
+**✅ Traces Already Supports**:
 
 - Excludes filtering properties from **all ancestors** (grandparent, great-grandparent, etc.)
 - Topological resolution ensures parent properties include full inheritance chain
@@ -561,21 +561,21 @@ After thorough source code review of both systems:
 
 **❌ Key Difference**:
 
-- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Lithos rebuilds tree each load
+- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Traces rebuilds tree each load
 
 ### Architecture Comparison
 
-| Feature                | MetadataMenu            | Lithos                   | Winner                      |
+| Feature                | MetadataMenu            | Traces                   | Winner                      |
 | ---------------------- | ----------------------- | ------------------------ | --------------------------- |
 | **Exclude Scope**      | ✅ All ancestors        | ✅ All ancestors         | TIE                         |
-| **Cycle Detection**    | ⚠️ Name comparison only | ✅ DFS + Kahn's          | **Lithos**                  |
-| **Depth Tracking**     | ❌ Not explicit         | ✅ NodeDepth type        | **Lithos**                  |
-| **Depth Limit**        | ❌ No limit             | ✅ Max 10 levels         | **Lithos**                  |
+| **Cycle Detection**    | ⚠️ Name comparison only | ✅ DFS + Kahn's          | **Traces**                  |
+| **Depth Tracking**     | ❌ Not explicit         | ✅ NodeDepth type        | **Traces**                  |
+| **Depth Limit**        | ❌ No limit             | ✅ Max 10 levels         | **Traces**                  |
 | **Ancestor Caching**   | ✅ Global map           | ❌ Rebuild each load     | **MetadataMenu**            |
-| **Merge Algorithm**    | Name-based filter loop  | Two-pointer sorted merge | **Lithos** (more efficient) |
+| **Merge Algorithm**    | Name-based filter loop  | Two-pointer sorted merge | **Traces** (more efficient) |
 | **Override Semantics** | Full replacement        | Full replacement         | TIE                         |
 
-### How Lithos Achieves Ancestor Excludes (Without Explicit Ancestor Cache)
+### How Traces Achieves Ancestor Excludes (Without Explicit Ancestor Cache)
 
 **Key Insight**: Topological ordering + resolution caching makes explicit ancestor tracking unnecessary for correctness.
 
@@ -664,7 +664,7 @@ function getAncestorsRecursively(fileClassName):
 
 **Trade-off Analysis**: See `INHERITANCE_COMPREHENSIVE_ANALYSIS.md` Part 6 for detailed comparison.
 
-**Current Lithos Approach** (Topological Resolution):
+**Current Traces Approach** (Topological Resolution):
 
 - Rebuild `SchemaTree` on each load via `Extender::build()`
 - Benefits: Simpler, no cache invalidation, always fresh
@@ -706,9 +706,9 @@ For typical vaults (<1000 schemas, <5 depth), topological resolution overhead is
 
 ### Override Semantics (Documented)
 
-**Current Lithos Behavior** (matches MetadataMenu):
+**Current Traces Behavior** (matches MetadataMenu):
 
-| Aspect                 | Lithos                       | MetadataMenu     | Notes                                       |
+| Aspect                 | Traces                       | MetadataMenu     | Notes                                       |
 | ---------------------- | ---------------------------- | ---------------- | ------------------------------------------- |
 | **Override trigger**   | Name match                   | Name match       | Case-sensitive `PropertyName` comparison    |
 | **Override scope**     | Full replacement             | Full replacement | Child property completely replaces parent   |
@@ -749,7 +749,7 @@ Tests verifying exclude scope across ancestors:
 4. ✅ `child_override_beats_parent()` - Name-based override verification
 5. ✅ `inheritance_depth_limit_exceeded()` - Max depth enforcement (11 levels rejected)
 
-**All tests passing** - confirms Lithos correctly handles ancestor excludes without explicit caching.
+**All tests passing** - confirms Traces correctly handles ancestor excludes without explicit caching.
 
 ### MetadataMenu's Ancestor Caching Strategy
 
@@ -783,9 +783,9 @@ function getAncestorsRecursively(fileClassName):
 - **Storage**: ~8-40 bytes per schema (typical 1-5 ancestor chains)
 - **Complexity**: Requires cache invalidation logic
 
-### Lithos Current Approach vs MetadataMenu
+### Traces Current Approach vs MetadataMenu
 
-| Aspect                 | Lithos                        | MetadataMenu                |
+| Aspect                 | Traces                        | MetadataMenu                |
 | ---------------------- | ----------------------------- | --------------------------- |
 | **Strategy**           | Topological resolution        | Cached ancestor map         |
 | **Rebuild frequency**  | Each load                     | Once (until parent changes) |
@@ -808,7 +808,7 @@ if (!parentClass) {
 }
 ```
 
-**Lithos approach**:
+**Traces approach**:
 
 ```rust
 // Missing parent = error, abort load
@@ -820,11 +820,11 @@ let parent = self.resolve_parent(schema_name)?;
 | Approach | Benefits | Drawbacks |
 |----------|----------|-----------|
 | **Lenient** (MetadataMenu) | Resilient to typos, easier incremental development | Silent failures, may hide errors |
-| **Strict** (Lithos) | Explicit errors, guaranteed consistency | Requires correct parent references upfront |
+| **Strict** (Traces) | Explicit errors, guaranteed consistency | Requires correct parent references upfront |
 
 ### Summary of Key Findings
 
-**✅ Lithos Already Implements** (verified via tests):
+**✅ Traces Already Implements** (verified via tests):
 
 1. Excludes filtering properties from **all ancestors** (grandparent, great-grandparent, etc.)
 2. Property override by name match (child wins)
@@ -834,6 +834,6 @@ let parent = self.resolve_parent(schema_name)?;
 
 **❌ Key Difference**:
 
-- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Lithos rebuilds tree each load
+- **Ancestor caching**: MetadataMenu caches `fileClassesAncestors` map globally; Traces rebuilds tree each load
 
 **Performance consideration**: For typical vaults (<1000 schemas, <5 depth), topological resolution overhead is negligible (<10ms). Caching becomes beneficial for larger vaults or frequent resolution cycles.

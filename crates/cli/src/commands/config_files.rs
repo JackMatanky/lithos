@@ -1,4 +1,4 @@
-//! Handler for the `lithos config files` subcommand.
+//! Handler for the `traces config files` subcommand.
 //!
 //! This module provides [`run_config_files`], which runs discovery only
 //! (without triggering config parsing) and writes the discovered candidate
@@ -6,7 +6,7 @@
 //!
 //! Unlike most commands this handler **always exits 0**.  If discovery fails,
 //! the error is silently swallowed and empty/warning output is written
-//! instead.  This is intentional: `lithos config files` is a listing command
+//! instead.  This is intentional: `traces config files` is a listing command
 //! that should never block shell completion scripts or other tooling that
 //! pipes its output.
 
@@ -23,7 +23,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
 //                       Command Handler                       //
 // ----------------------------------------------------------- //
 
-/// Runs the `lithos config files` command handler.
+/// Runs the `traces config files` command handler.
 ///
 /// Calls discovery only (no config parsing), then writes the discovered
 /// vault and global candidate config file paths to `out` in the requested
@@ -32,7 +32,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
 /// # Always Returns `Ok(())`
 ///
 /// This handler catches all errors and writes empty/warning output instead
-/// of propagating them.  The `lithos config files` command is designed to
+/// of propagating them.  The `traces config files` command is designed to
 /// always exit 0 so that shell completion scripts and other tooling that
 /// pipes its output are never blocked.
 pub(crate) fn run_config_files<D: DiscoveryPort>(
@@ -143,8 +143,8 @@ mod config_files_handler {
     fn make_vault()
     -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
         let dir = tempfile::tempdir().expect("vault dir");
-        let config_path = dir.path().join("lithos.toml");
-        std::fs::write(&config_path, "").expect("write lithos.toml");
+        let config_path = dir.path().join("traces.toml");
+        std::fs::write(&config_path, "").expect("write traces.toml");
         let flags = DiscoveryFlags::new(
             Some(config_path.as_path()),
             Some(dir.path()),
@@ -203,7 +203,7 @@ mod config_files_handler {
     #[test]
     fn run_config_files_lists_vault_candidates() {
         let (dir, bootstrapper, flags) = make_vault();
-        let config_path = dir.path().join("lithos.toml");
+        let config_path = dir.path().join("traces.toml");
 
         let output = run_human(&bootstrapper, Some(flags), dir.path());
 
@@ -249,7 +249,7 @@ mod config_files_handler {
     #[test]
     fn returns_candidates_in_json_format() {
         let (dir, bootstrapper, flags) = make_vault();
-        let config_path = dir.path().join("lithos.toml");
+        let config_path = dir.path().join("traces.toml");
 
         let output = run_json(&bootstrapper, Some(flags), dir.path());
 

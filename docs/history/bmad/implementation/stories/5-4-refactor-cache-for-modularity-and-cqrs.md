@@ -70,7 +70,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
   - [x] Subtask 1.9: Run `mise run test:unit:core deserializer` (GREEN)
   - [x] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
-  - [x] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 1.11: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
@@ -93,7 +93,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [x] Subtask 2.13: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 2.13: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 2.14: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 2.15: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
@@ -112,7 +112,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [x] Subtask 3.9: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 3.9: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 3.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 3.11: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
@@ -242,7 +242,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - [x] Document in module-level docs how to construct coordinator-compatible handles
   - [x] Subtask 10.4: Run `mise run fmt` and verify formatting compliance
   - [x] Subtask 10.5: Run `mise run lint` one final time
-  - [x] Subtask 10.6: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 10.6: Run `mise run verify` to ensure all Traces quality gates are satisfied
   - [x] Subtask 10.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 10.8: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality

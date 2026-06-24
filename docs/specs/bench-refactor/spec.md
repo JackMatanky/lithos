@@ -72,8 +72,8 @@ mise run test:bench         # run mode (default)
 ```bash
 ARCHIVE_DIR=".benchmarks/baselines"
 case "${usage_package:-}" in
-  core) echo "lithos-core" ;;
-  cli)  echo "lithos-cli" ;;
+  core) echo "traces-core" ;;
+  cli)  echo "traces-cli" ;;
 esac
 ```
 
@@ -81,8 +81,8 @@ esac
 ```toml
 [vars]
 bench_archive_dir = ".benchmarks/baselines"
-bench_package_core = "lithos-core"
-bench_package_cli = "lithos-cli"
+bench_package_core = "traces-core"
+bench_package_cli = "traces-cli"
 ```
 
 ```bash
@@ -122,8 +122,8 @@ Add to `mise.toml`:
 ```toml
 [vars]
 bench_archive_dir = ".benchmarks/baselines"
-bench_package_core = "lithos-core"
-bench_package_cli = "lithos-cli"
+bench_package_core = "traces-core"
+bench_package_cli = "traces-cli"
 ```
 
 ### Task Metadata
@@ -236,8 +236,8 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 #######################################
 map_package_name() {
   case "${1:-}" in
-    core) echo "${MISE_VARS_BENCH_PACKAGE_CORE:-lithos-core}" ;;
-    cli)  echo "${MISE_VARS_BENCH_PACKAGE_CLI:-lithos-cli}" ;;
+    core) echo "${MISE_VARS_BENCH_PACKAGE_CORE:-traces-core}" ;;
+    cli)  echo "${MISE_VARS_BENCH_PACKAGE_CLI:-traces-cli}" ;;
     *)    echo "" ;;
   esac
 }

@@ -12,13 +12,13 @@
 
 ### Completed Work (Phases 3-5)
 
-- ✅ Phase 3: Domain migration to `lithos-core` with co-located errors/events/ports
+- ✅ Phase 3: Domain migration to `traces-core` with co-located errors/events/ports
 - ✅ Phase 4: CQRS command/query stubs created in all contexts
 - ✅ Phase 5: CLI converted to sync-first, architecture tests created
 
 ### Current State
 
-- Database stub exists at `lithos-core/src/db.rs` with API signatures
+- Database stub exists at `traces-core/src/db.rs` with API signatures
 - Command/Query implementations exist with `todo!()` placeholders
 - Port traits defined in each context (`note/ports.rs`, etc.)
 - 457 tests passing, zero clippy warnings
@@ -81,7 +81,7 @@
 **Objective**: Prepare domain aggregates for serialization.
 **Tasks**:
 
-1. **Add rkyv derives to Note aggregate** (`lithos-core/src/note/aggregate.rs`):
+1. **Add rkyv derives to Note aggregate** (`traces-core/src/note/aggregate.rs`):
 
    ```rust
    use rkyv::{Archive, Serialize, Deserialize};
@@ -150,7 +150,7 @@ mod serialization_tests {
 **Solution**: Create newtype wrapper (per `redb.md` guidance).
 
 ```rust
-// lithos-core/src/db.rs
+// traces-core/src/db.rs
 use redb::{Value, TypeName};
 use rkyv::{Archive, Serialize, Deserialize};
 use std::marker::PhantomData;
@@ -849,7 +849,7 @@ fn batch_write_performance() {
 - Methods are stubbed with `todo!()`
 - Trait is defined in `note/ports.rs`
   **Strategy**: Implement trait by delegating to `Database` methods.
-  **File**: `lithos-core/src/note/command.rs`
+  **File**: `traces-core/src/note/command.rs`
 
 ```rust
 // Replace todo!() implementations
@@ -951,7 +951,7 @@ impl<'db> super::ports::Command for NoteCommand<'db> {
 
 ### 8.2 Implement Note Query Trait
 
-**File**: `lithos-core/src/note/query.rs`
+**File**: `traces-core/src/note/query.rs`
 
 ```rust
 impl<'db> NoteQuery<'db> {
@@ -1032,12 +1032,12 @@ impl<'db> super::ports::Query for NoteQuery<'db> {
 
 **Objective**: Validate zero-copy performance gains.
 
-**File**: `lithos-core/benches/zero_copy_bench.rs`
+**File**: `traces-core/benches/zero_copy_bench.rs`
 
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use lithos_core::db::Database;
-use lithos_core::note::stored::StoredNote;
+use traces_core::db::Database;
+use traces_core::note::stored::StoredNote;
 
 fn bench_read(c: &mut Criterion) {
     // Setup DB with 1000 notes

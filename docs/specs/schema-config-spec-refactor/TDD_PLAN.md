@@ -11,7 +11,7 @@ Refactor `SchemaConfigSpec` to store `DirPath` and `FilePath` (absolute paths) i
 ## Phase 1: Update SchemaConfigSpec Type Definition (RED → GREEN)
 
 ### Test 1.1: SchemaConfigSpec stores DirPath and FilePath
-**Location:** `lithos-core/src/config/schema.rs` (mod tests::schema_config_spec)
+**Location:** `traces-core/src/config/schema.rs` (mod tests::schema_config_spec)
 
 **RED - Write failing test:**
 ```rust
@@ -35,7 +35,7 @@ fn schema_config_spec_accepts_absolute_paths() {
 
 **GREEN - Implementation:**
 ```rust
-// lithos-core/src/config/schema.rs
+// traces-core/src/config/schema.rs
 
 use crate::fs::{DirPath, FilePath};
 
@@ -74,7 +74,7 @@ impl SchemaConfigSpec {
 ## Phase 2: Update Config::to_schema_spec (RED → GREEN)
 
 ### Test 2.1: to_schema_spec joins vault root to create absolute paths
-**Location:** `lithos-core/src/config/aggregate.rs` (mod tests)
+**Location:** `traces-core/src/config/aggregate.rs` (mod tests)
 
 **RED - Write failing test:**
 ```rust
@@ -112,7 +112,7 @@ fn to_schema_spec_creates_absolute_paths_from_vault_root() {
 
 **GREEN - Implementation:**
 ```rust
-// lithos-core/src/config/aggregate.rs
+// traces-core/src/config/aggregate.rs
 
 pub fn to_schema_spec(&self) -> super::schema::SchemaConfigSpec {
     use super::schema::SchemaConfigSpec;
@@ -139,7 +139,7 @@ pub fn to_schema_spec(&self) -> super::schema::SchemaConfigSpec {
 ## Phase 3: Update DiscoveryEngine::run Signature (RED → GREEN)
 
 ### Test 3.1: DiscoveryEngine::run works without vault_root parameter
-**Location:** `lithos-core/src/schema/discovery.rs` (mod tests)
+**Location:** `traces-core/src/schema/discovery.rs` (mod tests)
 
 **RED - Write failing test:**
 ```rust
@@ -178,7 +178,7 @@ fn run_uses_absolute_paths_from_spec() {
 
 **GREEN - Implementation:**
 ```rust
-// lithos-core/src/schema/discovery.rs
+// traces-core/src/schema/discovery.rs
 
 impl DiscoveryEngine {
     pub(crate) fn run<R>(
@@ -237,7 +237,7 @@ impl DiscoveryEngine {
 ## Phase 4: Update Builder::load_all Call Site (RED → GREEN)
 
 ### Test 4.1: Builder::load_all works with new DiscoveryEngine signature
-**Location:** `lithos-core/src/schema/builder.rs` (mod tests)
+**Location:** `traces-core/src/schema/builder.rs` (mod tests)
 
 **RED - Update existing test:**
 ```rust
@@ -269,7 +269,7 @@ fn builder_load_all_orchestrates_discovery() {
 
 **GREEN - Implementation:**
 ```rust
-// lithos-core/src/schema/builder.rs
+// traces-core/src/schema/builder.rs
 
 impl<'config, R> Builder<'config, R>
 where
@@ -299,7 +299,7 @@ where
 ## Phase 5: Update Discovery Test Call Sites (RED → GREEN)
 
 ### Test 5.1: Update accepts_read_repository_only
-**Location:** `lithos-core/src/schema/discovery.rs` (mod tests)
+**Location:** `traces-core/src/schema/discovery.rs` (mod tests)
 
 **RED - Update test:**
 ```rust
@@ -347,7 +347,7 @@ fn run_finds_all_files() {
 **Verification:** Test passes. `cargo test run_finds_all_files`
 
 ### Test 5.2: Update run_skips_schema_batch_lookups_when_no_schema_files_exist
-**Location:** `lithos-core/src/schema/discovery.rs` (mod tests)
+**Location:** `traces-core/src/schema/discovery.rs` (mod tests)
 
 **RED - Update test:**
 ```rust
@@ -388,7 +388,7 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 ## Phase 6: Update Doc Comments and Examples
 
 ### Test 6.1: Doc tests compile with new API
-**Location:** `lithos-core/src/config/schema.rs`, `lithos-core/src/config/aggregate.rs`
+**Location:** `traces-core/src/config/schema.rs`, `traces-core/src/config/aggregate.rs`
 
 **RED - Update doc examples:**
 ```rust
@@ -396,7 +396,7 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 ///
 /// ```rust
 /// use std::path::PathBuf;
-/// use lithos_core::{config::schema::SchemaConfigSpec, fs::{DirPath, FilePath}};
+/// use traces_core::{config::schema::SchemaConfigSpec, fs::{DirPath, FilePath}};
 ///
 /// let directory: DirPath = PathBuf::from("/vault/schemas").into();
 /// let property_bank: FilePath = PathBuf::from("/vault/schemas/property_bank.json").into();
@@ -436,11 +436,11 @@ fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
 
 | File | Changes |
 |------|---------|
-| `lithos-core/src/config/schema.rs` | SchemaConfigSpec fields: RelativePath → DirPath/FilePath |
-| `lithos-core/src/config/aggregate.rs` | Config::to_schema_spec() joins vault root |
-| `lithos-core/src/schema/discovery.rs` | DiscoveryEngine::run() signature (remove vault_root param) |
-| `lithos-core/src/schema/builder.rs` | Builder::load_all() call site update |
-| `lithos-core/src/schema/discovery.rs` (tests) | Update 3 test call sites |
+| `traces-core/src/config/schema.rs` | SchemaConfigSpec fields: RelativePath → DirPath/FilePath |
+| `traces-core/src/config/aggregate.rs` | Config::to_schema_spec() joins vault root |
+| `traces-core/src/schema/discovery.rs` | DiscoveryEngine::run() signature (remove vault_root param) |
+| `traces-core/src/schema/builder.rs` | Builder::load_all() call site update |
+| `traces-core/src/schema/discovery.rs` (tests) | Update 3 test call sites |
 
 **Total test updates:** ~8 tests
 **Total production code files:** 4 files

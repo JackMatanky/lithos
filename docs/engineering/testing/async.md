@@ -1,6 +1,6 @@
 # Async Testing Guidelines
 
-Tactical specification for testing asynchronous code in Lithos using Tokio.
+Tactical specification for testing asynchronous code in Traces using Tokio.
 
 ## 1. Key Principles
 

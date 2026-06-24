@@ -8,7 +8,7 @@ This design decouples the `config` module from the `discovery` module by removin
 
 ### 1. `Discovery` Service Layer
 
--   **`DiscoveryResult`**: Add a `report` field to `lithos_core::discovery::service::DiscoveryResult`.
+-   **`DiscoveryResult`**: Add a `report` field to `traces_core::discovery::service::DiscoveryResult`.
 -   **`DiscoveryService::discover`**: Update the return type to `Result<DiscoveryResult, DiscoveryError>` (consolidating `Result` and `Report`).
 -   **`DiscoveryProcessor::finalize`**: Update to combine the result and report into the updated `DiscoveryResult` before returning.
 

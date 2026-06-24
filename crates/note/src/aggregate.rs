@@ -764,7 +764,7 @@ mod tests {
             .expect("clock should be monotonic")
             .as_millis();
         let dir =
-            std::env::temp_dir().join(format!("lithos-note-test-{millis}"));
+            std::env::temp_dir().join(format!("traces-note-test-{millis}"));
         std::fs::create_dir_all(&dir).expect("test vault dir should exist");
         VaultRoot::try_new(dir).expect("vault root")
     }
@@ -786,7 +786,7 @@ mod tests {
         let config = config_with_fields();
         let task_spec = config.to_task_spec();
         let task = promote_task(
-            "#task Review PR [priority:: 2] [project:: lithos]",
+            "#task Review PR [priority:: 2] [project:: traces]",
             &task_spec,
             &[],
         );
@@ -808,7 +808,7 @@ mod tests {
             .iter()
             .find(|f| f.key().as_str() == "project")
             .map(super::super::inline_fields::InlineField::value);
-        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("traces"));
     }
 
     #[test]
@@ -875,7 +875,7 @@ mod tests {
         let config = config_with_fields();
         let task_spec = config.to_task_spec();
         let task = promote_task(
-            "#task Review PR (priority:: 2) (project:: lithos)",
+            "#task Review PR (priority:: 2) (project:: traces)",
             &task_spec,
             &[],
         );
@@ -897,7 +897,7 @@ mod tests {
             .iter()
             .find(|f| f.key().as_str() == "project")
             .map(super::super::inline_fields::InlineField::value);
-        assert_eq!(project_field.and_then(|v| v.as_str()), Some("lithos"));
+        assert_eq!(project_field.and_then(|v| v.as_str()), Some("traces"));
     }
 
     fn date_of(value: &crate::task::TaskDateValue) -> NaiveDate {

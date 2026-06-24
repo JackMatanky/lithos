@@ -38,7 +38,7 @@ superseded_by: Course Correction Proposal 4 (Database Layer Design)
 
 ## Context
 
-Lithos requires a high-performance, concurrent caching layer to support multiple critical subsystems:
+Traces requires a high-performance, concurrent caching layer to support multiple critical subsystems:
 
 1.  **Schema System**: Caching resolved `Schema` aggregates (parsed from JSON/TOML) to avoid repeated expensive I/O and inheritance resolution.
 2.  **Config System**: `PropertyBank` singleton needs fast concurrent access.

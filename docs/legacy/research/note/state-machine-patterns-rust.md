@@ -1434,4 +1434,4 @@ enum Phase {
 
 ---
 
-*Research compiled for Lithos project, focusing on state machine patterns for schema loading and validation pipelines.*
+*Research compiled for Traces project, focusing on state machine patterns for schema loading and validation pipelines.*

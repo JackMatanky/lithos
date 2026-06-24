@@ -32,7 +32,7 @@ use super::{
 /// Validated task configuration aggregate.
 ///
 /// This struct defines how tasks (e.g., in Markdown files) are recognized,
-/// parsed, and indexed by Lithos. It ensures all field keywords and status
+/// parsed, and indexed by Traces. It ensures all field keywords and status
 /// symbols are valid and unique.
 ///
 /// # Always Valid Invariants

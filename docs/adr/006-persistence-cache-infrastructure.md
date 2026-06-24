@@ -12,7 +12,7 @@ date_updated: 2026-03-10
 
 ## Context
 
-The Lithos project requires a high-performance metadata index to support real-time features in a Command Line Interface (CLI) and a future Language Server Protocol (LSP).
+The Traces project requires a high-performance metadata index to support real-time features in a Command Line Interface (CLI) and a future Language Server Protocol (LSP).
 Key performance requirements include:
 
 - Sub-50ms latency for link suggestions and resolution.
@@ -80,10 +80,10 @@ We will use **Redb** as the primary storage engine, with values serialized using
 
 ## Appendix: High-Performance Redb Utilities & Design Patterns
 
-To maximize the capabilities of Redb 3.1 in the Lithos vault, the following patterns and utilities MUST be leveraged. These patterns prioritize "Mechanical Sympathy" by aligning storage operations with Rust's memory model and the underlying filesystem's behavior.
+To maximize the capabilities of Redb 3.1 in the Traces vault, the following patterns and utilities MUST be leveraged. These patterns prioritize "Mechanical Sympathy" by aligning storage operations with Rust's memory model and the underlying filesystem's behavior.
 
 ### 1. High-Performance Zero-Copy Reads
-Zero-copy reads are the primary mechanism for achieving sub-50ms latency in the Lithos knowledge graph. This bypasses the traditional "read, allocate, and parse" cycle.
+Zero-copy reads are the primary mechanism for achieving sub-50ms latency in the Traces knowledge graph. This bypasses the traditional "read, allocate, and parse" cycle.
 
 - **Mechanism**: `table.get(key)` returns an `AccessGuard`. This guard is a smart pointer to the memory-mapped page containing the value.
 - **Pointer Stability**: The `AccessGuard` implements `Deref<Target = [u8]>`. This slice is a direct view into the OS page cache (or disk-mapped memory).
@@ -92,7 +92,7 @@ Zero-copy reads are the primary mechanism for achieving sub-50ms latency in the 
 - **Lifetime Safety**:
     - **Critical Invariant**: The lifetime of the `Archived` reference is tied to the `AccessGuard`. If the guard is dropped, the memory may be unmapped or reused.
     - **Pattern**: Never return the `Archived` type directly from an adapter. Instead, return a DTO or map it within a closure that maintains the guard's scope.
-- **Performance Impact**: This approach allows Lithos to "read" complex note metadata in nanoseconds, as the only "work" performed is the B-Tree lookup.
+- **Performance Impact**: This approach allows Traces to "read" complex note metadata in nanoseconds, as the only "work" performed is the B-Tree lookup.
 
 ### 2. Zero-Copy Write via `insert_reserve`
 Standard `insert(key, &value)` requires Redb to allocate an internal buffer, copy your data into it, and then eventually write it to the database page. To eliminate this intermediate copy:
@@ -119,14 +119,14 @@ Manual transaction management is error-prone.
 
 ### 6. Database Configuration & Resource Tuning
 Tuning the `DatabaseBuilder` is critical for scaling to 100,000+ notes:
-- **`set_cache_size(bytes)`**: Redb uses an internal page cache. For Lithos, set this to ~20% of the total vault size or at least 128MB. This ensures the B-Tree's internal nodes and "hot" metadata remain in RAM, reducing IOPS.
+- **`set_cache_size(bytes)`**: Redb uses an internal page cache. For Traces, set this to ~20% of the total vault size or at least 128MB. This ensures the B-Tree's internal nodes and "hot" metadata remain in RAM, reducing IOPS.
 - **`set_page_size(bytes)`**: The default 4KB is optimal for small metadata. However, if using large multimaps for backlinks, increasing to 8KB or 16KB can reduce B-Tree height (fewer disk seeks) and fragmentation, at the cost of slightly higher "slack" space.
 - **`set_region_size(bytes)`**: Controls the growth increments of the database file. Larger regions reduce filesystem fragmentation on modern SSDs.
 
 ### 7. Maintenance, Integrity & Recovery
 - **`MultimapTable`**: Essential for 1:N relations (e.g., `#tag -> [note_ids]`). It uses a specialized B-Tree structure that is significantly faster than storing a `Vec<Uuid>` inside a standard `Table` value, as it avoids serializing the entire list for every insertion.
 - **`db.compact()`**: Perform this during the "Clean Up" phase. It relocates active pages to the start of the file and truncates the remainder. Requires NO active read transactions to be effective.
-- **`db.check_integrity()`**: A deep-scan utility that re-calculates all B-Tree checksums. Should be exposed as a `lithos diagnostic` command to help users recover from suspected hardware failure or disk corruption.
+- **`db.check_integrity()`**: A deep-scan utility that re-calculates all B-Tree checksums. Should be exposed as a `traces diagnostic` command to help users recover from suspected hardware failure or disk corruption.
 - **Migration Strategy**: Since Redb doesn't store schemas, use a `VersionTable` (Key: "schema_version", Value: u32) to manage backward-compatible changes to `rkyv` structs.
 
 ## Appendix: Deep Dive into rkyv Mechanics & Philosophy

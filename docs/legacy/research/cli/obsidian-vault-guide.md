@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains real-world Obsidian vault data from Jack's personal vault, serving as production-scale test data for the Lithos vault indexing engine.
+This directory contains real-world Obsidian vault data from Jack's personal vault, serving as production-scale test data for the Traces vault indexing engine.
 
 ## Location
 

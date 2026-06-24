@@ -7,7 +7,7 @@
 //! # Design
 //!
 //! - **`RawGlobalConfigView`**: Tracks global config file (system paths)
-//! - **`RawVaultConfigView`**: Tracks vault config file (`.lithos/lithos.toml`)
+//! - **`RawVaultConfigView`**: Tracks vault config file (`.traces/traces.toml`)
 //! - **`RawFileVersion`**: Individual version snapshot with content hash
 //!
 //! # Staleness Detection
@@ -59,7 +59,7 @@ fn hash_raw_vault(raw: &crate::config::raw::RawVaultConfig) -> Blake3Hash {
 /// use crate::views::{RawGlobalConfigView, RawFileVersion};
 ///
 /// let view = RawGlobalConfigView::new(
-///     "/home/user/.config/lithos/config.toml".into(),
+///     "/home/user/.config/traces/config.toml".into(),
 /// );
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -86,9 +86,9 @@ impl RawGlobalConfigView {
     /// use crate::views::RawGlobalConfigView;
     ///
     /// let view = RawGlobalConfigView::new(
-    ///     "/home/user/.config/lithos/config.toml".into()
+    ///     "/home/user/.config/traces/config.toml".into()
     /// );
-    /// assert_eq!(view.file_path(), "/home/user/.config/lithos/config.toml");
+    /// assert_eq!(view.file_path(), "/home/user/.config/traces/config.toml");
     /// assert!(view.versions().is_empty());
     /// ```
     #[inline]
@@ -205,7 +205,7 @@ impl RawGlobalConfigView {
 
 /// View of vault config file state with version history.
 ///
-/// Tracks the vault-specific configuration file (`.lithos/lithos.toml`)
+/// Tracks the vault-specific configuration file (`.traces/traces.toml`)
 /// with up to 5 recent versions for staleness detection and rollback.
 ///
 /// # Storage
@@ -220,14 +220,14 @@ impl RawGlobalConfigView {
 /// let vault_id = VaultId::new();
 /// let view = RawVaultConfigView::new(
 ///     vault_id,
-///     "/vault/.lithos/lithos.toml".into(),
+///     "/vault/.traces/traces.toml".into(),
 /// );
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct RawVaultConfigView {
-    /// Path to the vault config file (`.lithos/lithos.toml`).
+    /// Path to the vault config file (`.traces/traces.toml`).
     file_path: Box<str>,
 
     /// Ring buffer of up to 5 recent file versions.
@@ -245,7 +245,7 @@ impl RawVaultConfigView {
     /// use crate::{vault::VaultId, views::RawVaultConfigView};
     ///
     /// let view = RawVaultConfigView::new(
-    ///     "/vault/.lithos/lithos.toml".into(),
+    ///     "/vault/.traces/traces.toml".into(),
     /// );
     /// assert!(view.versions().is_empty());
     /// ```
@@ -635,8 +635,8 @@ mod tests {
 
     #[test]
     fn raw_vault_config_view_new() {
-        let view = RawVaultConfigView::new("/vault/.lithos/lithos.toml".into());
-        assert_eq!(view.file_path(), "/vault/.lithos/lithos.toml");
+        let view = RawVaultConfigView::new("/vault/.traces/traces.toml".into());
+        assert_eq!(view.file_path(), "/vault/.traces/traces.toml");
         assert!(view.versions().is_empty());
     }
 

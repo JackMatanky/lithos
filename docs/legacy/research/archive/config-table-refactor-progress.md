@@ -60,8 +60,8 @@ fn record_config(&self, vault_id: VaultId, config: &Config) -> Result<(), Self::
 ```
 
 **Files to update:**
-- `lithos-core/src/config/ports.rs` - trait definitions
-- `lithos-core/src/config/command.rs` - facade implementation
+- `traces-core/src/config/ports.rs` - trait definitions
+- `traces-core/src/config/command.rs` - facade implementation
 
 ### Phase 4: Update Query port methods
 
@@ -99,8 +99,8 @@ fn is_vault_stale(&self, vault_id: VaultId, created_at: Option<Timestamp>, modif
 ```
 
 **Files to update:**
-- `lithos-core/src/config/ports.rs` - trait definitions
-- `lithos-core/src/config/query.rs` - facade implementation
+- `traces-core/src/config/ports.rs` - trait definitions
+- `traces-core/src/config/query.rs` - facade implementation
 
 ### Phase 5: Implement CommandAdapter with new tables
 
@@ -113,7 +113,7 @@ fn is_vault_stale(&self, vault_id: VaultId, created_at: Option<Timestamp>, modif
 - Update metadata keys to include version: `"global:{version}"`, `"{vault_id}:{version}"`
 
 **Files to update:**
-- `lithos-core/src/config/adapter/command.rs`
+- `traces-core/src/config/adapter/command.rs`
 
 ### Phase 6: Implement QueryAdapter with new tables
 
@@ -126,7 +126,7 @@ fn is_vault_stale(&self, vault_id: VaultId, created_at: Option<Timestamp>, modif
 - Update staleness metadata keys
 
 **Files to update:**
-- `lithos-core/src/config/adapter/query.rs`
+- `traces-core/src/config/adapter/query.rs`
 
 ### Phase 7: Update ConfigService
 
@@ -137,16 +137,16 @@ fn is_vault_stale(&self, vault_id: VaultId, created_at: Option<Timestamp>, modif
 - Update to use `record_config()` instead of `record_merged()`
 
 **Files to update:**
-- `lithos-core/src/application/config.rs`
-- `lithos-core/src/config/ingest.rs` (may need updates)
+- `traces-core/src/application/config.rs`
+- `traces-core/src/config/ingest.rs` (may need updates)
 
 ### Phase 8: Update all tests
 
 **Affected test files:**
-- `lithos-core/src/config/adapter/command.rs` - 4 tests
-- `lithos-core/src/config/adapter/query.rs` - 10 tests
-- `lithos-core/src/config/command.rs` - 11 tests
-- `lithos-core/src/config/query.rs` - 3 tests
+- `traces-core/src/config/adapter/command.rs` - 4 tests
+- `traces-core/src/config/adapter/query.rs` - 10 tests
+- `traces-core/src/config/command.rs` - 11 tests
+- `traces-core/src/config/query.rs` - 3 tests
 - Integration tests in `tests/config_flow.rs`
 
 **Changes needed:**

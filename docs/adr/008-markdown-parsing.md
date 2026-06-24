@@ -11,7 +11,7 @@ date_implemented: 2026-01-11
 
 ## Context
 
-Lithos requires a Markdown parser that serves as the primary "scanner" for the vault. The system's performance is tied directly to how quickly it can process thousands of files to:
+Traces requires a Markdown parser that serves as the primary "scanner" for the vault. The system's performance is tied directly to how quickly it can process thousands of files to:
 
 1.  **Extract Links:** Identify Wikilinks and Markdown links to populate the Redb knowledge graph.
 2.  **LSP Rendering:** Convert Markdown snippets to HTML or formatted text for real-time hover documentation.
@@ -20,7 +20,7 @@ Lithos requires a Markdown parser that serves as the primary "scanner" for the v
 
 ## Decision
 
-We will use **pulldown-cmark** as the core Markdown processing engine for Lithos Rust.
+We will use **pulldown-cmark** as the core Markdown processing engine for Traces Rust.
 
 ### 1. Performance: Pull-based Event Streaming
 
@@ -35,7 +35,7 @@ In alignment with **ADR 006 (Redb/rkyv)** and **ADR 007 (MiniJinja)**, `pulldown
 
 ### 3. Obsidian Compatibility Strategy
 
-Lithos leverages `pulldown-cmark`'s native extension support while implementing custom handlers for Obsidian-specific syntax:
+Traces leverages `pulldown-cmark`'s native extension support while implementing custom handlers for Obsidian-specific syntax:
 
 - **Native Extensions**:
   - `ENABLE_WIKILINKS`: Direct support for `[[target|alias]]` resolution.
@@ -59,11 +59,11 @@ Lithos leverages `pulldown-cmark`'s native extension support while implementing 
 
 ### Why not Comrak?
 
-While `comrak` provides a rich AST that makes deep document manipulation easier, its memory and CPU overhead are significantly higher. For Lithos, which spends 99% of its time reading and indexing, the raw speed of a stream-based parser is a better trade-off.
+While `comrak` provides a rich AST that makes deep document manipulation easier, its memory and CPU overhead are significantly higher. For Traces, which spends 99% of its time reading and indexing, the raw speed of a stream-based parser is a better trade-off.
 
 ### Why not markdown-rs?
 
-`markdown-rs` is significantly heavier and slower than `pulldown-cmark`. The complexity of the `unified` ecosystem is unnecessary for the focused CLI and LSP goals of Lithos.
+`markdown-rs` is significantly heavier and slower than `pulldown-cmark`. The complexity of the `unified` ecosystem is unnecessary for the focused CLI and LSP goals of Traces.
 
 ## Technical Validation
 

@@ -14,7 +14,7 @@
 
 ## SNAPSHOT TESTING POLICY
 
-**Lithos currently does NOT use snapshot testing.** We prefer explicit assertions for all test verification.
+**Traces currently does NOT use snapshot testing.** We prefer explicit assertions for all test verification.
 
 ### Why no snapshots?
 
@@ -30,7 +30,7 @@ If snapshot testing is added in the future, it must be restricted to structural 
 ## ADVANCED VERIFICATION
 
 - **Observability**: Use `tracing-test` to verify emitted spans and events.
-- **Domain Purity**: Programmatic enforcement ensures `lithos-core` domain contexts remain free of I/O dependencies.
+- **Domain Purity**: Programmatic enforcement ensures `traces-core` domain contexts remain free of I/O dependencies.
 
 ## VALIDATION CHECKLIST
 

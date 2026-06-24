@@ -2,7 +2,7 @@
 
 # CQRS Testing Guidelines
 
-Tactical specification for testing Command and Query responsibilities in Lithos.
+Tactical specification for testing Command and Query responsibilities in Traces.
 
 ## 1. Key Principles
 
@@ -219,7 +219,7 @@ mock.expect_save().times(1);
 // BAD: Using a real DB for a unit test
 let db = Redb::open("/tmp/test.db");
 ```
-**Fix**: Use `StubQueryStore` or `InMemoryRepository`. Real DBs belong in `lithos-core/tests/` (when added).
+**Fix**: Use `StubQueryStore` or `InMemoryRepository`. Real DBs belong in `traces-core/tests/` (when added).
 
 ### ❌ The "Silent Failure"
 ```rust

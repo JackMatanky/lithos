@@ -56,7 +56,7 @@ The config implementation has diverged from the design specs. Key gaps:
 #### **Critical - Blocks Quality Gate**
 
 1. **`SettingValue` exists but shouldn't** (Design Section 1.1)
-   - **Location**: `lithos-core/src/config/types.rs:631`
+   - **Location**: `traces-core/src/config/types.rs:631`
    - **Why it's wrong**: Design explicitly states "no universal value type"
    - **Action**: Remove `SettingValue` enum and all usages
    - **Impact**: May break tests/code that depends on it
@@ -100,7 +100,7 @@ None remaining. Previously identified gaps (VaultId, Versioning, Split Errors) h
    - Test: `cargo clippy --all-targets`
 
 3. **Remove SettingValue** (1 hour)
-   - Search for all usages: `rg "SettingValue" lithos-core/`
+   - Search for all usages: `rg "SettingValue" traces-core/`
    - Delete enum definition
    - Update/remove tests that use it
    - Test: `mise run test:unit:config`
@@ -166,9 +166,9 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 
 ### 0.1) Fix Clippy Pattern Errors
 
-- [ ] Read `lithos-core/src/config/global.rs` lines 295-325 (TrustedVaults::validate)
-- [ ] Read `lithos-core/src/config/task.rs` lines 647-705 (TaskFieldSpec methods)
-- [ ] Read `lithos-core/src/config/types.rs` lines 702-730 (SettingValue Debug impl)
+- [ ] Read `traces-core/src/config/global.rs` lines 295-325 (TrustedVaults::validate)
+- [ ] Read `traces-core/src/config/task.rs` lines 647-705 (TaskFieldSpec methods)
+- [ ] Read `traces-core/src/config/types.rs` lines 702-730 (SettingValue Debug impl)
 - [ ] Fix all `ref` pattern errors by using `&` patterns correctly
 - [ ] Remove duplicate closing braces from previous broken edits
 - [ ] Run `cargo clippy --all-targets` until zero errors
@@ -184,7 +184,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 
 ### 0.3) Remove SettingValue (Design Violation)
 
-- [ ] Search all usages: `rg "SettingValue" lithos-core/src/config/`
+- [ ] Search all usages: `rg "SettingValue" traces-core/src/config/`
 - [ ] **CRITICAL**: `SettingValue` violates design spec Section 1.1 - must be removed
 - [ ] Delete `pub enum SettingValue` from `types.rs` (line ~631)
 - [ ] Delete `impl std::fmt::Debug for SettingValue` from `types.rs` (line ~702)
@@ -199,7 +199,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (full check: fmt + lint + tests + adr)
 - [ ] Confirm zero clippy warnings
 - [ ] Confirm all tests pass
-- [ ] Stage all changes: `git add lithos-core/src/config/`
+- [ ] Stage all changes: `git add traces-core/src/config/`
 - [ ] Commit checkpoint: `git commit -m "fix(config): remove SettingValue, fix clippy patterns, add lint suppressions"`
 
 **STOP**: Do not proceed to Phase 1 until Phase 0 is 100% complete and committed.
@@ -232,7 +232,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.2 lines 434-475, Decision 4.1.8
 **Issue**: Implementation has separate `IntegerBounds`/`FloatBounds`, spec requires generic `Bounds<T>`
 
-- [ ] Read `lithos-core/src/config/task.rs` lines 145-203 (current separate types)
+- [ ] Read `traces-core/src/config/task.rs` lines 145-203 (current separate types)
 - [ ] Create generic `Bounds<T>` enum with Unbounded/Min/Max/Range variants
 - [ ] Replace `IntegerBounds` with `Bounds<i64>`
 - [ ] Replace `FloatBounds` with `Bounds<f64>`
@@ -247,7 +247,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 4.1.5 Decision, Section 2.1 lines 117-140
 **Issue**: Uses `#[serde(tag = "type")]` requiring explicit `type=` key, spec requires `#[serde(untagged)]`
 
-- [ ] Read `lithos-core/src/config/raw.rs` lines 188-232
+- [ ] Read `traces-core/src/config/raw.rs` lines 188-232
 - [ ] Change `#[serde(tag = "type", rename_all = "lowercase")]` to `#[serde(untagged)]`
 - [ ] Reorder enum variants for correct matching priority: Enum → Integer → Float → DateTime → String
 - [ ] Add comment explaining untagged matching order
@@ -261,7 +261,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.2 lines 497-506, Decision 4.1.3
 **Issue**: Stores `Option<String>`, spec requires `Option<Arc<regex::Regex>>` for performance
 
-- [ ] Read `lithos-core/src/config/task.rs` lines 240-276 (TaskFieldSpec enum)
+- [ ] Read `traces-core/src/config/task.rs` lines 240-276 (TaskFieldSpec enum)
 - [ ] Change `String { pattern: Option<String> }` to `String { pattern: Option<Arc<regex::Regex>> }`
 - [ ] Update `TaskFieldSpec::from_raw` to compile regex and wrap in Arc
 - [ ] Remove regex compilation from `validate_string` method (use pre-compiled)
@@ -276,7 +276,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.3 lines 719-723 (marked as "private helper")
 **Issue**: Method is public, spec explicitly says private
 
-- [ ] Read `lithos-core/src/config/task.rs` line 737 (`pub fn validate_raw_value`)
+- [ ] Read `traces-core/src/config/task.rs` line 737 (`pub fn validate_raw_value`)
 - [ ] Change `pub fn validate_raw_value` to `pub(crate) fn validate_raw_value`
 - [ ] **Rationale**: Only Note context should validate; users shouldn't call directly
 - [ ] Verify no external crate uses this method
@@ -288,7 +288,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.2 lines 362-387
 **Issue**: Uses `String`, spec requires `Box<str>` (immutable, no growth capacity)
 
-- [ ] Read `lithos-core/src/config/task.rs` lines 129-143
+- [ ] Read `traces-core/src/config/task.rs` lines 129-143
 - [ ] Change `pub struct TaskFieldKeyword(String)` to `pub struct TaskFieldKeyword(Box<str>)`
 - [ ] Update `try_new` to convert `value.into(): String` to `value.into(): Box<str>`
 - [ ] Update `From<TaskFieldKeyword> for String` to use `.into_string()` or clone
@@ -300,7 +300,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.2 lines 336-360
 **Issue**: Uses `String`, spec requires `Box<str>` (same as TaskFieldKeyword)
 
-- [ ] Read `lithos-core/src/config/task.rs` lines 113-127
+- [ ] Read `traces-core/src/config/task.rs` lines 113-127
 - [ ] Change `pub struct TaskTag(String)` to `pub struct TaskTag(Box<str>)`
 - [ ] Update `try_new` to convert to `Box<str>`
 - [ ] Update `From<TaskTag> for String` implementation
@@ -312,7 +312,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Spec**: 003-config-task.md Section 3.2 lines 593-607 (only 4 fields: due/created/reminder/completed)
 **Issue**: Implementation adds `scheduled` and `start` fields not in spec
 
-- [ ] Read `lithos-core/src/config/raw.rs` lines 159-174
+- [ ] Read `traces-core/src/config/raw.rs` lines 159-174
 - [ ] **Decision needed**: Keep extra fields (update spec) OR remove them (match spec)
 - [ ] If keeping: Add to spec documentation and explain use case
 - [ ] If removing: Delete `scheduled` and `start` fields
@@ -325,7 +325,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (full quality gate)
 - [ ] Confirm all spec alignment issues resolved
 - [ ] Document any deviations from spec with rationale
-- [ ] Stage changes: `git add lithos-core/src/config/`
+- [ ] Stage changes: `git add traces-core/src/config/`
 - [ ] Commit checkpoint: `git commit -m "fix(config): align implementation with design specs (bounds, errors, task fields)"`
 
 **STOP**: Do not proceed to Phase 7 until Phase 0.5 is complete and all design alignment issues are resolved.
@@ -336,8 +336,8 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 
 Status: ✅ Files exist, ❌ Not fully validated against spec
 
-- [x] Add `lithos-core/src/config/raw.rs` with `RawGlobal`, `RawVault`, and `RawTaskConfig` shapes.
-- [x] Add `lithos-core/src/config/ingest.rs` with Figment provider wiring and `ingest_global`/`ingest_vault`.
+- [x] Add `traces-core/src/config/raw.rs` with `RawGlobal`, `RawVault`, and `RawTaskConfig` shapes.
+- [x] Add `traces-core/src/config/ingest.rs` with Figment provider wiring and `ingest_global`/`ingest_vault`.
 - [x] Implement `TryFrom<Raw*>` -> validated domain types; keep Figment out of domain modules.
 - [x] **Refactored**: Removed redundant `RawSchemaPaths` in favor of validated overrides (2026-02-08).
 
@@ -360,7 +360,7 @@ Status: ✅ Core types exist and are used in persistence/aggregate.
 
 Status: ✅ Fully implemented, matches design spec
 
-- [x] Add `lithos-core/src/config/task.rs` with `TaskConfig`, `TaskTag`, `TaskFieldKeyword`, `StatusName`, `StatusSymbol`.
+- [x] Add `traces-core/src/config/task.rs` with `TaskConfig`, `TaskTag`, `TaskFieldKeyword`, `StatusName`, `StatusSymbol`.
 - [x] Implement `Bounds<T>`, `DateSpec`, `TaskFieldSpec` with validation + regex compile + chrono format checks.
 - [x] Add `TaskConfig::from_raw` and default config matching current checkbox behavior.
 - [x] Add validation and parsing helpers (`field_spec`, `parse_date_value`, status mapping lookups).
@@ -388,7 +388,7 @@ Status: ✅ Versioning types and persistence logic implemented.
 - [x] Add `ConfigVersion`, `MergedConfigRecord`, `ActiveMergedConfig` types.
 - [x] Implement `rebuild_merged`, `activate_version`, and optional `rollback` in command.
 - [x] Add DB table mapping: `vault_id_by_path`, `vault_path_by_id`, `merged_config_versions`, `merged_config_active`.
-- [x] Update adapters in `lithos-core/src/db/config_adapter.rs` if needed.
+- [x] Update adapters in `traces-core/src/db/config_adapter.rs` if needed.
 - [x] Add tests for version creation, activation, and rollback behavior.
 
 ---
@@ -406,10 +406,10 @@ Status: ✅ Build logic uses `VaultId` and proper merge precedence.
 
 ## Phase 7: Integration Touchpoints (Note/CLI) - IN PROGRESS
 
-- [x] **Core API Integration**: Validated end-to-end CQRS flow with Redb integration test (`lithos-core/tests/config_integration.rs`).
+- [x] **Core API Integration**: Validated end-to-end CQRS flow with Redb integration test (`traces-core/tests/config_integration.rs`).
 - [ ] Wire TaskConfig into config loading and note parsing interfaces (no context cross-imports).
 - [ ] Update any CLI or adapter boundaries that depend on old config APIs.
-- [ ] Add integration tests (if applicable) under `lithos-core/tests/`.
+- [ ] Add integration tests (if applicable) under `traces-core/tests/`.
 - [ ] Run `mise run test:integration` (if integration tests changed).
 - [ ] Run `mise run verify` to ensure pre-commit hooks pass.
 
@@ -466,7 +466,7 @@ _Consolidated architectural review and Figment analysis_
 
 **Date**: 2026-02-09
 **Scope**: Comprehensive review of design specs vs implementation
-**Files Reviewed**: All 15 files in `lithos-core/src/config/`
+**Files Reviewed**: All 15 files in `traces-core/src/config/`
 
 ---
 
@@ -616,7 +616,7 @@ Document that "layering" means within layers, not across layers.
    - _Recommendation_: Don't add unless operational contexts needed
 
 2. **Environment Variables** (`Env::prefixed`)
-   - Current pattern: Single env var `LITHOS_GLOBAL_CONFIG` for path
+   - Current pattern: Single env var `TRACES_GLOBAL_CONFIG` for path
    - Per-field env overrides add complexity without user request
    - _Recommendation_: Keep current pattern
 
@@ -750,7 +750,7 @@ _Line-by-line verification of spec misalignments_
 # Phase 0.5: Task Config Verification Results
 
 **Date**: 2026-02-09
-**File Reviewed**: `lithos-core/src/config/task.rs` (1393 lines), `raw.rs` (315 lines), `error.rs` (278 lines)
+**File Reviewed**: `traces-core/src/config/task.rs` (1393 lines), `raw.rs` (315 lines), `error.rs` (278 lines)
 **Status**: ✅ **ALL 8 CLAIMS VERIFIED**
 
 ---
@@ -1361,7 +1361,7 @@ See original plan in config-context-combined-status.md (preserved as historical 
 **Spec**: 003-config-task.md Section 3.2 lines 434-475
 **Status**: ✅ **COMPLETED** - Generic `Bounds<T>` created with validation logic
 
-**Implementation** (`lithos-core/src/bounds.rs`):
+**Implementation** (`traces-core/src/bounds.rs`):
 
 - Generic `Bounds<T>` enum with Unbounded/Min/Max/Range variants
 - `from_options()`, `validate()`, `min()`, `max()` methods
@@ -1439,7 +1439,7 @@ Same as 0.5.6 but for `TaskTag`
 ### Comprehensive Review Summary
 
 **Date**: 2026-02-09
-**Files Reviewed**: All 15 files in `lithos-core/src/config/`
+**Files Reviewed**: All 15 files in `traces-core/src/config/`
 
 #### What Was Done RIGHT
 
@@ -1603,7 +1603,7 @@ TOML Files → (serde) → RawConfig → (Figment merge) → RawConfig
 
 ### Phase 1.1: Create Unified Raw Schema (Non-Breaking)
 
-**File**: `lithos-core/src/config/raw.rs`
+**File**: `traces-core/src/config/raw.rs`
 
 **Add new types alongside existing**:
 
@@ -1709,7 +1709,7 @@ fn raw_config_supports_partial_filesystem() {
 
 ### Phase 1.2: Implement Figment Merge
 
-**File**: `lithos-core/src/config/ingest.rs`
+**File**: `traces-core/src/config/ingest.rs`
 
 **Add new merge function**:
 
@@ -1718,8 +1718,8 @@ fn raw_config_supports_partial_filesystem() {
 ///
 /// This implements Phase 1 hierarchy:
 /// 1. Compiled defaults (lowest priority)
-/// 2. Global config file (~/.config/lithos/lithos.toml)
-/// 3. Vault config file (<vault>/.lithos/lithos.toml) (highest priority)
+/// 2. Global config file (~/.config/traces/traces.toml)
+/// 3. Vault config file (<vault>/.traces/traces.toml) (highest priority)
 ///
 /// Future phases will add:
 /// - CLI flags
@@ -1743,7 +1743,7 @@ pub fn build_merged_raw(vault_root: &Path) -> Result<RawConfig, ConfigIngestErro
     }
 
     // Layer 3: Vault config (if exists)
-    let vault_config_path = vault_root.join(".lithos").join("lithos.toml");
+    let vault_config_path = vault_root.join(".traces").join("traces.toml");
     if vault_config_path.exists() {
         figment = figment.merge(Toml::file(vault_config_path));
     }
@@ -1761,10 +1761,10 @@ fn build_merged_raw_merges_global_and_vault() {
     let temp_dir = tempdir().unwrap();
 
     // Create global config
-    let global_dir = temp_dir.path().join(".config/lithos");
+    let global_dir = temp_dir.path().join(".config/traces");
     fs::create_dir_all(&global_dir).unwrap();
     fs::write(
-        global_dir.join("lithos.toml"),
+        global_dir.join("traces.toml"),
         r#"
             [filesystem]
             schemas_dir = "global-schemas"
@@ -1774,10 +1774,10 @@ fn build_merged_raw_merges_global_and_vault() {
 
     // Create vault config
     let vault_dir = temp_dir.path().join("vault");
-    let vault_config_dir = vault_dir.join(".lithos");
+    let vault_config_dir = vault_dir.join(".traces");
     fs::create_dir_all(&vault_config_dir).unwrap();
     fs::write(
-        vault_config_dir.join("lithos.toml"),
+        vault_config_dir.join("traces.toml"),
         r#"
             [filesystem]
             schemas_dir = "vault-schemas"
@@ -1786,7 +1786,7 @@ fn build_merged_raw_merges_global_and_vault() {
     ).unwrap();
 
     // Set env var
-    std::env::set_var("LITHOS_GLOBAL_CONFIG", global_dir.join("lithos.toml"));
+    std::env::set_var("TRACES_GLOBAL_CONFIG", global_dir.join("traces.toml"));
 
     // Merge
     let raw = build_merged_raw(&vault_dir).unwrap();
@@ -1796,7 +1796,7 @@ fn build_merged_raw_merges_global_and_vault() {
     assert_eq!(raw.filesystem.templates_dir.as_deref(), Some("global-templates")); // Inherited
     assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache")); // New
 
-    std::env::remove_var("LITHOS_GLOBAL_CONFIG");
+    std::env::remove_var("TRACES_GLOBAL_CONFIG");
 }
 ```
 
@@ -1813,7 +1813,7 @@ fn build_merged_raw_merges_global_and_vault() {
 
 ### Phase 1.3: Simplify Config::build()
 
-**File**: `lithos-core/src/config/aggregate.rs`
+**File**: `traces-core/src/config/aggregate.rs`
 
 **Add new constructor**:
 
@@ -1930,7 +1930,7 @@ impl Config {
 
 ### Phase 1.4: Update Command Flow
 
-**File**: `lithos-core/src/config/command.rs`
+**File**: `traces-core/src/config/command.rs`
 
 **Simplify `rebuild_merged()`**:
 

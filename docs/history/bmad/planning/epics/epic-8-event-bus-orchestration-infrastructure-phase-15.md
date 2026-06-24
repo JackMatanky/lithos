@@ -518,7 +518,7 @@ So that event interactions can be tested in isolation.
 **Given** I need to mock event bus for testing
 **When** I use mockall crate
 **Then** EventBusPort trait auto-generates MockEventBusPort
-**And** mock is available via use lithos_domain::MockEventBusPort
+**And** mock is available via use traces_domain::MockEventBusPort
 
 **Given** expectation API enables verification
 **When** I set expectations
@@ -574,7 +574,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 8 public components are implemented
 **When** I verify test coverage

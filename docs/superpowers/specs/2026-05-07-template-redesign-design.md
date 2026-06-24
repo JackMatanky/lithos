@@ -2,7 +2,7 @@
 
 ## 1. Executive Diagnosis
 
-The current `@lithos-core/src/template/` implementation carries technical debt from an abandoned CQRS/event-sourced architecture and fights against `minijinja` rather than delegating to it.
+The current `@traces-core/src/template/` implementation carries technical debt from an abandoned CQRS/event-sourced architecture and fights against `minijinja` rather than delegating to it.
 
 **What is wrong:**
 - The module duplicates native `minijinja` capabilities (inheritance, blocks) via domain abstractions (`TemplateBlock`, `BlockStrategy`), creating unnecessary complexity.
@@ -28,7 +28,7 @@ The current `@lithos-core/src/template/` implementation carries technical debt f
 The module will be reorganized to enforce the separation of domain logic from the rendering engine:
 
 ```text
-lithos-core/src/template/
+traces-core/src/template/
 ├── mod.rs               # Public exports
 ├── aggregate.rs         # Template domain model, UUIDs, Name constraints
 ├── processor.rs         # Strict Typestate Pipeline (Discovery -> Completed)

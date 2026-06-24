@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document researches patterns for designing a policy-based scanner for markdown metadata extraction in Lithos. Based on analysis of production systems (tree-sitter, pulldown-cmark, nom, ripgrep, clippy) and Lithos's current architecture, I recommend:
+This document researches patterns for designing a policy-based scanner for markdown metadata extraction in Traces. Based on analysis of production systems (tree-sitter, pulldown-cmark, nom, ripgrep, clippy) and Traces's current architecture, I recommend:
 
 1. **When to scan**: Scan **after structured parsing** (on `RawListItem`, `RawHeading`, etc.) rather than raw text or events
 2. **Architecture**: Use **trait-based rule composition** with fast-path byte checks
@@ -35,7 +35,7 @@ if input.contains_literal("::") {
 - False positives in code spans, URLs
 - Must re-validate context later
 
-**Verdict for Lithos**: ❌ **Not recommended**. Obsidian metadata is context-sensitive:
+**Verdict for Traces**: ❌ **Not recommended**. Obsidian metadata is context-sensitive:
 - Tags inside code blocks should be ignored
 - Inline fields inside wikilinks should be ignored
 - Block refs only valid at line end
@@ -68,7 +68,7 @@ for (event, range) in Parser::new_ext(text, options).into_offset_iter() {
 - Must accumulate fragments before scanning
 - Event stream doesn't expose all structural boundaries
 
-**Verdict for Lithos**: ⚠️ **Partially useful**. Current architecture already does this (see `parser.rs:83-85`), but fragments are accumulated anyway.
+**Verdict for Traces**: ⚠️ **Partially useful**. Current architecture already does this (see `parser.rs:83-85`), but fragments are accumulated anyway.
 
 ---
 
@@ -87,7 +87,7 @@ fn scan(lexer: &TSLexer, valid_symbols: &[bool]) -> bool {
 }
 ```
 
-**Current Lithos flow**:
+**Current Traces flow**:
 ```rust
 // parser.rs: Events → Fragments → Blocks
 TextMergeWithOffset::new(normalized)
@@ -115,7 +115,7 @@ fn scan_fragments(&self, fragments: &[TextFragment]) -> ScannedRawArtifacts {
 - Slight latency (must wait for block completion)
 - Two-pass over text (parse + scan)
 
-**Verdict for Lithos**: ✅ **RECOMMENDED**. Already partially implemented, natural fit.
+**Verdict for Traces**: ✅ **RECOMMENDED**. Already partially implemented, natural fit.
 
 ---
 
@@ -139,7 +139,7 @@ bool tree_sitter_python_external_scanner_scan(
 }
 ```
 
-**Lesson for Lithos**: Scanner should know **what it's allowed to find** based on context:
+**Lesson for Traces**: Scanner should know **what it's allowed to find** based on context:
 - Inside `RawHeading`: tags + fields allowed, block refs NOT allowed
 - Inside `RawListItem`: all metadata types allowed
 - Inside code spans: nothing allowed (already filtered by `is_scannable`)
@@ -165,7 +165,7 @@ impl Searcher {
 }
 ```
 
-**Lesson for Lithos**: Current `can_start_with(byte: u8)` is good! Extend it:
+**Lesson for Traces**: Current `can_start_with(byte: u8)` is good! Extend it:
 
 ```rust
 trait ScanRule {
@@ -213,7 +213,7 @@ pub fn register_plugins(store: &mut LintStore) {
 }
 ```
 
-**Lesson for Lithos**: Support **rule groups** + **config overrides**:
+**Lesson for Traces**: Support **rule groups** + **config overrides**:
 
 ```rust
 #[derive(Debug)]
@@ -267,7 +267,7 @@ fn hex_color(input: &str) -> IResult<&str, Color> {
 }
 ```
 
-**Lesson for Lithos**: Rules should be **composable building blocks**:
+**Lesson for Traces**: Rules should be **composable building blocks**:
 
 ```rust
 // Potential future extension: composite rules
@@ -289,7 +289,7 @@ impl ScanRule for CompositeFieldRule {
 
 ---
 
-## 3. Recommended Architecture for Lithos
+## 3. Recommended Architecture for Traces
 
 ### Core Design Principles
 
@@ -769,7 +769,7 @@ impl Searcher {
 
 **Key insight**: Extract common prefixes/literals, use faster algorithm to find candidates.
 
-**Application to Lithos**:
+**Application to Traces**:
 ```rust
 // Potential optimization: literal set for all rule start patterns
 static RULE_START_BYTES: &[u8] = b"#[(^@";  // All possible start bytes
@@ -821,7 +821,7 @@ bool scan(TSLexer *lexer, const bool *valid_symbols) {
 }
 ```
 
-**Application to Lithos**:
+**Application to Traces**:
 ```rust
 // Current code already has structural context!
 // extractor.rs:68-87
@@ -900,7 +900,7 @@ impl NoteScanner {
 
 **Low risk**, high value for users who want to customize:
 ```toml
-# .lithos/config.toml
+# .traces/config.toml
 [scanner]
 enabled_rules = ["core.tag", "core.inline_field"]  # Disable block refs
 emoji_markers = ["📌", "⏰", "🎯"]
@@ -1092,14 +1092,14 @@ struct DelimitedFieldRule {
 - [ripgrep performance guide](https://blog.burntsushi.net/ripgrep/)
 - [nom parser combinators](https://docs.rs/nom/latest/nom/)
 - [clippy lint registration](https://github.com/rust-lang/rust-clippy/blob/master/book/src/development/adding_lints.md)
-- Lithos current scanner: `lithos-core/src/note/scanner.rs`
-- Lithos parser integration: `lithos-core/src/note/extractor.rs:142-150`
+- Traces current scanner: `traces-core/src/note/scanner.rs`
+- Traces parser integration: `traces-core/src/note/extractor.rs:142-150`
 
 ---
 
 ## 12. Appendix: Performance Benchmarks (Hypothetical)
 
-Based on ripgrep's published benchmarks and Lithos's use case:
+Based on ripgrep's published benchmarks and Traces's use case:
 
 | Approach              | 1KB Note | 10KB Note | 100KB Note |
 |-----------------------|----------|-----------|------------|

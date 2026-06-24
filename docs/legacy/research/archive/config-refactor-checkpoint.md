@@ -78,7 +78,7 @@
 ## Files Modified (Not Yet Committed)
 
 ```
-lithos-core/src/config/
+traces-core/src/config/
 ├── ports.rs              - Updated trait signatures
 ├── aggregate.rs          - Added version() accessor (needs Ord fix)
 ├── adapter/

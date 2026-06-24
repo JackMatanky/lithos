@@ -1,13 +1,13 @@
-# Lithos System Integration Guide
+# Traces System Integration Guide
 ## redb + moka + rkyv
 
-This document provides guidance on integrating redb, moka, and rkyv into the Lithos system to achieve maximum zero-copy performance and efficiency.
+This document provides guidance on integrating redb, moka, and rkyv into the Traces system to achieve maximum zero-copy performance and efficiency.
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Lithos Application Layer                 │
+│                     Traces Application Layer                 │
 │  ┌─────────────────┐  ┌──────────────┐  ┌─────────────────┐│
 │  │   Transaction   │  │   Query      │  │   State         ││
 │  │   Processing    │  │   Engine     │  │   Management    ││
@@ -58,7 +58,7 @@ pub struct Transaction {
 }
 
 // Storage layers
-pub struct LithosStore {
+pub struct TracesStore {
     // HOT: Recent/frequent data (in-memory, fastest)
     hot_cache: Cache<u64, Arc<Transaction>>,
 
@@ -74,7 +74,7 @@ const WARM_TABLE: TableDefinition<u64, &[u8]> =
 const COLD_TABLE: TableDefinition<u64, &[u8]> =
     TableDefinition::new("cold");
 
-impl LithosStore {
+impl TracesStore {
     pub fn new(hot_size: u64) -> Result<Self> {
         Ok(Self {
             hot_cache: Cache::builder()
@@ -585,7 +585,7 @@ use moka::sync::Cache;
 use std::time::Duration;
 
 let cache = Cache::builder()
-    .name("lithos-main")
+    .name("traces-main")
     .max_capacity(capacity)
     .weigher(|_k, v: &Transaction| {
         (v.data.len() as u32) + overhead
@@ -672,7 +672,7 @@ proptest! {
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn benchmark_read_paths(c: &mut Criterion) {
-    let store = LithosStore::new(10_000).unwrap();
+    let store = TracesStore::new(10_000).unwrap();
 
     // Warm up
     store.insert_transaction(create_test_tx(42)).unwrap();
@@ -723,7 +723,7 @@ pub struct SystemMetrics {
     pub validation_overhead: Duration,
 }
 
-impl LithosStore {
+impl TracesStore {
     pub fn collect_metrics(&self) -> SystemMetrics {
         SystemMetrics {
             cache_hit_rate: self.compute_hit_rate(),
@@ -750,7 +750,7 @@ This integration achieves:
 - Warm path (DB + zero-copy): ~1-10µs
 - Cold path (full deserialize): ~10-100µs
 
-**Recommended for Lithos:**
+**Recommended for Traces:**
 - Use Pattern 1 for general ledger data
 - Use Pattern 2 for expensive computations
 - Use Pattern 3 for historical/readonly data

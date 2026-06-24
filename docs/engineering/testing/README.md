@@ -1,5 +1,5 @@
 ---
-title: "Lithos Testing Docs"
+title: "Traces Testing Docs"
 status: "active"
 owner: "engineering"
 last_updated: "2026-05-20"
@@ -8,9 +8,9 @@ source_of_truth:
 scope: "Canonical index for active testing documentation"
 ---
 
-# Lithos Testing Docs
+# Traces Testing Docs
 
-This folder is the active, single-purpose testing documentation surface for Lithos.
+This folder is the active, single-purpose testing documentation surface for Traces.
 
 ## Canonical testing docs
 

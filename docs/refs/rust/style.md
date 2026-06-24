@@ -13,7 +13,7 @@ This is intentionally separate from [docs/refs/rust/idioms.md](idioms.md), which
 
 For linting/testing/tooling workflow guidance (Clippy discipline, doc tests, benchmarking), see [docs/refs/rust/quality-tooling.md](quality-tooling.md).
 
-For an additional checklist aligned to Canonical’s Rust best practices (paraphrased into Lithos rules), see [docs/refs/rust/canonical-best-practices.md](canonical-best-practices.md).
+For an additional checklist aligned to Canonical’s Rust best practices (paraphrased into Traces rules), see [docs/refs/rust/canonical-best-practices.md](canonical-best-practices.md).
 
 ## Scope and how to use this
 
@@ -65,7 +65,7 @@ Rules of thumb:
 ## 2) Dependencies: conservative by default
 
 rust-analyzer is conservative with crates.io dependencies to keep compile times low.
-Lithos already has a curated stack; follow the same spirit:
+Traces already has a curated stack; follow the same spirit:
 
 - Avoid adding “tiny helper crates” without a strong justification.
 - Prefer writing small utilities locally (or in an internal utility module/crate if the project uses one).
@@ -88,7 +88,7 @@ Lithos already has a curated stack; follow the same spirit:
 - Prefer **one behavior per test**.
 - Prefer very few assertions per test (ideally one); split tests rather than piling assertions.
 
-### Doc tests and nextest (Lithos note)
+### Doc tests and nextest (Traces note)
 
 - `nextest` doesn’t execute doc tests.
 - If you use `nextest`, make sure doc tests are still run (e.g., `cargo test --doc` in CI).
@@ -259,7 +259,7 @@ Introduce helper variables freely, especially to name complex conditions.
 - Avoid intermediate collections; use accumulators for recursive “build a set/list” patterns.
 - Be mindful of monomorphization costs at boundaries; type parameters everywhere can slow compilation.
 
-Lithos note: Balance this with “don’t optimize before profiling” — avoid obviously wasteful patterns, but don’t contort code for micro-optimizations.
+Traces note: Balance this with “don’t optimize before profiling” — avoid obviously wasteful patterns, but don’t contort code for micro-optimizations.
 
 ## 16) Documentation style
 
@@ -282,7 +282,7 @@ High-signal doc lints (worth knowing about):
 - rustdoc: `missing_docs`, `broken_intra_doc_links`
 - clippy: `empty_docs`, `missing_panics_doc`, `missing_errors_doc`, `missing_safety_doc`
 
-Lithos note: the workspace denies missing docs via `[workspace.lints.rust]` in the root Cargo manifest.
+Traces note: the workspace denies missing docs via `[workspace.lints.rust]` in the root Cargo manifest.
 
 Checklist (high leverage):
 
@@ -342,7 +342,7 @@ Thread-safety reminders:
 - Whether `Arc<T>` is safe to share depends on `T`: sharing is safe when `T: Sync` (and moving across threads needs `T: Send`).
 - Prefer `std::sync::OnceLock` / `LazyLock` for one-time, process-wide initialization rather than ad-hoc `static mut` patterns.
 
-Lithos async note: avoid holding a blocking lock guard across an `.await`.
+Traces async note: avoid holding a blocking lock guard across an `.await`.
 
 ## 21) TODO hygiene
 

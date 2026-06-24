@@ -1,7 +1,7 @@
 //! Template engine error type.
 //!
 //! Engine errors preserve the underlying `MiniJinja` source error for
-//! diagnostics while keeping the Template engine port signatures Lithos-shaped.
+//! diagnostics while keeping the Template engine port signatures Traces-shaped.
 
 /// Error returned by template engine operations.
 ///

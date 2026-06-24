@@ -303,7 +303,7 @@ See https://docs.rs/redb/latest/redb/enum.Durability.html for durability definit
 
 **Cache Guidance:** For cache data that can be rebuilt, `None` or `Eventual` are usually appropriate.
 
-## Integration with Lithos System
+## Integration with Traces System
 
 ### Recommended Use Cases
 
@@ -443,7 +443,7 @@ let current = u64::from_le_bytes(bytes.try_into().unwrap());
 bytes.copy_from_slice(&(current + 1).to_le_bytes());
 ```
 
-## Summary for Lithos
+## Summary for Traces
 
 redb provides exceptional zero-copy performance through:
 

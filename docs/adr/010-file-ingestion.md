@@ -12,7 +12,7 @@ stakeholders: [Jack (Developer), Architecture Team]
 
 ## Context
 
-Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows a simple, functional architecture where the filesystem is the source of truth, and the database is an expendable cache. A unified `Repository` trait abstracts projection operations, and the domain layer remains pure and infrastructure-free.
+Traces needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows a simple, functional architecture where the filesystem is the source of truth, and the database is an expendable cache. A unified `Repository` trait abstracts projection operations, and the domain layer remains pure and infrastructure-free.
 
 **Current Problem**: The existing architecture mistakenly mixes file I/O concerns into storage traits, violating separation of concerns and making the system harder to test, reason about, and evolve.
 
@@ -296,7 +296,7 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
 - [Cargo Source Code](https://github.com/rust-lang/cargo) - `TomlManifest` pattern reference
 - [rustc Source Code](https://github.com/rust-lang/rust) - Multi-stage compilation pipeline reference
 - [Diesel Migrations](https://github.com/diesel-rs/diesel/tree/master/diesel_migrations) - `MigrationSource` trait pattern
-- [Figment Configuration](https://github.com/SergioBenitez/Figment) - `Provider` trait pattern (already used in Lithos)
+- [Figment Configuration](https://github.com/SergioBenitez/Figment) - `Provider` trait pattern (already used in Traces)
 - [ADR 003: Domain Serialization](./003-domain-serialization.md) - Raw\* types and validation boundaries
 - [ADR 006: Persistence Cache Infrastructure](./006-persistence-cache-infrastructure.md) - Zero-copy database reads
 
@@ -490,7 +490,7 @@ Infrastructure (db::Database)
 
 **Tasks**:
 
-1. Refactor `lithos init` to use loaders
+1. Refactor `traces init` to use loaders
 2. Remove direct file I/O from CLI
 
 **Result**: CLI uses new architecture, old code paths removed.
@@ -537,7 +537,7 @@ Infrastructure (db::Database)
 
 **Phase 3 Tasks**:
 
-- [x] Refactor `lithos init` command to use loaders (deferred to CLI layer implementation)
+- [x] Refactor `traces init` command to use loaders (deferred to CLI layer implementation)
 - [x] Remove any direct file I/O from CLI (deferred to CLI layer implementation)
 - [x] Update CLI tests (deferred)
 
@@ -646,7 +646,7 @@ Typed config struct
 - Extraction deserializes into typed structs (validation via serde or custom)
 - No persistence layer (read-only)
 
-**Lessons**: Source abstraction via traits. Composition over inheritance (Figment chains providers via `.merge()`). Lazy evaluation (files not read until `.extract()` called). **Already in Lithos**: We use this pattern in `config::ingest::build_merged_raw()` as reference implementation.
+**Lessons**: Source abstraction via traits. Composition over inheritance (Figment chains providers via `.merge()`). Lazy evaluation (files not read until `.extract()` called). **Already in Traces**: We use this pattern in `config::ingest::build_merged_raw()` as reference implementation.
 
 ---
 

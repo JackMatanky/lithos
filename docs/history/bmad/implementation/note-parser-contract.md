@@ -1,7 +1,7 @@
 # Note Parser Contract (Pre-Scanner Baseline)
 
 Date: 2026-04-29
-Scope: `lithos-core/src/note/parser/` (full module, including `mod.rs`)
+Scope: `traces-core/src/note/parser/` (full module, including `mod.rs`)
 Status: active cleanup contract for scanner/extraction/assembly planning.
 
 ## Ownership Boundaries

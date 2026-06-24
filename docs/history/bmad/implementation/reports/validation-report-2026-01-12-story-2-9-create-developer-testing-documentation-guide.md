@@ -45,4 +45,4 @@ None.
 2. Should Improve: None
 3. Consider: None
 </content>
-<parameter name="filePath">/Users/jack/Documents/41_personal/lithos-rust/_bmad-output/implementation-artifacts/reports/validation-report-2026-01-12-story-2-9-create-developer-testing-documentation-guide.md
+<parameter name="filePath">/Users/jack/Documents/41_personal/traces-rust/_bmad-output/implementation-artifacts/reports/validation-report-2026-01-12-story-2-9-create-developer-testing-documentation-guide.md

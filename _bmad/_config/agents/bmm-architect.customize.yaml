@@ -1,4 +1,4 @@
-# Architect Agent Customization for Lithos Project
+# Architect Agent Customization for Traces Project
 # Location: _bmad/_config/agents/bmm-architect.customize.yaml
 
 # Add persistent memories for the agent
@@ -15,7 +15,7 @@ memories:
 # Other sections remain standard
 agent:
   metadata:
-    name: "Architect-Lithos"
+    name: "Architect-Traces"
 persona:
   role: ""
   identity: ""

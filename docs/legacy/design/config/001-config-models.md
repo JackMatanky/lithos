@@ -18,16 +18,16 @@ Related specs:
 
 ### 1.1 Context & Background
 
-The config bounded context defines how Lithos discovers and resolves configuration for a vault operation.
+The config bounded context defines how Traces discovers and resolves configuration for a vault operation.
 
 Current implementation lives in:
 
-- `lithos-core/src/config/aggregate.rs` (`Config` aggregate root; merge + validation)
-- `lithos-core/src/config/global.rs` (`Global` configuration)
-- `lithos-core/src/config/vault.rs` (`Vault` configuration + `Metadata`)
-- `lithos-core/src/config/types.rs` (shared config types: `Frontmatter`, `Logging`, `Schema`, `Template`)
-- `lithos-core/src/config/error.rs` (`ConfigError`)
-- `lithos-core/src/config/events.rs` (domain events)
+- `traces-core/src/config/aggregate.rs` (`Config` aggregate root; merge + validation)
+- `traces-core/src/config/global.rs` (`Global` configuration)
+- `traces-core/src/config/vault.rs` (`Vault` configuration + `Metadata`)
+- `traces-core/src/config/types.rs` (shared config types: `Frontmatter`, `Logging`, `Schema`, `Template`)
+- `traces-core/src/config/error.rs` (`ConfigError`)
+- `traces-core/src/config/events.rs` (domain events)
 
 High-level business rules:
 
@@ -98,7 +98,7 @@ Most callers should not manually merge config fields. The normal workflow is:
 Sketch (current shape):
 
 ```rust
-use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
+use traces_core::config::{aggregate::Config, global::Global, vault::Vault};
 
 let global = Global::default();
 let vault = Vault::default();
@@ -197,7 +197,7 @@ Config layering should use Figment providers to avoid custom merge logic:
 - **Join precedence**: `Figment::join(provider)` keeps existing values and only fills missing keys.
 - **Arrays/lists**: treated as replace-on-merge (incoming list replaces existing list).
 - **Defaults**: prefer `Serialized::default("key", value)` for per-key defaults.
-- **Env vars (if supported)**: `Env::prefixed("LITHOS_").split("_")` maps `LITHOS_LOGGING_LEVEL` → `logging.level`.
+- **Env vars (if supported)**: `Env::prefixed("TRACES_").split("_")` maps `TRACES_LOGGING_LEVEL` → `logging.level`.
 
 Design contract:
 
@@ -259,7 +259,7 @@ Required types (recommended):
 Discovery/persistence rule:
 
 - A stable ID only helps with vault moves if it can be re-discovered at the new path.
-- Therefore, the vault must persist its ID somewhere stable (e.g., `.lithos/vault-id`), or the application must otherwise be able to prove the new path corresponds to the same vault.
+- Therefore, the vault must persist its ID somewhere stable (e.g., `.traces/vault-id`), or the application must otherwise be able to prove the new path corresponds to the same vault.
 
 Storage invariants (recommended):
 
@@ -374,39 +374,39 @@ Design rule (idiomatic Rust): prefer a **flat module tree**. Only introduce nest
 
 Target layout (flat, file-per-module):
 
-- `lithos-core/src/config/mod.rs`
+- `traces-core/src/config/mod.rs`
   - public re-exports for the main types (`Config`, `Global`, `Vault`, errors)
 
-- `lithos-core/src/config/aggregate.rs`
+- `traces-core/src/config/aggregate.rs`
   - `Config` (merged runtime aggregate)
   - merge/build logic lives here (this is the primary implementation of `Config`)
   - private helper fns for overlay selection (no empty-string sentinels)
 
-- `lithos-core/src/config/global.rs`
+- `traces-core/src/config/global.rs`
   - `Global` + global-only shapes (e.g., `TrustedVaults`)
 
-- `lithos-core/src/config/vault.rs`
+- `traces-core/src/config/vault.rs`
   - `Vault` + `Metadata`
   - vault identity/value types that are only meaningful in the vault model:
     - `VaultId`, `VaultRoot`, `VaultPathKey`
     - `SchemaVersion` (if it remains a vault-local concept)
 
-- `lithos-core/src/config/frontmatter.rs`
+- `traces-core/src/config/frontmatter.rs`
   - `Frontmatter` + validated newtypes like `FrontmatterKey`
 
-- `lithos-core/src/config/logging.rs`
+- `traces-core/src/config/logging.rs`
   - `Logging` + `LogLevel`
 
-- `lithos-core/src/config/schema.rs`
+- `traces-core/src/config/schema.rs`
   - `Schema` + schema-related validated value types
 
-- `lithos-core/src/config/template.rs`
+- `traces-core/src/config/template.rs`
   - `Template` + template-related validated value types
 
-- `lithos-core/src/config/raw.rs`
+- `traces-core/src/config/raw.rs`
   - `Raw*` types used for serde/Figment extraction
 
-- `lithos-core/src/config/ingest.rs`
+- `traces-core/src/config/ingest.rs`
   - Figment provider wiring and extraction into `Raw*` types
   - Keeps Figment out of the domain modules
 
@@ -503,9 +503,9 @@ rkyv patterns:
 - Serde field attribute docs for `#[serde(flatten)]`: https://serde.rs/field-attrs.html#flatten
 - Serde container attribute docs for `#[serde(deny_unknown_fields)]` and its incompatibility note with flatten: https://serde.rs/container-attrs.html#deny_unknown_fields
 
-## Appendix A: External Patterns (Figment + Layered Config) and What Lithos Should Steal
+## Appendix A: External Patterns (Figment + Layered Config) and What Traces Should Steal
 
-This appendix summarizes real-world patterns from Rust projects using layered configuration (often via Figment), and translates them into actionable guidance for Lithos’ two-tier config model (Global + Vault → Merged Config).
+This appendix summarizes real-world patterns from Rust projects using layered configuration (often via Figment), and translates them into actionable guidance for Traces’ two-tier config model (Global + Vault → Merged Config).
 
 The point is not to copy any one project’s approach verbatim; it is to extract the repeatable, “battle-tested” ideas that reduce surprises:
 
@@ -516,7 +516,7 @@ The point is not to copy any one project’s approach verbatim; it is to extract
 
 ### A.1 Figment Capabilities Worth Designing Around
 
-Even if Lithos does not expose Figment directly as a public API, Figment’s model is a strong mental model:
+Even if Traces does not expose Figment directly as a public API, Figment’s model is a strong mental model:
 
 - **Providers**: each configuration source is a provider (defaults, files, env vars, CLI overrides, etc.).
 - **Merge**: configuration is composed by merging providers into a single tree.
@@ -532,7 +532,7 @@ Practical Figment-specific guidance:
 
 - Avoid `#[serde(flatten)]` in config structs extracted via Figment if you care about precise “which key in which file” error attribution; Figment’s own tips call out that flatten can break error attribution.
 
-Design implication for Lithos:
+Design implication for Traces:
 
 - Config should be representable as **multiple explicit sources** merged into an intermediate representation.
 - The “final product” for business logic should remain a **validated merged aggregate** (the `Config` aggregate), regardless of how many sources fed it.
@@ -550,14 +550,14 @@ Key patterns:
   - `default`: inherited by all other profiles (base values)
   - `global`: overrides all profiles
 
-What Lithos should steal:
+What Traces should steal:
 
 - **The concept of “default vs global” as semantics** is extremely useful.
-  - Lithos already has “system defaults” plus “global config”; Rocket shows a proven way to explain these.
+  - Traces already has “system defaults” plus “global config”; Rocket shows a proven way to explain these.
 - **Be explicit about precedence**.
   - Avoid “it depends” layering. Users interpret config systems as a predictable override chain.
 
-What Lithos should _not_ steal:
+What Traces should _not_ steal:
 
 - Rocket’s profiles are “runtime context” (debug/release), not “per-vault identity.” Don’t model one profile per vault.
 
@@ -580,13 +580,13 @@ Two details are particularly valuable:
    - problem key path
    - source file path (when available)
 
-What Lithos should steal:
+What Traces should steal:
 
 - Supporting multiple config files (optional) is an easy “escape hatch” that plays well with your two-tier model.
   - Example shape: global can itself be composed from multiple global sources.
 - When config extraction fails, printing **(vault id, profile/context, key path, source)** is a huge UX win.
 
-What Lithos should be careful about:
+What Traces should be careful about:
 
 - If you adopt “profiles inside TOML,” you must implement the “nested + select + profile everywhere” discipline described in A.3.3.
 
@@ -605,9 +605,9 @@ It also supports an explicit **context** concept, and implements it consistently
 - ensure the file provider is treated as nested when contexts are present
 - apply the same profile selection to env vars and serialized overlays
 
-What Lithos should steal:
+What Traces should steal:
 
-- If Lithos ever introduces “contexts” (e.g., per-user or per-environment), cargo-lambda provides the blueprint for correctness:
+- If Traces ever introduces “contexts” (e.g., per-user or per-environment), cargo-lambda provides the blueprint for correctness:
   - `select(context)`
   - `Toml::file(...).nested()`
   - apply `.profile(context)` to every provider that needs it (env providers, serialized overlays)
@@ -624,7 +624,7 @@ Taplo’s LSP config update demonstrates a simple, robust pattern:
 - Merge in an incoming JSON blob.
 - Extract into the typed config.
 
-What Lithos should steal:
+What Traces should steal:
 
 - Use Figment-style composition for incremental updates (CLI overrides, “temporary session overrides,” etc.) rather than writing custom merge logic.
 - This pattern is especially attractive for the Command side: “apply override config, validate, persist new merged version.”
@@ -639,7 +639,7 @@ Core flow:
 2. Resolve into **typed builders** via deserialization.
 3. Build/validate once for all consumers so unrecognized keys can be reported in one pass.
 
-What Lithos should steal:
+What Traces should steal:
 
 - Keep a clear separation between:
   - unvalidated input configuration (best-effort parse tree)
@@ -647,9 +647,9 @@ What Lithos should steal:
   - validated runtime aggregate (`Config`)
 - When reporting errors, do it from a unified resolution step so “unknown keys” and “invalid values” are coherent.
 
-### A.3 Recommendations for Lithos (Grounded in the Case Studies)
+### A.3 Recommendations for Traces (Grounded in the Case Studies)
 
-This section converts the case studies into concrete, Lithos-specific guidance.
+This section converts the case studies into concrete, Traces-specific guidance.
 
 #### A.3.1 Make precedence a first-class, versioned contract
 
@@ -657,12 +657,12 @@ Observed pattern across Rocket + apple-codesign + cargo-lambda:
 
 - Users only trust layered config if the precedence is deterministic and documented.
 
-Recommended Lithos precedence order (suggested default):
+Recommended Traces precedence order (suggested default):
 
 1. system defaults
 2. global config file(s)
 3. vault config file(s)
-4. environment variables (optional, if Lithos chooses to support them)
+4. environment variables (optional, if Traces chooses to support them)
 5. command/CLI overrides (explicit user intent)
 
 Keep this order stable over time. If it changes, treat it as a breaking change.
@@ -677,7 +677,7 @@ Profiles do not work well when:
 
 - you want N independent configs for N vaults (vaults are not “environments”; they are domain instances)
 
-Guidance for Lithos:
+Guidance for Traces:
 
 - Keep **Global vs Vault** as distinct layers.
 - If you add “context,” add it orthogonally:
@@ -686,7 +686,7 @@ Guidance for Lithos:
 
 #### A.3.3 If contexts exist, adopt a strict rule: `nested + select + profile` everywhere
 
-If Lithos introduces a “context” concept, follow this discipline:
+If Traces introduces a “context” concept, follow this discipline:
 
 - if a file is expected to contain contexts/profiles, treat it as nested
 - select the context in the Figment instance early
@@ -716,18 +716,18 @@ Observed in cargo-lambda:
 
 - merging lists is contentious; some users want replacement, others want additive behavior.
 
-Guidance for Lithos:
+Guidance for Traces:
 
 - Default to **replace** for arrays/lists in config overrides.
 - Only adopt additive merging for carefully chosen fields where it is obviously correct (and document it field-by-field).
 
-If Lithos needs both semantics, represent it in the model:
+If Traces needs both semantics, represent it in the model:
 
 - e.g., `TrustedVaultsPolicy::Replace(Vec<_>)` vs `TrustedVaultsPolicy::Extend(Vec<_>)`
 
 #### A.3.6 Separate “input config shapes” from “persisted config bytes”
 
-Tension present in Lithos today:
+Tension present in Traces today:
 
 - domain types derive both `serde` and `rkyv`, which can make the domain model awkward to evolve.
 
@@ -758,7 +758,7 @@ This can be emitted at the application boundary and/or persisted as part of the 
 
 #### A.4.2 Normalize unknown-key reporting behavior
 
-If Lithos uses Figment extraction for file/env inputs, decide and document:
+If Traces uses Figment extraction for file/env inputs, decide and document:
 
 - whether unknown keys are hard errors or warnings
 - where the error is raised (Global/Vault build vs final merged `Config::build`)

@@ -1,6 +1,6 @@
 //! # CLI Argument Definitions
 //!
-//! Defines the command-line interface structure for Lithos using the clap
+//! Defines the command-line interface structure for Traces using the clap
 //! derive API. All argument types, subcommands, and output format variants
 //! are declared here and consumed by `main.rs`.
 
@@ -8,10 +8,10 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
-/// Top-level CLI arguments for the Lithos binary.
+/// Top-level CLI arguments for the Traces binary.
 #[derive(Debug, Parser)]
 #[command(
-    name = "lithos",
+    name = "traces",
     version,
     about = "A CLI-first templating and schema system for Obsidian vaults"
 )]
@@ -51,7 +51,7 @@ pub(crate) struct BootstrapArgs {
     pub(crate) no_global_config: bool,
 }
 
-/// Top-level subcommands available in the Lithos CLI.
+/// Top-level subcommands available in the Traces CLI.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// Inspect the effective bootstrap and configuration loading state.
@@ -67,7 +67,7 @@ pub(crate) enum Command {
 /// Sub-subcommands available under `config`.
 #[derive(Debug, Subcommand)]
 pub(crate) enum ConfigSubcommand {
-    /// List all config files that Lithos resolves for the current context.
+    /// List all config files that Traces resolves for the current context.
     Files,
 }
 
@@ -95,69 +95,69 @@ mod arg_parsing {
 
     #[test]
     fn returns_vault_flag_value_when_provided() {
-        let cli = parse(&["lithos", "--vault", "/tmp/vault", "doctor"])
+        let cli = parse(&["traces", "--vault", "/tmp/vault", "doctor"])
             .expect("valid args");
         assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/tmp/vault")));
     }
 
     #[test]
     fn returns_config_flag_value_when_provided() {
-        let cli = parse(&["lithos", "--config", "/tmp/lithos.toml", "doctor"])
+        let cli = parse(&["traces", "--config", "/tmp/traces.toml", "doctor"])
             .expect("valid args");
         assert_eq!(
             cli.bootstrap.config,
-            Some(PathBuf::from("/tmp/lithos.toml"))
+            Some(PathBuf::from("/tmp/traces.toml"))
         );
     }
 
     #[test]
     fn returns_no_global_config_when_flag_present() {
-        let cli = parse(&["lithos", "--no-global-config", "doctor"])
+        let cli = parse(&["traces", "--no-global-config", "doctor"])
             .expect("valid args");
         assert!(cli.bootstrap.no_global_config);
     }
 
     #[test]
     fn returns_format_human_by_default() {
-        let cli = parse(&["lithos", "doctor"]).expect("valid args");
+        let cli = parse(&["traces", "doctor"]).expect("valid args");
         assert_eq!(cli.format, OutputFormat::Human);
     }
 
     #[test]
     fn returns_format_json_when_explicitly_set() {
-        let cli = parse(&["lithos", "--format", "json", "doctor"])
+        let cli = parse(&["traces", "--format", "json", "doctor"])
             .expect("valid args");
         assert_eq!(cli.format, OutputFormat::Json);
     }
 
     #[test]
     fn rejects_unknown_format_value() {
-        let result = parse(&["lithos", "--format", "xml", "doctor"]);
+        let result = parse(&["traces", "--format", "xml", "doctor"]);
         assert!(result.is_err());
     }
 
     #[test]
     fn returns_verbose_count_zero_by_default() {
-        let cli = parse(&["lithos", "doctor"]).expect("valid args");
+        let cli = parse(&["traces", "doctor"]).expect("valid args");
         assert_eq!(cli.verbose, 0);
     }
 
     #[test]
     fn returns_verbose_count_incremented_per_flag() {
         let cli =
-            parse(&["lithos", "-v", "-v", "-v", "doctor"]).expect("valid args");
+            parse(&["traces", "-v", "-v", "-v", "doctor"]).expect("valid args");
         assert_eq!(cli.verbose, 3);
     }
 
     #[test]
     fn routes_config_subcommand() {
-        let cli = parse(&["lithos", "config"]).expect("valid args");
+        let cli = parse(&["traces", "config"]).expect("valid args");
         assert!(matches!(cli.command, Command::Config { .. }));
     }
 
     #[test]
     fn routes_config_files_subcommand() {
-        let cli = parse(&["lithos", "config", "files"]).expect("valid args");
+        let cli = parse(&["traces", "config", "files"]).expect("valid args");
         let is_config = matches!(cli.command, Command::Config { .. });
         assert!(is_config, "expected Config command variant");
         let Command::Config {
@@ -171,20 +171,20 @@ mod arg_parsing {
 
     #[test]
     fn routes_doctor_subcommand() {
-        let cli = parse(&["lithos", "doctor"]).expect("valid args");
+        let cli = parse(&["traces", "doctor"]).expect("valid args");
         assert!(matches!(cli.command, Command::Doctor));
     }
 
     #[test]
     fn vault_flag_is_available_to_config_files_subcommand() {
-        let cli = parse(&["lithos", "--vault", "/my/vault", "config", "files"])
+        let cli = parse(&["traces", "--vault", "/my/vault", "config", "files"])
             .expect("valid args");
         assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/my/vault")));
     }
 
     #[test]
     fn vault_flag_is_available_to_doctor_subcommand() {
-        let cli = parse(&["lithos", "--vault", "/my/vault", "doctor"])
+        let cli = parse(&["traces", "--vault", "/my/vault", "doctor"])
             .expect("valid args");
         assert_eq!(cli.bootstrap.vault, Some(PathBuf::from("/my/vault")));
     }

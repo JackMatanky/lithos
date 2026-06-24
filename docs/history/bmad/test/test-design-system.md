@@ -1,6 +1,6 @@
 ---
 title: "System-Level Test Design"
-description: "High-level test strategy, architecture assessment, and design decisions for Lithos"
+description: "High-level test strategy, architecture assessment, and design decisions for Traces"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-02-08"
@@ -11,13 +11,13 @@ section: "Testing & Quality"
 
 > Historical strategy document retained for provenance. Active testing guidance is being maintained in `docs/engineering/testing/README.md` and its linked single-purpose files.
 
-This document outlines the high-level test strategy and architectural decisions for the Lithos project. For detailed implementation and usage, see [Lithos Test Developer Guide](./test-developer-guide.md).
+This document outlines the high-level test strategy and architectural decisions for the Traces project. For detailed implementation and usage, see [Traces Test Developer Guide](./test-developer-guide.md).
 
 ## Testability Assessment
 
 - **Controllability: PASS**
   - Hexagonal architecture with strict trait-based ports (`VaultReaderPort`, `StoragePort`, etc.) ensures all I/O and external dependencies are easily mockable using `mockall` or manual test doubles.
-  - Dependency Injection via constructor injection in the `lithos` crate allows for full control of the implementation stack during integration tests.
+  - Dependency Injection via constructor injection in the `traces` crate allows for full control of the implementation stack during integration tests.
   - `uuid v7` provides deterministic identity generation if seeded, aiding in reproducible test cases.
 
 - **Observability: PASS**
@@ -34,14 +34,14 @@ This document outlines the high-level test strategy and architectural decisions 
 
 ### Hexagonal Architecture & Testability
 
-Lithos follows a **hexagonal (ports-and-adapters) architecture** that fundamentally shapes our testing strategy:
+Traces follows a **hexagonal (ports-and-adapters) architecture** that fundamentally shapes our testing strategy:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Test Layers                           │
 ├─────────────────────────────────────────────────────────────┤
 │  E2E Tests                                                 │
-│  └─> CLI Layer (lithos-cli)                               │
+│  └─> CLI Layer (traces-cli)                               │
 │      └─> Full stack: CLI → App → Domain → Adapters       │
 ├─────────────────────────────────────────────────────────────┤
 │  Integration Tests                                         │
@@ -76,7 +76,7 @@ Lithos follows a **hexagonal (ports-and-adapters) architecture** that fundamenta
 
 ### CQRS Testing Strategy
 
-Lithos implements **CQRS (Command Query Responsibility Segregation)** with split storage ports:
+Traces implements **CQRS (Command Query Responsibility Segregation)** with split storage ports:
 
 | Aspect        | Command Testing                         | Query Testing                      |
 | ------------- | --------------------------------------- | ---------------------------------- |
@@ -264,7 +264,7 @@ fn string_length_matches_expected(#[case] input: &str, #[case] expected: usize) 
 ## Test Levels Strategy
 
 - **Unit: 70%**
-  - Focus: Pure business logic in `lithos-core/src/`, template parsing, schema validation rules, and CQRS command/query logic.
+  - Focus: Pure business logic in `traces-core/src/`, template parsing, schema validation rules, and CQRS command/query logic.
   - Rationale: High cyclomatic complexity in schema inheritance and template composition requires granular, fast feedback.
   - Tools: `mise run test:unit`, `proptest`, `rstest`.
   - Coverage Target: ≥ 70% line coverage.
@@ -276,7 +276,7 @@ fn string_length_matches_expected(#[case] input: &str, #[case] expected: usize) 
   - Coverage Target: ≥ 20% line coverage (public API focus).
 
 - **E2E: 10%**
-  - Focus: CLI command structure, interactive prompts, and full user journeys (e.g., `lithos new` to note creation).
+  - Focus: CLI command structure, interactive prompts, and full user journeys (e.g., `traces new` to note creation).
   - Rationale: Ensures the "parsimonious setup" and guided UX meet success metrics without over-testing implementation details.
   - Tools: `assert_cmd`, `predicates`, `tempfile`.
   - Coverage Target: Critical user journeys only.
@@ -285,7 +285,7 @@ fn string_length_matches_expected(#[case] input: &str, #[case] expected: usize) 
 
 ### Tiered Data Approach
 
-Lithos uses a tiered approach to test data to ensure reproducibility and scale:
+Traces uses a tiered approach to test data to ensure reproducibility and scale:
 
 1. **Inline Fixtures**: For unit tests, data is defined directly in the test body or a local `setup` function.
 2. **Deterministic Randomness**: Using `proptest` with fixed seeds for complex edge-case discovery.
@@ -589,7 +589,7 @@ A test is considered "Production Ready" only if it meets these five criteria:
 
 ## Implementation Details
 
-For detailed implementation guides, patterns, and examples, see [Lithos Test Developer Guide](./test-developer-guide.md). Key implementation achievements include:
+For detailed implementation guides, patterns, and examples, see [Traces Test Developer Guide](./test-developer-guide.md). Key implementation achievements include:
 
 ### Test Infrastructure
 

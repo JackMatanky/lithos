@@ -13,7 +13,7 @@ tags: [config, task, schema, validation]
 
 ### 1.1 Context & Background
 
-The Lithos task system requires user-configurable metadata schemas to support rich task management workflows. Currently, there is no formal definition of how task metadata fields, status symbols, and promotion tags are configured.
+The Traces task system requires user-configurable metadata schemas to support rich task management workflows. Currently, there is no formal definition of how task metadata fields, status symbols, and promotion tags are configured.
 
 **Current Gap**: Users cannot define:
 - Custom metadata fields (priority, project, due dates)
@@ -76,7 +76,7 @@ The Lithos task system requires user-configurable metadata schemas to support ri
 
 **Step 1: Create Vault Config**
 
-Users create `.lithos/lithos.toml`:
+Users create `.traces/traces.toml`:
 
 ```toml
 [task]
@@ -146,10 +146,10 @@ indexed_fields = ["priority", "project_name", "task_type", "estimate_hours"]
 
 **Step 2: Config Validation**
 
-When Lithos loads the vault:
+When Traces loads the vault:
 
 ```bash
-$ lithos index --vault my-vault/
+$ traces index --vault my-vault/
 
 ✓ Config loaded successfully
   - 4 task fields defined
@@ -161,7 +161,7 @@ $ lithos index --vault my-vault/
 **Validation errors are caught early:**
 
 ```bash
-$ lithos index --vault my-vault/
+$ traces index --vault my-vault/
 
 ✗ Config validation failed:
   - task.fields.priority: min (0) cannot be greater than max (-1)
@@ -176,8 +176,8 @@ $ lithos index --vault my-vault/
 **Loading Config**
 
 ```rust
-use lithos_core::config::Config;
-use lithos_core::config::task::TaskConfig;
+use traces_core::config::Config;
+use traces_core::config::task::TaskConfig;
 
 // Load and validate vault config
 let config = Config::load_vault_config(vault_path)?;
@@ -242,7 +242,7 @@ if let Some(due_spec) = task_config.due_field() {
 **Status Symbol Mapping**
 
 ```rust
-use lithos_core::config::task::{StatusSymbol, StatusName};
+use traces_core::config::task::{StatusSymbol, StatusName};
 
 let symbol = StatusSymbol('x');
 let name = task_config.status().name_for_symbol(symbol);

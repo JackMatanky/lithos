@@ -2,7 +2,7 @@
 
 > **Last Updated**: 2026-04-12
 > **Petgraph Version**: Latest stable (documentation from docs.rs)
-> **Audience**: Lithos Rust developers needing complete petgraph knowledge
+> **Audience**: Traces Rust developers needing complete petgraph knowledge
 
 ---
 
@@ -1578,7 +1578,7 @@ This reference covers all major aspects of petgraph. Key takeaways:
 10. **Reuse DfsSpace** across multiple algorithm calls
 11. **Watch out** for index invalidation with `Graph`
 
-For Lithos specifically:
+For Traces specifically:
 
 - Schema dependency graphs → `Graph<SchemaId, ()>` with `toposort`
 - Note reference graphs → `Graph<NoteId, RefType>` with `tarjan_scc` for cycle detection

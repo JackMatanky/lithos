@@ -1,4 +1,4 @@
-//! Content hashing primitives for the Lithos core library.
+//! Content hashing primitives for the Traces core library.
 //!
 //! Provides the [`Blake3Hash`] newtype, its archived variant, and the
 //! [`HashInput`] strategy enum for flexible content hashing.
@@ -47,7 +47,7 @@ pub trait HasContentHashMut: HasContentHash {
 ///
 /// This type uses BLAKE3 for its performance and cryptographic strength,
 /// serving as the primary content-addressing and staleness detection
-/// primitive in Lithos.
+/// primitive in Traces.
 ///
 /// # Examples
 ///

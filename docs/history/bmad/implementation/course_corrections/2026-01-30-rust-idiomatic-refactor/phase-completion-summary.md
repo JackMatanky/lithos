@@ -20,7 +20,7 @@ The **Rust Idiomatic Architecture Refactor** has successfully completed **8 out 
 | ------- | ----------- | ---------- | -------------------------------------------- |
 | Phase 1 | ✅ COMPLETE | 100%       | ADRs and documentation                       |
 | Phase 2 | ✅ COMPLETE | 100%       | Workspace restructuring to single-crate      |
-| Phase 3 | ✅ COMPLETE | 100%       | Domain migration to `lithos-core`            |
+| Phase 3 | ✅ COMPLETE | 100%       | Domain migration to `traces-core`            |
 | Phase 4 | ✅ COMPLETE | 100%       | CQRS stubs created                           |
 | Phase 5 | ✅ COMPLETE | 100%       | CLI sync-first refactor                      |
 | Phase 6 | ✅ COMPLETE | 100%       | Database layer implementation + benchmarks   |
@@ -37,7 +37,7 @@ The **Rust Idiomatic Architecture Refactor** has successfully completed **8 out 
 **Single-Crate Structure:**
 
 ```
-lithos-core/         # All domain, app, infrastructure code
+traces-core/         # All domain, app, infrastructure code
 ├── src/
 │   ├── note/        # Note bounded context
 │   ├── config/      # Config bounded context
@@ -45,8 +45,8 @@ lithos-core/         # All domain, app, infrastructure code
 │   ├── template/    # Template bounded context
 │   ├── db.rs        # Database layer (redb + rkyv)
 │   └── fs/          # File system utilities
-lithos-cli/          # CLI binary (thin wrapper)
-lithos-core/tests/   # Integration tests (when added)
+traces-cli/          # CLI binary (thin wrapper)
+traces-core/tests/   # Integration tests (when added)
 ```
 
 **Benefits Achieved:**
@@ -61,7 +61,7 @@ lithos-core/tests/   # Integration tests (when added)
 
 **Current Status:**
 
-- ✅ **340 tests passing** (251 in lithos-core, 88 in test-utils, 1 in CLI)
+- ✅ **340 tests passing** (251 in traces-core, 88 in test-utils, 1 in CLI)
 - ✅ **Zero test failures**
 - ✅ **100% critical path coverage**
 - ✅ **All quality gates passing**
@@ -75,7 +75,7 @@ mise run verify                 # ✅ 100% green (22.55s)
 # Individual checks
 cargo test --workspace          # ✅ 340 tests pass
 cargo clippy --workspace        # ✅ Zero warnings
-cargo bench --package lithos-core  # ✅ Benchmarks functional
+cargo bench --package traces-core  # ✅ Benchmarks functional
 mise run test              # ✅ Architecture tests pass
 ```
 
@@ -125,19 +125,19 @@ During Phase 8 verification, we discovered:
 
 **Problem:**
 
-- `lithos-test-utils` has async dependencies: `tokio`, `async-trait`, `tokio-test`
-- 9 import sites in `lithos-core` using custom test utilities
+- `traces-test-utils` has async dependencies: `tokio`, `async-trait`, `tokio-test`
+- 9 import sites in `traces-core` using custom test utilities
 - Violates the sync-first principle
 - Blocks moving test crates to `_legacy/`
 
 **Current Usage:**
 
 ```rust
-// In lithos-core tests:
-use lithos_test_utils::assert_err_kind;      // 5 sites
-use lithos_test_utils::test_builder;         // 1 site
-use lithos_test_utils::assert_eq_detailed;   // 1 site
-use lithos_test_utils::data::properties::*;  // 2 sites
+// In traces-core tests:
+use traces_test_utils::assert_err_kind;      // 5 sites
+use traces_test_utils::test_builder;         // 1 site
+use traces_test_utils::assert_eq_detailed;   // 1 site
+use traces_test_utils::data::properties::*;  // 2 sites
 ```
 
 **Impact:**
@@ -165,7 +165,7 @@ Phase 9 proposal created to:
 - Replace `test_builder!` macro with simple test fixtures
 - Replace `assert_eq_detailed!` with built-in `assert_eq!`
 - Inline property test helpers with `prop_compose!`
-- Remove `lithos-test-utils` and `lithos-test-macros` dependencies
+- Remove `traces-test-utils` and `traces-test-macros` dependencies
 - Move test crates to `_legacy/` directory
 
 **Benefits:**
@@ -215,7 +215,7 @@ Phase 9 proposal created to:
 
 ### 1. Single-Crate Architecture
 
-**Decision:** Consolidated `domain`, `app`, `adapters` into `lithos-core`
+**Decision:** Consolidated `domain`, `app`, `adapters` into `traces-core`
 
 **Rationale:**
 
@@ -310,8 +310,8 @@ Phase 9 proposal created to:
 2. Replace `test_builder` with simple test fixtures (1 site)
 3. Remove custom assertion utilities
 4. Inline property test helpers
-5. Remove `lithos-test-utils` dependency
-6. Remove `lithos-test-macros` dependency
+5. Remove `traces-test-utils` dependency
+6. Remove `traces-test-macros` dependency
 7. Move `tests/utils/` and `tests/macros/` to `_legacy/`
 8. Update documentation with Rust testing best practices
 
@@ -319,8 +319,8 @@ Phase 9 proposal created to:
 
 **Acceptance Criteria:**
 
-- [ ] Zero `lithos-test-utils` imports in `lithos-core`
-- [ ] Zero `lithos-test-macros` usage in `lithos-core`
+- [ ] Zero `traces-test-utils` imports in `traces-core`
+- [ ] Zero `traces-test-macros` usage in `traces-core`
 - [ ] All 340 tests still passing
 - [ ] No async dependencies in test code
 - [ ] Test utilities moved to `_legacy/`
@@ -468,13 +468,13 @@ mise run verify
 cargo test --workspace
 
 # Run benchmarks
-cargo bench --package lithos-core
+cargo bench --package traces-core
 
 # Check architecture
 mise run test
 
 # Build CLI
-cargo build --release --bin lithos
+cargo build --release --bin traces
 ```
 
 ### Key Files
@@ -492,9 +492,9 @@ Documentation:
 └── AGENTS.md                                # Development guide
 
 Code:
-├── lithos-core/src/                         # All core code
-├── lithos-cli/src/                          # CLI binary
-└── lithos-core/tests/                       # Integration tests (when added)
+├── traces-core/src/                         # All core code
+├── traces-cli/src/                          # CLI binary
+└── traces-core/tests/                       # Integration tests (when added)
 ```
 
 ### Current Branch

@@ -11,7 +11,7 @@ date_implemented: 2026-01-11
 
 ## Context
 
-Lithos Rust must provide exceptional feedback across CLI and LSP interfaces. We need to categorize failures (Domain, Infrastructure, User Diagnostics) while maximizing visual fidelity (code snippets, colors) and minimizing error erasure.
+Traces Rust must provide exceptional feedback across CLI and LSP interfaces. We need to categorize failures (Domain, Infrastructure, User Diagnostics) while maximizing visual fidelity (code snippets, colors) and minimizing error erasure.
 
 ## Decision
 

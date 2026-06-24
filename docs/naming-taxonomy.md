@@ -2,9 +2,9 @@
 
 **Last Updated**: 2026-03-11
 **Status**: Canonical Reference
-**Scope**: All Rust code in lithos-core and lithos-cli
+**Scope**: All Rust code in traces-core and traces-cli
 
-This document provides a comprehensive taxonomy of method and function naming conventions for the Lithos project, based on official Rust API Guidelines, standard library patterns, and Repository pattern best practices.
+This document provides a comprehensive taxonomy of method and function naming conventions for the Traces project, based on official Rust API Guidelines, standard library patterns, and Repository pattern best practices.
 
 ---
 
@@ -20,7 +20,7 @@ This document provides a comprehensive taxonomy of method and function naming co
 6. [Mutability & Borrowing Indicators](#mutability--borrowing-indicators) — Universal (language feature)
 7. [Error Handling Patterns](#error-handling-patterns) — Universal (stdlib patterns)
 8. [Parse vs Validate Naming](#parse-vs-validate-naming) — Common pattern (type-driven design)
-9. [Repository Pattern Method Naming](#repository-pattern-method-naming) — Project-specific (Lithos)
+9. [Repository Pattern Method Naming](#repository-pattern-method-naming) — Project-specific (Traces)
 10. [Quick Reference Tables](#quick-reference-tables) — Summary
 11. [Anti-Patterns to Avoid](#anti-patterns-to-avoid) — Summary
 
@@ -32,7 +32,7 @@ This document provides a comprehensive taxonomy of method and function naming co
 
 | Item              | Convention             | Example                        |
 | ----------------- | ---------------------- | ------------------------------ |
-| Crates/Packages   | `kebab-case`           | `lithos-core`, `serde-json`    |
+| Crates/Packages   | `kebab-case`           | `traces-core`, `serde-json`    |
 | Modules           | `snake_case`           | `note`, `schema`, `loader`     |
 | Functions/Methods | `snake_case`           | `parse_schema`, `try_new`      |
 | Types/Traits      | `UpperCamelCase`       | `SchemaName`, `PropertyId`     |
@@ -651,8 +651,8 @@ impl SchemaLoader {
 - **RFC 430** (Naming Conventions): https://github.com/rust-lang/rfcs/blob/master/text/0430-finalizing-naming-conventions.md
 - **RFC 199** (Ownership Variants): https://github.com/rust-lang/rfcs/blob/master/text/0199-ownership-variants.md
 - **Type-Driven Design Reference**: [type-driven-design.md](./type-driven-design.md)
-- **Lithos ADR 002**: Storage Pattern (Repository)
-- **Lithos ADR 003**: Serialization Strategy
+- **Traces ADR 002**: Storage Pattern (Repository)
+- **Traces ADR 003**: Serialization Strategy
 
 ---
 

@@ -4,7 +4,7 @@
 **Date**: 2026-01-30
 **Purpose**: Document modern Rust module organization patterns for Rust 2018+ projects
 
-Note: Canonical’s Rust best practices guide has different preferences around using `mod.rs` as a module root. Lithos generally follows the 2018+ “file + folder” pattern described here for editor ergonomics and consistency, and avoids introducing new `mod.rs` in new code.
+Note: Canonical’s Rust best practices guide has different preferences around using `mod.rs` as a module root. Traces generally follows the 2018+ “file + folder” pattern described here for editor ergonomics and consistency, and avoids introducing new `mod.rs` in new code.
 
 ---
 
@@ -101,7 +101,7 @@ pub use aggregate::Note;
 **Instead of separate crates, use visibility:**
 
 ```rust
-// lithos-core/src/lib.rs
+// traces-core/src/lib.rs
 pub mod note {          // Public module
     pub use note_impl::Note;  // Public API
 }
@@ -119,8 +119,8 @@ mod internal_utils {      // Private
 ```toml
 # ❌ OLD APPROACH: Separate crates
 [dependencies]
-lithos-domain = { path = "../domain" }
-lithos-adapters = { path = "../adapters" }
+traces-domain = { path = "../domain" }
+traces-adapters = { path = "../adapters" }
 ```
 
 **With:**

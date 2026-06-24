@@ -220,7 +220,7 @@ pub struct DiscoveryEnv<'a> {
     vault_dir: Option<DirPath>,
     /// Raw platform-specific ceiling directory data.
     ceiling_dirs_raw: Option<&'a OsStr>,
-    /// Cache directory path from the `LITHOS_CACHE_DIR` environment variable.
+    /// Cache directory path from the `TRACES_CACHE_DIR` environment variable.
     ///
     /// Stored as-is without filesystem validation — the directory need not
     /// exist at construction time.
@@ -350,7 +350,7 @@ impl<'a> DiscoveryEnv<'a> {
         self.ceiling_dirs_raw
     }
 
-    /// Returns the cache directory path from `LITHOS_CACHE_DIR`, if set.
+    /// Returns the cache directory path from `TRACES_CACHE_DIR`, if set.
     ///
     /// The returned path is unvalidated — the directory need not exist.
     #[inline]
@@ -372,7 +372,7 @@ mod tests {
         pub(crate) fn valid_config_file(
             dir: &tempfile::TempDir,
         ) -> std::path::PathBuf {
-            let path = dir.path().join("lithos.toml");
+            let path = dir.path().join("traces.toml");
             std::fs::write(&path, "").expect("write config file");
             path
         }
@@ -502,13 +502,13 @@ mod tests {
 
             #[test]
             fn rejects_config_file_when_path_does_not_exist() {
-                let path = std::path::Path::new("/nonexistent/lithos.toml");
+                let path = std::path::Path::new("/nonexistent/traces.toml");
                 let err = DiscoveryFlags::new(Some(path), None, false)
                     .expect_err("nonexistent path should be rejected");
                 assert_eq!(
                     err.to_string(),
                     "Explicit config file path not found: \
-                     /nonexistent/lithos.toml"
+                     /nonexistent/traces.toml"
                 );
             }
 
@@ -715,7 +715,7 @@ mod tests {
             fn propagates_validation_error_for_missing_config_file() {
                 let vars = EnvVars::new(
                     None,
-                    Some(PathBuf::from("/nonexistent/lithos.toml")),
+                    Some(PathBuf::from("/nonexistent/traces.toml")),
                     None,
                     None,
                     false,
@@ -799,13 +799,13 @@ mod tests {
 
             #[test]
             fn rejects_config_file_when_path_does_not_exist() {
-                let path = std::path::Path::new("/nonexistent/lithos.toml");
+                let path = std::path::Path::new("/nonexistent/traces.toml");
                 let err = DiscoveryEnv::new(Some(path), None, None, None)
                     .expect_err("nonexistent path should be rejected");
                 assert_eq!(
                     err.to_string(),
                     "Environment config file path not found: \
-                     /nonexistent/lithos.toml"
+                     /nonexistent/traces.toml"
                 );
             }
 

@@ -72,7 +72,7 @@ Legend:
 ### redb
 - Purpose: embedded transactional store for read-optimized projection/cache.
 - Why selected: pure Rust embedded store with transactional semantics and MVCC snapshots.
-- Where used: `lithos-core` DB/storage adapters.
+- Where used: `traces-core` DB/storage adapters.
 - Important flags: default.
 - Upgrade concerns: transaction semantics, on-disk behavior, migration coverage.
 - Licensing/security: permissive Rust ecosystem crate; keep cargo-deny checks active.
@@ -136,7 +136,7 @@ Legend:
 ### clap
 - Purpose: CLI argument parsing.
 - Why selected: mature ecosystem standard.
-- Where used: `lithos-cli` command entrypoints.
+- Where used: `traces-cli` command entrypoints.
 - Important flags: `env`.
 - Upgrade concerns: derive/attribute changes.
 
@@ -221,14 +221,14 @@ Legend:
 
 ### Core-local (not workspace-managed): `itoa`, `ryu`
 - Purpose: fast formatting/compression/encoding primitives.
-- Where used: `lithos-core` internals.
+- Where used: `traces-core` internals.
 - Upgrade concerns: output compatibility + compression performance changes.
 
 #### Relevance check (2026-05-14)
-- `itoa`: actively used in `lithos-core/benches/string_construction.rs` for numeric formatting benchmarks.
-- `ryu`: actively used in `lithos-core/benches/string_construction.rs` for float formatting benchmarks.
+- `itoa`: actively used in `traces-core/benches/string_construction.rs` for numeric formatting benchmarks.
+- `ryu`: actively used in `traces-core/benches/string_construction.rs` for float formatting benchmarks.
 
-Removed from `lithos-core/Cargo.toml`:
+Removed from `traces-core/Cargo.toml`:
 - `zstd` (unused)
 - `hex` (unused)
 
@@ -274,12 +274,12 @@ Recommendation:
 
 ### mockall
 - Purpose: mock-based testing via `#[automock]` proc-macro.
-- Current state: active — `MockDiscoveryPort` generated in `lithos-core/src/discovery/port.rs`; used in `lithos-core/src/app/bootstrap.rs` tests.
+- Current state: active — `MockDiscoveryPort` generated in `traces-core/src/discovery/port.rs`; used in `traces-core/src/app/bootstrap.rs` tests.
 - Recommendation: keep. Remove dormant recommendation rescinded.
 
 ### pretty_assertions
 - Purpose: drop-in replacement for `assert_eq!`/`assert_ne!` with colored diff output on failure.
-- Current state: active — used in `lithos-core/src/discovery/port.rs` and `lithos-core/src/app/bootstrap.rs` test modules.
+- Current state: active — used in `traces-core/src/discovery/port.rs` and `traces-core/src/app/bootstrap.rs` test modules.
 - Recommendation: keep. Propagate to other test modules over time.
 
 ---

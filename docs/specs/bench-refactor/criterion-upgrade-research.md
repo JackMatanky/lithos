@@ -31,7 +31,7 @@ criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 ```
 → Change to: `version = "0.8.2"`
 
-### lithos-core/Cargo.toml (line 59)
+### traces-core/Cargo.toml (line 59)
 ```toml
 criterion = { workspace = true, features = ["html_reports"] }
 ```
@@ -54,7 +54,7 @@ Clean upgrade - no API breakage for our usage. Only changes needed:
 # Phase 2 Research: Automated Benchmark Result Tracking
 
 ## Goal
-Replace most of the manual `lithos-core/benches/RESULTS.md` with automated output from criterion's built-in tools, while tracking all benchmark runs historically (not just the latest).
+Replace most of the manual `traces-core/benches/RESULTS.md` with automated output from criterion's built-in tools, while tracking all benchmark runs historically (not just the latest).
 
 ## Current State of RESULTS.md
 The file is **524 lines** of hand-maintained content covering:
@@ -141,7 +141,7 @@ critcmp --export $(date +%Y-%m-%d) > .baselines/$(date +%Y-%m-%d).json
 ```
 - Archive each run's baseline as a JSON file in the repo (git-tracked or LFS)
 - Enables: `critcmp 2026-02-11 2026-05-14` to compare any two historical runs
-- Baseline files stored under `lithos-core/.baselines/`
+- Baseline files stored under `traces-core/.baselines/`
 
 ### Tier 3: CI-Integrated Historical Tracking
 Options:

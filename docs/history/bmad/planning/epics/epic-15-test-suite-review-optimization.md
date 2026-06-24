@@ -53,7 +53,7 @@ As a development team, I want a complete analysis of test coverage across all ep
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 15 public components are implemented
 **When** I verify test coverage

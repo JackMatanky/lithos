@@ -1052,14 +1052,14 @@ struct CachedState {
 
 ## Resources
 - **Core Files:**
-  - `lithos-core/src/schema/discovery.rs` - DiscoveryEngine (central orchestrator)
-  - `lithos-core/src/schema/builder.rs` - Builder (pipeline orchestrator)
-  - `lithos-core/src/schema/property_bank_processor.rs` - PropertyBank typestate pipeline
-  - `lithos-core/src/schema/schema_processor.rs` - Schema typestate pipeline
+  - `traces-core/src/schema/discovery.rs` - DiscoveryEngine (central orchestrator)
+  - `traces-core/src/schema/builder.rs` - Builder (pipeline orchestrator)
+  - `traces-core/src/schema/property_bank_processor.rs` - PropertyBank typestate pipeline
+  - `traces-core/src/schema/schema_processor.rs` - Schema typestate pipeline
 
 - **Infrastructure:**
-  - `lithos-core/src/fs/scanner.rs` - DirScanner for filesystem operations
-  - `lithos-core/src/schema/storage.rs` - Repository trait with batch operations
+  - `traces-core/src/fs/scanner.rs` - DirScanner for filesystem operations
+  - `traces-core/src/schema/storage.rs` - Repository trait with batch operations
 
 - **Patterns:**
   - Unified Repository pattern (single trait per context)

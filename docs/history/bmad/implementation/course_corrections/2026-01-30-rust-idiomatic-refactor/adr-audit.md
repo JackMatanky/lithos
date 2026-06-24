@@ -73,7 +73,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
 
 #### **ADR 011: Centralized Test Utilities**
 - **Why Keep**: Testing pattern still valid
-- **Impact**: Location changes (lithos-core/tests/) but concept valid
+- **Impact**: Location changes (traces-core/tests/) but concept valid
 - **Action**: None
 
 #### **ADR 010: Integration Testing Patterns**
@@ -194,7 +194,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
    - Sub-50ms LSP target at risk
 
 2. **Decision**:
-   - Single lithos-core crate + binary crates
+   - Single traces-core crate + binary crates
    - Concrete Database type (not traits)
    - Zero-copy primitives (get_archived, put_reserve, multimap)
    - Visibility-based boundaries (pub(crate))

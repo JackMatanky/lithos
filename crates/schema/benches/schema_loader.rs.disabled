@@ -56,7 +56,7 @@
 //!
 //! # Input Model
 //!
-//! Based on real schemas from `example_vault/.lithos/schemas/`:
+//! Based on real schemas from `example_vault/.traces/schemas/`:
 //!
 //! **Property Bank** (19 properties):
 //! - String types (simple, with options, with patterns)
@@ -295,7 +295,7 @@ use criterion::{
     BenchmarkId, Criterion, Throughput, black_box, criterion_group,
     criterion_main,
 };
-use lithos_core::{
+use traces_core::{
     config::{
         aggregate::Config,
         raw::RawConfig,
@@ -351,8 +351,8 @@ const VAULT_SIZES: &[VaultSize] = &[
 /// Create a minimal config for benchmarking.
 fn bench_config(vault_root: &std::path::Path) -> Config {
     let mut raw = RawConfig::default();
-    // Configure schemas_dir to match generate_vault structure (.lithos/schemas)
-    raw.paths.schemas_dir = Some(".lithos/schemas".to_owned());
+    // Configure schemas_dir to match generate_vault structure (.traces/schemas)
+    raw.paths.schemas_dir = Some(".traces/schemas".to_owned());
 
     let vault_id = VaultId::new();
     let vault_root_str = vault_root.to_string_lossy().to_string();
@@ -362,7 +362,7 @@ fn bench_config(vault_root: &std::path::Path) -> Config {
         &raw,
         vault_id,
         vault_root,
-        lithos_core::config::aggregate::Version::initial(),
+        traces_core::config::aggregate::Version::initial(),
     )
     .expect("Failed to build config")
 }
@@ -422,7 +422,7 @@ const SCHEMAS: &[(&str, &str)] = &[
 /// Generate a realistic vault with schemas.
 fn generate_vault(size: &VaultSize) -> TempDir {
     let vault = TempDir::new().expect("Failed to create temp vault");
-    let schemas_dir = vault.path().join(".lithos/schemas");
+    let schemas_dir = vault.path().join(".traces/schemas");
     fs::create_dir_all(&schemas_dir).expect("Failed to create schemas dir");
 
     // Write property bank
@@ -1047,7 +1047,7 @@ fn bench_find_schemas_using_properties(c: &mut Criterion) {
                     &config,
                 );
                 let service =
-                    lithos_core::schema::loader::Loader::new(qry, cmd);
+                    traces_core::schema::loader::Loader::new(qry, cmd);
                 service.load(&ingestor).expect("Failed to load schemas");
 
                 // Property names to search for (common properties from SCHEMAS)

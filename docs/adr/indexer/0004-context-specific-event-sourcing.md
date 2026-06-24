@@ -10,7 +10,7 @@ stakeholders: [Core Team]
 
 ## Context
 
-Lithos processors (Discovery, Schema, Note, Template, Config) are long-running pipelines that process hundreds or thousands of files. If the process crashes mid-pipeline (e.g., OOM, SIGKILL, power failure), previously completed work is lost and must be redone on restart.
+Traces processors (Discovery, Schema, Note, Template, Config) are long-running pipelines that process hundreds or thousands of files. If the process crashes mid-pipeline (e.g., OOM, SIGKILL, power failure), previously completed work is lost and must be redone on restart.
 
 For example: Discovery scans 1000 files → Schema processes 300 files → **CRASH** → On restart, Schema must re-process all 300 completed files because there's no record of what was already done.
 
@@ -218,4 +218,4 @@ discovery_event_store.compact(&completed_file_ids)?; // After ALL contexts
 - PRD: `.scratch/centralized-discovery-processor/PRD.md` (Section 6: Pipeline Resilience & Restartability)
 - Research: `.scratch/pipeline-restartability-research.md`
 - Handoff: `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/handoff-centralized-discovery-continued.md` (Question 4)
-- Property Bank Processor: `lithos-core/src/schema/property_bank_processor.rs` (checkpoint pattern reference)
+- Property Bank Processor: `traces-core/src/schema/property_bank_processor.rs` (checkpoint pattern reference)

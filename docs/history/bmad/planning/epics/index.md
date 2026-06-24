@@ -1,8 +1,8 @@
-# lithos - Epic Breakdown
+# traces - Epic Breakdown
 
 ## Table of Contents
 
-- [lithos - Epic Breakdown](#table-of-contents)
+- [traces - Epic Breakdown](#table-of-contents)
   - [Overview](./overview.md)
   - [Requirements Inventory](./requirements-inventory.md)
     - [Functional Requirements](./requirements-inventory.md#functional-requirements)

@@ -90,8 +90,8 @@ From `project-context.md`:
 **Application Startup (Compile All Templates):**
 
 ```rust
-use lithos_core::template::{TemplateCatalog, TemplateQuery};
-use lithos_core::db::Database;
+use traces_core::template::{TemplateCatalog, TemplateQuery};
+use traces_core::db::Database;
 
 // 1. Open database
 let db = Database::open("vault.redb")?;
@@ -135,7 +135,7 @@ println!("{}", output);
 **Creating a Template with Inheritance (Application Code):**
 
 ```rust
-use lithos_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
+use traces_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
 
 // Define parent template
 let parent = Template::new(

@@ -11,7 +11,7 @@ date_implemented: TBD
 
 ## Context
 
-Lithos requires reliable file rename detection during vault indexing to preserve note identity (UUID v7) across file system operations. Without a background daemon (LSP phase), the CLI tool must detect renames that occurred between indexing runs using only filesystem metadata and file content analysis.
+Traces requires reliable file rename detection during vault indexing to preserve note identity (UUID v7) across file system operations. Without a background daemon (LSP phase), the CLI tool must detect renames that occurred between indexing runs using only filesystem metadata and file content analysis.
 
 **Key Constraints**:
 
@@ -24,7 +24,7 @@ Lithos requires reliable file rename detection during vault indexing to preserve
 
 **Problem Scenarios**:
 
-1. User renames file while Lithos is not running
+1. User renames file while Traces is not running
 2. File moves between directories or drives
 3. Rename + content modification simultaneously
 4. Cross-platform filesystem differences (APFS, ext4, NTFS)

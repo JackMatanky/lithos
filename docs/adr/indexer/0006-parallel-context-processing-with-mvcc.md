@@ -177,4 +177,4 @@ The speedup comes from parallelizing CPU work. Write serialization is unavoidabl
 - PRD: `.scratch/centralized-discovery-processor/PRD.md` (Section 7.4: Parallelization)
 - Handoff: `/var/folders/9w/3qn47_qj3m9b27gkxwr5_k9m0000gn/T/opencode/handoff-centralized-discovery-continued.md` (Question 5.2)
 - Pipeline Restartability Research: `.scratch/pipeline-restartability-research.md` (redb MVCC benchmarks)
-- Property Bank Processor: `lithos-core/src/schema/property_bank_processor.rs` (rayon parallel iteration example)
+- Property Bank Processor: `traces-core/src/schema/property_bank_processor.rs` (rayon parallel iteration example)

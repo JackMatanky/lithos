@@ -2,7 +2,7 @@
 
 Source: https://raw.githubusercontent.com/obsidianmd/obsidian-api/master/obsidian.d.ts
 
-This file is a concentrated, data-focused reference for Lithos. It captures
+This file is a concentrated, data-focused reference for Traces. It captures
 the vault/file model, metadata cache shapes, link and subpath semantics, and
 the event lifecycle that Obsidian exposes. UI-specific APIs are omitted unless
 they describe data shapes or parsing context.
@@ -278,7 +278,7 @@ All cache items include `position: Pos` via `CacheItem` unless noted.
   - `getViewData(): string`
   - `setViewData(data, clear): void`
 
-## Lithos Alignment Notes
+## Traces Alignment Notes
 
 - Treat `TFile.path` as the canonical vault-absolute path identity.
 - Store file stats (`ctime`, `mtime`, `size`) for staleness checks.
@@ -286,4 +286,4 @@ All cache items include `position: Pos` via `CacheItem` unless noted.
   block, list, and frontmatter parity.
 - Link graph should respect `resolvedLinks`/`unresolvedLinks` semantics.
 - Subpath resolution (heading/block/footnote) is a separate phase and should
-  be modeled as such in Lithos pipelines.
+  be modeled as such in Traces pipelines.

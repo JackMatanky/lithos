@@ -15,15 +15,15 @@ pub(crate) struct MarkerPattern {
 /// Standard marker patterns used for vault root resolution.
 pub(crate) const VAULT_MARKER_PATTERNS: &[MarkerPattern] = &[
     MarkerPattern {
-        prefix: "lithos",
+        prefix: "traces",
         is_nested: false,
     },
     MarkerPattern {
-        prefix: ".lithos",
+        prefix: ".traces",
         is_nested: false,
     },
     MarkerPattern {
-        prefix: ".lithos/config",
+        prefix: ".traces/config",
         is_nested: true,
     },
 ];
@@ -31,11 +31,11 @@ pub(crate) const VAULT_MARKER_PATTERNS: &[MarkerPattern] = &[
 /// Standard marker patterns used for global config resolution.
 pub(crate) const GLOBAL_MARKER_PATTERNS: &[MarkerPattern] = &[
     MarkerPattern {
-        prefix: "lithos",
+        prefix: "traces",
         is_nested: false,
     },
     MarkerPattern {
-        prefix: "lithos/config",
+        prefix: "traces/config",
         is_nested: true,
     },
 ];
@@ -54,7 +54,7 @@ mod tests {
         fn declares_vault_marker_pattern_contract_prefix() {
             assert_eq!(
                 VAULT_MARKER_PATTERNS.first().expect("vault pattern").prefix,
-                "lithos"
+                "traces"
             );
         }
 
@@ -62,7 +62,7 @@ mod tests {
         fn declares_global_marker_pattern_contract_prefix() {
             assert_eq!(
                 GLOBAL_MARKER_PATTERNS.first().expect("global pattern").prefix,
-                "lithos"
+                "traces"
             );
         }
 

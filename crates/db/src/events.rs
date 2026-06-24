@@ -164,7 +164,7 @@ impl redb::Value for EventId {
 
     #[inline]
     fn type_name() -> redb::TypeName {
-        redb::TypeName::new("lithos::EventId")
+        redb::TypeName::new("traces::EventId")
     }
 }
 
@@ -388,7 +388,7 @@ mod tests {
 
         #[test]
         fn returns_stable_redb_type_name() {
-            assert_eq!(EventId::type_name().name(), "lithos::EventId");
+            assert_eq!(EventId::type_name().name(), "traces::EventId");
         }
     }
 

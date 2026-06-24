@@ -355,13 +355,13 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 
 ## Story 2.9: Create Developer Testing Documentation Guide
 
-As a developer onboarding to Lithos testing patterns,
+As a developer onboarding to Traces testing patterns,
 I want a consolidated testing documentation guide that references project rules and ADRs,
 So that I can apply the approved patterns consistently and avoid ambiguity.
 
 **Acceptance Criteria:**
 
-**Given** I need to understand Lithos testing standards
+**Given** I need to understand Traces testing standards
 **When** I open the developer testing guide
 **Then** it documents:
 

@@ -1,4 +1,4 @@
-//! Pre-config filesystem discovery for Lithos.
+//! Pre-config filesystem discovery for Traces.
 //!
 //! This context owns the first phase of the `Discovery -> Config -> Indexer`
 //! pipeline. It locates the vault root and the root marker file on disk and

@@ -23,11 +23,11 @@
 
 ❌ **Naming Convention**: Procedural names used instead of the project's standard `Verb-First` naming formula (Ref: `test_guide.md#naming-formula`).
 ❌ **Module Organization**: Tests are a flat list instead of the prescribed `Module-Per-Function` structure (Ref: `test_guide.md#module-organization`).
-❌ **Infrastructure Alignment**: Underutilization of `lithos-test-utils` patterns for fixture management and domain assertions.
+❌ **Infrastructure Alignment**: Underutilization of `traces-test-utils` patterns for fixture management and domain assertions.
 
 ### Summary
 
-The test suite for the Template aggregate is functionally excellent and guards effectively against regressions in business logic. However, the suite shows signs of "standard Rust test" structure rather than "Lithos-standard" structure. By refactoring toward the **Verb-First** naming formula and **Module-Per-Function** organization, the tests will serve better as Living Documentation for the domain model.
+The test suite for the Template aggregate is functionally excellent and guards effectively against regressions in business logic. However, the suite shows signs of "standard Rust test" structure rather than "Traces-standard" structure. By refactoring toward the **Verb-First** naming formula and **Module-Per-Function** organization, the tests will serve better as Living Documentation for the domain model.
 
 ---
 
@@ -127,12 +127,12 @@ mod tests {
 
 ---
 
-### 3. Leverage `lithos-test-utils` Fixture Trait
+### 3. Leverage `traces-test-utils` Fixture Trait
 
 **Severity**: P1 (High)
 **Location**: `template.rs:365`
 **Criterion**: Fixture Patterns
-**Knowledge Base**: [test_guide.md#streamlining-with-lithos-test-utils](../../docs/test_guide.md#streamlining-with-lithos-test-utils)
+**Knowledge Base**: [test_guide.md#streamlining-with-traces-test-utils](../../docs/test_guide.md#streamlining-with-traces-test-utils)
 
 **Issue Description**:
 Setup logic for `InputSpec` maps is repeated.
@@ -151,9 +151,9 @@ The implementation of `proptest!` for template name format (line 454) is a bench
 
 ## Knowledge Base References
 
-- **[Lithos Test Guide (Master Manual)](../../docs/test_guide.md)**
+- **[Traces Test Guide (Master Manual)](../../docs/test_guide.md)**
 - **[System-Level Test Design](../../_bmad-output/test-design-system.md)**
-- **[lithos-test-utils Crate](../../tests/utils/src/lib.rs)**
+- **[traces-test-utils Crate](../../tests/utils/src/lib.rs)**
 
 ---
 

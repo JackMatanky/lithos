@@ -386,7 +386,7 @@ factory.machine = factory.machine.step();
 
 ---
 
-## Lithos-Specific Patterns
+## Traces-Specific Patterns
 
 ### Schema Loading: Orchestration vs Pipeline
 
@@ -651,7 +651,7 @@ impl From<ConfigLoader<Loaded>> for ConfigLoader<Merged> {
         let merged = val.figment
             .merge(Toml::from_str(&val.state.global))
             .merge(val.state.vault.map(|v| Toml::from_str(&v)))
-            .merge(Env::prefixed("LITHOS_"))
+            .merge(Env::prefixed("TRACES_"))
             .extract()
             .unwrap();
 

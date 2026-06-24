@@ -1,11 +1,11 @@
-# TEA Agent Customization for Lithos Project
+# TEA Agent Customization for Traces Project
 # Location: _bmad/_config/agents/tea-tea.customize.yaml
-# Purpose: Provide Rust/Lithos-specific testing knowledge to TEA agent
+# Purpose: Provide Rust/Traces-specific testing knowledge to TEA agent
 
-# Override agent name for Lithos context
+# Override agent name for Traces context
 agent:
   metadata:
-    name: "TEA-Lithos"
+    name: "TEA-Traces"
 
 # Add persistent memories for context-aware operation
 # Using only standard BMAD sections to ensure compatibility
@@ -21,12 +21,12 @@ memories:
   - "When generating tests: load ALL rust/*.md knowledge modules"
 
   # --- Core Architecture Rules ---
-  - "Lithos follows sync-first architecture: NO async in lithos-core domain logic"
+  - "Traces follows sync-first architecture: NO async in traces-core domain logic"
   - "Hexagonal architecture: Domain -> Ports -> Adapters testing layers"
   - "CQRS split ports: SchemaCommandPort vs SchemaQueryPort"
   - "Unit tests MUST be in #[cfg(test)] mod tests blocks in same file as implementation"
-  - "Integration tests MUST be in lithos-core/tests/ directory"
-  - "E2E tests MUST be in lithos-cli/ crate"
+  - "Integration tests MUST be in traces-core/tests/ directory"
+  - "E2E tests MUST be in traces-cli/ crate"
 
   # --- Naming & Assertion Rules ---
   - "Test names MUST follow action_expected_condition pattern (e.g., returns_error_when_invalid)"
@@ -40,7 +40,7 @@ memories:
   - "Use tempfile::TempDir for filesystem operations"
 
   # --- Project Context (Moved to memories for compatibility) ---
-  - "Project Test Directories: unit=lithos-core/src/**/*.rs, integration=lithos-core/tests/, e2e=lithos-cli/tests/, fixtures=tests/fixtures/"
+  - "Project Test Directories: unit=traces-core/src/**/*.rs, integration=traces-core/tests/, e2e=traces-cli/tests/, fixtures=tests/fixtures/"
   - "Project Config Files: nextest=.config/nextest.toml, mise=mise.toml"
   - "Coverage Tool: cargo-llvm-cov (primary)"
 

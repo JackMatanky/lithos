@@ -76,7 +76,7 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
 - [x] Implement Insta redaction helpers for snapshot stability (Remediation)
 - [x] Implement time_test! macro for deterministic async clock control (Remediation)
 - [x] Implement Proptest integration for mathematical edge case testing (Remediation)
-- [x] Implement lithos-test-macros proc-macro for Factory patterns (Remediation)
+- [x] Implement traces-test-macros proc-macro for Factory patterns (Remediation)
 - [x] Adopt mockall and standardize port mocking patterns (Remediation)
 - [x] Standardize error assertions with assert_err_kind! (Remediation)
 - [x] Integrate and resolve advanced architectural improvements (AC: 7-11)
@@ -89,7 +89,7 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
 
 ## Architectural Critique & Remediation (Adversarial Review)
 
-During the implementation of Story 2.8, a comprehensive "no-bounds" critique of the `lithos-test-utils` crate and the broader testing strategy was performed. While functional, the current architecture contained several bottlenecks that were addressed during remediation.
+During the implementation of Story 2.8, a comprehensive "no-bounds" critique of the `traces-test-utils` crate and the broader testing strategy was performed. While functional, the current architecture contained several bottlenecks that were addressed during remediation.
 
 ### 1. Key Critiques & Findings
 
@@ -115,8 +115,8 @@ During the implementation of Story 2.8, a comprehensive "no-bounds" critique of 
 5.  **TestVault Utility**: Fluent API for spinning up complete mock Obsidian vaults.
 6.  **Insta Filter Fix**: Switched to global regex filters for automatic UUID/Timestamp redaction.
 7.  **IsolatedTestContext**: Context factory pattern for unique temp dirs and database namespaces per test.
-8.  **Architecture Purity Test**: programmatic enforcement ensuring `lithos-domain` has zero I/O dependencies.
-9.  **Categorized Workspace**: Centralized infrastructure under `tests/` (suite, utils, macros) and `lithos-core/benches/`.
+8.  **Architecture Purity Test**: programmatic enforcement ensuring `traces-domain` has zero I/O dependencies.
+9.  **Categorized Workspace**: Centralized infrastructure under `tests/` (suite, utils, macros) and `traces-core/benches/`.
 
 ### Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [x] Run `mise run fmt` to format all code according to project standards

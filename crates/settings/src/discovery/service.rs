@@ -353,8 +353,8 @@ mod tests {
         fn keeps_vault_candidates_separate_from_global() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
-            let vault = candidate(&vault_root, "lithos.toml");
-            let global = candidate(&global_root, "lithos.toml");
+            let vault = candidate(&vault_root, "traces.toml");
+            let global = candidate(&global_root, "traces.toml");
 
             let result = DiscoveryResult::new(
                 vec![vault.clone()],
@@ -370,8 +370,8 @@ mod tests {
         fn keeps_global_candidates_separate_from_vault() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
-            let vault = candidate(&vault_root, "lithos.toml");
-            let global = candidate(&global_root, "lithos.toml");
+            let vault = candidate(&vault_root, "traces.toml");
+            let global = candidate(&global_root, "traces.toml");
 
             let result = DiscoveryResult::new(
                 vec![vault],
@@ -387,8 +387,8 @@ mod tests {
         fn into_parts_returns_vault_candidates() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
-            let vault = candidate(&vault_root, "lithos.toml");
-            let global = candidate(&global_root, "lithos.toml");
+            let vault = candidate(&vault_root, "traces.toml");
+            let global = candidate(&global_root, "traces.toml");
             let result = DiscoveryResult::new(
                 vec![vault.clone()],
                 vec![global],
@@ -405,8 +405,8 @@ mod tests {
         fn into_parts_returns_global_candidates() {
             let vault_root = tempfile::tempdir().expect("vault root");
             let global_root = tempfile::tempdir().expect("global root");
-            let vault = candidate(&vault_root, "lithos.toml");
-            let global = candidate(&global_root, "lithos.toml");
+            let vault = candidate(&vault_root, "traces.toml");
+            let global = candidate(&global_root, "traces.toml");
             let result = DiscoveryResult::new(
                 vec![vault],
                 vec![global.clone()],
@@ -427,7 +427,7 @@ mod tests {
             #[test]
             fn stores_cache_root_alongside_candidates() {
                 let vault_root = tempfile::tempdir().expect("vault root");
-                let vault = candidate(&vault_root, "lithos.toml");
+                let vault = candidate(&vault_root, "traces.toml");
                 let cache_root = placeholder_cache_root();
 
                 let result = DiscoveryResult::new(

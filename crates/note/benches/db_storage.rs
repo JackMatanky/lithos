@@ -7,7 +7,7 @@
 //!
 //! # Motivation
 //!
-//! Lithos's performance claims center on zero-copy archived access via rkyv and
+//! Traces's performance claims center on zero-copy archived access via rkyv and
 //! efficient bulk operations via redb transactions. This suite validates those
 //! claims and guards against regressions as the data model evolves. Historical
 //! context: Initial benchmarks in `redb_rkyv.rs` mixed concerns; this suite
@@ -266,7 +266,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {
 /// # Purpose
 ///
 /// Measures the cost of accessing rkyv-archived `StoredNote` data without
-/// deserialization, validating Lithos's core zero-copy claim.
+/// deserialization, validating Traces's core zero-copy claim.
 ///
 /// # What is Measured
 ///

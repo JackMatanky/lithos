@@ -12,7 +12,7 @@
 //!
 //! ### Why Shared Traits Between Owned and Archived Types?
 //!
-//! Lithos uses `rkyv` for zero-copy deserialization, which generates separate
+//! Traces uses `rkyv` for zero-copy deserialization, which generates separate
 //! `Archived*` types (e.g., `ArchivedRawSchemaView`) that live in mapped memory
 //! and cannot be modified. To avoid code duplication, we define shared trait
 //! boundaries:

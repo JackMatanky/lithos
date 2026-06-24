@@ -143,7 +143,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/history/bmad/implementation/stories/6-1-create-default-configuration-files-schema.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/implementation/stories/6-2-implement-hierarchical-configuration-loading-with-figment.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/misc/.DS_Store` | delete | os metadata file | `` |
-| `docs/history/bmad/misc/documentation-artifacts/docs-lithos-core-src-fs.md` | keep | aligned with approved target structure | `` |
+| `docs/history/bmad/misc/documentation-artifacts/docs-traces-core-src-fs.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/misc/documentation-inventory/epic3-domain-entities.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/planning/architecture/01-project-context-analysis.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/planning/architecture/02-starter-template-evaluation.md` | keep | aligned with approved target structure | `` |
@@ -183,7 +183,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/history/bmad/research/pulldown-cmark-refactoring-plan.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/research/pulldown-cmark-reference-impl.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/research/rust-parsing-best-practices.md` | keep | aligned with approved target structure | `` |
-| `docs/history/bmad/research/rustdoc-lithos-rust.md` | keep | aligned with approved target structure | `` |
+| `docs/history/bmad/research/rustdoc-traces-rust.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/retained-readmes/_bmad-output-README.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/retained-readmes/epics-README.md` | keep | aligned with approved target structure | `` |
 | `docs/history/bmad/retained-readmes/implementation-artifacts-README.md` | keep | aligned with approved target structure | `` |
@@ -247,7 +247,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/legacy/research/archive/config-table-refactor-progress.md` | keep | aligned with approved target structure | `` |
 | `docs/legacy/research/archive/fs-module-refactor.md` | keep | aligned with approved target structure | `` |
 | `docs/legacy/research/archive/fs-module-review.md` | keep | aligned with approved target structure | `` |
-| `docs/legacy/research/archive/lithos.schema.json` | keep | aligned with approved target structure | `` |
+| `docs/legacy/research/archive/traces.schema.json` | keep | aligned with approved target structure | `` |
 | `docs/legacy/research/archive/note-module-review.md` | keep | aligned with approved target structure | `` |
 | `docs/legacy/research/archive/schema-cqrs-best-practices-compliance.md` | keep | aligned with approved target structure | `` |
 | `docs/legacy/research/archive/schema-cqrs-improvements-plan.md` | keep | aligned with approved target structure | `` |
@@ -286,7 +286,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/refs/digests/rust_zoni-obsidian-export-digest.txt` | keep | aligned with approved target structure | `` |
 | `docs/refs/digests/vim_obsidian-nvim-digest.txt` | keep | aligned with approved target structure | `` |
 | `docs/refs/digests/vim_ymich9963-mdnotes-nvim-digest.txt` | keep | aligned with approved target structure | `` |
-| `docs/refs/lithos-integration-guide.md` | keep | aligned with approved target structure | `` |
+| `docs/refs/traces-integration-guide.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/obsidian/api-reference.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/obsidian/dataview-reference.md` | keep | aligned with approved target structure | `` |
 | `docs/refs/obsidian/metadatamenu-reference.md` | keep | aligned with approved target structure | `` |

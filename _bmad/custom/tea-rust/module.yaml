@@ -1,6 +1,6 @@
 module:
   code: tea-rust
   name: Tea Rust
-  description: Rust-focused test architecture agent and workflows for Lithos
+  description: Rust-focused test architecture agent and workflows for Traces
   version: "0.1.0"
   unitary: true

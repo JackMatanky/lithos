@@ -17,7 +17,7 @@ inputDocuments:
     path: _bmad-output/implementation-artifacts/course_correction/2025-10-27-lessons-learned-phase-1-archive.md
     category: implementation
 workflowType: "architecture"
-project_name: "lithos"
+project_name: "traces"
 user_name: "Jack"
 date: "2026-01-08"
 status: "complete"
@@ -128,7 +128,7 @@ Cargo workspaces provide the Rust-native foundation for hexagonal architecture i
 
 ```bash
 # Create workspace root
-mkdir lithos && cd lithos
+mkdir traces && cd traces
 cargo new crates/domain --lib
 cargo new crates/app --lib
 cargo new crates/adapters --lib
@@ -161,7 +161,7 @@ uuid = { version = "1.19", features = ["v7", "serde"] }
 **Crate Structure (Following Rust Hexagonal Best Practices):**
 
 ```
-lithos/
+traces/
 ├── crates/
 │   ├── domain/           # Core business models & logic
 │   │   ├── Cargo.toml
@@ -379,7 +379,7 @@ lithos/
 - **Structs & Enums:** `PascalCase` (e.g., `Note`, `DomainError`, `TemplateEngine`)
 - **Traits:** `PascalCase` ending with trait name (e.g., `CacheWriter`, `VaultReader`) or `Port` (e.g., `StoragePort`)
 - **Constants:** `SCREAMING_SNAKE_CASE` (e.g., `MAX_VAULT_SIZE`, `DEFAULT_TIMEOUT`)
-- **Crate Names:** `snake_case` matching directory (e.g., `lithos-domain`, `lithos-app`)
+- **Crate Names:** `snake_case` matching directory (e.g., `traces-domain`, `traces-app`)
 - **Test Functions:** `snake_case` with `test_` prefix (e.g., `test_execute_template`)
 - **Macros:** `snake_case` (e.g., `my_macro!`)
 
@@ -396,7 +396,7 @@ lithos/
 
 - **Crate Separation:** Strict hexagonal boundaries - domain depends on nothing, app depends only on domain, adapters depend on domain + external crates, cli depends on app + adapters
 - **Module Organization:** Within crates, use `mod.rs` for submodules, keep related functionality together; avoid deep nesting (max 3 levels)
-- **Test Placement:** Unit tests in same file as implementation (`#[cfg(test)]`), integration tests in `lithos-core/tests/` (when added), performance tests in `lithos-core/benches/`
+- **Test Placement:** Unit tests in same file as implementation (`#[cfg(test)]`), integration tests in `traces-core/tests/` (when added), performance tests in `traces-core/benches/`
 - **Binary Organization:** CLI crate should be minimal, delegating to library crates
 
 **File Structure Standards:**
@@ -544,7 +544,7 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::Note;
+    /// use traces_domain::Note;
     /// let note = Note::new("path.md".to_string(), frontmatter)?;
     /// ```
     pub fn new(path: String, frontmatter: Frontmatter) -> Result<Self, DomainError> {
@@ -636,7 +636,7 @@ async fn test_vault_indexing_success() {
 ### Complete Project Directory Structure
 
 ```text
-lithos/
+traces/
 ├── .gitattributes                # LF enforcement
 ├── .gitignore                    # standard Rust ignores
 ├── .mise/                        # TASK ORCHESTRATION (mise-first)
@@ -767,14 +767,14 @@ lithos/
 │   │   │   │   ├── events/       # Hybrid EventBus & Auditor impl
 │   │   │   │   └── fs/           # Local Filesystem & Atomic Ops
 │   │   │   └── dto/              # Transport Objects (Serialization boundaries)
-│   └── lithos/                   # BINARY ENTRY POINT
+│   └── traces/                   # BINARY ENTRY POINT
 │       └── src/
 │           └── main.rs           # DI Root, Runtime Setup, and Logging
 ├── tests/                        # Automated Tests
 │   ├── integration/              # Cross-crate (SPI Mocking)
 │   ├── e2e/                      # CLI-driven workflow tests
 │   └── arch/                     # Dependency & Boundary enforcement
-└── lithos-core/benches/           # Performance Benchmarks (Criterion)
+└── traces-core/benches/           # Performance Benchmarks (Criterion)
 ```
 
 ### Architectural Boundaries
@@ -816,7 +816,7 @@ lithos/
 - **Validation Hierarchy:**
   - **Syntactic (Adapter):** Structural validity of YAML/TOML/Schema JSON.
   - **Semantic/Compliance (App):** Contract check between a Note and its Schema.
-- **Performance:** Monitored via `lithos-core/benches/`, optimized via `rkyv` byte-layouts.
+- **Performance:** Monitored via `traces-core/benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
 ### Integration Points
@@ -824,7 +824,7 @@ lithos/
 **Internal Communication:**
 
 - **Hybrid Bus (ADR 004):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
-- **DI Container:** The `lithos` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via Constructor Injection.
+- **DI Container:** The `traces` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via Constructor Injection.
 
 **External Integrations:**
 
@@ -1009,10 +1009,10 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 | **FR27** | Manage schemas           | `adapters/api/cli/`               | CLI subcommands for schema registry.         |
 | **FR28** | App preferences          | `adapters/spi/config/`            | Figment provider hierarchy.                  |
 | **FR29** | Custom lint rules        | `app/compliance/`                 | Compliance engine ruleset.                   |
-| **FR30** | OS Consistency           | `lithos/`                         | Static binary + .gitattributes.              |
+| **FR30** | OS Consistency           | `traces/`                         | Static binary + .gitattributes.              |
 | **FR31** | Terminal access          | `adapters/api/cli/`               | Primary driver (Clap).                       |
 | **FR32** | IDE integration          | `adapters/api/lsp/`               | Secondary driver (LSP).                      |
-| **FR33** | CI/CD automation         | `lithos/`                         | CLI-first design support.                    |
+| **FR33** | CI/CD automation         | `traces/`                         | CLI-first design support.                    |
 | **FR34** | Share Git packs          | `mise.toml`                       | Tasks for pack orchestration.                |
 | **FR35** | Discover packs           | `README.md`                       | Community documentation.                     |
 | **FR36** | Validate 3rd party       | `app/compliance/`                 | Reuses core compliance engine.               |
@@ -1054,7 +1054,7 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 
 - 7 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
-- 4 primary architectural crates specified (domain, app, adapters, lithos)
+- 4 primary architectural crates specified (domain, app, adapters, traces)
 - 50 functional requirements fully supported
 
 **📚 AI Agent Implementation Guide**
@@ -1067,7 +1067,7 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 ### Implementation Handoff
 
 **For AI Agents:**
-This architecture document is your complete guide for implementing Lithos Rust. Follow all decisions, patterns, and structures exactly as documented.
+This architecture document is your complete guide for implementing Traces Rust. Follow all decisions, patterns, and structures exactly as documented.
 
 **First Implementation Priority:**
 Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to establish the Data Plane.

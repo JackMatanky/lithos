@@ -10,15 +10,15 @@
 3. `Builder::new()` takes explicit parameters (`vault`, `global`, `repository`).
 4. `Bootstrapper` unpacks `DiscoveryResult` for `Builder::new()`.
 
-**Tech Stack:** Rust, `lithos-core` crates.
+**Tech Stack:** Rust, `traces-core` crates.
 
 ---
 
 ### Task 1: Update `DiscoveryResult` and `DiscoveryReport`
 
 **Files:**
-- Modify: `lithos-core/src/discovery/service.rs`
-- Modify: `lithos-core/src/discovery/report.rs`
+- Modify: `traces-core/src/discovery/service.rs`
+- Modify: `traces-core/src/discovery/report.rs`
 
 - [ ] **Step 1: Add report to DiscoveryResult**
 - [ ] **Step 2: Update DiscoveryProcessor::finalize to consolidate**
@@ -26,8 +26,8 @@
 ### Task 2: Update `DiscoveryService` and `Processor`
 
 **Files:**
-- Modify: `lithos-core/src/discovery/service.rs`
-- Modify: `lithos-core/src/discovery/processor.rs`
+- Modify: `traces-core/src/discovery/service.rs`
+- Modify: `traces-core/src/discovery/processor.rs`
 
 - [ ] **Step 1: Update `DiscoveryService::discover` signature**
 - [ ] **Step 2: Update callers (tests) to work with updated signature**
@@ -35,7 +35,7 @@
 ### Task 3: Update `Config::Builder`
 
 **Files:**
-- Modify: `lithos-core/src/config/builder.rs`
+- Modify: `traces-core/src/config/builder.rs`
 
 - [ ] **Step 1: Write failing test for `Builder::new`**
 - [ ] **Step 2: Implement `Builder::new`**
@@ -45,7 +45,7 @@
 ### Task 4: Update `Bootstrapper` (Orchestration)
 
 **Files:**
-- Modify: `lithos-core/src/app/bootstrap.rs`
+- Modify: `traces-core/src/app/bootstrap.rs`
 
 - [ ] **Step 1: Update `Bootstrapper::run` to unpack `DiscoveryResult`**
 - [ ] **Step 2: Run tests to verify**

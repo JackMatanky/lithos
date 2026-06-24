@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document provides detailed research on using redb for storing and querying tree-like inheritance structures, specifically for the SchemaTree in `lithos-core/src/schema/extender.rs`. The goal is to design Phase 2 optimizations that enable:
+This document provides detailed research on using redb for storing and querying tree-like inheritance structures, specifically for the SchemaTree in `traces-core/src/schema/extender.rs`. The goal is to design Phase 2 optimizations that enable:
 
 1. **Quick descendant identification** when a parent changes (find all descendants)
 2. **Fast subgraph reconstruction** for re-resolution

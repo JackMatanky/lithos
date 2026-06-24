@@ -14,13 +14,13 @@ Detection moves from `Construction/Fresh` to `Comparison`. `StaleReferences` sta
 ### Task 1: Delta Engine Extension
 
 **Files:**
-- Modify: `lithos-core/src/schema/delta.rs:351-413`
-- Test: `lithos-core/src/schema/delta.rs` (update engine tests)
+- Modify: `traces-core/src/schema/delta.rs:351-413`
+- Test: `traces-core/src/schema/delta.rs` (update engine tests)
 
 - [ ] **Step 1: Update `diff_schema` signature**
 
 ```rust
-// lithos-core/src/schema/delta.rs
+// traces-core/src/schema/delta.rs
 pub(crate) fn diff_schema(
     &self,
     expander: &RefExpander,
@@ -37,7 +37,7 @@ Add a test case where `forced_refs` contains a name whose hash has NOT changed, 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add lithos-core/src/schema/delta.rs
+git add traces-core/src/schema/delta.rs
 git commit -m "feat(delta): allow forced property injection in diff_schema"
 ```
 
@@ -46,7 +46,7 @@ git commit -m "feat(delta): allow forced property injection in diff_schema"
 ### Task 2: Typestate Redesign (Routing)
 
 **Files:**
-- Modify: `lithos-core/src/schema/base_processor.rs`
+- Modify: `traces-core/src/schema/base_processor.rs`
 
 - [ ] **Step 1: Define new statuses**
 Add `StaleReferences` and `ParsedStaleReferences` structs. `StaleReferences` carries `{ content: String, content_hash: Blake3Hash, view: RawSchemaView, schema_id: SchemaId, ref_delta: Vec<PropertyName> }`.
@@ -63,7 +63,7 @@ Update `check_timestamps` and `check_content` to perform the `changed_bank_refer
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lithos-core/src/schema/base_processor.rs
+git add traces-core/src/schema/base_processor.rs
 git commit -m "refactor(schema): move stale ref detection to Comparison stage"
 ```
 
@@ -72,7 +72,7 @@ git commit -m "refactor(schema): move stale ref detection to Comparison stage"
 ### Task 3: Consistency & Cleanup
 
 **Files:**
-- Modify: `lithos-core/src/schema/base_processor.rs`
+- Modify: `traces-core/src/schema/base_processor.rs`
 
 - [ ] **Step 1: Align ID preservation**
 Ensure `update()` uses `upserts.clone().with_ids(&properties)` for all paths.
@@ -86,7 +86,7 @@ Clean up the old orthogonal re-expansion methods.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add lithos-core/src/schema/base_processor.rs
+git add traces-core/src/schema/base_processor.rs
 git commit -m "refactor(schema): align ID stability and remove CorruptNew"
 ```
 
@@ -95,7 +95,7 @@ git commit -m "refactor(schema): align ID stability and remove CorruptNew"
 ### Task 4: Integration Verification
 
 **Files:**
-- Create: `lithos-core/tests/base_processor_integration.rs`
+- Create: `traces-core/tests/base_processor_integration.rs`
 
 - [ ] **Step 1: Add Cold Start + Bank Change test**
 Verify schema correctly transitions from `New` to `Stale` (targeted) when the bank target changes between runs.
@@ -109,6 +109,6 @@ Run `mise run verify` and confirm all 1600+ tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add lithos-core/tests/base_processor_integration.rs
+git add traces-core/tests/base_processor_integration.rs
 git commit -m "test(schema): add stale bank reference integration tests"
 ```

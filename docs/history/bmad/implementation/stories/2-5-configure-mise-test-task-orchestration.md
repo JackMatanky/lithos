@@ -202,7 +202,7 @@ junit_unit = "nextest-unit.xml"
 junit_integration = "nextest-integration.xml"
 
 # Build artifacts
-binary_name = "lithos"
+binary_name = "traces"
 
 # ------------------------------------------------------------- #
 # Quality Gates                                                 #
@@ -329,7 +329,7 @@ hide = true
 
 ### References
 
-- [Mise Task Orchestration Guide](docs/mise-task-orchestration.md) - Best practices for mise task orchestration in Lithos
+- [Mise Task Orchestration Guide](docs/mise-task-orchestration.md) - Best practices for mise task orchestration in Traces
 - [Testing Guide: Centralized Test Utilities](docs/testing/README.md) - Test utilities framework integration
 - [Testing Guide: CQRS Testing Patterns](docs/testing/cqrs.md) - CQRS testing patterns
 - [Mise Documentation - https://mise.jdx.dev/tasks/](https://mise.jdx.dev/tasks/) - Official mise task documentation
@@ -345,7 +345,7 @@ hide = true
 
 ### Project Context Reference
 
-- Lithos uses mise for task orchestration with existing scripts in .mise/tasks/ and mise.toml configuration
+- Traces uses mise for task orchestration with existing scripts in .mise/tasks/ and mise.toml configuration
 - Previous stories established test infrastructure - this story optimizes orchestration layer
 - Comprehensive test tasks enable efficient development workflows and quality maintenance
 - Integration with ADR 011/0009 test utilities provides enhanced testing capabilities

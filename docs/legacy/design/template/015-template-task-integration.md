@@ -133,7 +133,7 @@ This document defines how task query/format functions integrate with the Templat
     status="incomplete",
     metadata={
         "priority": 1,
-        "project_name": "lithos",
+        "project_name": "traces",
         "due_date": date.today() | date("%Y-%m-%d")
     }
 ) }}
@@ -180,7 +180,7 @@ This document defines how task query/format functions integrate with the Templat
 
 ## Static Tasks (config-validated)
 
-- [ ] #task Review pull requests [priority:: 1] [project:: lithos] [due_date:: 2026-02-08]
+- [ ] #task Review pull requests [priority:: 1] [project:: traces] [due_date:: 2026-02-08]
 
 - [ ] #task Update documentation [priority:: 2] [project:: docs]
 
@@ -188,13 +188,13 @@ This document defines how task query/format functions integrate with the Templat
 
 [Prompts user for inputs]
 
-- [ ] #task Write unit tests [priority:: 3] [project:: lithos] [type:: action_item] [due_date:: 2026-02-10]
+- [ ] #task Write unit tests [priority:: 3] [project:: traces] [type:: action_item] [due_date:: 2026-02-10]
 ```
 
 **Validation Errors** (caught at render time):
 
 ```bash
-$ lithos template render daily-tasks.md
+$ traces template render daily-tasks.md
 
 ✗ Template rendering failed:
   - Line 15: tasks.format_checkbox() - priority must be 0-10 (got 15)
@@ -209,10 +209,10 @@ $ lithos template render daily-tasks.md
 ```rust
 use std::sync::Arc;
 
-use lithos_core::template::{TemplateCatalog, TemplateQuery};
-use lithos_core::note::db_query::QueryAdapter as NoteQuery;
-use lithos_core::config::task::TaskConfig;
-use lithos_core::db::Database;
+use traces_core::template::{TemplateCatalog, TemplateQuery};
+use traces_core::note::db_query::QueryAdapter as NoteQuery;
+use traces_core::config::task::TaskConfig;
+use traces_core::db::Database;
 
 // 1. Open database and create ports
 let db = Database::open("vault.redb")?;
@@ -242,7 +242,7 @@ let output = catalog.render(
 ```rust
 // template/functions/query.rs
 
-use lithos_core::note::ports::Query as NoteQueryPort;
+use traces_core::note::ports::Query as NoteQueryPort;
 
 pub fn tasks_overdue(
     query: &impl NoteQueryPort,
@@ -1056,9 +1056,9 @@ This appendix shows how the markdown parser integrates with List/Task entities a
 // Conceptual parser integration (adapter layer)
 
 use pulldown_cmark::{Parser, Event, Tag, TagEnd, Options};
-use lithos_core::note::list::{List, ListItem, ListType};
-use lithos_core::note::task::Task;
-use lithos_core::config::task::{TaskConfig, StatusSymbol};
+use traces_core::note::list::{List, ListItem, ListType};
+use traces_core::note::task::Task;
+use traces_core::config::task::{TaskConfig, StatusSymbol};
 
 pub struct NoteParser<'a> {
     markdown: &'a str,

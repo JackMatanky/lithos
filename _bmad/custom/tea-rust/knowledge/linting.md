@@ -12,7 +12,7 @@
 All code, including tests, should be lint-clean (`cargo clippy -- -D warnings`). Warnings in tests often point to fragile assertions or inefficient setup.
 
 ### Suppressions: #[expect] vs #[allow]
-Lithos follows a "Fail-Fast but Documented" suppression policy.
+Traces follows a "Fail-Fast but Documented" suppression policy.
 
 | Attribute | Usage | When to Use |
 | :--- | :--- | :--- |

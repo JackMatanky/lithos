@@ -1,17 +1,17 @@
 ---
-title: "Lithos Test Developer Guide (Master Manual)"
-description: "Comprehensive reference for testing standards, patterns, and tools in the Lithos project"
+title: "Traces Test Developer Guide (Master Manual)"
+description: "Comprehensive reference for testing standards, patterns, and tools in the Traces project"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-02-08"
 section: "Testing & Quality"
 ---
 
-# Lithos Test Developer Guide (Master Manual)
+# Traces Test Developer Guide (Master Manual)
 
 > Historical source document retained for provenance. Active testing guidance is being maintained in `docs/engineering/testing/README.md` and its linked single-purpose files.
 
-This guide provides a comprehensive reference for testing standards, patterns, and tools in the Lithos project. For the full architectural strategy, see [\_bmad-output/test-design-system.md](./test-design-system.md).
+This guide provides a comprehensive reference for testing standards, patterns, and tools in the Traces project. For the full architectural strategy, see [\_bmad-output/test-design-system.md](./test-design-system.md).
 
 ## 1. Authorized Entry Points (Mise)
 
@@ -42,7 +42,7 @@ All testing tasks MUST be orchestrated via `mise`. This ensures the correct envi
 
 ## 2. Tools & Infrastructure
 
-Lithos leverages standard Rust testing tools to ensure speed and reliability.
+Traces leverages standard Rust testing tools to ensure speed and reliability.
 
 - **nextest**: Primary test runner for concurrent execution. Faster and more robust than raw `cargo test`.
 - **tarpaulin**: Used for coverage analysis (Target: 80%+).
@@ -52,11 +52,11 @@ Lithos leverages standard Rust testing tools to ensure speed and reliability.
 - **tempfile**: Temporary file/directory creation for filesystem tests (cleanup is automatic).
 - **doc tests**: Mandatory for all public domain models. Use as "living documentation."
 
-**Note:** Lithos uses **standard Rust testing patterns** only. All test utilities are inline within test modules using `#[cfg(test)]`. No external test utility crates are used.
+**Note:** Traces uses **standard Rust testing patterns** only. All test utilities are inline within test modules using `#[cfg(test)]`. No external test utility crates are used.
 
 ## 3. Testing Hierarchy
 
-Lithos follows a hexagonal testing strategy to ensure coverage across all layers of the architecture while maintaining fast execution. We distinguish between three primary sets of tests:
+Traces follows a hexagonal testing strategy to ensure coverage across all layers of the architecture while maintaining fast execution. We distinguish between three primary sets of tests:
 
 ### Unit Tests
 
@@ -68,7 +68,7 @@ Tests that go in the **same module** as the tested unit. This allows visibility 
 
 ### Integration Tests
 
-Tests that live in `lithos-core/tests/` (when present). They are external to the library and can only test the **public API**.
+Tests that live in `traces-core/tests/` (when present). They are external to the library and can only test the **public API**.
 
 - **Focus**: Verifying that multiple parts of the system work together correctly.
 - **Tools**: `nextest`, `mockall`.
@@ -83,19 +83,19 @@ Executable examples within the source code using `///`.
 
 | Layer                            | Focus                                                     | Location                  | Tools                |
 | :------------------------------- | :-------------------------------------------------------- | :------------------------ | :------------------- |
-| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `lithos-core/src/**/*.rs` | `mise run test:unit` |
-| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `lithos-core/src/**/*.rs` | `nextest`            |
-| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `lithos-core/tests/`      | `nextest`            |
-| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `lithos-cli/src/**/*.rs`  | `assert_cmd`         |
+| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `traces-core/src/**/*.rs` | `mise run test:unit` |
+| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `traces-core/src/**/*.rs` | `nextest`            |
+| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `traces-core/tests/`      | `nextest`            |
+| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `traces-cli/src/**/*.rs`  | `assert_cmd`         |
 
 ## 4. Safety Invariants
 
 ### Sync-First Architecture
 
-Lithos follows a **sync-first architecture**. The core domain and business logic is entirely synchronous with no async dependencies.
+Traces follows a **sync-first architecture**. The core domain and business logic is entirely synchronous with no async dependencies.
 
-- **Zero async in domain**: `lithos-core` has zero async dependencies (no `tokio`, `async-trait`, etc.)
-- **Synchronous tests**: All tests in `lithos-core` are standard synchronous Rust tests
+- **Zero async in domain**: `traces-core` has zero async dependencies (no `tokio`, `async-trait`, etc.)
+- **Synchronous tests**: All tests in `traces-core` are standard synchronous Rust tests
 - **Filesystem operations**: Use `std::fs` and `std::io` directly (no async file I/O)
 - **Database operations**: `redb` and `moka` are synchronous libraries with no async overhead
 
@@ -265,11 +265,11 @@ mod tests {
 - **Observability**: Use `tracing-test` or a custom subscriber to verify emitted spans and events.
 - **Property Testing**: Use `Proptest` for mathematical edge cases and state transition verification.
 - **Error Assertions**: Use `matches!` and explicit error assertions for standardized matching.
-- **Domain Purity**: Programmatic enforcement ensures `lithos-core` domain contexts remain free of I/O dependencies.
+- **Domain Purity**: Programmatic enforcement ensures `traces-core` domain contexts remain free of I/O dependencies.
 
 ### Snapshot Testing
 
-**Note:** Lithos currently does NOT use snapshot testing. We prefer explicit assertions for all test verification.
+**Note:** Traces currently does NOT use snapshot testing. We prefer explicit assertions for all test verification.
 
 **Why no snapshots?**
 
@@ -306,7 +306,7 @@ Doc-tests turn your `/// # Examples` into compiler-verified tests.
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::NotePath;
+/// # use traces_core::note::NotePath;
 /// let path = NotePath::new("notes/hello.md".to_owned()).unwrap();
 /// assert_eq!(path.as_str(), "notes/hello.md");
 /// ```
@@ -325,7 +325,7 @@ Use `no_run` when the code has side effects (file I/O, network calls) that shoul
 /// # Examples
 ///
 /// ```no_run
-/// use lithos_core::note::Repository;
+/// use traces_core::note::Repository;
 /// use std::path::Path;
 ///
 /// let repo = Repository::open(Path::new("/path/to/vault")).unwrap();
@@ -348,7 +348,7 @@ Use `compile_fail` to document APIs that should not compile:
 /// # Examples
 ///
 /// ```
-/// use lithos_core::note::Tag;
+/// use traces_core::note::Tag;
 ///
 /// let tag = Tag::new("#work").unwrap();
 /// assert_eq!(tag.as_str(), "#work");
@@ -357,7 +357,7 @@ Use `compile_fail` to document APIs that should not compile:
 /// The following will **not** compile because the tag doesn't start with `#`:
 ///
 /// ```compile_fail
-/// use lithos_core::note::Tag;
+/// use traces_core::note::Tag;
 ///
 /// // This fails to compile - tag must start with `#`
 /// let tag = Tag::new("invalid").unwrap();
@@ -377,7 +377,7 @@ Use `should_panic` when demonstrating code that intentionally panics:
 /// # Examples
 ///
 /// ```
-/// use lithos_core::utils::unwrap_or_panic;
+/// use traces_core::utils::unwrap_or_panic;
 ///
 /// let value = Some(42);
 /// assert_eq!(unwrap_or_panic(value), 42);
@@ -386,7 +386,7 @@ Use `should_panic` when demonstrating code that intentionally panics:
 /// This will panic:
 ///
 /// ```should_panic
-/// use lithos_core::utils::unwrap_or_panic;
+/// use traces_core::utils::unwrap_or_panic;
 ///
 /// let value: Option<i32> = None;
 /// unwrap_or_panic(value); // panics!
@@ -407,7 +407,7 @@ For doc tests that need access to internal types:
 ///
 /// ```
 /// // Access internal test helpers through the test module
-/// use lithos_core::note::test_helpers::create_test_note;
+/// use traces_core::note::test_helpers::create_test_note;
 ///
 /// let note = create_test_note("test.md");
 /// assert!(!note.content().is_empty());
@@ -440,7 +440,7 @@ pub mod test_helpers {
 /// Basic valid usage:
 ///
 /// ```
-/// use lithos_core::schema::PropertyName;
+/// use traces_core::schema::PropertyName;
 ///
 /// let name = PropertyName::new("valid_name-123").unwrap();
 /// assert_eq!(name.as_str(), "valid_name-123");
@@ -449,7 +449,7 @@ pub mod test_helpers {
 /// Single character names are valid:
 ///
 /// ```
-/// use lithos_core::schema::PropertyName;
+/// use traces_core::schema::PropertyName;
 ///
 /// let name = PropertyName::new("a").unwrap();
 /// assert_eq!(name.as_str(), "a");
@@ -458,7 +458,7 @@ pub mod test_helpers {
 /// This will fail to compile (invalid start character):
 ///
 /// ```compile_fail
-/// use lithos_core::schema::PropertyName;
+/// use traces_core::schema::PropertyName;
 ///
 /// // Won't compile - 123 is not a valid identifier
 /// let name = PropertyName::new("123invalid").unwrap();
@@ -470,7 +470,7 @@ pub fn new(name: &str) -> Result<Self, ValidationError> {
 
 ## 7. Standard Rust Testing Patterns
 
-Lithos uses **idiomatic Rust testing patterns** without external test utility crates. All test infrastructure is inline and self-contained.
+Traces uses **idiomatic Rust testing patterns** without external test utility crates. All test infrastructure is inline and self-contained.
 
 ### Simple Test Fixtures
 
@@ -560,7 +560,7 @@ proptest! {
 
 ## 8. Linting & Code Quality in Tests
 
-Lithos maintains strict quality gates even for test code. While tests have more latitude than business logic, they must still be modular and readable. The goal is to **fix clippy issues properly** rather than suppress them with `#[expect(...)]` attributes.
+Traces maintains strict quality gates even for test code. While tests have more latitude than business logic, they must still be modular and readable. The goal is to **fix clippy issues properly** rather than suppress them with `#[expect(...)]` attributes.
 
 ### `#expect` vs `#allow` Guidelines
 
@@ -959,14 +959,14 @@ fn processes_valid_note() {
 
 ## 10. Nextest Configuration
 
-Nextest is Lithos's primary test runner. Configure it via `.config/nextest.toml` for consistent test execution across environments.
+Nextest is Traces's primary test runner. Configure it via `.config/nextest.toml` for consistent test execution across environments.
 
 ### Configuration File Location
 
 Create `.config/nextest.toml` in the project root:
 
 ```toml
-# .config/nextest.toml - Nextest configuration for Lithos
+# .config/nextest.toml - Nextest configuration for Traces
 
 [profile.default]
 # Run tests with up to 8 threads (adjust based on CI/local hardware)
@@ -1266,7 +1266,7 @@ fn test_wrapping_add(a: i32, b: i32, expected: i32) {
 
 ## 12. Async Testing
 
-While Lithos follows a sync-first architecture, documenting async testing patterns is valuable for completeness and future reference.
+While Traces follows a sync-first architecture, documenting async testing patterns is valuable for completeness and future reference.
 
 ### Basic Async Test with Tokio
 
@@ -1427,7 +1427,7 @@ async fn test_service_with_mock() {
 
 ## 13. Coverage Analysis
 
-Lithos targets 80%+ code coverage. We support multiple coverage tools for flexibility.
+Traces targets 80%+ code coverage. We support multiple coverage tools for flexibility.
 
 ### Primary: cargo-llvm-cov (Recommended)
 
@@ -1453,7 +1453,7 @@ cargo llvm-cov nextest
 cargo +nightly llvm-cov --doctests
 
 # Coverage for specific package
-cargo llvm-cov -p lithos-core
+cargo llvm-cov -p traces-core
 
 # Exclude certain paths
 cargo llvm-cov --ignore-filename-regex 'tests/|benches/'
@@ -2078,7 +2078,7 @@ fn test_config_isolated() {
 - [mockall Documentation](https://docs.rs/mockall/) - Mocking framework
 - [tokio Testing](https://tokio.rs/tokio/topics/testing) - Async testing patterns
 
-### Lithos-Specific Documentation
+### Traces-Specific Documentation
 
 - [System-Level Test Design](./test-design-system.md) - Overall testing strategy
 - [AGENTS.md](../AGENTS.md) - AI agent testing guidelines

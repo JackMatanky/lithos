@@ -1,4 +1,4 @@
-//! Handler for the `lithos config` subcommand.
+//! Handler for the `traces config` subcommand.
 //!
 //! This module provides [`run_config`], which calls the bootstrapper's full
 //! pipeline (discovery → config build) and its discovery-only pipeline,
@@ -25,7 +25,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
 //                       Command Handler                       //
 // ----------------------------------------------------------- //
 
-/// Runs the `lithos config` command handler.
+/// Runs the `traces config` command handler.
 ///
 /// Calls the full bootstrap pipeline to verify config can be parsed, then
 /// runs discovery only to obtain candidate paths for display. Writes the
@@ -245,17 +245,17 @@ mod config_handler {
 
     // ----- helpers -----
 
-    /// Creates a temp directory with a minimal vault (`lithos.toml`) and
+    /// Creates a temp directory with a minimal vault (`traces.toml`) and
     /// returns a `Bootstrapper` wired to discover it via explicit flags.
     fn make_vault()
     -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
         let dir = tempfile::tempdir().expect("vault dir");
-        let config_path = dir.path().join("lithos.toml");
+        let config_path = dir.path().join("traces.toml");
         // Must contain a non-default field so `InMemoryRepository` takes the
         // Rebuild path rather than UseCached (empty TOML → "No active config
         // version found").
         std::fs::write(&config_path, "[template]\ndirectory = \"templates\"")
-            .expect("write lithos.toml");
+            .expect("write traces.toml");
         let flags = DiscoveryFlags::new(
             Some(config_path.as_path()),
             Some(dir.path()),
@@ -455,7 +455,7 @@ mod config_handler {
     #[test]
     fn json_output_includes_vault_config_path_when_found() {
         let (dir, bootstrapper, flags) = make_vault();
-        let config_path = dir.path().join("lithos.toml");
+        let config_path = dir.path().join("traces.toml");
 
         let (stdout, _) = run_json(&bootstrapper, Some(flags), dir.path());
 

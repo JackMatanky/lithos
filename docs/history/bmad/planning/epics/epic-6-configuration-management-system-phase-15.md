@@ -2,7 +2,7 @@
 
 ## Overview
 
-Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
+Users can configure traces through hierarchical TOML files with validation, supporting template packs and schema definitions.
 
 **FRs covered:** FR26, FR27, FR28
 
@@ -12,7 +12,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **Figment-based hierarchical config** per ADR 009 using Epic 4 loading foundation
 - **Config adapters** (Command/Query with embedded Loader/Writer) created in this epic
 - **Singleton Registry pattern** with `Arc<OnceLock<Config>>` for optimal CLI performance
-- **Sample config files** based on JSON schema (lithos-specific)
+- **Sample config files** based on JSON schema (traces-specific)
 - **Architecture**: Domain ports exist (Epic 3), domain aggregate exists (Epic 3), adapters integrate Epic 4 utilities + Epic 5 caching
 - **Syntactic Validation**: Dedicated `validator.rs` for structural configuration validation before domain aggregate construction
 - **Caching Strategy**: Uses Epic 5 `CacheCoordinator` with multi-layer (Moka + Redb) read-through/write-through for optimal performance
@@ -23,7 +23,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 
 ## Story 6.1: Create Default Configuration Files and Schema
 
-As a user getting started with lithos,
+As a user getting started with traces,
 I want default configuration files with proper schema validation,
 So that I can understand configuration options and customize settings confidently.
 
@@ -57,7 +57,7 @@ So that I can understand configuration options and customize settings confidentl
 
 ## Story 6.2: Implement Hierarchical Configuration Loading with Figment
 
-As a user configuring lithos,
+As a user configuring traces,
 I want hierarchical configuration that respects precedence rules,
 So that I can override settings at different levels (global, user, project, vault).
 
@@ -72,7 +72,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **Then** I create providers for:
 - `DefaultsProvider` - compiled-in defaults (lowest priority)
 - `FileProvider` - global.toml and vault.toml files
-- `EnvProvider` - environment variables with `LITHOS_` prefix
+- `EnvProvider` - environment variables with `TRACES_` prefix
 - `CliArgsProvider` - simulated CLI arguments (for testing parity, ready for future CLI integration)
 
 **Given** precedence must be enforced
@@ -97,7 +97,7 @@ So that I can override settings at different levels (global, user, project, vaul
 
 **Given** environment variables need mapping
 **When** I implement EnvProvider
-**Then** it maps `LITHOS_VAULT_PATH` → `vault.path`, `LITHOS_LOG_LEVEL` → `global.log_level`, etc.
+**Then** it maps `TRACES_VAULT_PATH` → `vault.path`, `TRACES_LOG_LEVEL` → `global.log_level`, etc.
 **And** mapping follows snake_case → nested structure conventions
 
 **Given** testing requires CLI args simulation
@@ -191,7 +191,7 @@ So that configurations survive process restarts, support rollback, and provide f
 **Given** rollback requires metadata
 **When** I define SnapshotMetadata struct
 **Then** it contains:
-- `version: String` - lithos binary version that created snapshot
+- `version: String` - traces binary version that created snapshot
 - `timestamp: u64` - Unix timestamp (seconds since epoch)
 - `source_hash: String` - SHA-256 of concatenated global.toml + vault.toml content
 - `source_files: Vec<PathBuf>` - list of config files that were loaded
@@ -383,7 +383,7 @@ So that port implementations are clean and easily extensible for future operatio
 
 ## Story 6.7: Implement Configuration Versioning and Migration
 
-As a developer maintaining lithos,
+As a developer maintaining traces,
 I want configuration versioning and migration support,
 So that configuration files can evolve safely across versions without breaking user setups.
 
@@ -392,7 +392,7 @@ So that configuration files can evolve safely across versions without breaking u
 **Given** configuration evolves over time
 **When** I implement versioning in Global and Vault domain models
 **Then** config files include optional `version` field for compatibility checking
-**And** version field defaults to current lithos binary version if omitted (backward compatibility)
+**And** version field defaults to current traces binary version if omitted (backward compatibility)
 
 **Given** version field is present
 **When** I implement version detection in Loader
@@ -491,7 +491,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guides during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, fixtures, and utilities
 
 **Given** all Epic 6 public components are implemented (Loader, Writer, Validator, Cache, Registry, Command, Query)
 **When** I verify test coverage
@@ -567,9 +567,9 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 ## Story 6.10: Document Configuration System
 
-As a user configuring lithos,
+As a user configuring traces,
 I want comprehensive documentation for configuration options and comprehensive doc comments,
-So that I can understand and customize lithos behavior effectively.
+So that I can understand and customize traces behavior effectively.
 
 **Acceptance Criteria:**
 

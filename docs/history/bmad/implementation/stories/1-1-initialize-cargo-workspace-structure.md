@@ -17,7 +17,7 @@ so that the project has clear separation between domain, application, infrastruc
 - **When** I run the workspace initialization commands
 - **Then** a Cargo workspace is created with the following structure:
   ```
-  lithos/
+  traces/
   ├── Cargo.toml (workspace configuration)
   ├── crates/
   │   ├── domain/ (pure business logic, no I/O)
@@ -79,7 +79,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Jack"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jack/lithos-rust"
+repository = "https://github.com/jack/traces-rust"
 description = "A CLI-first templating and schema system for Obsidian vaults"
 
 [workspace.dependencies]
@@ -113,9 +113,9 @@ base64 = "0.22"
 rand = "0.10"
 
 # Internal Workspace Crates
-lithos-domain = { path = "crates/domain" }
-lithos-app = { path = "crates/app" }
-lithos-adapters = { path = "crates/adapters" }
+traces-domain = { path = "crates/domain" }
+traces-app = { path = "crates/app" }
+traces-adapters = { path = "crates/adapters" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -147,7 +147,7 @@ debug = true
 ```toml
 cognitive-complexity-threshold = 15
 too-many-lines-threshold = 100
-doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv"]
+doc-valid-idents = ["Traces", "Obsidian", "Redb", "rkyv"]
 ```
 
 **rustfmt.toml (Visual Identity):**
@@ -161,9 +161,9 @@ max_width = 100
 
 **Crate-Specific Dependencies:**
 - **domain**: No external dependencies. Use `workspace = true` for `serde`, `thiserror`, and `uuid`.
-- **app**: Depends on `lithos-domain = { workspace = true }`.
-- **adapters**: Depends on `lithos-domain = { workspace = true }`, `redb`, `rkyv`, `minijinja`, etc. (all via `workspace = true`).
-- **cli**: Depends on `lithos-app = { workspace = true }` and `lithos-adapters = { workspace = true }`.
+- **app**: Depends on `traces-domain = { workspace = true }`.
+- **adapters**: Depends on `traces-domain = { workspace = true }`, `redb`, `rkyv`, `minijinja`, etc. (all via `workspace = true`).
+- **cli**: Depends on `traces-app = { workspace = true }` and `traces-adapters = { workspace = true }`.
 
 ### Project Structure Notes
 

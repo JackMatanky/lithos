@@ -221,7 +221,7 @@ So that code quality is guaranteed and regressions are caught early in the devel
 
 ### Project Context Reference
 
-- Lithos CI/CD provides comprehensive quality assurance through multi-stage pipelines covering code quality, testing, security, performance, and deployment
+- Traces CI/CD provides comprehensive quality assurance through multi-stage pipelines covering code quality, testing, security, performance, and deployment
 - Automated validation ensures hexagonal architecture compliance, CQRS correctness, and cross-platform compatibility
 - Security scanning, license compliance, and vulnerability detection protect production deployments
 - ADR validation and architectural consistency checks maintain long-term codebase quality

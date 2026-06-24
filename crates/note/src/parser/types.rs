@@ -8,7 +8,7 @@
 //!
 //! # Scope
 //!
-//! - Represents markdown semantics required by Lithos ingestion.
+//! - Represents markdown semantics required by Traces ingestion.
 //! - Excludes renderer-specific concepts.
 //! - Carries source ranges via [`RangedEvent`] for diagnostics.
 

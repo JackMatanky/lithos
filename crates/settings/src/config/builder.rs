@@ -650,24 +650,24 @@ mod tests {
     )]
     use crate::report::DiscoveryReport;
 
-    /// Create a temporary vault directory with a `lithos.toml` config file.
+    /// Create a temporary vault directory with a `traces.toml` config file.
     fn make_vault_candidate(dir: &TempDir, content: &str) -> CandidatePath {
-        std::fs::write(dir.path().join("lithos.toml"), content)
+        std::fs::write(dir.path().join("traces.toml"), content)
             .expect("write vault config");
         CandidatePath::new(
             DirPath::try_new(dir.path().to_path_buf()).expect("valid base dir"),
-            FilePath::try_new(dir.path().join("lithos.toml"))
+            FilePath::try_new(dir.path().join("traces.toml"))
                 .expect("valid file path"),
         )
     }
 
-    /// Create a temporary global directory with a `lithos.toml` config file.
+    /// Create a temporary global directory with a `traces.toml` config file.
     fn make_global_candidate(dir: &TempDir, content: &str) -> CandidatePath {
-        std::fs::write(dir.path().join("lithos.toml"), content)
+        std::fs::write(dir.path().join("traces.toml"), content)
             .expect("write global config");
         CandidatePath::new(
             DirPath::try_new(dir.path().to_path_buf()).expect("valid base dir"),
-            FilePath::try_new(dir.path().join("lithos.toml"))
+            FilePath::try_new(dir.path().join("traces.toml"))
                 .expect("valid file path"),
         )
     }

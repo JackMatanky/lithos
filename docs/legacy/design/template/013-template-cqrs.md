@@ -93,8 +93,8 @@ This document focuses on #1 (persistent metadata). The compiled cache is covered
 **Storing Template Metadata (Application Code):**
 
 ```rust
-use lithos_core::template::{Template, TemplateCommand};
-use lithos_core::db::Database;
+use traces_core::template::{Template, TemplateCommand};
+use traces_core::db::Database;
 
 // 1. Create template metadata (domain entity)
 let template = Template::new(
@@ -118,7 +118,7 @@ command.create(&template)?;
 **Querying Template Metadata - Zero-Copy (Application Code):**
 
 ```rust
-use lithos_core::template::TemplateQuery;
+use traces_core::template::TemplateQuery;
 
 let query = TemplateQuery::new(&db);
 
@@ -160,7 +160,7 @@ catalog.load_all()?;  // Compiles all templates from metadata
 **Testing with Fake Storage (Test Code):**
 
 ```rust
-use lithos_core::template::{FakeTemplateStorage, Query, Command};
+use traces_core::template::{FakeTemplateStorage, Query, Command};
 
 // In-memory storage for tests (no database, no I/O)
 let storage = FakeTemplateStorage::new();

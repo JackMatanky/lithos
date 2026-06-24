@@ -37,7 +37,7 @@ We have pivoted to a **Single-Crate Core Architecture** to prioritize:
 
 **Revised Structure:**
 
-- **`lithos-core`:** Single library crate containing Domain, Infrastructure, and Storage logic.
+- **`traces-core`:** Single library crate containing Domain, Infrastructure, and Storage logic.
   - **Business Contexts:** note, schema, template (isolated from each other)
   - **Cross-Cutting Context:** config (user-configurable business rules)
   - **Pure Infrastructure:** db, fs, patterns (generic utilities)
@@ -47,17 +47,17 @@ We have pivoted to a **Single-Crate Core Architecture** to prioritize:
     - Architecture tests (validate no forbidden cross-context imports)
   - **Dependencies flow INWARD:** Infrastructure (db, fs, config) ← Business Contexts (note, schema, template) ← CLI
   - **Repository Pattern:** Each context defines unified `Repository` trait with multiple implementations (Redb, InMemory, Fake)
-- **`lithos-cli`:** Thin binary driver for terminal UI and orchestration.
+- **`traces-cli`:** Thin binary driver for terminal UI and orchestration.
 
 **Initialization Commands:**
 
 ```bash
 # Create workspace root
-mkdir lithos && cd lithos
+mkdir traces && cd traces
 # Core logic (Domain + Infra)
-cargo new crates/lithos-core --lib
+cargo new crates/traces-core --lib
 # CLI driver
-cargo new crates/lithos-cli --bin
+cargo new crates/traces-cli --bin
 ```
 
 **Workspace Cargo.toml:**

@@ -6,7 +6,7 @@ Status: ready-for-dev
 
 ## Story
 
-As a user configuring lithos,
+As a user configuring traces,
 I want hierarchical configuration that respects precedence rules,
 So that I can override settings at different levels (global, user, project, vault).
 
@@ -21,7 +21,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **Then** I create providers for:
 - `DefaultsProvider` - compiled-in defaults (lowest priority)
 - `FileProvider` - global.toml and vault.toml files
-- `EnvProvider` - environment variables with `LITHOS_` prefix
+- `EnvProvider` - environment variables with `TRACES_` prefix
 - `CliArgsProvider` - simulated CLI arguments (for testing parity, ready for future CLI integration)
 
 **Given** precedence must be enforced
@@ -46,7 +46,7 @@ So that I can override settings at different levels (global, user, project, vaul
 
 **Given** environment variables need mapping
 **When** I implement EnvProvider
-**Then** it maps `LITHOS_VAULT_PATH` → `vault.path`, `LITHOS_LOG_LEVEL` → `global.log_level`, etc.
+**Then** it maps `TRACES_VAULT_PATH` → `vault.path`, `TRACES_LOG_LEVEL` → `global.log_level`, etc.
 **And** mapping follows snake_case → nested structure conventions
 
 **Given** testing requires CLI args simulation
@@ -60,7 +60,7 @@ So that I can override settings at different levels (global, user, project, vaul
   - [ ] Subtask 1.1: Implement loader.rs with provider pattern base structure
   - [ ] Subtask 1.2: Create DefaultsProvider for compiled-in configuration
   - [ ] Subtask 1.3: Create FileProvider using Epic 4 FormatDispatcher
-  - [ ] Subtask 1.4: Create EnvProvider for LITHOS_ environment variable mapping
+  - [ ] Subtask 1.4: Create EnvProvider for TRACES_ environment variable mapping
   - [ ] Subtask 1.5: Create CliArgsProvider for test simulation
 - [ ] Task 2: Configure Figment precedence and merging logic (AC: 4, 5)
   - [ ] Subtask 2.1: Implement precedence order configuration
@@ -193,19 +193,19 @@ crates/adapters/src/spi/config/loader.rs
 
 ### Environment Variable Mapping
 
-**LITHOS_ Prefix Convention**:
+**TRACES_ Prefix Convention**:
 ```rust
 // Environment → Config mapping examples
-LITHOS_VAULT_PATH → vault.path
-LITHOS_LOG_LEVEL → global.log_level
-LITHOS_SCHEMAS_DIR → global.schemas_dir
-LITHOS_TEMPLATES_DIR → global.templates_dir
-LITHOS_CACHE_DIR → vault.cache_dir
+TRACES_VAULT_PATH → vault.path
+TRACES_LOG_LEVEL → global.log_level
+TRACES_SCHEMAS_DIR → global.schemas_dir
+TRACES_TEMPLATES_DIR → global.templates_dir
+TRACES_CACHE_DIR → vault.cache_dir
 ```
 
 **Nested Structure Mapping**:
 - Use double underscore `__` for nested structures
-- Example: `LITHOS_VAULT__FRONTMATTER__TITLE_KEY` → `vault.frontmatter.title_key`
+- Example: `TRACES_VAULT__FRONTMATTER__TITLE_KEY` → `vault.frontmatter.title_key`
 - Follow snake_case to snake_case conversion
 
 ### Testing Strategy
@@ -263,7 +263,7 @@ LITHOS_CACHE_DIR → vault.cache_dir
 - Handle symbolic links safely
 
 **Environment Variable Security**:
-- Only process LITHOS_ prefixed variables
+- Only process TRACES_ prefixed variables
 - Sanitize environment variable values
 - Handle sensitive data appropriately
 

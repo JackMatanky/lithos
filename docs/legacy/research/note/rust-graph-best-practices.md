@@ -1,8 +1,8 @@
 # Rust Graph Best Practices Research Report
 
 **Date**: 2026-04-12
-**Context**: Schema inheritance DAG implementation for Lithos
-**Current State**: Custom graph implementation in `lithos-core/src/schema/graph.rs`
+**Context**: Schema inheritance DAG implementation for Traces
+**Current State**: Custom graph implementation in `traces-core/src/schema/graph.rs`
 
 ## Executive Summary
 
@@ -231,7 +231,7 @@ graph.add_edge(a, b, ());
 - **Zero-copy requirements**: petgraph nodes are owned, not borrowed
 - **Incremental computation**: Salsa/query-based systems
 
-**Lithos Context**: Our schema graph is in the "hot path" category (LSP queries, template expansion), so custom implementation is justified.
+**Traces Context**: Our schema graph is in the "hot path" category (LSP queries, template expansion), so custom implementation is justified.
 
 ---
 
@@ -326,7 +326,7 @@ impl<'a, T> GraphArena<'a, T> {
 
 **Used By**: Some compiler phases, temporary graphs
 
-**Verdict**: Not suitable for Lithos (need serialization, mutation, long-lived graphs)
+**Verdict**: Not suitable for Traces (need serialization, mutation, long-lived graphs)
 
 ---
 
@@ -397,7 +397,7 @@ impl<T> Graph<T, Undirected> {
 
 **Benefit**: Compile-time enforcement of algorithm preconditions
 
-**Lithos Application**: Could encode "validated" vs "unvalidated" graph states
+**Traces Application**: Could encode "validated" vs "unvalidated" graph states
 
 ---
 
@@ -441,7 +441,7 @@ impl<T> ValidatedDag<T> {
 
 **Benefit**: Type state pattern prevents using graph before validation
 
-**Lithos Current State**: We use `ProcessedGraph<T, R>` which is similar! ✅
+**Traces Current State**: We use `ProcessedGraph<T, R>` which is similar! ✅
 
 ---
 
@@ -488,7 +488,7 @@ graph.with_node(id, |node| {
 
 **Benefit**: Higher-rank trait bound (`for<'a>`) prevents lifetime leakage
 
-**Lithos Current State**: We use this pattern! ✅
+**Traces Current State**: We use this pattern! ✅
 
 ---
 
@@ -523,7 +523,7 @@ impl<T> Graph<T> {
 
 **Benefit**: Stateful traversal without allocating node copies
 
-**Lithos Application**: Could use for schema inheritance expansion
+**Traces Application**: Could use for schema inheritance expansion
 
 ---
 
@@ -586,7 +586,7 @@ Data:   [data][data][data]...
 - ✅ Simple APIs
 - ✅ Small node data
 
-**Lithos Context**: Our nodes are small (id + depth + payload), so **AoS (HashMap) is fine**.
+**Traces Context**: Our nodes are small (id + depth + payload), so **AoS (HashMap) is fine**.
 
 ---
 
@@ -611,7 +611,7 @@ impl<'g, T> LazyTopoSort<'g, T> {
 
 **Benefit**: Only compute sort if needed
 
-**Lithos Current State**: We eagerly compute in `ProcessedGraph::try_from` - could optimize
+**Traces Current State**: We eagerly compute in `ProcessedGraph::try_from` - could optimize
 
 ---
 
@@ -647,7 +647,7 @@ impl<T> Graph<T> {
 
 **Benefit**: O(1) amortized depth queries after initial computation
 
-**Lithos Current State**: We store depth in nodes directly - good! ✅
+**Traces Current State**: We store depth in nodes directly - good! ✅
 
 ---
 
@@ -695,7 +695,7 @@ for node in graph.dfs(root_id) {
 
 **Benefit**: Lazy evaluation, composable with iterator chains
 
-**Lithos Application**: Could add for template expansion chains
+**Traces Application**: Could add for template expansion chains
 
 ---
 
@@ -776,7 +776,7 @@ graph.remove_node(a);  // Does 'b' still work?
 
 **Fix**: Document invalidation semantics clearly
 
-**Lithos Current State**: We don't support remove - good! ✅
+**Traces Current State**: We don't support remove - good! ✅
 
 ---
 
@@ -834,7 +834,7 @@ impl<T> DagBuilder<T> {
 
 **Benefit**: Fail fast on invalid edges, guarantee acyclicity at build time
 
-**Lithos Current State**: We use `TryFrom<Graph>` which is similar! ✅
+**Traces Current State**: We use `TryFrom<Graph>` which is similar! ✅
 
 ---
 
@@ -877,7 +877,7 @@ impl<T, R: Clone> MemoizedDag<T, R> {
 
 **Benefit**: O(1) repeated queries, natural bottom-up processing
 
-**Lithos Application**: Perfect for schema property inheritance! ✅
+**Traces Application**: Perfect for schema property inheritance! ✅
 
 ---
 
@@ -918,7 +918,7 @@ impl<T: Sync> ValidatedDag<T> {
 
 **Benefit**: Maximize parallelism while respecting dependencies
 
-**Lithos Application**: Could parallelize schema loading in future
+**Traces Application**: Could parallelize schema loading in future
 
 ---
 
@@ -948,7 +948,7 @@ impl<T: Serialize> Graph<T> {
 }
 ```
 
-**Lithos Current State**: We use rkyv for zero-copy! ✅
+**Traces Current State**: We use rkyv for zero-copy! ✅
 
 ---
 
@@ -981,7 +981,7 @@ impl<T> Graph<T> {
 
 **Benefit**: Incremental updates without full graph rewrite
 
-**Lithos Application**: Could optimize schema updates in LSP
+**Traces Application**: Could optimize schema updates in LSP
 
 ---
 
@@ -1016,7 +1016,7 @@ impl ArchivedStoredGraph<T> {
 
 **Benefit**: No deserialization cost for read queries
 
-**Lithos Current State**: We use this pattern! ✅
+**Traces Current State**: We use this pattern! ✅
 
 ---
 
@@ -1118,7 +1118,7 @@ criterion_main!(benches);
 
 ---
 
-## Recommendations for Lithos
+## Recommendations for Traces
 
 ### What We're Doing Right ✅
 
@@ -1206,7 +1206,7 @@ criterion_main!(benches);
 
 ## Conclusion
 
-**Summary**: Lithos' current graph implementation follows best practices from major Rust projects:
+**Summary**: Traces' current graph implementation follows best practices from major Rust projects:
 
 1. ✅ Index-based design (HashMap<Id, Node>)
 2. ✅ Type state pattern (Graph → ProcessedGraph)

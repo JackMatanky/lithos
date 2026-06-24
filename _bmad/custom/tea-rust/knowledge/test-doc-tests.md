@@ -36,7 +36,7 @@ It is acceptable to duplicate logic between doc-tests and unit tests if it impro
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::NotePath;
+/// # use traces_core::note::NotePath;
 /// let path = NotePath::new("notes/hello.md".to_owned()).unwrap();
 /// assert_eq!(path.as_str(), "notes/hello.md");
 /// ```
@@ -52,7 +52,7 @@ pub fn new(path: String) -> Result<Self, NoteError> {
 /// # Examples
 ///
 /// ```no_run
-/// # use lithos_core::note::Repository;
+/// # use traces_core::note::Repository;
 /// # use std::path::Path;
 /// let repo = Repository::open(Path::new("/path/to/vault")).unwrap();
 /// repo.delete("notes/old.md").unwrap();
@@ -67,7 +67,7 @@ pub fn delete(&self, path: &str) -> Result<(), NoteError> {
 /// The following will **not** compile because the tag doesn't start with `#`:
 ///
 /// ```compile_fail
-/// # use lithos_core::note::Tag;
+/// # use traces_core::note::Tag;
 /// let tag = Tag::new("invalid").unwrap();
 /// ```
 pub fn new(tag: &str) -> Result<Self, TagError> {

@@ -1,6 +1,6 @@
 ---
 title: "Architecture Validation Results"
-description: "Comprehensive validation results and quality assessment of Lithos architecture"
+description: "Comprehensive validation results and quality assessment of Traces architecture"
 author: "Jack"
 date: "2026-01-23"
 last_updated: "2026-01-23"
@@ -25,7 +25,7 @@ The **Single-Crate Architecture** aligns perfectly with zero-copy performance re
 ## Requirements Coverage Validation ✅
 
 **Epic/Feature Coverage:**
-All 50 requirements are mapped to specific structural components in `lithos-core` and `lithos-cli`.
+All 50 requirements are mapped to specific structural components in `traces-core` and `traces-cli`.
 
 **Functional Requirements Coverage:**
 100% of FRs are mapped to specific modules.
@@ -74,7 +74,7 @@ Conflict points (async vs sync, error handling) are addressed in `04-implementat
 ## Validation Issues Addressed
 
 **Audit and Encryption:**
-Added explicit audit logging points in `lithos-core` events.
+Added explicit audit logging points in `traces-core` events.
 
 ## Architecture Completeness Checklist
 
@@ -132,4 +132,4 @@ LSP-specific suggestion algorithms are prioritized for post-MVP.
 - Refer to this document for all architectural questions
 
 **First Implementation Priority:**
-Initialize the Workspace (`lithos-core`, `lithos-cli`) and implement `db.rs`.
+Initialize the Workspace (`traces-core`, `traces-cli`) and implement `db.rs`.

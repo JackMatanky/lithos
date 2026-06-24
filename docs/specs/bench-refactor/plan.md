@@ -27,13 +27,13 @@
 
 - [ ] **Step 1: Add benchmark configuration vars**
 
-Add these lines to the `[vars]` section in `mise.toml` (after line 78, after `binary_name = "lithos"`):
+Add these lines to the `[vars]` section in `mise.toml` (after line 78, after `binary_name = "traces"`):
 
 ```toml
 # Benchmark configuration
 bench_archive_dir = ".benchmarks/baselines"
-bench_package_core = "lithos-core"
-bench_package_cli = "lithos-cli"
+bench_package_core = "traces-core"
+bench_package_cli = "traces-cli"
 ```
 
 - [ ] **Step 2: Verify TOML syntax**
@@ -144,10 +144,10 @@ Append to `.mise/tasks/test/bench`:
 map_package_name() {
   case "${1:-}" in
     core)
-      echo "${MISE_VARS_BENCH_PACKAGE_CORE:-lithos-core}"
+      echo "${MISE_VARS_BENCH_PACKAGE_CORE:-traces-core}"
       ;;
     cli)
-      echo "${MISE_VARS_BENCH_PACKAGE_CLI:-lithos-cli}"
+      echo "${MISE_VARS_BENCH_PACKAGE_CLI:-traces-cli}"
       ;;
     *)
       echo ""
@@ -185,7 +185,7 @@ Append to `.mise/tasks/test/bench`:
 #######################################
 # Discover benchmark target names from Cargo.toml files.
 # Arguments:
-#   Search path (directory, e.g. "lithos-core" or "." for all)
+#   Search path (directory, e.g. "traces-core" or "." for all)
 # Outputs:
 #   One bench target name per line
 #######################################

@@ -1,6 +1,6 @@
-# Project Roadmap - lithos
+# Project Roadmap - traces
 
-This roadmap outlines the phased development of Lithos, from its core Rust foundation to a comprehensive developer tooling platform. It is based on the [Product Requirements Document (PRD)](_bmad-output/planning-artifacts/prd.md) and [Architectural Decision Records (ADRs)](docs/adr/README.md).
+This roadmap outlines the phased development of Traces, from its core Rust foundation to a comprehensive developer tooling platform. It is based on the [Product Requirements Document (PRD)](_bmad-output/planning-artifacts/prd.md) and [Architectural Decision Records (ADRs)](docs/adr/README.md).
 
 ## 🚀 Phase 1: MVP Core (Milestones 1-4)
 **Goal:** Deliver a stable, high-performance CLI tool for interactive, schema-validated templating in large vaults.
@@ -77,7 +77,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 **Goal:** Native editor support for seamless workflow.
 
 ### Milestone 9: Editor Plugins
-- [ ] Neovim plugin leveraging the Lithos LSP.
+- [ ] Neovim plugin leveraging the Traces LSP.
 - [ ] VS Code extension and Zed editor support.
 - [ ] Git-based template pack distribution (FR34).
 
@@ -97,7 +97,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 
 ```mermaid
 gantt
-    title Lithos Project Roadmap
+    title Traces Project Roadmap
     dateFormat  YYYY-MM-DD
     section Phase 1: MVP
     M1: Foundation         :done,    m1, 2026-01-01, 30d

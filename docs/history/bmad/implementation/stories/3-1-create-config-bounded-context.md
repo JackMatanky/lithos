@@ -36,7 +36,7 @@ So that configuration changes are validated and the domain enforces configuratio
 
 **Given** schema versioning is needed
 **When** I implement vault config
-**Then** schema_version is optional and defaults to current Lithos binary version for quick use
+**Then** schema_version is optional and defaults to current Traces binary version for quick use
 
 **Given** vault naming is needed
 **When** I implement vault metadata
@@ -193,7 +193,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - **Business Rule:** Vault configuration overrides Global configuration (Vault > Global precedence)
 - **Hierarchy:** Global → Vault two-tier system (optional global config)
 - **Capabilities without Global:** Vault operations work normally, no global template creation/trusted vaults
-- **Schema Version:** Optional in vault config, defaults to current Lithos binary version for quick use
+- **Schema Version:** Optional in vault config, defaults to current Traces binary version for quick use
 - **Vault Name:** Defaults to directory basename (e.g., `/vaults/work` → "work")
 - **Trusted Vaults:** Flexible format (list OR map), error on mixing both
 - **Global Templates:** Global config supports schemas_dir/templates_dir for global template library

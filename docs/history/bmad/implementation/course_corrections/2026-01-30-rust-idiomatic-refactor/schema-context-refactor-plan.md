@@ -2,7 +2,7 @@
 
 Date: 2026-01-30
 Owner: Jack
-Scope: lithos-core/src/schema/
+Scope: traces-core/src/schema/
 
 Goal
 - Align schema context with design docs and idiomatic Rust patterns.
@@ -35,7 +35,7 @@ Phases
 
 Phase 1: Baseline PropertySpec coverage (StringSpec UTF-8 bytes)
 - Add tests to lock in UTF-8 byte-length semantics for StringSpec.
-- Target file: lithos-core/src/schema/property_spec.rs
+- Target file: traces-core/src/schema/property_spec.rs
 - Exit criteria: tests cover multibyte example (e.g., "cafe\u{00e9}").
 
 Phase 2: Domain model alignment and invariants

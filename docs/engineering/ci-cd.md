@@ -1,5 +1,5 @@
 ---
-title: "Lithos CI/CD Guide"
+title: "Traces CI/CD Guide"
 status: "active"
 owner: "engineering"
 last_updated: "2026-05-06"
@@ -16,9 +16,9 @@ supersedes:
   - "docs/ci/secrets-checklist.md"
 ---
 
-# Lithos CI/CD Guide
+# Traces CI/CD Guide
 
-This is the canonical CI/CD document for Lithos.
+This is the canonical CI/CD document for Traces.
 
 ## Purpose
 

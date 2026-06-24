@@ -385,7 +385,7 @@ async fn order_saga_updates_inventory_and_payment() {
 
 ### Project Context Reference
 
-- Lithos implements CQRS with event sourcing for optimal read/write separation and scalability
+- Traces implements CQRS with event sourcing for optimal read/write separation and scalability
 - Commands publish domain events that asynchronously update read models through the hybrid event bus (ADR 004)
 - Testing requires complete isolation of command side (mocks) from query side (stubs) operations (✅ DONE)
 - Domain aggregates must be tested with event sourcing patterns for state reconstruction and business rule validation (❌ TODO - TestFramework skeleton only)

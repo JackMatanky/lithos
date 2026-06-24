@@ -318,9 +318,9 @@ fn temp_vault() -> TempDir {
     let temp = TempDir::new().expect("Create temp dir");
 
     // Create vault structure
-    fs::create_dir(temp.path().join(".lithos")).unwrap();
+    fs::create_dir(temp.path().join(".traces")).unwrap();
     fs::write(
-        temp.path().join(".lithos/config.toml"),
+        temp.path().join(".traces/config.toml"),
         r#"version = "1.0""#
     ).unwrap();
 

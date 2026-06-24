@@ -30,7 +30,7 @@ use crate::{error::NoteIngestError, position::SourceByteRange};
 /// A normalized stream of markdown events.
 ///
 /// This acts as the facade adapter between the raw `pulldown-cmark` library
-/// and the internal `Lithos` parsing pipeline. It yields `RangedEvent`
+/// and the internal `Traces` parsing pipeline. It yields `RangedEvent`
 /// structures instead of raw tuples.
 ///
 /// Reference definitions are extracted during construction and returned

@@ -501,7 +501,7 @@ If you wrap an example in a helper function *and never call it*, assertions don�
 - Use `no_run` when the example depends on OS/network state.
 - Prefer examples that actually run in unit tests when feasible.
 
-Lithos note: Public traits and key APIs should have doc examples where practical (see project context rules).
+Traces note: Public traits and key APIs should have doc examples where practical (see project context rules).
 
 ---
 
@@ -571,7 +571,7 @@ pub fn send(value: String) -> Result<(), SendError> {
 
 ## Appendix: Adjacent practices (Apollo handbook)
 
-The Apollo `rust-best-practices` handbook includes several “idiom-like” practices that are useful in Lithos, but they are **not** part of the Rust Design Patterns book’s canonical 15-idiom list. They’re captured here to keep this file a good one-stop reference.
+The Apollo `rust-best-practices` handbook includes several “idiom-like” practices that are useful in Traces, but they are **not** part of the Rust Design Patterns book’s canonical 15-idiom list. They’re captured here to keep this file a good one-stop reference.
 
 ### A1) Prefer lazy fallbacks to avoid early allocation
 

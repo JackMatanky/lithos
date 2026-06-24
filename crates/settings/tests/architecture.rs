@@ -55,7 +55,7 @@ mod tests {
             .expect("read config builder");
 
         assert!(
-            !content.contains("/etc/lithos"),
+            !content.contains("/etc/traces"),
             "Builder must not hardcode partial global discovery runtime paths"
         );
     }

@@ -13,14 +13,14 @@ stepsCompleted:
 lastStep: 11
 ---
 
-# Product Requirements Document - lithos
+# Product Requirements Document - traces
 
 **Author:** Jack
 **Date:** 2026-01-05
 
 ## Executive Summary
 
-Lithos is a command-line interface (CLI) tool built in Rust that provides powerful, scriptable template generation for Obsidian vaults. It empowers developers and knowledge workers to automate note creation and management directly from the terminal, solving the workflow friction of context-switching between Obsidian's plugin ecosystem and external environments.
+Traces is a command-line interface (CLI) tool built in Rust that provides powerful, scriptable template generation for Obsidian vaults. It empowers developers and knowledge workers to automate note creation and management directly from the terminal, solving the workflow friction of context-switching between Obsidian's plugin ecosystem and external environments.
 
 ### What Makes This Special
 
@@ -100,13 +100,13 @@ This classification captures the MVP as a developer tool while accounting for th
 - FR40: Users can audit template execution and data access patterns
 
 ### Command Line Interface
-- FR41: Users can execute lithos commands with subcommands for templates, schemas, and vaults
+- FR41: Users can execute traces commands with subcommands for templates, schemas, and vaults
 - FR42: Users can access comprehensive help and documentation from the CLI
 - FR43: Users can view status and configuration of templates and schemas
 - FR44: Users can manage vault operations (index, search, validate) from command line
 - FR45: Users can run templates with various output formats and destinations
 - FR46: Users can configure CLI behavior and preferences
-- FR47: Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection)
+- FR47: Users can execute most important commands with single words (e.g., `traces new` opens fuzzy picker for template selection)
 
 ### Error Handling & Recovery
 - FR48: Users can receive clear, actionable error messages when operations fail
@@ -170,47 +170,47 @@ This classification captures the MVP as a developer tool while accounting for th
 **Journey 1: Alex Chen - Power User Regains Flow**
 *Problem:* Alex is a senior software engineer who maintains a massive personal knowledge base in Obsidian, tracking project decisions, API designs, and debugging sessions. His workflow constantly breaks when creating structured notes from the terminal—either he loses momentum switching to the Obsidian UI, or externally created notes lack the rich metadata that makes his vault searchable. "I spend 20 minutes just to create one proper note," he grumbles, watching his focus evaporate.
 
-*Discovery:* Frustrated, Alex discovers Lithos while searching for CLI knowledge tools. The installation takes 2 minutes, and the guided setup asks about his vault structure.
+*Discovery:* Frustrated, Alex discovers Traces while searching for CLI knowledge tools. The installation takes 2 minutes, and the guided setup asks about his vault structure.
 
-*Solution:* Alex creates his first template pack. Instead of the usual 20-minute context switch, he generates a complete project decision note in under 2 minutes: `lithos new project-decision --interactive`. The CLI shows real-time validation feedback, catching formatting issues before he commits. The built-in linting ensures his notes integrate perfectly with his existing vault.
+*Solution:* Alex creates his first template pack. Instead of the usual 20-minute context switch, he generates a complete project decision note in under 2 minutes: `traces new project-decision --interactive`. The CLI shows real-time validation feedback, catching formatting issues before he commits. The built-in linting ensures his notes integrate perfectly with his existing vault.
 
-*Impact:* Six months later, Alex has integrated Lithos into his daily workflow, saving 5+ hours weekly. "This is the seamless CLI-first knowledge management I've always wanted," he says. His vault now scales without friction, and he's shared his template packs with his development team.
+*Impact:* Six months later, Alex has integrated Traces into his daily workflow, saving 5+ hours weekly. "This is the seamless CLI-first knowledge management I've always wanted," he says. His vault now scales without friction, and he's shared his template packs with his development team.
 
 **Journey 2: Sarah Martinez - Knowledge Enthusiast Builds Her System**
 *Problem:* Sarah is a PhD researcher who uses Obsidian as her central hub for literature reviews, research notes, and project planning. As her vault grows to 2000+ interconnected notes, she struggles with consistency—some notes have perfect metadata, others are hastily created without templates. The separate Templater and Metadata Menu plugins create constant context switches, and large vaults crash 30% of the time during complex template processing. "I can't focus on my research when I'm worried about tool reliability," she admits.
 
-*Discovery:* Sarah finds Lithos through academic communities. The "zero crashes in large vaults" claim intrigues her.
+*Discovery:* Sarah finds Traces through academic communities. The "zero crashes in large vaults" claim intrigues her.
 
-*Solution:* Lithos lets her create modular, schema-validated notes directly from research scripts. She builds custom template packs for literature reviews, with automatic metadata inheritance and vault-wide linking. The CLI handles her 2000+ note vault without crashes: `lithos index --fast && lithos new literature-review --template academic`.
+*Solution:* Traces lets her create modular, schema-validated notes directly from research scripts. She builds custom template packs for literature reviews, with automatic metadata inheritance and vault-wide linking. The CLI handles her 2000+ note vault without crashes: `traces index --fast && traces new literature-review --template academic`.
 
 *Impact:* Sarah's knowledge system now scales with her research. She shares template packs with fellow academics, turning her personal tool into a community resource. "My research productivity has increased 40% since eliminating crashes and context switches," she reports.
 
 **Journey 3: Jordan Rivera - OSS Community Builder Shares Innovation**
 *Problem:* Jordan leads an open-source community building starter vaults for project management methodologies. They spend hours creating template packs that work perfectly in Obsidian, but struggle with portability—users complain that complex schemas and multi-section templates don't work reliably outside the app. Git distribution feels incomplete without external validation. "Our community deserves reliable tools, not just pretty demos," Jordan says.
 
-*Discovery:* Jordan discovers Lithos and sees its potential for community distribution. The free tier and GitHub integration appeal to their open-source ethos.
+*Discovery:* Jordan discovers Traces and sees its potential for community distribution. The free tier and GitHub integration appeal to their open-source ethos.
 
-*Solution:* Lithos becomes their distribution platform, enabling template packs with guaranteed cross-environment compatibility. They build a comprehensive project management vault that works identically everywhere. Schema validation and modular templating make packs robust, and community contributions integrate easily. When a user reports an issue, Jordan can reproduce and fixes it entirely from the command line.
+*Solution:* Traces becomes their distribution platform, enabling template packs with guaranteed cross-environment compatibility. They build a comprehensive project management vault that works identically everywhere. Schema validation and modular templating make packs robust, and community contributions integrate easily. When a user reports an issue, Jordan can reproduce and fixes it entirely from the command line.
 
-*Impact:* Their template ecosystem grows from personal project to widely adopted community standard. "Lithos increased our community engagement by 200% through reliable external tooling," Jordan shares. Next step: monetize premium template packs.
+*Impact:* Their template ecosystem grows from personal project to widely adopted community standard. "Traces increased our community engagement by 200% through reliable external tooling," Jordan shares. Next step: monetize premium template packs.
 
 **Journey 4: Maya Patel - Template Pack Consumer Discovers Simplicity**
 *Problem:* Maya is a content strategist who discovered Obsidian through online communities and wants to standardize her team's documentation process. She's not deeply technical but loves organized knowledge systems. When she finds community template packs, complex ones require Obsidian UI expertise she lacks, while simpler ones lack automation for consistent team outputs. "I want professional documentation without becoming a developer," she explains.
 
-*Discovery:* Maya finds Lithos through community recommendations. The "guided prompts for non-technical users" and free trial appeal to her.
+*Discovery:* Maya finds Traces through community recommendations. The "guided prompts for non-technical users" and free trial appeal to her.
 
-*Solution:* Lithos makes powerful template packs accessible through guided terminal prompts. She adopts Jordan's project management templates without learning advanced Obsidian features—just clear questions about project details, and perfect documentation emerges. Built-in validation ensures her team's notes always meet standards.
+*Solution:* Traces makes powerful template packs accessible through guided terminal prompts. She adopts Jordan's project management templates without learning advanced Obsidian features—just clear questions about project details, and perfect documentation emerges. Built-in validation ensures her team's notes always meet standards.
 
 *Impact:* Maya becomes an advocate in her community, showing how sophisticated knowledge management can be approachable. "Our team documentation quality improved 60% with zero training required," she reports. Next step: expand to company-wide adoption.
 
 **Journey 5: Carlos Mendoza - Enterprise IT Admin Ensures Compliance**
 *Problem:* Carlos is an IT administrator at a mid-sized consulting firm implementing Obsidian for team knowledge management. He needs to ensure consistent, compliant documentation across 50+ users, but struggles with enforcing templates and metadata standards programmatically. Manual reviews are time-consuming, and plugin dependencies create support overhead. "We need enterprise-grade control without breaking user workflows," he states.
 
-*Discovery:* Carlos evaluates Lithos for enterprise deployment. The audit logging and centralized configuration management catch his attention.
+*Discovery:* Carlos evaluates Traces for enterprise deployment. The audit logging and centralized configuration management catch his attention.
 
-*Solution:* Lithos provides enterprise controls: centralized template packs, audit trails, and automated compliance validation. Carlos deploys it via their IT infrastructure, with single-sign-on integration. Teams use guided workflows while Carlos monitors adoption through detailed analytics.
+*Solution:* Traces provides enterprise controls: centralized template packs, audit trails, and automated compliance validation. Carlos deploys it via their IT infrastructure, with single-sign-on integration. Teams use guided workflows while Carlos monitors adoption through detailed analytics.
 
-*Impact:* The firm achieves 95% template compliance with 80% reduction in IT support tickets. "Lithos gave us the control we needed while maintaining user autonomy," Carlos says. Next step: integrate with their existing documentation platform.
+*Impact:* The firm achieves 95% template compliance with 80% reduction in IT support tickets. "Traces gave us the control we needed while maintaining user autonomy," Carlos says. Next step: integrate with their existing documentation platform.
 
 ### Journey Requirements Summary
 These journeys reveal key capabilities: modular CLI templating with real-time validation, crash-resistant large vault processing (under 500ms for indexing 1000+ files, under 100ms for individual operations), guided non-technical onboarding, enterprise compliance controls, and community pack portability with Git-based distribution. Performance must scale efficiently as vaults balloon to thousands of files, with all actions remaining fast to maintain user flow.
@@ -302,7 +302,7 @@ These journeys reveal key capabilities: modular CLI templating with real-time va
 **CLI-First PKM Challenge:** Challenging the assumption that PKM programs require GUI interfaces, proving they can work equally or better in IDEs/terminals with maintained performance and template usability.
 
 ### Market Context & Competitive Landscape
-Developer-focused PKM market shows fragmentation between GUI tools (Obsidian, Notion) and CLI utilities. Most solutions offer single-aspect functionality with plugin communities creating integration overhead. Lithos differentiates through native integration, targeting developer productivity with expansion potential to broader knowledge workers.
+Developer-focused PKM market shows fragmentation between GUI tools (Obsidian, Notion) and CLI utilities. Most solutions offer single-aspect functionality with plugin communities creating integration overhead. Traces differentiates through native integration, targeting developer productivity with expansion potential to broader knowledge workers.
 
 ### Validation Approach
 - **Performance Metrics:** Under 500ms operations in 1000+ file vaults, zero crashes, maintained IDE responsiveness
@@ -359,7 +359,7 @@ Comprehensive developer tooling platform for Markdown/knowledge management, with
 ## Developer Tool Specific Requirements
 
 ### Project-Type Overview
-Lithos is a developer tool focused on CLI-first knowledge management, prioritizing Rust as the core language while supporting any file types found in Obsidian vaults. The tool emphasizes developer experience with comprehensive documentation and examples.
+Traces is a developer tool focused on CLI-first knowledge management, prioritizing Rust as the core language while supporting any file types found in Obsidian vaults. The tool emphasizes developer experience with comprehensive documentation and examples.
 
 ### User Personas
 - **Power User Developer:** Wants deep customization, extensible APIs, and programmatic access to all features
@@ -400,7 +400,7 @@ Lithos is a developer tool focused on CLI-first knowledge management, prioritizi
 ### Migration Guide
 - **From Manual Obsidian:** Step-by-step migration with success checklists and measurable outcomes
 - **Tool Integration:** Migrating from separate Templater/Metadata Menu workflows with rollback capabilities
-- **Version Upgrades:** Clear upgrade paths for future Lithos versions with compatibility guarantees
+- **Version Upgrades:** Clear upgrade paths for future Traces versions with compatibility guarantees
 - **Backup Strategies:** Safe migration with automated validation and easy reversion
 
 ### Implementation Considerations

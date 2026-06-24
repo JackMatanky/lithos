@@ -46,8 +46,8 @@ mod tests {
         fn returns_ambiguity_warning() {
             let warning = LocalDiscoveryWarning::Ambiguity {
                 candidates: vec![
-                    PathBuf::from("/vault/lithos.toml"),
-                    PathBuf::from("/vault/.lithos/config.toml"),
+                    PathBuf::from("/vault/traces.toml"),
+                    PathBuf::from("/vault/.traces/config.toml"),
                 ],
             };
             assert!(matches!(warning, LocalDiscoveryWarning::Ambiguity { .. }));
@@ -60,10 +60,10 @@ mod tests {
         #[test]
         fn returns_ambiguity_warning() {
             let warning = FormatDiscoveryWarning::Ambiguity {
-                base: PathBuf::from("/vault/.lithos"),
+                base: PathBuf::from("/vault/.traces"),
                 candidates: vec![
-                    PathBuf::from("/vault/.lithos/config.toml"),
-                    PathBuf::from("/vault/.lithos/config.json"),
+                    PathBuf::from("/vault/.traces/config.toml"),
+                    PathBuf::from("/vault/.traces/config.json"),
                 ],
             };
             assert!(matches!(
@@ -80,7 +80,7 @@ mod tests {
         fn wraps_local_warning() {
             let warning =
                 ConfigWarning::Local(LocalDiscoveryWarning::Ambiguity {
-                    candidates: vec![PathBuf::from("/vault/lithos.toml")],
+                    candidates: vec![PathBuf::from("/vault/traces.toml")],
                 });
             assert!(matches!(warning, ConfigWarning::Local(..)));
         }
@@ -89,9 +89,9 @@ mod tests {
         fn wraps_format_warning() {
             let warning =
                 ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
-                    base: PathBuf::from("/vault/.lithos"),
+                    base: PathBuf::from("/vault/.traces"),
                     candidates: vec![PathBuf::from(
-                        "/vault/.lithos/config.toml",
+                        "/vault/.traces/config.toml",
                     )],
                 });
             assert!(matches!(warning, ConfigWarning::Format(..)));
@@ -101,16 +101,16 @@ mod tests {
         fn returns_true_when_warning_payloads_match() {
             let first =
                 ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
-                    base: PathBuf::from("/vault/.lithos"),
+                    base: PathBuf::from("/vault/.traces"),
                     candidates: vec![PathBuf::from(
-                        "/vault/.lithos/lithos.toml",
+                        "/vault/.traces/traces.toml",
                     )],
                 });
             let second =
                 ConfigWarning::Format(FormatDiscoveryWarning::Ambiguity {
-                    base: PathBuf::from("/vault/.lithos"),
+                    base: PathBuf::from("/vault/.traces"),
                     candidates: vec![PathBuf::from(
-                        "/vault/.lithos/lithos.toml",
+                        "/vault/.traces/traces.toml",
                     )],
                 });
             assert_eq!(first, second);

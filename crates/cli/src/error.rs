@@ -1,6 +1,6 @@
 //! CLI error types with exit code derivation.
 //!
-//! This module defines [`CliError`], the top-level error type for the Lithos
+//! This module defines [`CliError`], the top-level error type for the Traces
 //! CLI binary. It wraps [`AppError`] and owns the mapping from error
 //! variants to POSIX exit codes.
 //!

@@ -8,7 +8,7 @@ This reference captures **tooling-facing practices** that don’t fit cleanly in
 
 If there’s a conflict, prefer the more conservative / correctness-preserving rule.
 
-Lithos note: this repo standardizes on `mise` as the entry point for quality gates.
+Traces note: this repo standardizes on `mise` as the entry point for quality gates.
 
 - Prefer `mise run fmt`, `mise run lint`, `mise run test`, and `mise run verify` for day-to-day work.
 - Use raw `cargo ...` commands only for one-off exploration, and keep flags aligned with what the repo expects.
@@ -20,7 +20,7 @@ Lithos note: this repo standardizes on `mise` as the entry point for quality gat
 - Prefer running clippy with “warnings are errors” in day-to-day work.
 - In CI, prefer `cargo clippy --all-targets --all-features -- -D warnings`.
 
-In Lithos, the preferred entry point is:
+In Traces, the preferred entry point is:
 
 - `mise run lint`
 
@@ -62,7 +62,7 @@ These tend to correlate strongly with “real” issues:
 
 Note: If you centralize lint policy in a workspace, keep it visible and version-controlled.
 
-In Lithos, workspace lint policy lives in the root `Cargo.toml` under `[workspace.lints.*]`.
+In Traces, workspace lint policy lives in the root `Cargo.toml` under `[workspace.lints.*]`.
 
 ## 2) Testing discipline
 
@@ -90,7 +90,7 @@ If an “Ok” assertion fails, prefer printing the error you would have gotten:
 ### 2.4 Unit vs integration vs doc tests
 
 - **Unit tests**: colocated with code (`#[cfg(test)]`), can test private helpers.
-- **Integration tests**: under `lithos-core/tests/` (when added), exercise the public surface.
+- **Integration tests**: under `traces-core/tests/` (when added), exercise the public surface.
 - **Doc tests**: examples in `///` docs.
 
 Important detail:
@@ -141,7 +141,7 @@ If you do adopt `insta`:
 - Prefer `cargo bench` (and criterion) for micro-benchmarks.
 - Prefer a profiler (e.g., flamegraphs) when CPU time is unclear.
 
-Lithos note:
+Traces note:
 
 - Prefer `mise run test:bench` for benchmarks (Criterion is already part of the workspace).
 

@@ -7,7 +7,7 @@
 //!
 //! # Lists and Tasks
 //!
-//! In the Lithos domain, there is a clear distinction between **Structural**
+//! In the Traces domain, there is a clear distinction between **Structural**
 //! list items and **Semantic** tasks:
 //!
 //! 1. **Structural ([`ListItem`]):** Manages the physical presence of a bullet

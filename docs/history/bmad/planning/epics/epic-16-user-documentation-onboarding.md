@@ -48,18 +48,18 @@ Users have comprehensive documentation, starter templates, sample schemas, and m
 
 ### Story 16.1: [Docs] Installation and Setup Guide
 
-As a new user, I want clear installation instructions and setup guidance, so that I can get lithos running quickly on my system.
+As a new user, I want clear installation instructions and setup guidance, so that I can get traces running quickly on my system.
 **Acceptance Criteria:**
 
 
 ## Story 16.1: Create Installation and Setup Guide
 
 As a new user, I want clear installation instructions and setup guidance,
-So that I can get lithos running quickly on my system.
+So that I can get traces running quickly on my system.
 
 **Acceptance Criteria:**
 
-**Given** lithos targets macOS primary, Linux secondary
+**Given** traces targets macOS primary, Linux secondary
 **When** I create installation guide in `docs/installation.md`
 **Then** it includes platform-specific instructions:
 - macOS: Homebrew formula, binary download, building from source
@@ -73,12 +73,12 @@ So that I can get lithos running quickly on my system.
 **And** troubleshooting section covers: permissions, PATH, dependencies
 
 **Given** first-run experience is critical
-**When** user runs lithos for first time
+**When** user runs traces for first time
 **Then** documentation guides through:
-1. Verify installation: `lithos --version`
-2. Create first vault: `lithos vault init ~/notes`
-3. Set vault path: `lithos config set vault.path ~/notes`
-4. Verify setup: `lithos vault index`
+1. Verify installation: `traces --version`
+2. Create first vault: `traces vault init ~/notes`
+3. Set vault path: `traces config set vault.path ~/notes`
+4. Verify setup: `traces vault index`
 
 **Given** Epic 6 configuration is complex
 **When** I document initial configuration
@@ -91,7 +91,7 @@ So that I can get lithos running quickly on my system.
 **Then** document common issues:
 - macOS: Gatekeeper warnings for unsigned binaries
 - Linux: Missing system libraries (rkyv, redb dependencies)
-- Permissions: .lithos directory creation failures
+- Permissions: .traces directory creation failures
 **And** each issue includes: symptom, cause, solution
 
 **Given** installation success rate must be measurable
@@ -105,7 +105,7 @@ So that I can get lithos running quickly on my system.
 
 ## Story 16.2: Create Quick Start Tutorial
 
-As a new user, I want a hands-on tutorial to create my first note with lithos,
+As a new user, I want a hands-on tutorial to create my first note with traces,
 So that I can experience the core functionality immediately.
 
 **Acceptance Criteria:**
@@ -120,12 +120,12 @@ So that I can experience the core functionality immediately.
 **When** I structure the tutorial
 **Then** learning sequence:
 1. What is a vault? (2 min)
-2. Create your first vault (`lithos vault init ~/my-notes`)
+2. Create your first vault (`traces vault init ~/my-notes`)
 3. What is a template? (2 min)
-4. Execute starter template (`lithos template new daily-note`)
+4. Execute starter template (`traces template new daily-note`)
 5. View created note (open in editor)
 6. What is indexing? (1 min)
-7. Search your vault (`lithos vault search "today"`)
+7. Search your vault (`traces vault search "today"`)
 8. Next steps (link to full documentation)
 
 **Given** Epic 12 provides template execution
@@ -156,7 +156,7 @@ So that I can start productive work immediately.
 
 **Given** docs/refs/obsidian/ contains example templates
 **When** I create starter kit in `docs/starter-kit/`
-**Then** sanitize and convert Obsidian templates to lithos format
+**Then** sanitize and convert Obsidian templates to traces format
 **And** include templates: daily-note, project, contact, meeting-note, knowledge-note
 **And** include schemas: person, project, meeting, article, book
 
@@ -176,7 +176,7 @@ So that I can start productive work immediately.
 
 **Given** templates must be immediately usable
 **When** user installs starter kit
-**Then** provide installation script: `lithos install-starter-kit`
+**Then** provide installation script: `traces install-starter-kit`
 **And** script copies templates to vault templates directory
 **And** script copies schemas to vault schemas directory
 **And** validates all files after installation
@@ -192,8 +192,8 @@ So that I can start productive work immediately.
 **Given** users need migration path
 **When** I provide Obsidian template conversions
 **Then** document conversion patterns:
-- Templater tp.date.now() → lithos date functions
-- Templater tp.system.suggester() → lithos suggesters
+- Templater tp.date.now() → traces date functions
+- Templater tp.system.suggester() → traces suggesters
 - Templater tp.file.include() → MiniJinja includes
 **And** provide side-by-side comparison examples
 
@@ -201,15 +201,15 @@ So that I can start productive work immediately.
 
 ## Story 16.4: Create Migration Guide from Obsidian
 
-As an existing Obsidian user, I want guidance on migrating my workflow to lithos,
+As an existing Obsidian user, I want guidance on migrating my workflow to traces,
 So that I can transition smoothly with minimal disruption.
 
 **Acceptance Criteria:**
 
 **Given** many users come from Obsidian/Templater
 **When** I create migration guide in `docs/migration/obsidian.md`
-**Then** map Obsidian concepts to lithos equivalents:
-- Vault → Vault (compatible, lithos adds .lithos/ directory)
+**Then** map Obsidian concepts to traces equivalents:
+- Vault → Vault (compatible, traces adds .traces/ directory)
 - Templates → MiniJinja templates (conversion required)
 - Templater plugin → Built-in template system
 - Dataview → Epic 11 query system
@@ -221,7 +221,7 @@ So that I can transition smoothly with minimal disruption.
 **When** I document template conversion
 **Then** provide conversion table:
 
-| Obsidian/Templater | Lithos |
+| Obsidian/Templater | Traces |
 |--------------------|--------|
 | `<% tp.date.now() %>` | `{{ date.now() }}` |
 | `<% tp.date.now("YYYY-MM-DD") %>` | `{{ date.now().format("%Y-%m-%d") }}` |
@@ -240,17 +240,17 @@ So that I can transition smoothly with minimal disruption.
 **Then** clearly state incompatibilities:
 - JavaScript execution (Templater tp.user scripts) → not supported
 - Dynamic file creation → use CLI workflows instead
-- Obsidian-specific APIs → use lithos equivalents
+- Obsidian-specific APIs → use traces equivalents
 
 **Given** users need practical migration steps
 **When** I provide migration workflow
 **Then** step-by-step process:
 1. Backup Obsidian vault
-2. Create lithos vault pointing to same directory
-3. Run `lithos vault index` to index existing notes
+2. Create traces vault pointing to same directory
+3. Run `traces vault index` to index existing notes
 4. Convert templates one-by-one (use conversion table)
 5. Test converted templates
-6. Gradually adopt lithos schemas for validation
+6. Gradually adopt traces schemas for validation
 
 **References:** NFR20, NFR13
 
@@ -278,7 +278,7 @@ So that I can master advanced functionality.
 **Then** include complete reference:
 - All global.toml settings with defaults
 - All vault.toml settings with defaults
-- Environment variables (LITHOS_*)
+- Environment variables (TRACES_*)
 - Precedence rules
 - Validation constraints
 
@@ -322,12 +322,12 @@ So that I can master advanced functionality.
 
 ## Story 16.6: Create API Documentation for Developers
 
-As a developer extending lithos, I want API documentation for the plugin system and extension points,
+As a developer extending traces, I want API documentation for the plugin system and extension points,
 So that I can build custom integrations.
 
 **Acceptance Criteria:**
 
-**Given** lithos uses hexagonal architecture
+**Given** traces uses hexagonal architecture
 **When** I document architecture in `docs/api/architecture.md`
 **Then** explain layers:
 - Domain: Core business logic (ports, aggregates, value objects)
@@ -485,7 +485,7 @@ So that users receive reliable information.
 
 ### Story 16.2: [Docs] Quick Start Tutorial
 
-As a new user, I want a hands-on tutorial to create my first note with lithos, so that I can experience the core functionality immediately.
+As a new user, I want a hands-on tutorial to create my first note with traces, so that I can experience the core functionality immediately.
 **Acceptance Criteria:**
 
 - **Given** the completed system
@@ -509,12 +509,12 @@ As a new user, I want ready-to-use templates and schemas for common use cases, s
 
 ### Story 16.4: [Docs] Migration Guide from Obsidian
 
-As an existing Obsidian user, I want guidance on migrating my workflow to lithos, so that I can transition smoothly with minimal disruption.
+As an existing Obsidian user, I want guidance on migrating my workflow to traces, so that I can transition smoothly with minimal disruption.
 **Acceptance Criteria:**
 
 - **Given** the template conversion examples
 - **When** I create the migration guide
-- **Then** it maps Obsidian concepts to lithos equivalents (Templater → lithos templates).
+- **Then** it maps Obsidian concepts to traces equivalents (Templater → traces templates).
 - **And** it provides conversion examples for common template patterns.
 - **And** it addresses compatibility considerations and limitations.
   **References:** NFR20
@@ -533,7 +533,7 @@ As a power user, I want comprehensive documentation of all features and configur
 
 ### Story 16.6: [Docs] API Documentation for Developers
 
-As a developer extending lithos, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
+As a developer extending traces, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
 **Acceptance Criteria:**
 
 - **Given** the system architecture

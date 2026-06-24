@@ -259,7 +259,7 @@ fn simple_markdown() -> &'static str {
 /// Medium markdown sample: typical note with multiple sections (~500 bytes).
 fn medium_markdown() -> &'static str {
     concat!(
-        "# Project: Lithos\n\n",
+        "# Project: Traces\n\n",
         "## Tasks\n\n",
         "- [ ] #task Review [[PR-123]] [priority:: 1] [due:: 2026-03-01]\n",
         "- [x] #task Setup CI pipeline [status:: done]\n",
@@ -285,7 +285,7 @@ fn medium_markdown() -> &'static str {
 /// Complex markdown sample: dense note with deep hierarchy (~2KB).
 fn complex_markdown() -> &'static str {
     concat!(
-        "# Project Plan: Lithos v2.0\n\n",
+        "# Project Plan: Traces v2.0\n\n",
         "## Executive Summary\n\n",
         "Complete rewrite of note management system using [[Rust]] and \
          [[redb]].\n",
@@ -503,7 +503,7 @@ fn bench_parse_group(c: &mut Criterion, samples: &BenchSamples<'_>) {
 
 fn bench_note_ingest(c: &mut Criterion) {
     let root = std::env::temp_dir()
-        .join(format!("lithos_note_bench_{}", std::process::id()));
+        .join(format!("traces_note_bench_{}", std::process::id()));
     std::fs::create_dir_all(root.join("notes"))
         .expect("create bench notes dir");
 

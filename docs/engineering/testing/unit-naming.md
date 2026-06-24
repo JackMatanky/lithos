@@ -10,7 +10,7 @@ scope: "Naming conventions and module organization for Rust unit tests"
 
 ## Context
 
-- **Applies to**: all unit test functions (`#[test] fn ...`) in `lithos-core/src/**/*.rs`
+- **Applies to**: all unit test functions (`#[test] fn ...`) in `traces-core/src/**/*.rs`
 - **Purpose**: clear, predictable names and module structure that make failures understandable in `nextest`
 - **Core rule**: one behavior per test, one concern per module
 

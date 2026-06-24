@@ -88,7 +88,7 @@ The main risks in this area are:
 **First run** (full resolution):
 
 ```rust
-use lithos_core::schema::resolver::SchemaResolver;
+use traces_core::schema::resolver::SchemaResolver;
 
 // 1. Load PropertyBank (first, always)
 let bank = qry.find_property_bank()?.expect("PropertyBank required");

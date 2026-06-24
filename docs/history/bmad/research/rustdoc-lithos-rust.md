@@ -1,5 +1,5 @@
 ---
-project: lithos-rust
+project: traces-rust
 created: 2026-02-10
 completed: 2026-02-10
 status: complete
@@ -13,7 +13,7 @@ stepsCompleted:
   - step-07-document-traits
   - step-08-validate
   - step-09-finalize
-targetPath: lithos-core/src/config/
+targetPath: traces-core/src/config/
 components:
   crate: true
   modules: 14
@@ -24,14 +24,14 @@ components:
   unsafe: 0
 ---
 
-# Rustdoc Generation Progress: lithos-rust
+# Rustdoc Generation Progress: traces-rust
 
 ## Scope Definition
-- **Target Context**: `lithos-core/src/config/`
+- **Target Context**: `traces-core/src/config/`
 - **Goal**: Generate RFC 1574 compliant documentation for the refactored configuration module.
 
 ## Component Inventory
-- **Crate Root**: `lithos-core/src/config/mod.rs`
+- **Crate Root**: `traces-core/src/config/mod.rs`
 - **Core Aggregates**: `aggregate.rs`, `global.rs`, `vault.rs`, `cache.rs`, `template.rs`, `schema.rs`
 - **CQRS Infrastructure**: `query.rs`, `command.rs`, `ports.rs`
 - **Adapters & Messaging**: `ingest.rs`, `error.rs`, `events.rs`
@@ -40,7 +40,7 @@ components:
 
 ## Documentation Analysis
 ### Crate Level
-- **Summary**: Domain-centric configuration management for Lithos.
+- **Summary**: Domain-centric configuration management for Traces.
 - **Sections**: # Always Valid Invariants, # Precedence, # Usage Example.
 
 ### Core Aggregates
@@ -65,10 +65,10 @@ components:
 
 ## Crate Documentation
 ```rust
-//! Domain-centric configuration management for Lithos.
+//! Domain-centric configuration management for Traces.
 //!
 //! This module provides the domain entities, validation logic, and storage
-//! ports for Lithos configuration. It ensures that configuration is
+//! ports for Traces configuration. It ensures that configuration is
 //! "Always Valid" by performing strict validation during ingestion and
 //! construction.
 //!
@@ -86,7 +86,7 @@ components:
 //!
 //! ```rust
 //! # use std::path::Path;
-//! # use lithos_core::config::{Config, VaultId, VaultRoot, ingest};
+//! # use traces_core::config::{Config, VaultId, VaultRoot, ingest};
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let vault_root = Path::new("/path/to/vault");
 //! let vault_id = VaultId::new();
@@ -157,7 +157,7 @@ components:
 ```rust
 //! Focused declarative path configuration modules.
 //!
-//! These modules define how Lithos manages cache, schema, and template
+//! These modules define how Traces manages cache, schema, and template
 //! locations using declarative path types and narrowed config specs.
 ```
 
@@ -248,7 +248,7 @@ components:
 ### Documentation Generated
 
 **Crate Level:**
-- Location: `lithos-core/src/config/mod.rs`
+- Location: `traces-core/src/config/mod.rs`
 - Lines: ~120 comprehensive documentation
 - Status: ✅ Complete
 
@@ -278,8 +278,8 @@ components:
 - **Warnings:** 0 remaining
 
 ### Files Modified/Created
-1. **lithos-core/src/config/mod.rs** - Enhanced with comprehensive crate documentation
-2. **_bmad-output/rustdoc-lithos-rust.md** - Complete workflow output and analysis
+1. **traces-core/src/config/mod.rs** - Enhanced with comprehensive crate documentation
+2. **_bmad-output/rustdoc-traces-rust.md** - Complete workflow output and analysis
 
 ### How to Use This Documentation
 1. **Review the generated documentation** in this output file

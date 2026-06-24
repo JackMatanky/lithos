@@ -7,7 +7,7 @@ When rkyv format changes or corruption is detected, the database must be rebuilt
 ## Prerequisites
 
 - Vault markdown files are the **source of truth**
-- `.lithos/` directory contains only **derived data** (can be safely deleted)
+- `.traces/` directory contains only **derived data** (can be safely deleted)
 - All notes, schemas, and templates exist as files in the vault
 
 ## Procedure
@@ -16,34 +16,34 @@ When rkyv format changes or corruption is detected, the database must be rebuilt
 
 1. **Backup current state**:
    ```bash
-   cp -r vault/.lithos "vault/.lithos.backup.$(date +%Y%m%d_%H%M%S)"
+   cp -r vault/.traces "vault/.traces.backup.$(date +%Y%m%d_%H%M%S)"
    ```
 
 2. **Clear database**:
    ```bash
-   rm -rf vault/.lithos/*.redb
+   rm -rf vault/.traces/*.redb
    ```
 
 3. **Reindex**:
    ```bash
-   lithos index --vault vault/
+   traces index --vault vault/
    ```
 
 4. **Verify**:
    ```bash
-   lithos verify --vault vault/
+   traces verify --vault vault/
    ```
 
 ### When to Use
 
 **Required**:
-- After upgrading Lithos version with rkyv format changes
+- After upgrading Traces version with rkyv format changes
 - When `DbError::CorruptData` is encountered during operations
 - After restoring vault from backup (filesystem-level restore)
 
 **Optional (Repair)**:
 - When query results seem inconsistent with file contents
-- After bulk file operations outside Lithos (git merge, mass rename)
+- After bulk file operations outside Traces (git merge, mass rename)
 - When troubleshooting indexing issues
 
 ## What Gets Rebuilt
@@ -78,7 +78,7 @@ Typical reindex times (commodity hardware):
 
 Planned improvements:
 
-- `lithos migrate --clean-slate`: Automated reindex with progress tracking
+- `traces migrate --clean-slate`: Automated reindex with progress tracking
 - **Format version detection**: Automatic prompt when version mismatch detected
 - **Incremental repair**: Reindex only affected files (not full rebuild)
 - **Parallel indexing**: Multi-threaded parsing for large vaults
@@ -100,13 +100,13 @@ Planned improvements:
 
 **Likely Causes**:
 - Files not matching configured glob patterns
-- Files excluded by `.lithosignore`
+- Files excluded by `.tracesignore`
 - Promotion tags misconfigured (for tasks)
 
 **Solution**:
-1. Check config: `lithos config show`
-2. Verify file patterns: `lithos files list --vault vault/`
-3. Check exclusions: `cat vault/.lithosignore`
+1. Check config: `traces config show`
+2. Verify file patterns: `traces files list --vault vault/`
+3. Check exclusions: `cat vault/.tracesignore`
 
 ### Reindex Very Slow
 
@@ -118,7 +118,7 @@ Planned improvements:
 - Many regex patterns in schema validation
 
 **Solution**:
-1. Profile: `lithos index --vault vault/ --profile`
+1. Profile: `traces index --vault vault/ --profile`
 2. Check for outliers: Files > 100KB or > 10000 lines
 3. Consider splitting large files
 

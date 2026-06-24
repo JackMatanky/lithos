@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Filename:    lithos/clippy.toml
+# Filename:    traces/clippy.toml
 # Docs:        https://doc.rust-lang.org/clippy/configuration.html
 # Description: Configuration for clippy lints, including complexity thresholds
 #              and project-specific valid identifiers.
@@ -35,7 +35,7 @@ large-error-threshold = 128
 
 # Project Metadata
 msrv = "1.92"
-doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
+doc-valid-idents = ["Traces", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
 disallowed-names = ["foo", "bar", "baz", "quux", "tmp"]
 
 # Source Ordering

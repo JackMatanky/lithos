@@ -85,7 +85,7 @@ So that integration issues are caught early with proper isolation and mocking.
 
 - **Architecture Compliance:** Follow established async testing patterns, extend for cross-boundary scenarios. Use existing test utilities for fixtures and isolation.
 - **Testing Standards:** Integration tests should run separately from unit tests, with clear isolation. Aim for 80% coverage on integration paths.
-- **Source Tree Components:** Add integration test modules in `tests/` directory, leverage existing `lithos-core` test utilities.
+- **Source Tree Components:** Add integration test modules in `tests/` directory, leverage existing `traces-core` test utilities.
 - **Dependencies:** May need test containers (testcontainers crate) for database isolation, existing tokio for async testing.
 
 ### Project Structure Notes
@@ -149,7 +149,7 @@ dev agent (recommended for implementation)
 
 - **Implementation Approach**:
   - Followed project's established test patterns from `crates/app/tests/event_patterns.rs` which uses `#[expect(clippy::disallowed_methods)]` for test assertions
-  - Used existing MockEventBus and EventBusPort from lithos-test-utils to demonstrate cross-module contract testing
+  - Used existing MockEventBus and EventBusPort from traces-test-utils to demonstrate cross-module contract testing
   - Created parallel test execution infrastructure with mise tasks (test:unit and test:integration separated)
   - Deferred testcontainers integration due to RUSTSEC-2025-0134 (rustls-pemfile unmaintained); mockall provides sufficient trait-based mocking for current needs
   - Integration tests follow rustc-dev-guide best practices: descriptive names, comprehensive doc comments explaining scenario/verification/rationale

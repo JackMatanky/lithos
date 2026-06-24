@@ -392,7 +392,7 @@ pub struct Metadata {
     root: VaultRoot,
     /// Human-readable name of the vault.
     name: VaultName,
-    /// Version of the vault schema/Lithos that created it.
+    /// Version of the vault schema/Traces that created it.
     version: AppVersion,
 }
 
@@ -564,7 +564,7 @@ impl TryFrom<u64> for VaultVersion {
         Ok(Self(value))
     }
 }
-/// Version identifier for the Lithos application.
+/// Version identifier for the Traces application.
 ///
 /// This type ensures that version strings are not empty and represent
 /// a valid application version.

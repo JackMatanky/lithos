@@ -42,7 +42,7 @@ So that configuration supports quick use (no config required) while enabling adv
 
 **Given** schema versioning is needed
 **When** I implement vault config
-**Then** schema_version is optional and defaults to current Lithos binary version for quick use
+**Then** schema_version is optional and defaults to current Traces binary version for quick use
 
 **Given** vault naming is needed
 **When** I implement vault metadata
@@ -214,7 +214,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** docs/testing/developer-guide.md provides testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
+**Then** I validate compliance with Traces testing hierarchy, async patterns, and utilities
 
 **Given** ADR 0013 controls domain serialization strategy
 **When** I review domain entities

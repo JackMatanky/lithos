@@ -13,7 +13,7 @@
 
 ### Current State Issues
 
-The test suite still depends on `lithos-test-utils` and `lithos-test-macros`, which:
+The test suite still depends on `traces-test-utils` and `traces-test-macros`, which:
 
 1. **Violates Sync-First Principle**: test-utils has async dependencies (tokio, async-trait, tokio-test)
 2. **Unnecessary Abstraction**: Many utilities are over-engineered for simple test cases
@@ -22,15 +22,15 @@ The test suite still depends on `lithos-test-utils` and `lithos-test-macros`, wh
 
 ### Dependencies to Remove
 
-**Current usage in `lithos-core`:**
+**Current usage in `traces-core`:**
 ```
-lithos-core/src/note/aggregate.rs:     use lithos_test_utils::assert_err_kind;
-lithos-core/src/note/aggregate.rs:     use lithos_test_utils::test_builder;
-lithos-core/src/config/aggregate.rs:   use lithos_test_utils::assert_err_kind;
-lithos-core/src/template/aggregate.rs: use lithos_test_utils::data::properties::valid_identifier;
-lithos-core/src/schema/graph.rs:       use lithos_test_utils::assert_eq_detailed;
-lithos-core/src/schema/property.rs:    use lithos_test_utils::data::properties::{...};
-lithos-core/src/schema/property_spec.rs: use lithos_test_utils::assert_err_kind;
+traces-core/src/note/aggregate.rs:     use traces_test_utils::assert_err_kind;
+traces-core/src/note/aggregate.rs:     use traces_test_utils::test_builder;
+traces-core/src/config/aggregate.rs:   use traces_test_utils::assert_err_kind;
+traces-core/src/template/aggregate.rs: use traces_test_utils::data::properties::valid_identifier;
+traces-core/src/schema/graph.rs:       use traces_test_utils::assert_eq_detailed;
+traces-core/src/schema/property.rs:    use traces_test_utils::data::properties::{...};
+traces-core/src/schema/property_spec.rs: use traces_test_utils::assert_err_kind;
 ```
 
 **Total:** 9 import sites across 6 files
@@ -43,9 +43,9 @@ lithos-core/src/schema/property_spec.rs: use lithos_test_utils::assert_err_kind;
 
 #### `assert_err_kind` → Standard Rust Pattern
 
-**Current (lithos-test-utils):**
+**Current (traces-test-utils):**
 ```rust
-use lithos_test_utils::assert_err_kind;
+use traces_test_utils::assert_err_kind;
 
 assert_err_kind!(result, NoteError::ValidationFailed(_));
 ```
@@ -70,9 +70,9 @@ match result {
 
 #### `test_builder` Macro → Manual Builder
 
-**Current (lithos-test-macros):**
+**Current (traces-test-macros):**
 ```rust
-use lithos_test_utils::test_builder;
+use traces_test_utils::test_builder;
 
 test_builder!(NoteBuilder, Note, {
     id: Uuid = Uuid::now_v7(),
@@ -144,7 +144,7 @@ impl NoteBuilder {
 
 **Current:**
 ```rust
-use lithos_test_utils::assert_eq_detailed;
+use traces_test_utils::assert_eq_detailed;
 
 assert_eq_detailed!(actual, expected);
 ```
@@ -163,7 +163,7 @@ assert_eq!(actual, expected);
 
 **Current:**
 ```rust
-use lithos_test_utils::data::properties::valid_identifier;
+use traces_test_utils::data::properties::valid_identifier;
 
 proptest! {
     #[test]
@@ -205,7 +205,7 @@ proptest! {
 **Best Practice Checklist:**
 
 1. **Co-location**: Tests in same file as implementation using `#[cfg(test)]`
-   - ✅ Already implemented in lithos-core
+   - ✅ Already implemented in traces-core
 
 2. **Test Module Structure**:
    ```rust
@@ -288,7 +288,7 @@ tests/
 tests/
 └── arch/          # Architecture tests only
 
-lithos-core/
+traces-core/
 └── src/
     └── note/
         └── aggregate.rs   # Tests co-located with #[cfg(test)]
@@ -306,8 +306,8 @@ lithos-core/
 ### 3.1 Audit Test Usage (1-2 hours)
 
 **Tasks:**
-- [x] Identify all `lithos-test-utils` imports in `lithos-core`
-- [x] Identify all `lithos-test-macros` usage
+- [x] Identify all `traces-test-utils` imports in `traces-core`
+- [x] Identify all `traces-test-macros` usage
 - [x] Document what each utility does
 - [ ] Categorize by replacement complexity
 
@@ -316,15 +316,15 @@ lithos-core/
 ### 3.2 Replace Assertion Utilities (2-3 hours)
 
 **Files to modify:**
-1. `lithos-core/src/note/aggregate.rs` (2 imports)
-2. `lithos-core/src/config/aggregate.rs` (1 import)
-3. `lithos-core/src/schema/property_spec.rs` (3 imports)
-4. `lithos-core/src/schema/graph.rs` (1 import)
+1. `traces-core/src/note/aggregate.rs` (2 imports)
+2. `traces-core/src/config/aggregate.rs` (1 import)
+3. `traces-core/src/schema/property_spec.rs` (3 imports)
+4. `traces-core/src/schema/graph.rs` (1 import)
 
 **Pattern:**
 ```rust
 // Before
-use lithos_test_utils::assert_err_kind;
+use traces_test_utils::assert_err_kind;
 assert_err_kind!(result, NoteError::ValidationFailed(_));
 
 // After
@@ -332,13 +332,13 @@ assert!(matches!(result, Err(NoteError::ValidationFailed(_))));
 ```
 
 **Verification:**
-- [ ] Run `cargo test --package lithos-core` after each file
+- [ ] Run `cargo test --package traces-core` after each file
 - [ ] Ensure all tests still pass
 - [ ] Verify error messages are still helpful
 
 ### 3.3 Replace Builder Macro (2-3 hours)
 
-**File:** `lithos-core/src/note/aggregate.rs`
+**File:** `traces-core/src/note/aggregate.rs`
 
 **Steps:**
 1. Remove `test_builder!` macro invocation
@@ -374,12 +374,12 @@ assert!(matches!(result, Err(NoteError::ValidationFailed(_))));
 ### 3.4 Replace Property Test Helpers (1-2 hours)
 
 **Files:**
-- `lithos-core/src/template/aggregate.rs`
-- `lithos-core/src/schema/property.rs`
+- `traces-core/src/template/aggregate.rs`
+- `traces-core/src/schema/property.rs`
 
 **Steps:**
 1. Add `prop_compose!` macros inline in test modules
-2. Replace imports from `lithos_test_utils::data::properties`
+2. Replace imports from `traces_test_utils::data::properties`
 3. Run property tests to verify
 
 **Example:**
@@ -405,13 +405,13 @@ mod tests {
 
 ### 3.5 Remove Test Dependencies (1 hour)
 
-**File:** `lithos-core/Cargo.toml`
+**File:** `traces-core/Cargo.toml`
 
 **Changes:**
 ```toml
 [dev-dependencies]
 # REMOVE these lines:
-# lithos-test-utils = { workspace = true }
+# traces-test-utils = { workspace = true }
 
 # Keep these (standard Rust testing):
 rstest = { workspace = true }
@@ -421,9 +421,9 @@ criterion = { workspace = true, features = ["html_reports"] }
 ```
 
 **Verification:**
-- [ ] `cargo build --package lithos-core` succeeds
-- [ ] `cargo test --package lithos-core` passes (all 251 tests)
-- [ ] `cargo clippy --package lithos-core` has zero warnings
+- [ ] `cargo build --package traces-core` succeeds
+- [ ] `cargo test --package traces-core` passes (all 251 tests)
+- [ ] `cargo clippy --package traces-core` has zero warnings
 
 ### 3.6 Move Test Crates to Legacy (1 hour)
 
@@ -495,13 +495,13 @@ prop_compose! {
 ## 4. Acceptance Criteria
 
 ### Test Quality
-- [ ] All 251 lithos-core tests pass
-- [ ] No `lithos-test-utils` imports in `lithos-core`
-- [ ] No `lithos-test-macros` usage in `lithos-core`
+- [ ] All 251 traces-core tests pass
+- [ ] No `traces-test-utils` imports in `traces-core`
+- [ ] No `traces-test-macros` usage in `traces-core`
 - [ ] Test code uses standard Rust patterns only
 
 ### Code Quality
-- [ ] `cargo clippy --package lithos-core` has zero warnings
+- [ ] `cargo clippy --package traces-core` has zero warnings
 - [ ] No custom test macros (use standard Rust)
 - [ ] Test code is more readable than before
 
@@ -540,7 +540,7 @@ prop_compose! {
 
 | Metric                           | Current | Target | Verification               |
 | -------------------------------- | ------- | ------ | -------------------------- |
-| lithos-test-utils imports        | 9       | 0      | `grep -r` check              |
+| traces-test-utils imports        | 9       | 0      | `grep -r` check              |
 | Custom test macros               | 1       | 0      | `grep -r test_builder`       |
 | Test utility crates in workspace | 2       | 0      | `Cargo.toml` review          |
 | Test pass rate                   | 100%    | 100%   | `cargo test`                 |

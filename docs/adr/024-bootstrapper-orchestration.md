@@ -5,7 +5,7 @@ supersedes: [021]
 date_proposed: 2026-06-11
 date_decided: 2026-06-11
 date_implemented:
-stakeholders: [lithos-core maintainers, lithos-cli maintainers]
+stakeholders: [traces-core maintainers, traces-cli maintainers]
 ---
 
 # ADR 024: Bootstrapper as the Single Orchestration Point

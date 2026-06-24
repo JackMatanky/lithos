@@ -1,7 +1,7 @@
 id,name,description,tags,fragment_file
 anti-patterns,Rust Testing Anti-Patterns,Comprehensive guide and scoring for Rust testing anti-patterns,"rust,testing,anti-patterns,quality,scoring",anti-patterns.md
 review-patterns,Rust Test Review Patterns,Senior-dev review patterns and quality frameworks,"rust,testing,review,quality",review-patterns.md
-lithos-architecture-testing,Lithos Architecture Testing,Bounded context and CQRS testing patterns,"lithos,architecture,cqrs,zero-copy",lithos-architecture-testing.md
+traces-architecture-testing,Traces Architecture Testing,Bounded context and CQRS testing patterns,"traces,architecture,cqrs,zero-copy",traces-architecture-testing.md
 knowledge-overview,Rust Testing Knowledge Overview,Index and usage guide for Rust testing knowledge modules,"rust,testing,overview,guide",README.md
 unit,Rust Unit Testing,Unit test location rules and patterns,"rust,testing,unit",test-unit.md
 integration,Rust Integration Testing,Integration testing guidance for I/O and dependencies,"rust,testing,integration",test-integration.md

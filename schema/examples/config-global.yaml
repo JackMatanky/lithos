@@ -1,4 +1,4 @@
-# Global Lithos Configuration
+# Global Traces Configuration
 log_level: info
 
 paths:

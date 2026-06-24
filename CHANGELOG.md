@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added - Epic 2: Test Architecture Patterns & Infrastructure (Milestone 1)
 
 **Testing Infrastructure:**
-- Established centralized test utilities in `lithos-test-utils` (temp directories, fixtures, assertions).
+- Established centralized test utilities in `traces-test-utils` (temp directories, fixtures, assertions).
 - Implemented async testing patterns for Tokio with multi-threaded runtime configuration.
 - Created event-driven testing framework for hybrid event bus (MPSC, Broadcast, Watch).
 - Established CQRS testing patterns for command/query separation and eventual consistency.

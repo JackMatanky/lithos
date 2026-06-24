@@ -20,4 +20,4 @@ To understand why our implementation felt so resistant to Rust's strengths, we c
 ### 4. The Pivot: Holistic Architecture Review
 The investigation escalated from a specific cache problem to a systemic architectural review (documented in `2026-01-30-critical-architecture-review.md`).
 - **Decision**: The rigid multi-crate structure must be dismantled.
-- **New Direction**: We will pivot to a **Single-Crate "Core" Architecture** (`lithos-core`) that leverages Rust's module system (`pub(crate)`) for encapsulation. This aligns our architecture with the language, enabling zero-copy optimizations to flow naturally as intended.
+- **New Direction**: We will pivot to a **Single-Crate "Core" Architecture** (`traces-core`) that leverages Rust's module system (`pub(crate)`) for encapsulation. This aligns our architecture with the language, enabling zero-copy optimizations to flow naturally as intended.

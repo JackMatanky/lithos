@@ -511,7 +511,7 @@ See https://docs.rs/moka/0.12.13/moka/sync/struct.CacheBuilder.html#method.build
 
 **Guidance:** Choose a hasher based on threat model and key characteristics.
 
-## Integration with Lithos System
+## Integration with Traces System
 
 ### Recommended Use Cases
 
@@ -608,7 +608,7 @@ use moka::sync::Cache;
 use std::time::Duration;
 
 let cache = Cache::builder()
-    .name("lithos-ledger")
+    .name("traces-ledger")
     .max_capacity(100_000)
     .weigher(|_key, value: &Transaction| {
         (value.data.len() as u32) + 100  // Overhead estimate
@@ -665,7 +665,7 @@ let value: Arc<Vec<u8>> = cache.get(&"key".to_string()).unwrap();
 // No data copy, just reference count increment
 ```
 
-## Summary for Lithos
+## Summary for Traces
 
 Moka provides exceptional performance through:
 

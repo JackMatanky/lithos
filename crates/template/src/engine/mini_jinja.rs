@@ -27,7 +27,7 @@ pub(crate) struct MiniJinjaEngine {
 }
 
 impl MiniJinjaEngine {
-    /// Creates a `MiniJinja` engine with Lithos foundation rendering settings.
+    /// Creates a `MiniJinja` engine with Traces foundation rendering settings.
     ///
     /// The configured engine rejects undefined variables and disables escaping
     /// so Markdown characters render unchanged.

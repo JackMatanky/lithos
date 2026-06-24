@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# Filename:    lithos/Cargo.toml
+# Filename:    traces/Cargo.toml
 # Docs:        https://doc.rust-lang.org/cargo/reference/manifest.html
-# Description: Workspace manifest for the Lithos Rust project, defining
+# Description: Workspace manifest for the Traces Rust project, defining
 #              package metadata, dependencies, and workspace-wide lints.
 # -----------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@ edition = "2024"
 rust-version = "1.92"
 description = "A CLI-first templating and schema system for Obsidian vaults"
 readme = "README.md"
-repository = "https://github.com/jack/lithos"
+repository = "https://github.com/jack/traces"
 license = "MIT OR Apache-2.0"
 keywords = ["cli", "templating", "obsidian", "schema"]
 categories = ["command-line-utilities", "template-engine"]

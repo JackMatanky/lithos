@@ -101,7 +101,7 @@ opencode-codex
 
 ### Implementation Plan
 
-- Extend `lithos-test-utils` with event testing utilities and mock event bus
+- Extend `traces-test-utils` with event testing utilities and mock event bus
 - Add integration tests demonstrating publisher/subscriber patterns
 - Document event-driven testing guidelines aligned with ADR 012
 
@@ -167,7 +167,7 @@ opencode-codex
 
 ## Dev Notes
 
-- **ADR 012 Analysis Integration**: Follow validated testing patterns for optimal efficiency and complete coverage of Lithos' hybrid event bus architecture (ADR 004).
+- **ADR 012 Analysis Integration**: Follow validated testing patterns for optimal efficiency and complete coverage of Traces' hybrid event bus architecture (ADR 004).
 
 - **Architecture Compliance**: Builds on CQRS patterns with comprehensive event verification across all three event bus planes.
 
@@ -222,16 +222,16 @@ opencode-codex
 ### Implemented Test Coverage
 
 **Unit Tests (40 passing):**
-- lithos-test-utils::events module (14 tests)
+- traces-test-utils::events module (14 tests)
   - Given-When-Then framework validation
   - Payload assertion with serialization handling
   - Sequence assertion for ordering verification
   - Timing assertion for non-decreasing timestamps and max span
-- lithos-test-utils::mocks::event_bus module (11 tests)
+- traces-test-utils::mocks::event_bus module (11 tests)
   - Data plane: publish, subscribe, sequence, payload contract
   - Control plane: broadcast, capture, closed channel
   - State plane: watch updates, capture, closed channel
-- lithos-test-utils::async_utils module (14 tests)
+- traces-test-utils::async_utils module (14 tests)
   - Timeout, cancellation, spawn_blocking
   - Shared mutex, semaphore, rwlock
 
@@ -273,7 +273,7 @@ opencode-codex
 
 ### Project Context Reference
 
-- Lithos uses hybrid event bus (ADR 004) for domain events and CQRS
+- Traces uses hybrid event bus (ADR 004) for domain events and CQRS
 - Event-driven architecture requires comprehensive testing for reliability
 - Domain layer events drive cross-aggregate consistency and UI updates
 

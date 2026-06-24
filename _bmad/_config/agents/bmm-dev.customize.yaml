@@ -1,4 +1,4 @@
-# Dev Agent Customization for Lithos Project
+# Dev Agent Customization for Traces Project
 # Location: _bmad/_config/agents/bmm-dev.customize.yaml
 
 # Add persistent memories for the agent
@@ -7,7 +7,7 @@ memories:
   - "When writing or reviewing Rust code, reference docs/refs/rust/ for canonical patterns"
   - "For code style and formatting: see docs/refs/rust/style.md"
   - "For module organization and visibility: see docs/refs/rust/module-system.md"
-  - "For Lithos-specific Rust idioms: see docs/refs/rust/idioms.md"
+  - "For Traces-specific Rust idioms: see docs/refs/rust/idioms.md"
   - "For overall Rust best practices: see docs/refs/rust/canonical-best-practices.md"
 
   # --- Crate-Specific Knowledge ---
@@ -25,7 +25,7 @@ memories:
 # Other sections remain standard
 agent:
   metadata:
-    name: "Dev-Lithos"
+    name: "Dev-Traces"
 persona:
   role: ""
   identity: ""

@@ -85,4 +85,4 @@ So that the codebase remains self-documenting, precise, and free of unnecessary 
 
 ### Living Documentation
 - Doc-tests are not just tests; they are the primary way new developers (and AI agents) learn the API. They must be perfect.
-- Use the `lithos-test-utils` where appropriate to keep examples concise.
+- Use the `traces-test-utils` where appropriate to keep examples concise.

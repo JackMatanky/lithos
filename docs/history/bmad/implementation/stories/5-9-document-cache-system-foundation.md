@@ -139,7 +139,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 ### Task 6: Final Verification & Integration
 - [ ] Subtask 6.1: Perform a final pass of all public APIs to ensure 100% documentation coverage
 - [ ] Subtask 6.2: Verify that all links in the generated markdown files are valid
-- [ ] Subtask 6.3: Run `mise run verify` to confirm all Lithos quality gates are satisfied
+- [ ] Subtask 6.3: Run `mise run verify` to confirm all Traces quality gates are satisfied
 - [ ] Subtask 6.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
 - [ ] Subtask 6.5: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality

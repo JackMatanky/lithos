@@ -1,7 +1,7 @@
 # Note Parser Cleanup Working Checklist
 
 Date: 2026-04-29
-Scope: `lithos-core/src/note/parser/` (full module, including `mod.rs`)
+Scope: `traces-core/src/note/parser/` (full module, including `mod.rs`)
 Constraint: no intentional runtime behavior change unless explicitly documented.
 
 ## Baseline Health (Current)
@@ -12,16 +12,16 @@ Constraint: no intentional runtime behavior change unless explicitly documented.
 
 Recorded warning hotspots to resolve during consolidation:
 
-- `lithos-core/src/note/parser/block.rs`
+- `traces-core/src/note/parser/block.rs`
   - wildcard enum match arm in `Block::text`
   - pattern type mismatch in `Block::text`
   - unused methods: `is_scannable`, `HeadingLevel::as_u8`
-- `lithos-core/src/note/parser/config.rs`
+- `traces-core/src/note/parser/config.rs`
   - `trivially_copy_pass_by_ref` on `EventStreamConfig` accessors
-- `lithos-core/src/note/parser/stream.rs`
+- `traces-core/src/note/parser/stream.rs`
   - dead enum variants: `InlineTag::{InlineMath, DisplayMath, Html}`
   - dead enum variants: `InlineTagEnd::{InlineMath, DisplayMath, Html}`
-- `lithos-core/src/note/parser/visitor.rs`
+- `traces-core/src/note/parser/visitor.rs`
   - unfulfilled `dead_code` lint expectation at module level
 
 ## Parser Invariants To Preserve

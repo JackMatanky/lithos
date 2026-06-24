@@ -127,7 +127,7 @@ So that stakeholders understand project progress and timelines.
 
 ### Project Context Reference
 
-- Lithos project: Template management system with 15-epic scope
+- Traces project: Template management system with 15-epic scope
 - Current progress: Epics 1-8 foundation complete
 - Remaining work: Domain implementation (Epics 9-15)
 

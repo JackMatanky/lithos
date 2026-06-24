@@ -11,14 +11,14 @@
 
 ## Module context docs
 
-- [Config Context](../lithos-core/src/config/CONTEXT.md)
-- [Indexer Context](../lithos-core/src/indexer/CONTEXT.md)
-- [Note Context](../lithos-core/src/note/CONTEXT.md)
-- [Schema Context](../lithos-core/src/schema/CONTEXT.md)
-- [Template Context](../lithos-core/src/template/CONTEXT.md)
-- [DB Context](../lithos-core/src/db/CONTEXT.md)
-- [FS Context](../lithos-core/src/fs/CONTEXT.md)
-- [CLI Context](../lithos-cli/src/CONTEXT.md)
+- [Config Context](../traces-core/src/config/CONTEXT.md)
+- [Indexer Context](../traces-core/src/indexer/CONTEXT.md)
+- [Note Context](../traces-core/src/note/CONTEXT.md)
+- [Schema Context](../traces-core/src/schema/CONTEXT.md)
+- [Template Context](../traces-core/src/template/CONTEXT.md)
+- [DB Context](../traces-core/src/db/CONTEXT.md)
+- [FS Context](../traces-core/src/fs/CONTEXT.md)
+- [CLI Context](../traces-cli/src/CONTEXT.md)
 
 ## Historical and non-authoritative material
 

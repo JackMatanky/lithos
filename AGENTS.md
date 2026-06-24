@@ -1,4 +1,4 @@
-# Lithos - AI Agent Reference
+# Traces - AI Agent Reference
 
 ## Agent skills
 
@@ -17,7 +17,7 @@ Domain documentation uses a multi-context layout with a root `CONTEXT-MAP.md` th
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **lithos** (22080 symbols, 34591 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **traces** (22080 symbols, 34591 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
@@ -40,10 +40,10 @@ This project is indexed by GitNexus as **lithos** (22080 symbols, 34591 relation
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/lithos/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/lithos/clusters` | All functional areas |
-| `gitnexus://repo/lithos/processes` | All execution flows |
-| `gitnexus://repo/lithos/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/traces/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/traces/clusters` | All functional areas |
+| `gitnexus://repo/traces/processes` | All execution flows |
+| `gitnexus://repo/traces/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

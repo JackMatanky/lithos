@@ -31,7 +31,7 @@ This coupling creates semantic drift between filesystem I/O paths (`FsPath`, `Fi
 6. **Remove `AbsolutePath` and deprecate `RelativePath`** after migration:
    - `AbsolutePath` replaced by `DirPath` in config-facing types (`VaultRoot`, `TrustedVaultPath` become thin wrappers over `DirPath`)
    - `RelativePath` deprecated with short-lived alias, removed after phased hard cuts
-7. **Enforce via architecture tests**: transitional test module (`lithos-core/tests/path_migration_architecture.rs`) bans `AbsolutePath`, `RelativePath`, and `NormalizedPath` alias usage per context phase with explicit exit criteria
+7. **Enforce via architecture tests**: transitional test module (`traces-core/tests/path_migration_architecture.rs`) bans `AbsolutePath`, `RelativePath`, and `NormalizedPath` alias usage per context phase with explicit exit criteria
 
 ## References
 - [fs-inode-architecture issue 01](.scratch/fs-inode-architecture/01-path-types.md) - Post-implementation refactors for path types

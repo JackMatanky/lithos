@@ -583,7 +583,7 @@ mod tests {
             #[test]
             fn try_from_uuid_rejects_non_v7() {
                 // Uuid::new_v5 is available without extra feature flags.
-                let non_v7 = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"lithos");
+                let non_v7 = Uuid::new_v5(&Uuid::NAMESPACE_DNS, b"traces");
                 let result = TemplateId::try_from(non_v7);
                 assert!(result.is_err(), "Non-v7 UUID should be rejected");
             }
