@@ -29,6 +29,7 @@ tracing.workspace = true
 rkyv.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+trace-indexer = { version = "0.1.0", path = "../indexer" }
 
 # Note: tokio removed per Phase 5 - sync-first design
 # If async is needed later for parallel operations, add it back and use

@@ -79,7 +79,12 @@ pub(crate) fn run_index(
         .map_err(|e| CliError::InvalidPath(e.to_string()))?;
 
     let _result =
-        app_run_index(&vault_root, &cache_dir, &cmd).map_err(CliError::from)?;
+        app_run_index(&vault_root, &cache_dir, &cmd).map_err(|e| match e {
+            trace_app::error::AppError::Indexer(idx_err) => {
+                CliError::Index(crate::error::IndexCommandError::from(idx_err))
+            }
+            other => CliError::Bootstrap(other),
+        })?;
 
     // Formatting for CLI output is pending in Cycle 5 (Output formatting).
     // The test in this cycle only requires mapping arguments to models.

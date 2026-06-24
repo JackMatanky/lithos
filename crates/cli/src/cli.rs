@@ -34,6 +34,11 @@ pub(crate) struct Cli {
 }
 
 /// Arguments for the `index` subcommand.
+///
+/// EXAMPLES:
+///   $ traces index
+///   $ traces index --rebuild
+///   $ traces index --path templates/ --format json
 #[derive(Debug, Args, PartialEq, Eq)]
 pub(crate) struct IndexArgs {
     /// Discard current cache and perform a full rebuild.

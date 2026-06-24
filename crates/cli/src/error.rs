@@ -1,3 +1,4 @@
+#![allow(unused_assignments, reason = "miette macro generates unused bindings")]
 //! CLI error types with exit code derivation.
 //!
 //! This module defines [`CliError`], the top-level error type for the Traces
@@ -9,7 +10,10 @@
 //! - `2` — invalid explicit path or configuration error (user error)
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
+use std::path::PathBuf;
+
 use trace_app::error::AppError;
+use trace_indexer::{IndexerError, IndexerRepositoryError, ScannerError};
 use trace_settings::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
@@ -40,6 +44,89 @@ pub(crate) enum CliError {
     /// An invalid explicit path was provided.
     #[error("invalid path: {0}")]
     InvalidPath(String),
+
+    /// Error during the index operation.
+    #[error(transparent)]
+    Index(#[from] IndexCommandError),
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub(crate) enum IndexCommandError {
+    #[error("{} does not exist", path.display())]
+    #[diagnostic(help(
+        "Provide a valid path, or omit --path to index the entire vault"
+    ))]
+    ScanPathNotFound {
+        path: PathBuf,
+    },
+
+    #[error("cannot read {}: permission denied", path.display())]
+    #[diagnostic(help("Grant read permission: chmod +r {}", path.display()))]
+    ScanAccessDenied {
+        path: PathBuf,
+    },
+
+    #[error("index database error: {detail}")]
+    #[diagnostic(help(
+        "Run `traces index --rebuild` to recreate the database"
+    ))]
+    StorageFailure {
+        detail: String,
+    },
+
+    #[error("I/O error reading {}: {detail}", path.display())]
+    #[diagnostic(help("Check disk space and filesystem health, then retry"))]
+    ScanIoError {
+        path: PathBuf,
+        detail: String,
+    },
+}
+
+impl From<IndexerError> for IndexCommandError {
+    fn from(err: IndexerError) -> Self {
+        match err {
+            IndexerError::Path(e) => IndexCommandError::ScanPathNotFound {
+                path: PathBuf::from(e.to_string()),
+            },
+            IndexerError::Scanner(ScannerError::Traversal {
+                path,
+                source,
+            }) => match source.kind() {
+                std::io::ErrorKind::NotFound => {
+                    IndexCommandError::ScanPathNotFound {
+                        path,
+                    }
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    IndexCommandError::ScanAccessDenied {
+                        path,
+                    }
+                }
+                _ => IndexCommandError::ScanIoError {
+                    path,
+                    detail: source.to_string(),
+                },
+            },
+            IndexerError::Repository(IndexerRepositoryError::Storage(e)) => {
+                IndexCommandError::StorageFailure {
+                    detail: e.to_string(),
+                }
+            }
+            IndexerError::Repository(
+                IndexerRepositoryError::DuplicatePath(p),
+            ) => IndexCommandError::StorageFailure {
+                detail: format!("duplicate path: {}", p.as_str()),
+            },
+            IndexerError::Repository(other) => {
+                IndexCommandError::StorageFailure {
+                    detail: other.to_string(),
+                }
+            }
+            _ => IndexCommandError::StorageFailure {
+                detail: err.to_string(),
+            },
+        }
+    }
 }
 
 impl CliError {
@@ -72,6 +159,20 @@ impl CliError {
             | Self::Write {
                 ..
             } => 3,
+            Self::Index(err) => match err {
+                IndexCommandError::ScanPathNotFound {
+                    ..
+                }
+                | IndexCommandError::StorageFailure {
+                    ..
+                } => 2,
+                IndexCommandError::ScanAccessDenied {
+                    ..
+                }
+                | IndexCommandError::ScanIoError {
+                    ..
+                } => 3,
+            },
         }
     }
 }
