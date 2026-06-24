@@ -52,6 +52,10 @@ pub trait ScannerPort {
     ) -> Result<WalkIter, ScannerError>;
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use mockall::{mock, predicate::always};

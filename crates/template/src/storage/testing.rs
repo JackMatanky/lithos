@@ -409,6 +409,10 @@ impl From<trace_db::testing::InMemoryDbError> for TemplateRepositoryError {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_db::{

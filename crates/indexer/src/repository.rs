@@ -148,6 +148,10 @@ pub trait Repository: ReadRepository + WriteRepository {}
 
 impl<T> Repository for T where T: ReadRepository + WriteRepository {}
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

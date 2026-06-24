@@ -319,6 +319,10 @@ impl WriteRepository for InMemoryRepository {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 impl From<trace_db::testing::InMemoryDbError> for NoteRepositoryError {
     #[inline]
@@ -341,6 +345,10 @@ impl From<trace_db::testing::InMemoryDbError> for NoteRepositoryError {
         NoteRepositoryError::Storage(db_error)
     }
 }
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
 
 #[cfg(test)]
 mod tests {

@@ -374,6 +374,10 @@ impl RawViewRead for ArchivedRawPropertyBankView {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_fs::metadata::{FileMetadata, FsTimes};

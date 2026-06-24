@@ -406,6 +406,10 @@ fn parse_bare_field(line: &str) -> Option<(&str, &str, usize)> {
     Some((key, val, consumed))
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

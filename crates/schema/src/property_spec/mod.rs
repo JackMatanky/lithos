@@ -224,6 +224,10 @@ impl TryFrom<crate::raw::property::RawPropertyInline> for PropertySpec {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::PropertySpec;

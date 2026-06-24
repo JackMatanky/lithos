@@ -67,6 +67,10 @@ pub enum GlobalResolutionSkipReason {
     SuppressedByFlag,
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

@@ -74,6 +74,10 @@ pub fn run_index(
     Ok(service.run(cmd.scope(), cmd.opts())?)
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_indexer::ScanFilters;

@@ -291,6 +291,10 @@ impl<K: Eq + Hash> From<HashMap<K, Blake3Hash>> for Blake3HashIndex<K> {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::{super::content_hash::hash_structured, *};

@@ -518,6 +518,10 @@ impl<'tree, 'source> Iterator for PreorderIter<'tree, 'source> {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,

@@ -320,6 +320,10 @@ impl ReadRepository for RedbRepository {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     //! Tests for vault read operations.

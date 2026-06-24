@@ -55,6 +55,10 @@ pub enum VaultRepositoryError {
     DuplicatePath(trace_fs::PathKey),
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 impl From<trace_db::testing::InMemoryDbError> for VaultRepositoryError {
     #[inline]

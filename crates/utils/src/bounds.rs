@@ -187,6 +187,10 @@ impl std::fmt::Display for BoundsError {
 )]
 impl std::error::Error for BoundsError {}
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

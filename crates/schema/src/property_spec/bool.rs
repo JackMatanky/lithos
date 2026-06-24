@@ -25,6 +25,10 @@ impl TryFrom<crate::raw::bool::RawBoolSpec> for BoolSpec {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use crate::property_spec::PropertySpec;

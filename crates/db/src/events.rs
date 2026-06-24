@@ -257,6 +257,10 @@ where
     fn compact_before(&self, cutoff: EventId) -> Result<u64, DbError>;
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use redb::{Key, Value};

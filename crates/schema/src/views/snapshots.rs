@@ -460,6 +460,10 @@ impl VersionRead for ArchivedPropertyBankVersion {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

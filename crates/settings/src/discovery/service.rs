@@ -318,6 +318,10 @@ impl DiscoveryPort for DiscoveryService {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_fs::FilePath;

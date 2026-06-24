@@ -84,6 +84,10 @@ impl TemplateEngine for MiniJinjaEngine {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, path::Path};

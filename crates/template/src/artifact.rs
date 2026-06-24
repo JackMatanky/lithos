@@ -154,6 +154,10 @@ fn map_path_error(err: WriteTargetError) -> TemplateArtifactError {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

@@ -749,6 +749,10 @@ fn evaluate_dir(
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_fs::{DirMetadata, DirName, FileMetadata, FileName, FsTimes};

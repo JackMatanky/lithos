@@ -41,6 +41,10 @@ pub struct RawFileSpec {
     pub file_class: Option<SchemaName>,
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

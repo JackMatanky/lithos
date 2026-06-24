@@ -237,6 +237,10 @@ fn path_error_to_invalid_path(path: &str, err: &PathError) -> NoteError {
     .into()
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

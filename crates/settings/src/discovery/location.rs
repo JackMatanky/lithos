@@ -89,6 +89,10 @@ pub enum GlobalCacheLocation {
     PlatformUserCache,
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

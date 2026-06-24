@@ -367,6 +367,10 @@ pub(crate) fn parse_from_format<T: DeserializeOwned>(
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

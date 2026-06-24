@@ -319,6 +319,10 @@ impl WriteRepository for RedbRepository {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::SystemTime};

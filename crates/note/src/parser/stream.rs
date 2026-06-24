@@ -564,6 +564,10 @@ impl From<pulldown_cmark::LinkType> for LinkKind {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,

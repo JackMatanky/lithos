@@ -459,6 +459,10 @@ impl WriteRepository for InMemoryRepository {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_db::testing::InMemoryHarness;

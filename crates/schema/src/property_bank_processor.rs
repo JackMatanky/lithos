@@ -951,6 +951,10 @@ impl PropertyBankProcessor<Completed, StaleReady> {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

@@ -191,6 +191,10 @@ fn build_discovery_flags(
     Ok(Some(flags))
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::assertions_on_result_states,

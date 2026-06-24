@@ -28,6 +28,10 @@ pub enum AppError {
     Indexer(#[from] trace_indexer::IndexerError),
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

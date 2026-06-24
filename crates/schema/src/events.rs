@@ -585,6 +585,10 @@ pub trait SchemaEventHandler: Send + Sync {
     fn handle_schema(&self, event: &SchemaEvent);
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1152,6 +1156,10 @@ impl SchemaEventHandler for EventCollector {
         self.schema_events.lock().expect("Lock poisoned").push(event.clone());
     }
 }
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
 
 #[cfg(test)]
 mod handler_tests {

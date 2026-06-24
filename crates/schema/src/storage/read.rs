@@ -583,6 +583,10 @@ fn parse_path_key(key: &str) -> Result<PathKey, trace_db::DbError> {
     })
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

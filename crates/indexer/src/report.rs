@@ -158,6 +158,10 @@ pub enum SkipReason {
     UnsupportedEntryType,
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

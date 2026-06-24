@@ -99,6 +99,10 @@ impl FileWriter for Writer {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,

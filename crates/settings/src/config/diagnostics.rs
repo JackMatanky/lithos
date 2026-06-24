@@ -35,6 +35,10 @@ pub(crate) enum ConfigWarning {
     Format(FormatDiscoveryWarning),
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use super::*;

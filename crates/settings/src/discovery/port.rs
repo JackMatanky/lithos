@@ -29,6 +29,10 @@ pub trait DiscoveryPort {
     ) -> Result<DiscoveryResult, DiscoveryError>;
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use mockall::{mock, predicate::always};

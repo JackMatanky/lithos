@@ -92,6 +92,10 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

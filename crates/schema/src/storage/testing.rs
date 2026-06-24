@@ -722,6 +722,10 @@ impl From<trace_db::testing::InMemoryDbError> for SchemaRepositoryError {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 mod tests {
     use trace_db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
