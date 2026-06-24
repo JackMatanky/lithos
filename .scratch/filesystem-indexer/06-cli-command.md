@@ -263,3 +263,20 @@ review.
 | `crates/cli/src/commands/mod.rs` | Add `pub(crate) mod index;` |
 | `crates/cli/src/commands/index.rs` | **NEW:** Handler + output + error mapping |
 | `crates/cli/src/error.rs` | Add `IndexCommandError`, `CliError::Index`, exit codes |
+
+---
+
+## Implementation Notes
+
+- **Implementation Complete**: All 10 TDD cycles have been implemented and verified.
+- **Arg Parsing**: Added `--rebuild`, `--path`, `--dry-run`, and `--format` using `clap`. The global CLI framework handles verbosity.
+- **Model Mapping**: Correctly handles fallback to `IndexScope::Full` if no `--path` is supplied. When `--path` is given, it safely delegates building `DirPath` leveraging existing path-joining helpers and domain validation constraints.
+- **Renaming to `--rebuild`**: `IndexOptions::reindex` was refactored to `rebuild` deeply within `trace-indexer` and `trace-app` context. Tests were refactored.
+- **Output**:
+  - *Human*: Outputs standard left-padded `{:>9}: {}` strings perfectly matching the layout explicitly stated in the specifications.
+  - *JSON*: Serializes directly via `serde_json` matching the provided string output shape exactly.
+- **Error Mapping & Diagnostics**: Implemented `IndexCommandError` which uses the `miette` ecosystem native to `trace-cli`. We properly implemented `From<trace_app::AppError>` bridging across deep boundaries into human-actionable exit-code bounded outputs. Exit codes are properly driven (0 = Success, 2 = PathNotFound/StorageFailure, 3 = AccessDenied/IoError).
+- **Test Safety & Best Practices**:
+  - Maintained zero unwrap/expect invariants in source (`#![deny(clippy::unwrap_used)]`).
+  - Added CLI test safety. Avoided `#![allow(clippy::unwrap_used)]` on production code.
+  - Executed tests locally in isolated subagent scope (`trace_app::index::tests`). E2E coverage added correctly parsing all parameters and enforcing constraints.
