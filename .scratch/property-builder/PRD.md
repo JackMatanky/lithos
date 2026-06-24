@@ -27,9 +27,9 @@ Isolate the schema difference computation from the schema resolution computation
 ## Implementation Decisions
 
 ### Restructuring and Module Placement
-- Rename the `schema/property_spec/` directory (if it exists as a directory) or conceptually group specs into `schema/property/`.
-- Move `PropertyDiffer` to a new file: `schema/property/diff.rs`.
-- Move `PropertyBuilder` and `PropertyMapBuilder` to a new file: `schema/property/builder.rs`.
+- Rename the `crates/schema/src/property_spec/` directory (if it exists as a directory) or conceptually group specs into `crates/schema/src/property/`.
+- Move `PropertyDiffer` to a new file: `crates/schema/src/property/diff.rs`.
+- Move `PropertyBuilder` and `PropertyMapBuilder` to a new file: `crates/schema/src/property/builder.rs`.
 
 ### Modified and New Interfaces
 
@@ -37,11 +37,11 @@ Isolate the schema difference computation from the schema resolution computation
 - Responsibility: Pure hash-based comparison. Takes a `RawPropertyMap` and a `RawPropertyHashIndex`.
 - Returns: Raw differences (`RawPropertyMap` or raw upserts/removals) instead of a fully resolved domain `PropertyDelta`.
 
-**`PropertyBuilder` (absorbs `expander.rs`, lives in `builder.rs`)**
+**`PropertyBuilder` (absorbs `crates/schema/src/expander.rs`, lives in `crates/schema/src/property/builder.rs`)**
 - Responsibility: Single property lifecycle.
 - Interface: Takes a `RawPropertyInline` or `RawPropertyRef` (plus an optional `PropertyBank`) and returns a fully validated domain `Property` with a new ID.
 
-**`PropertyMapBuilder` (replaces `TryFrom` in `property.rs`, lives in `builder.rs`)**
+**`PropertyMapBuilder` (replaces `TryFrom` in `crates/schema/src/property.rs`, lives in `crates/schema/src/property/builder.rs`)**
 - Responsibility: Map lifecycle and ID preservation.
 - Interface:
   - `pub fn new() -> Self`
@@ -52,8 +52,8 @@ Isolate the schema difference computation from the schema resolution computation
   - `pub fn remove(self, existing: PropertyMap, removals: &[PropertyName]) -> PropertyMap`
 
 ### Code Deletions
-- Delete the `TryFrom<RawPropertyMap>` trait implementations in `property.rs`.
-- Delete `expander.rs` entirely (absorbed into `PropertyBuilder`).
+- Delete the `TryFrom<RawPropertyMap>` trait implementations in `crates/schema/src/property.rs`.
+- Delete `crates/schema/src/expander.rs` entirely (absorbed into `PropertyBuilder`).
 
 ## Testing Decisions
 
@@ -61,12 +61,12 @@ Isolate the schema difference computation from the schema resolution computation
 A good test validates external behavior and output determinism without coupling to the implementation steps. Tests should cover edge cases (e.g., missing `$ref` targets, invalid formats) to ensure the seams correctly enforce domain rules.
 
 ### Modules to Test
-- **`schema/property/diff.rs`**: Unit test `PropertyDiffer` to verify it correctly identifies added, removed, and updated fields via hash comparisons without any side effects or resolution logic.
-- **`schema/property/builder.rs`**: Unit test `PropertyBuilder` for inline validation, `$ref` expansion, missing bank targets, type mismatches. Unit test `PropertyMapBuilder` for collection creation, successful ID preservation on updates, and delta applications.
+- **`crates/schema/src/property/diff.rs`**: Unit test `PropertyDiffer` to verify it correctly identifies added, removed, and updated fields via hash comparisons without any side effects or resolution logic.
+- **`crates/schema/src/property/builder.rs`**: Unit test `PropertyBuilder` for inline validation, `$ref` expansion, missing bank targets, type mismatches. Unit test `PropertyMapBuilder` for collection creation, successful ID preservation on updates, and delta applications.
 - **Integration/Regression**: Verify `BaseSchemaProcessor` and `PropertyBankProcessor` continue to pass all existing tests, proving the seam replacement is behavior-preserving.
 
 ### Prior Art
-- Check existing tests in `expander.rs` and `delta.rs` for property resolution scenarios. They will be ported/adapted to test the new builder modules.
+- Check existing tests in `crates/schema/src/expander.rs` and `crates/schema/src/delta.rs` for property resolution scenarios. They will be ported/adapted to test the new builder modules.
 - Check existing `TryFrom` property map tests to adapt them into builder `build()` tests.
 
 ## Out of Scope

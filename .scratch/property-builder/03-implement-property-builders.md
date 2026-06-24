@@ -4,11 +4,11 @@ labels: [ready-for-agent]
 
 ## What to build
 
-Implement `PropertyBuilder` and `PropertyMapBuilder` in `schema/property/builder.rs`. These two types become the single source of truth for constructing and updating domain `Property` and `PropertyMap` values. `PropertyBuilder` absorbs `RefExpander`; `PropertyMapBuilder` replaces the `TryFrom<RawPropertyMap>` implementations.
+Implement `PropertyBuilder` and `PropertyMapBuilder` in `crates/schema/src/property/builder.rs`. These two types become the single source of truth for constructing and updating domain `Property` and `PropertyMap` values. `PropertyBuilder` absorbs `RefExpander`; `PropertyMapBuilder` replaces the `TryFrom<RawPropertyMap>` implementations.
 
 **`PropertyBuilder`** handles the single-property lifecycle. It is a stateless free function (no struct needed). Interface:
 
-> **Note**: Add a `MissingPropertyBank` variant to the existing `PropertyBuilderError` in `schema/error.rs` (the enum already exists with variant `OverridePropertyRefSpecTypeMismatch`). Per hexagonal architecture principles, missing bank is a **construction error** (builder was misconfigured), not a property reference error. The variant is:
+> **Note**: Add a `MissingPropertyBank` variant to the existing `PropertyBuilderError` in `crates/schema/src/error.rs` (the enum already exists with variant `OverridePropertyRefSpecTypeMismatch`). Per hexagonal architecture principles, missing bank is a **construction error** (builder was misconfigured), not a property reference error. The variant is:
 > ```rust
 > #[error("property bank required to resolve $ref, but no bank was provided")]
 > MissingPropertyBank,
@@ -46,8 +46,8 @@ The builder accepts `RawPropertyMap<T>` (the validated map wrapper) for all raw 
 
 ## Acceptance criteria
 
-- [ ] `schema/property/builder.rs` exists and is part of the `schema::property` module
-- [ ] `schema/error.rs` gains `PropertyBuilderError::MissingPropertyBank` variant on the existing enum
+- [ ] `crates/schema/src/property/builder.rs` exists and is part of the `property` module
+- [ ] `crates/schema/src/error.rs` gains `PropertyBuilderError::MissingPropertyBank` variant on the existing enum
 - [ ] `build_inline` converts `RawPropertyInline` → `Property` with a new ID
 - [ ] `build_ref` resolves `RawPropertyRef` against `PropertyBank` → `Property` preserving the bank entry's ID and applying overrides
 - [ ] `build_ref` returns `SchemaError::PropertyRef(NotFound)` when the bank target is absent
@@ -57,8 +57,8 @@ The builder accepts `RawPropertyMap<T>` (the validated map wrapper) for all raw 
 - [ ] `PropertyMapBuilder::update_refs` applies ref upserts and preserves IDs for names present in `existing`
 - [ ] `PropertyMapBuilder::remove` drops named entries and returns the remaining map
 - [ ] `PropertyMapBuilder::with_bank` is required before any method that resolves `$ref` entries; calling a ref-resolving method without a bank returns `SchemaError::PropertyBuilder(PropertyBuilderError::MissingPropertyBank)`
-- [ ] Unit tests ported from `expander.rs` (ref resolution, type mismatches, missing bank targets, MissingPropertyBank error, optionality/multiplicity overrides)
-- [ ] Unit tests ported from `property.rs` `TryFrom` tests (bank required override, empty options, duplicate options)
+- [ ] Unit tests ported from `crates/schema/src/expander.rs` (ref resolution, type mismatches, missing bank targets, MissingPropertyBank error, optionality/multiplicity overrides)
+- [ ] Unit tests ported from `crates/schema/src/property.rs` `TryFrom` tests (bank required override, empty options, duplicate options)
 - [ ] `cargo test` passes with no regressions
 
 ## Blocked by

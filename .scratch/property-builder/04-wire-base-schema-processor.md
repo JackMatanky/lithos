@@ -10,7 +10,7 @@ The external interface and behaviour of `BaseSchemaProcessor` must remain identi
 
 ## Forced-ref orchestration
 
-When the `PropertyBank` changes, certain `$ref` properties must be re-resolved even if the schema file itself hasn't changed. In the current code (see `analysis` stage in `base_processor.rs`), this is handled by passing `expandable_refs` (forced ref names) to `PropertyDeltaEngine::diff_schema`, which injects them into the raw upserts before expansion.
+When the `PropertyBank` changes, certain `$ref` properties must be re-resolved even if the schema file itself hasn't changed. In the current code (see `analysis` stage in `crates/schema/src/base_processor.rs`), this is handled by passing `expandable_refs` (forced ref names) to `PropertyDeltaEngine::diff_schema`, which injects them into the raw upserts before expansion.
 
 After refactoring, the orchestrator must:
 
