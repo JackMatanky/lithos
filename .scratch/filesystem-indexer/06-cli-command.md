@@ -9,40 +9,101 @@ date_created: 2026-06-09
 date_completed:
 ---
 
-# Issue 06: `lithos index` CLI command
+# Issue 06: `traces index` CLI command
 
 ## What to build
 
-Add the `lithos index` command to `lithos-cli`. The CLI is a thin executable
+Add the `traces index` command to `trace-cli`. The CLI is a thin executable
 adapter: it parses user intent, constructs a typed `IndexCommand`, delegates
-to `lithos-core::app::run_index`, and renders diagnostic output. No domain
+to `trace_app::index::run_index`, and renders diagnostic output. No domain
 logic, freshness rules, or routing semantics live in the CLI.
 
 Command surface to implement:
 
-- `lithos index` — run a full incremental index, print summary output.
-- `lithos index --reindex` — discard all persisted state and re-index from
-  scratch (`IndexOptions { reindex: true }`).
-- `lithos index --path <path>` — partial scan for one file or directory
+- `traces index` — run a full incremental index, print summary output.
+- `traces index --rebuild` — discard all persisted state and re-index from
+  scratch (`IndexOptions { rebuild: true }`).
+- `traces index --path <path>` — partial scan for one file or directory
   subtree (`IndexScope::Partial`).
-- `lithos index --context <schema|note|template>` — partial scan scoped to
-  the configured context boundary path (`IndexScope::Partial`).
-- `lithos index --dry-run` — classify without persisting
+- `traces index --dry-run` — classify without persisting
   (`IndexOptions { dry_run: true }`).
-- `lithos index --format <human|json>` — choose diagnostic output format.
+- `traces index --format <human|json>` — choose diagnostic output format.
 
-Diagnostic output for `lithos index` must report: scanned, new, fresh, stale,
-deleted, and failed node counts. Errors map to actionable messages (invalid
-path, permission denied, scan failure) — not internal traces.
+> **Contextual scope deferred**: `traces index --context <schema|note|template>`
+> is deliberately excluded from this issue. Adding it requires a new
+> `ContextKind` enum, an `IndexScope::Contextual` variant, and config-driven
+> path resolution — cross-context domain work better scoped to its own issue.
+
+### Wiring detail
+
+The handler follows the existing `doctor` command pattern:
+
+1. Bootstrap discovery to resolve vault root and read settings.
+2. Resolve `cache_dir` from settings (output of bootstrapper).
+3. Call `trace_app::index::run_index(&root, &cache_dir, &cmd)`.
+4. Map return value (or error) to diagnostic output.
+
+`run_index` signature: `run_index(root: &DirPath, cache_dir: &DirPath, cmd: &IndexCommand) -> Result<IndexResult, AppError>`.
+
+### CLI error mapping
+
+`IndexerError` variants are mapped to four CLI-level diagnostic types. Each
+maps to one distinct user action:
+
+| CLI variant | Inner error source | User action |
+|---|---|---|
+| `ScanPathNotFound` | `Scanner(Traversal { NotFound })`, `Path(_)` | Fix the path or omit `--path` |
+| `ScanAccessDenied` | `Scanner(Traversal { PermissionDenied })` | Grant read permission |
+| `StorageFailure` | `Repository(Storage(_))`, `Repository(DuplicatePath)` | Rebuild with `--rebuild` |
+| `ScanIoError` | `Scanner(Traversal { other })` | Check disk/filesystem health |
+
+```rust
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub(crate) enum IndexCommandError {
+    #[error("{path} does not exist")]
+    #[diagnostic(help("Provide a valid path, or omit --path to index the entire vault"))]
+    ScanPathNotFound { path: PathBuf },
+
+    #[error("cannot read {path}: permission denied")]
+    #[diagnostic(help("Grant read permission: chmod +r {path}"))]
+    ScanAccessDenied { path: PathBuf },
+
+    #[error("index database error: {detail}")]
+    #[diagnostic(help("Run `traces index --rebuild` to recreate the database"))]
+    StorageFailure { detail: String },
+
+    #[error("I/O error reading {path}: {detail}")]
+    #[diagnostic(help("Check disk space and filesystem health, then retry"))]
+    ScanIoError { path: PathBuf, detail: String },
+}
+```
+
+### Diagnostic output
+
+Human-readable summary (printed to stdout) reporting counts:
+
+```
+  scanned: 42
+      new: 12
+    fresh: 28
+    stale: 2
+  deleted: 0
+   failed: 0
+```
+
+JSON equivalent via `--format json`:
+
+```json
+{"scanned":42,"new":12,"fresh":28,"stale":2,"deleted":0,"failed":0}
+```
 
 ## Acceptance criteria
 
-- [ ] `lithos index` runs end-to-end against a real vault directory and prints
+- [ ] `traces index` runs end-to-end against a real vault directory and prints
       a summary with correct counts.
-- [ ] `--reindex` produces an `IndexOptions { reindex: true }` and all nodes
-      are classified `New`.
-- [ ] `--path` and `--context` produce an `IndexScope::Partial` with the
-      correct root.
+- [ ] `--rebuild` produces `IndexOptions { rebuild: true }` and all nodes are
+      classified `New`.
+- [ ] `--path` produces an `IndexScope::Partial` with the correct root.
 - [ ] `--dry-run` classifies nodes without modifying the persisted index (no
       redb writes).
 - [ ] `--format json` outputs machine-readable JSON; `--format human` (default)
@@ -51,14 +112,19 @@ path, permission denied, scan failure) — not internal traces.
       and/or `IndexOptions` without duplicating domain rules.
 - [ ] CLI diagnostic tests prove human and JSON output report summary counts
       and actionable errors.
-- [ ] `IndexerError` variants are reviewed and confirmed to produce actionable
-      diagnostic output when rendered in the CLI.
+- [ ] `IndexCommandError` variants are tested: each maps from the correct
+      `IndexerError`/`AppError` variant and renders the expected help text.
+- [ ] Exit codes: `ScanPathNotFound` → 2, `ScanAccessDenied` → 3,
+      `StorageFailure` → 2, `ScanIoError` → 3. Success → 0.
+- [ ] Help text includes at least one example invocation.
 - [ ] All existing tests still pass (`mise run test`).
 - [ ] No clippy warnings (`mise run lint`).
 
-## Blocked by
+## Related
 
-- 05-app-wiring.md
+- Issue 05: `IndexCommand`, `run_index`, app wiring (resolved).
+- Future: contextual scope (`traces index --context <schema|note|template>`)
+  requires config-driven path resolution.
 
 ---
 
@@ -66,28 +132,38 @@ path, permission denied, scan failure) — not internal traces.
 
 > *This was generated by AI during triage.*
 
-**Verdict**: `ready-for-agent` — confirmed after maintainer decision to scope down.
+**Verdict**: `ready-for-agent` — corrected and re-evaluated after maintainer
+review.
 
 **What was decided:**
 
-- `lithos index status` and `lithos index explain <path>` were listed in PRD
-  Section 13 as aspirational command surface ("The exact command shape can be
-  refined during CLI implementation"). They were not decided in any grilling
-  session and have no corresponding `app`-level query flows. Maintainer
-  confirmed they are out of scope for this issue. Removed.
+- Project rename: `lithos` → `traces`, binary is `trace-cli` with command name
+  `traces`, workspace is `crates/*`. Issue updated throughout.
+- `--reindex` renamed to `--rebuild` — clearer language for a destructive
+  operation that recreates index state.
+- `--context <schema|note|template>` cut from scope. Requires new domain types
+  (`ContextKind`, config path resolution) that belong in a separate issue.
+- CLI diagnostics use four `IndexCommandError` variants:
+  `ScanPathNotFound`, `ScanAccessDenied`, `StorageFailure`, `ScanIoError`.
+  Each maps to a distinct user action. Library crates stay
+  `miette`-free — the CLI binary owns the diagnostic rendering.
+- Exit codes documented per variant. Matches existing CLI convention.
+- Blocked-by removed: issue 05 is resolved, `IndexCommand` and `run_index`
+  exist in `trace_app::index`.
 
 **What was checked:**
 
-- Flag-to-type mappings are all grounded in PRD Section 13 grilling decisions:
-  - `--reindex` → `IndexOptions { reindex: true }` ✓
-  - `--path` / `--context` → `IndexScope::Partial` ✓
-  - `--dry-run` → `IndexOptions { dry_run: true }` ✓
-  - `--format human|json` → output formatter ✓
-- CLI mapping tests and diagnostic tests are present — correct gate for a thin adapter.
-- `lithos index` end-to-end AC is achievable once issue 05 is complete.
-- Blocker chain (issue-05) is correct.
-- No domain logic, freshness rules, or routing in CLI — confirmed.
-
-**Also updated:** issue 05 triage notes gap about `run_status` is now moot —
-no `status` sub-command means no query flow needed in `app::flows` beyond
-`run_index`.
+- Existing CLI at `crates/cli/` has `doctor` and `config` commands using clap
+  4.6 derive, `OutputFormat` ValueEnum, `miette` diagnostics, sync-first
+  design. The `index` command follows these patterns.
+- `run_index` signature confirmed: takes `&DirPath`, `&DirPath`, `&IndexCommand`,
+  returns `Result<IndexResult, AppError>`.
+- `IndexScope` has `Full` and `Partial` variants, each with `root: DirPath` and
+  `filters: ScanFilters`. No contextual variant exists — would need
+  cross-context work.
+- `IndexOptions` currently has `reindex`/`reindex()` — issue renames to
+  `rebuild`/`rebuild()` in `trace-indexer`.
+- Integration tests exist in `crates/app/tests/index.rs`.
+- CLI guide compliance: flags preferred over args, standard names (`--dry-run`),
+  full-length flags (`--rebuild`, `--format`), no overloaded single-letter,
+  exit code table, lead-with-examples help.
