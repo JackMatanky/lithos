@@ -8,16 +8,16 @@ The Config context defines how settings are discovered, merged, validated, and e
 An origin of settings input — for example a file, environment variable, or CLI override.
 _Avoid_: input, payload
 
-**Environment Config**:
-System-wide configuration from environment variables or global config files, applied before vault-local settings.
-_Avoid_: global settings, system config
+**Global Config**:
+System-wide configuration from environment variables or global config files. Applied as the base layer before vault-local overrides.
+_Avoid_: environment config, system config
 
 **Local (Vault) Config**:
 Vault-specific configuration that overrides environment settings for a particular vault.
 _Avoid_: local settings, vault config, project config
 
 **Precedence Chain**:
-The ordered rule that decides which Config Source wins when the same key appears in multiple sources. Environment Config yields to Local Config.
+The ordered rule that decides which Config Source wins when the same key appears in multiple sources. Global Config yields to Local Config.
 _Avoid_: priority guess, merge magic
 
 **Resolved Config**:
@@ -36,7 +36,7 @@ _Avoid_: FS-validated path, resolved path, storage key in config
 
 > **Dev**: Config loads from two places — a global file and a vault file. How does it decide what wins?
 >
-> **Domain expert**: The Precedence Chain. Environment Config is always the base; Local Config overrides it. If the same key appears in both, the vault value wins.
+> **Domain expert**: The Precedence Chain. Global Config is always the base; Local Config overrides it. If the same key appears in both, the vault value wins.
 >
 > **Dev**: What if one of the files is missing?
 >
