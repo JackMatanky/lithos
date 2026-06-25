@@ -2,11 +2,11 @@
 title: 06-indexer-cli-command
 category: enhancement
 label: ready-for-agent
-status: open
-branch:
-merge_commit:
+status: closed
+branch: 06-cli-command
+merge_commit: c2bdd9f1
 date_created: 2026-06-09
-date_completed:
+date_completed: 2026-06-25
 ---
 
 # Issue 06: `traces index` CLI command
@@ -280,3 +280,11 @@ review.
   - Maintained zero unwrap/expect invariants in source (`#![deny(clippy::unwrap_used)]`).
   - Added CLI test safety. Avoided `#![allow(clippy::unwrap_used)]` on production code.
   - Executed tests locally in isolated subagent scope (`trace_app::index::tests`). E2E coverage added correctly parsing all parameters and enforcing constraints.
+- **Adversarial Review (second pass, `c2bdd9f1`)**:
+  - `write_report_json` refactored from `serde_json::json!()` macro to typed `IndexReportPayload` struct — compile-time field name safety, matching `doctor.rs`/`config.rs` pattern.
+  - Tests restructured into Structure A submodules (`build_index_command`, `write_report_human`, `write_report_json`) per `unit-naming.md` hard rule for files with 3+ tests.
+  - Redundant `json_output_contains_all_keys_and_values` removed — `json_output_is_valid_json` already covers it via parsed JSON assertions.
+  - Three silent `return;` in `let-else` patterns replaced with `panic!` + `#[expect(clippy::panic)]` so test invariant violations fail loud.
+  - Crate-level `#![allow(unused_assignments)]` retained but narrowed from generic justification to explicit miette `#[diagnostic(help)]` behavior.
+  - Test renamed to verb-first: `converts_bootstrap_error_to_cli_error` → `wraps_discovery_error_in_bootstrap_variant`.
+  - Commented-out `anyhow` dependency removed from `Cargo.toml`.
