@@ -5,8 +5,8 @@ The Config context defines how settings are discovered, merged, validated, and e
 ## Language
 
 **Config Source**:
-An origin of settings input — for example a file, environment variable, or CLI override.
-_Avoid_: input, payload
+A file that supplies settings input — an individual config file on disk. Not environment variables or CLI overrides (those are handled at the CLI layer).
+_Avoid_: input, payload, origin
 
 **Global Config**:
 System-wide configuration from environment variables or global config files. Applied as the base layer before vault-local overrides.
