@@ -434,6 +434,67 @@ mod tests {
         }
     }
 
+    mod display_and_diagnostic {
+        use miette::Diagnostic;
+
+        use super::*;
+
+        fn help_text(err: &IndexCommandError) -> String {
+            err.help().map(|h| h.to_string()).unwrap_or_default()
+        }
+
+        #[test]
+        fn scan_path_not_found_display_and_help() {
+            let err = IndexCommandError::ScanPathNotFound {
+                path: PathBuf::from("/a/b"),
+            };
+            assert_eq!(err.to_string(), "/a/b does not exist");
+            assert_eq!(
+                help_text(&err),
+                "Provide a valid path, or omit --path to index the entire \
+                 vault"
+            );
+        }
+
+        #[test]
+        fn scan_access_denied_display_and_help() {
+            let err = IndexCommandError::ScanAccessDenied {
+                path: PathBuf::from("/x"),
+            };
+            assert_eq!(err.to_string(), "cannot read /x: permission denied");
+            assert!(
+                help_text(&err).starts_with("Grant read permission"),
+                "help text: {}",
+                help_text(&err)
+            );
+        }
+
+        #[test]
+        fn storage_failure_display_and_help() {
+            let err = IndexCommandError::StorageFailure {
+                detail: "corrupt data".to_owned(),
+            };
+            assert_eq!(err.to_string(), "index database error: corrupt data");
+            assert_eq!(
+                help_text(&err),
+                "Run `traces index --rebuild` to recreate the database"
+            );
+        }
+
+        #[test]
+        fn scan_io_error_display_and_help() {
+            let err = IndexCommandError::ScanIoError {
+                path: PathBuf::from("/y"),
+                detail: "disk error".to_owned(),
+            };
+            assert_eq!(err.to_string(), "I/O error reading /y: disk error");
+            assert_eq!(
+                help_text(&err),
+                "Check disk space and filesystem health, then retry"
+            );
+        }
+    }
+
     mod exit_code {
         use super::*;
 

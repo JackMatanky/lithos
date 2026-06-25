@@ -359,4 +359,120 @@ mod tests {
             );
         }
     }
+
+    mod run_index_handler {
+        use std::fs;
+
+        use tempfile::tempdir;
+        use trace_app::bootstrap::Bootstrapper;
+        use trace_settings::{DiscoveryFlags, service::DiscoveryService};
+
+        use super::super::run_index;
+        use crate::cli::{IndexArgs, OutputFormat};
+
+        fn make_vault()
+        -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags)
+        {
+            let dir = tempdir().expect("vault dir");
+            let config_path = dir.path().join("traces.toml");
+            fs::write(&config_path, "[template]\ndirectory = \"templates\"")
+                .expect("write traces.toml");
+
+            // Create some files for the indexer to discover. The vault root
+            // dir is never indexed, and only directories count as indexed
+            // "dirs". We create file1.md at root and file2.md in sub/ so
+            // assertions mirror those in crates/app/tests/index.rs:
+            //   1 dir + 2 files = 3 indexed nodes.
+            fs::write(dir.path().join("file1.md"), "c1").expect("write file1");
+            fs::create_dir(dir.path().join("sub")).expect("create sub");
+            fs::write(dir.path().join("sub/file2.md"), "c2")
+                .expect("write file2");
+
+            // Pre-create the cache directory so Store::open succeeds.
+            fs::create_dir_all(dir.path().join(".traces/cache"))
+                .expect("create .traces/cache");
+
+            let flags = DiscoveryFlags::new(
+                Some(config_path.as_path()),
+                Some(dir.path()),
+                true, // suppress global
+            )
+            .expect("valid flags");
+            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+                .expect("bootstrapper");
+            (dir, bootstrapper, flags)
+        }
+
+        #[test]
+        fn indexes_vault_and_prints_human_report() {
+            let (dir, bootstrapper, flags) = make_vault();
+
+            let args = IndexArgs {
+                rebuild: false,
+                path: None,
+                dry_run: false,
+            };
+
+            let mut out = Vec::<u8>::new();
+            let mut err = Vec::<u8>::new();
+            let result = run_index(
+                &bootstrapper,
+                Some(flags),
+                dir.path(),
+                args,
+                OutputFormat::Human,
+                0,
+                &mut out,
+                &mut err,
+            );
+
+            assert!(result.is_ok(), "run_index failed: {result:?}");
+            let stdout = String::from_utf8(out).expect("stdout utf8");
+            assert!(stdout.contains("scanned:"), "stdout:\n{stdout}");
+            assert!(stdout.contains("new:"), "stdout:\n{stdout}");
+        }
+
+        #[test]
+        fn indexes_vault_and_prints_json_report() {
+            let (dir, bootstrapper, flags) = make_vault();
+
+            let args = IndexArgs {
+                rebuild: false,
+                path: None,
+                dry_run: false,
+            };
+
+            let mut out = Vec::<u8>::new();
+            let mut err = Vec::<u8>::new();
+            let result = run_index(
+                &bootstrapper,
+                Some(flags),
+                dir.path(),
+                args,
+                OutputFormat::Json,
+                0,
+                &mut out,
+                &mut err,
+            );
+
+            assert!(result.is_ok(), "run_index failed: {result:?}");
+            let stdout = String::from_utf8(out).expect("stdout utf8");
+            let parsed: serde_json::Value =
+                serde_json::from_str(&stdout).expect("valid JSON");
+            // Must contain all report fields with non-zero scanned count.
+            // The exact scanned values include cache artifacts
+            // (.traces/cache/*.db), so assert structure, not exact count.
+            let scanned = parsed
+                .get("scanned")
+                .and_then(serde_json::Value::as_u64)
+                .expect("scanned field as u64");
+            assert!(scanned > 0, "expected scanned > 0, got: {stdout}");
+            for key in &["new", "fresh", "stale", "deleted", "failed"] {
+                assert!(
+                    parsed.get(*key).is_some(),
+                    "missing field '{key}', got: {stdout}"
+                );
+            }
+        }
+    }
 }
