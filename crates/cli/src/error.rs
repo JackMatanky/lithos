@@ -1,4 +1,10 @@
-#![allow(unused_assignments, reason = "miette macro generates unused bindings")]
+// miette's `#[diagnostic(help(...))]` derive generates field bindings
+// that `unused_assignments` flags as never read. Every variant with
+// `#[diagnostic(help)]` is affected; this is a known miette behavior.
+#![allow(
+    unused_assignments,
+    reason = "miette derive generates field bindings without reads"
+)]
 //! CLI error types with exit code derivation.
 //!
 //! This module defines [`CliError`], the top-level error type for the Traces
@@ -266,7 +272,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn converts_bootstrap_error_to_cli_error() {
+        fn wraps_discovery_error_in_bootstrap_variant() {
             let bootstrap_err =
                 AppError::Discovery(DiscoveryError::InvalidAnchorDirectory {
                     path: PathBuf::from("/bad"),

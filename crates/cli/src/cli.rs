@@ -182,6 +182,11 @@ mod arg_parsing {
         assert!(matches!(cli.command, Command::Config { .. }));
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "let-else panic signals test invariant violation, not \
+                  production code"
+    )]
     #[test]
     fn routes_config_files_subcommand() {
         let cli = parse(&["traces", "config", "files"]).expect("valid args");
@@ -191,7 +196,7 @@ mod arg_parsing {
             command,
         } = cli.command
         else {
-            return;
+            panic!("expected Config variant, got {:?}", cli.command);
         };
         assert!(matches!(command, Some(ConfigSubcommand::Files)));
     }
@@ -228,6 +233,11 @@ mod arg_parsing {
         assert!(result.is_err());
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "let-else panic signals test invariant violation, not \
+                  production code"
+    )]
     #[test]
     fn parses_index_args_all_flags() {
         let cli = parse(&[
@@ -244,13 +254,18 @@ mod arg_parsing {
             "Expected Index subcommand"
         );
         let Command::Index(args) = cli.command else {
-            return;
+            panic!("expected Index variant, got {:?}", cli.command);
         };
         assert!(args.rebuild);
         assert_eq!(args.path, Some(PathBuf::from("sub/dir")));
         assert!(args.dry_run);
     }
 
+    #[expect(
+        clippy::panic,
+        reason = "let-else panic signals test invariant violation, not \
+                  production code"
+    )]
     #[test]
     fn index_args_defaults() {
         let cli = parse(&["traces", "index"]).expect("valid args");
@@ -259,7 +274,7 @@ mod arg_parsing {
             "Expected Index subcommand"
         );
         let Command::Index(args) = cli.command else {
-            return;
+            panic!("expected Index variant, got {:?}", cli.command);
         };
         assert!(!args.rebuild);
         assert_eq!(args.path, None);

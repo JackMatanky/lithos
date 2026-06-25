@@ -132,19 +132,30 @@ fn write_report_human(
     Ok(())
 }
 
+/// Serializable payload for JSON index reports.
+#[derive(serde::Serialize)]
+struct IndexReportPayload {
+    scanned: usize,
+    new: usize,
+    fresh: usize,
+    stale: usize,
+    deleted: usize,
+    failed: usize,
+}
+
 /// Writes a JSON index report to `out`.
 fn write_report_json(
     report: &trace_indexer::IndexReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
-    let payload = serde_json::json!({
-        "scanned": report.scanned(),
-        "new": report.new_count(),
-        "fresh": report.fresh_count(),
-        "stale": report.stale_count(),
-        "deleted": report.deleted_count(),
-        "failed": report.failures().len(),
-    });
+    let payload = IndexReportPayload {
+        scanned: report.scanned(),
+        new: report.new_count(),
+        fresh: report.fresh_count(),
+        stale: report.stale_count(),
+        deleted: report.deleted_count(),
+        failed: report.failures().len(),
+    };
     crate::output::write_json_line(out, &payload)
 }
 
@@ -156,7 +167,6 @@ fn write_report_json(
 mod tests {
     use std::path::PathBuf;
 
-    use pretty_assertions::assert_eq;
     use trace_app::index::{IndexOptions, IndexScope, ScanFilters};
     use trace_fs::DirPath;
     use trace_indexer::{
@@ -198,154 +208,155 @@ mod tests {
         )
     }
 
-    #[test]
-    fn maps_default_args_to_full_scope() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
-        let args = IndexArgs {
-            rebuild: false,
-            path: None,
-            dry_run: false,
-        };
+    mod build_index_command {
+        use pretty_assertions::assert_eq;
 
-        let cmd = build_index_command(args, &root).unwrap();
+        use super::*;
 
-        assert_eq!(cmd.scope(), &IndexScope::Full {
-            root: root.clone(),
-            filters: ScanFilters::default()
-        });
-        assert_eq!(cmd.opts(), IndexOptions::new(false, false));
+        #[test]
+        fn maps_default_args_to_full_scope() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+            let args = IndexArgs {
+                rebuild: false,
+                path: None,
+                dry_run: false,
+            };
+
+            let cmd = build_index_command(args, &root).unwrap();
+
+            assert_eq!(cmd.scope(), &IndexScope::Full {
+                root: root.clone(),
+                filters: ScanFilters::default()
+            });
+            assert_eq!(cmd.opts(), IndexOptions::new(false, false));
+        }
+
+        #[test]
+        fn maps_path_to_partial_scope() {
+            let tmp = tempfile::tempdir().unwrap();
+            std::fs::create_dir(tmp.path().join("sub")).unwrap();
+            let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+
+            let args = IndexArgs {
+                rebuild: false,
+                path: Some(PathBuf::from("sub")),
+                dry_run: false,
+            };
+
+            let cmd = build_index_command(args, &root).unwrap();
+
+            let target = DirPath::try_new(tmp.path().join("sub")).unwrap();
+            assert_eq!(cmd.scope(), &IndexScope::Partial {
+                root: target,
+                filters: ScanFilters::default()
+            });
+        }
+
+        #[test]
+        fn returns_invalid_path_error_when_path_is_file_not_dir() {
+            let tmp = tempfile::tempdir().unwrap();
+            std::fs::write(tmp.path().join("file.txt"), "").unwrap();
+            let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+
+            let args = IndexArgs {
+                rebuild: false,
+                path: Some(PathBuf::from("file.txt")),
+                dry_run: false,
+            };
+
+            let err = build_index_command(args, &root).unwrap_err();
+            assert!(
+                matches!(err, CliError::InvalidPath(_)),
+                "expected CliError::InvalidPath, got {err:?}"
+            );
+        }
+
+        #[test]
+        fn maps_rebuild_and_dry_run_flags() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+            let args = IndexArgs {
+                rebuild: true,
+                path: None,
+                dry_run: true,
+            };
+
+            let cmd = build_index_command(args, &root).unwrap();
+
+            let opts = cmd.opts();
+            assert_eq!(opts, IndexOptions::new(true, true));
+        }
     }
 
-    #[test]
-    fn maps_path_to_partial_scope() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir(tmp.path().join("sub")).unwrap();
-        let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+    mod write_report_human {
+        use super::*;
 
-        let args = IndexArgs {
-            rebuild: false,
-            path: Some(PathBuf::from("sub")),
-            dry_run: false,
-        };
+        #[test]
+        fn contains_all_labels_and_values() {
+            let report = make_report(42, 12, 28, 2, 0, 1);
+            let mut buf = Vec::new();
+            write_report_human(&report, &mut buf).unwrap();
+            let output = String::from_utf8(buf).unwrap();
 
-        let cmd = build_index_command(args, &root).unwrap();
+            assert!(output.contains("  scanned: 42"), "got: {output}");
+            assert!(output.contains("      new: 12"), "got: {output}");
+            assert!(output.contains("    fresh: 28"), "got: {output}");
+            assert!(output.contains("    stale: 2"), "got: {output}");
+            assert!(output.contains("  deleted: 0"), "got: {output}");
+            assert!(output.contains("   failed: 1"), "got: {output}");
+        }
 
-        let target = DirPath::try_new(tmp.path().join("sub")).unwrap();
-        assert_eq!(cmd.scope(), &IndexScope::Partial {
-            root: target,
-            filters: ScanFilters::default()
-        });
+        #[test]
+        fn shows_zero_for_all_when_empty() {
+            let report = make_report(0, 0, 0, 0, 0, 0);
+            let mut buf = Vec::new();
+            write_report_human(&report, &mut buf).unwrap();
+            let output = String::from_utf8(buf).unwrap();
+
+            assert!(output.contains("  scanned: 0"), "got: {output}");
+            assert!(output.contains("   failed: 0"), "got: {output}");
+        }
     }
 
-    #[test]
-    fn returns_invalid_path_error_when_path_is_file_not_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("file.txt"), "").unwrap();
-        let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+    mod write_report_json {
+        use pretty_assertions::assert_eq;
 
-        let args = IndexArgs {
-            rebuild: false,
-            path: Some(PathBuf::from("file.txt")),
-            dry_run: false,
-        };
+        use super::*;
 
-        let err = build_index_command(args, &root).unwrap_err();
-        assert!(
-            matches!(err, CliError::InvalidPath(_)),
-            "expected CliError::InvalidPath, got {err:?}"
-        );
-    }
+        #[test]
+        fn is_valid_json_with_correct_values() {
+            let report = make_report(10, 5, 3, 1, 1, 0);
+            let mut buf = Vec::new();
+            write_report_json(&report, &mut buf).unwrap();
+            let output = String::from_utf8(buf).unwrap();
 
-    #[test]
-    fn maps_rebuild_and_dry_run_flags() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
-        let args = IndexArgs {
-            rebuild: true,
-            path: None,
-            dry_run: true,
-        };
-
-        let cmd = build_index_command(args, &root).unwrap();
-
-        let opts = cmd.opts();
-        assert_eq!(opts, IndexOptions::new(true, true));
-    }
-
-    #[test]
-    fn human_output_contains_all_labels_and_values() {
-        let report = make_report(42, 12, 28, 2, 0, 1);
-        let mut buf = Vec::new();
-        write_report_human(&report, &mut buf).unwrap();
-        let output = String::from_utf8(buf).unwrap();
-
-        assert!(output.contains("  scanned: 42"), "got: {output}");
-        assert!(output.contains("      new: 12"), "got: {output}");
-        assert!(output.contains("    fresh: 28"), "got: {output}");
-        assert!(output.contains("    stale: 2"), "got: {output}");
-        assert!(output.contains("  deleted: 0"), "got: {output}");
-        assert!(output.contains("   failed: 1"), "got: {output}");
-    }
-
-    #[test]
-    fn json_output_contains_all_keys_and_values() {
-        let report = make_report(42, 12, 28, 2, 0, 1);
-        let mut buf = Vec::new();
-        write_report_json(&report, &mut buf).unwrap();
-        let output = String::from_utf8(buf).unwrap();
-
-        assert!(output.contains(r#""scanned":42"#), "got: {output}");
-        assert!(output.contains(r#""new":12"#), "got: {output}");
-        assert!(output.contains(r#""fresh":28"#), "got: {output}");
-        assert!(output.contains(r#""stale":2"#), "got: {output}");
-        assert!(output.contains(r#""deleted":0"#), "got: {output}");
-        assert!(output.contains(r#""failed":1"#), "got: {output}");
-    }
-
-    #[test]
-    fn human_output_shows_zero_for_all_when_empty() {
-        let report = make_report(0, 0, 0, 0, 0, 0);
-        let mut buf = Vec::new();
-        write_report_human(&report, &mut buf).unwrap();
-        let output = String::from_utf8(buf).unwrap();
-
-        assert!(output.contains("  scanned: 0"), "got: {output}");
-        assert!(output.contains("   failed: 0"), "got: {output}");
-    }
-
-    #[test]
-    fn json_output_is_valid_json() {
-        let report = make_report(10, 5, 3, 1, 1, 0);
-        let mut buf = Vec::new();
-        write_report_json(&report, &mut buf).unwrap();
-        let output = String::from_utf8(buf).unwrap();
-
-        let parsed: serde_json::Value =
-            serde_json::from_str(&output).expect("valid JSON");
-        assert_eq!(
-            parsed.get("scanned").and_then(serde_json::Value::as_u64),
-            Some(10)
-        );
-        assert_eq!(
-            parsed.get("new").and_then(serde_json::Value::as_u64),
-            Some(5)
-        );
-        assert_eq!(
-            parsed.get("fresh").and_then(serde_json::Value::as_u64),
-            Some(3)
-        );
-        assert_eq!(
-            parsed.get("stale").and_then(serde_json::Value::as_u64),
-            Some(1)
-        );
-        assert_eq!(
-            parsed.get("deleted").and_then(serde_json::Value::as_u64),
-            Some(1)
-        );
-        assert_eq!(
-            parsed.get("failed").and_then(serde_json::Value::as_u64),
-            Some(0)
-        );
+            let parsed: serde_json::Value =
+                serde_json::from_str(&output).expect("valid JSON");
+            assert_eq!(
+                parsed.get("scanned").and_then(serde_json::Value::as_u64),
+                Some(10)
+            );
+            assert_eq!(
+                parsed.get("new").and_then(serde_json::Value::as_u64),
+                Some(5)
+            );
+            assert_eq!(
+                parsed.get("fresh").and_then(serde_json::Value::as_u64),
+                Some(3)
+            );
+            assert_eq!(
+                parsed.get("stale").and_then(serde_json::Value::as_u64),
+                Some(1)
+            );
+            assert_eq!(
+                parsed.get("deleted").and_then(serde_json::Value::as_u64),
+                Some(1)
+            );
+            assert_eq!(
+                parsed.get("failed").and_then(serde_json::Value::as_u64),
+                Some(0)
+            );
+        }
     }
 }
