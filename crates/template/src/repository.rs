@@ -170,19 +170,28 @@ pub trait WriteRepository {
         id: TemplateId,
     ) -> Result<(), TemplateRepositoryError>;
 
-    /// Persist a raw template view to the store.
+    /// Persist a raw template view to the store, keyed by its template's ID.
+    ///
+    /// The view is indexed by `id` (its owning template's identity), mirroring
+    /// the template aggregate's own key. A view therefore always belongs to a
+    /// known template; it cannot exist on its own. The caller supplies the ID
+    /// alongside the view because the view value records only its path, not its
+    /// identity.
     ///
     /// # Errors
     ///
     /// Returns [`TemplateRepositoryError`] if the database write fails.
     fn save_raw_template_view(
         &self,
+        id: TemplateId,
         view: &RawTemplateView,
     ) -> Result<(), TemplateRepositoryError>;
 
     /// Delete a raw template view by vault-relative path.
     ///
-    /// Idempotent: returns `Ok(())` if the view does not exist.
+    /// Resolves the path to a template ID and removes the matching view.
+    /// Idempotent: returns `Ok(())` if no template (and hence no view) exists
+    /// for the path.
     ///
     /// # Errors
     ///
@@ -190,16 +199,6 @@ pub trait WriteRepository {
     fn delete_raw_template_view(
         &self,
         path: &PathKey,
-    ) -> Result<(), TemplateRepositoryError>;
-
-    /// Save multiple raw template views in a single transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TemplateRepositoryError`] if the database write fails.
-    fn save_many_raw_template_views(
-        &self,
-        views: &[RawTemplateView],
     ) -> Result<(), TemplateRepositoryError>;
 
     /// Delete templates for a set of vault-relative paths.

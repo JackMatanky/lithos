@@ -83,8 +83,9 @@ pub(crate) struct InMemoryRepository {
     /// Path-to-ID lookup: `PathKey` → `TemplateId`
     path_to_id: Arc<RwLock<HashMap<PathKey, TemplateId>>>,
 
-    /// Raw template views for staleness detection: path → `RawTemplateView`
-    raw_views: Arc<RwLock<HashMap<PathKey, RawTemplateView>>>,
+    /// Raw template views for staleness detection: `TemplateId` →
+    /// `RawTemplateView`. Path lookups resolve through `path_to_id` first.
+    raw_views: Arc<RwLock<HashMap<TemplateId, RawTemplateView>>>,
 }
 
 #[cfg_attr(
@@ -251,10 +252,15 @@ impl ReadRepository for InMemoryRepository {
     ) -> Result<Option<RawTemplateView>, TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
-        let views = read_lock(&self.raw_views, "find_raw_template_view")?;
+        let path_to_id =
+            read_lock(&self.path_to_id, "find_raw_template_view (path_to_id)")?;
         self.harness.counters().inc_read();
 
-        Ok(views.get(path).cloned())
+        let views =
+            read_lock(&self.raw_views, "find_raw_template_view (raw_views)")?;
+        self.harness.counters().inc_read();
+
+        Ok(path_to_id.get(path).and_then(|id| views.get(id).cloned()))
     }
 
     #[inline]
@@ -263,10 +269,11 @@ impl ReadRepository for InMemoryRepository {
     ) -> Result<Vec<PathKey>, TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
-        let views = read_lock(&self.raw_views, "list_template_path_keys")?;
+        let path_to_id =
+            read_lock(&self.path_to_id, "list_template_path_keys")?;
         self.harness.counters().inc_read();
 
-        Ok(views.keys().cloned().collect())
+        Ok(path_to_id.keys().cloned().collect())
     }
 
     #[inline]
@@ -276,13 +283,23 @@ impl ReadRepository for InMemoryRepository {
     ) -> Result<Vec<Option<RawTemplateView>>, TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
 
-        let views =
-            read_lock(&self.raw_views, "find_raw_template_views_by_paths")?;
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "find_raw_template_views_by_paths (path_to_id)",
+        )?;
+        self.harness.counters().inc_read();
+
+        let views = read_lock(
+            &self.raw_views,
+            "find_raw_template_views_by_paths (raw_views)",
+        )?;
         self.harness.counters().inc_read();
 
         let mut results = Vec::with_capacity(paths.len());
         for path in paths {
-            results.push(views.get(path).cloned());
+            let view =
+                path_to_id.get(path).and_then(|id| views.get(id).cloned());
+            results.push(view);
         }
         Ok(results)
     }
@@ -343,6 +360,7 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_raw_template_view(
         &self,
+        id: TemplateId,
         view: &RawTemplateView,
     ) -> Result<(), TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
@@ -350,7 +368,7 @@ impl WriteRepository for InMemoryRepository {
         let mut views = write_lock(&self.raw_views, "save_raw_template_view")?;
         self.harness.counters().inc_write();
 
-        views.insert(view.path().clone(), view.clone());
+        views.insert(id, view.clone());
         Ok(())
     }
 
@@ -361,27 +379,20 @@ impl WriteRepository for InMemoryRepository {
     ) -> Result<(), TemplateRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
 
+        let path_to_id = read_lock(
+            &self.path_to_id,
+            "delete_raw_template_view (path_to_id)",
+        )?;
+        self.harness.counters().inc_read();
+
         let mut views =
             write_lock(&self.raw_views, "delete_raw_template_view")?;
         self.harness.counters().inc_write();
 
-        views.remove(path);
-        Ok(())
-    }
-
-    #[inline]
-    fn save_many_raw_template_views(
-        &self,
-        views: &[RawTemplateView],
-    ) -> Result<(), TemplateRepositoryError> {
-        self.harness.fail_at(FailurePoint::BeforeWrite)?;
-
-        let mut view_map =
-            write_lock(&self.raw_views, "save_many_raw_template_views")?;
-        self.harness.counters().inc_write();
-
-        for view in views {
-            view_map.insert(view.path().clone(), view.clone());
+        // A view is reachable only through its template's ID; an absent path
+        // means an absent view.
+        if let Some(id) = path_to_id.get(path) {
+            views.remove(id);
         }
         Ok(())
     }
@@ -410,12 +421,14 @@ impl WriteRepository for InMemoryRepository {
         self.harness.counters().inc_write();
 
         for path in paths {
-            if let Some(id) = path_to_id.remove(path)
-                && let Some(template) = templates.remove(&id)
-            {
+            // No ID for the path means no view and no aggregate to remove.
+            let Some(id) = path_to_id.remove(path) else {
+                continue;
+            };
+            views.remove(&id);
+            if let Some(template) = templates.remove(&id) {
                 name_to_id.remove(template.name());
             }
-            views.remove(path);
         }
         Ok(())
     }
@@ -497,6 +510,21 @@ mod tests {
         let metadata = FileMetadata::new(FsTimes::new(None, None), 100, false);
         let recorded_at = SystemTime::now();
         RawTemplateView::new(key, hash, metadata, recorded_at)
+    }
+
+    /// Saves a template and its raw view together, returning the template.
+    ///
+    /// Views are keyed by template ID, so a view is only reachable once its
+    /// template (and the path index) exist.
+    fn seed_template_with_view(
+        repo: &InMemoryRepository,
+        name: &str,
+    ) -> Template {
+        let template = test_template(name);
+        let view = test_view(template.path().as_str());
+        repo.save_template(&template).unwrap();
+        repo.save_raw_template_view(*template.id(), &view).unwrap();
+        template
     }
 
     mod fixtures {
@@ -833,11 +861,10 @@ mod tests {
             #[test]
             fn roundtrip_save_and_find() {
                 let repo = InMemoryRepository::new();
-                let view = test_view("templates/note.md");
+                let template = seed_template_with_view(&repo, "note");
 
-                repo.save_raw_template_view(&view).unwrap();
-
-                let found = repo.find_raw_template_view(view.path()).unwrap();
+                let found =
+                    repo.find_raw_template_view(template.path()).unwrap();
                 assert!(found.is_some());
             }
 
@@ -846,7 +873,7 @@ mod tests {
                 let repo = InMemoryRepository::new();
                 let view = test_view("templates/counter.md");
 
-                repo.save_raw_template_view(&view).unwrap();
+                repo.save_raw_template_view(TemplateId::new(), &view).unwrap();
 
                 let snapshot = repo.harness().counters().snapshot();
                 assert_eq!(snapshot.writes, 1);
@@ -858,7 +885,8 @@ mod tests {
                     .with_failure_injector(Box::new(FailOnWrite));
                 let view = test_view("templates/fail.md");
 
-                let result = repo.save_raw_template_view(&view);
+                let result =
+                    repo.save_raw_template_view(TemplateId::new(), &view);
 
                 assert!(matches!(
                     result,
@@ -882,13 +910,14 @@ mod tests {
             #[test]
             fn increments_read_counter() {
                 let repo = InMemoryRepository::new();
-                let view = test_view("templates/readcount.md");
-                repo.save_raw_template_view(&view).unwrap();
+                let template = seed_template_with_view(&repo, "readcount");
+                repo.harness().counters().reset();
 
-                let _ = repo.find_raw_template_view(view.path()).unwrap();
+                let _ = repo.find_raw_template_view(template.path()).unwrap();
 
+                // path -> id, then id -> view: two reads.
                 let snapshot = repo.harness().counters().snapshot();
-                assert_eq!(snapshot.reads, 1);
+                assert_eq!(snapshot.reads, 2);
             }
 
             #[test]
@@ -912,12 +941,12 @@ mod tests {
             #[test]
             fn removes_view() {
                 let repo = InMemoryRepository::new();
-                let view = test_view("templates/delete-me.md");
+                let template = seed_template_with_view(&repo, "delete-me");
 
-                repo.save_raw_template_view(&view).unwrap();
-                repo.delete_raw_template_view(view.path()).unwrap();
+                repo.delete_raw_template_view(template.path()).unwrap();
 
-                let found = repo.find_raw_template_view(view.path()).unwrap();
+                let found =
+                    repo.find_raw_template_view(template.path()).unwrap();
                 assert!(found.is_none());
             }
 
@@ -934,42 +963,14 @@ mod tests {
             use super::*;
 
             #[test]
-            fn save_many_persists_all_views() {
-                let repo = InMemoryRepository::new();
-                let v1 = test_view("templates/a.md");
-                let v2 = test_view("templates/b.md");
-                let v3 = test_view("templates/c.md");
-
-                repo.save_many_raw_template_views(&[
-                    v1.clone(),
-                    v2.clone(),
-                    v3.clone(),
-                ])
-                .unwrap();
-
-                assert!(
-                    repo.find_raw_template_view(v1.path()).unwrap().is_some()
-                );
-                assert!(
-                    repo.find_raw_template_view(v2.path()).unwrap().is_some()
-                );
-                assert!(
-                    repo.find_raw_template_view(v3.path()).unwrap().is_some()
-                );
-            }
-
-            #[test]
             fn find_by_paths_returns_correct_order_with_nones() {
                 let repo = InMemoryRepository::new();
-                let v1 = test_view("templates/alpha.md");
-                let v2 = test_view("templates/beta.md");
-
-                repo.save_many_raw_template_views(&[v1.clone(), v2.clone()])
-                    .unwrap();
+                let alpha = seed_template_with_view(&repo, "alpha");
+                let beta = seed_template_with_view(&repo, "beta");
 
                 let missing = PathKey::try_new("templates/missing.md").unwrap();
                 let paths =
-                    vec![v1.path().clone(), missing.clone(), v2.path().clone()];
+                    vec![alpha.path().clone(), missing, beta.path().clone()];
 
                 let results =
                     repo.find_raw_template_views_by_paths(&paths).unwrap();
@@ -985,12 +986,6 @@ mod tests {
                 let results =
                     repo.find_raw_template_views_by_paths(&[]).unwrap();
                 assert!(results.is_empty());
-            }
-
-            #[test]
-            fn save_many_empty_slice() {
-                let repo = InMemoryRepository::new();
-                repo.save_many_raw_template_views(&[]).unwrap();
             }
 
             #[test]
@@ -1024,14 +1019,8 @@ mod tests {
             fn delete_many_templates_removes_aggregate_and_view_for_each_path()
             {
                 let repo = InMemoryRepository::new();
-                let alpha = test_template("alpha");
-                let beta = test_template("beta");
-                repo.save_template(&alpha).unwrap();
-                repo.save_template(&beta).unwrap();
-                repo.save_raw_template_view(&test_view("templates/alpha.md"))
-                    .unwrap();
-                repo.save_raw_template_view(&test_view("templates/beta.md"))
-                    .unwrap();
+                let alpha = seed_template_with_view(&repo, "alpha");
+                let beta = seed_template_with_view(&repo, "beta");
 
                 repo.delete_many_templates(&[
                     alpha.path().clone(),
@@ -1065,24 +1054,6 @@ mod tests {
                 // Second call must not error either.
                 repo.delete_many_templates(std::slice::from_ref(&missing))
                     .unwrap();
-            }
-
-            #[test]
-            fn delete_many_templates_removes_view_when_aggregate_absent() {
-                let repo = InMemoryRepository::new();
-                // Orphan view: raw template view exists but no template
-                // aggregate (mirrors load() finding the orphan).
-                let path = PathKey::try_new("templates/orphan.md").unwrap();
-                repo.save_raw_template_view(&test_view("templates/orphan.md"))
-                    .unwrap();
-
-                repo.delete_many_templates(std::slice::from_ref(&path))
-                    .unwrap();
-
-                assert!(
-                    repo.find_raw_template_view(&path).unwrap().is_none(),
-                    "orphan raw template view should be deleted"
-                );
             }
 
             #[test]

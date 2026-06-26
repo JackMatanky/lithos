@@ -16,7 +16,7 @@
 //! - [`TEMPLATES`]: Template aggregates by ID
 //! - [`TEMPLATE_ID_BY_NAME`]: Name-to-ID index
 //! - [`TEMPLATE_ID_BY_PATH`]: Path-to-ID index
-//! - [`RAW_TEMPLATE_VIEWS`]: Raw template views by path
+//! - [`RAW_TEMPLATE_VIEWS`]: Raw template views by template ID
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
@@ -35,7 +35,10 @@ use crate::{
     repository::ReadRepository,
     storage::{
         RedbRepository,
-        tables::{RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATES},
+        tables::{
+            RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATE_ID_BY_PATH,
+            TEMPLATES,
+        },
     },
     views::RawTemplateView,
 };
@@ -218,13 +221,25 @@ impl ReadRepository for RedbRepository {
     {
         self.store
             .read(|tx| {
-                let Some(table) =
+                // path -> TemplateId
+                let Some(path_table) =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?
+                else {
+                    return Ok(None);
+                };
+                let Some(id_guard) = path_table.get(DbPathKey::from(path))?
+                else {
+                    return Ok(None);
+                };
+                let id = id_guard.value();
+
+                // TemplateId -> RawTemplateView
+                let Some(view_table) =
                     tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?
                 else {
                     return Ok(None);
                 };
-
-                let Some(guard) = table.get(DbPathKey::from(path))? else {
+                let Some(guard) = view_table.get(id)? else {
                     return Ok(None);
                 };
 
@@ -240,8 +255,10 @@ impl ReadRepository for RedbRepository {
     ) -> Result<Vec<PathKey>, crate::error::TemplateRepositoryError> {
         self.store
             .read(|tx| {
+                // Every cached path is recorded in the path index, which is
+                // maintained in lock-step with the aggregate and its view.
                 let Some(table) =
-                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?
                 else {
                     return Ok(Vec::new());
                 };
@@ -267,18 +284,23 @@ impl ReadRepository for RedbRepository {
     > {
         self.store
             .read(|tx| {
-                let Some(table) =
-                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?
-                else {
+                let (Some(path_table), Some(view_table)) = (
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?,
+                    tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?,
+                ) else {
                     return Ok(paths.iter().map(|_| None).collect());
                 };
 
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
-                    let view = table
-                        .get(DbPathKey::from(path))?
-                        .map(|g| RawTemplateView::from_bytes(g.value()))
-                        .transpose()?;
+                    // path -> id -> view; an absent id yields None.
+                    let view = match path_table.get(DbPathKey::from(path))? {
+                        Some(id_guard) => view_table
+                            .get(id_guard.value())?
+                            .map(|g| RawTemplateView::from_bytes(g.value()))
+                            .transpose()?,
+                        None => None,
+                    };
                     results.push(view);
                 }
 
@@ -304,7 +326,7 @@ mod tests {
         repository::ReadRepository,
         storage::{
             RedbRepository,
-            tables::{RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATES},
+            tables::{TEMPLATE_ID_BY_NAME, TEMPLATES},
         },
         views::RawTemplateView,
     };
@@ -492,28 +514,25 @@ mod tests {
         }
 
         #[test]
-        fn returns_view_after_direct_insert() {
-            let (store, repo) = setup_repo();
-            let view = test_view("templates/hello.json");
-            let bytes = view.to_bytes().expect("serialize");
-            let path_key = view.path().clone();
+        fn returns_view_by_path_after_saving_template_and_view() {
+            use crate::repository::WriteRepository;
 
-            store
-                .write(|tx| {
-                    let mut table =
-                        tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
-                    table.insert(
-                        trace_db::DbPathKey::from(&path_key),
-                        bytes.as_slice(),
-                    )?;
-                    Ok(())
-                })
-                .expect("direct insert");
+            let (_store, repo) = setup_repo();
+            let template = test_template("hello");
+            let id = *template.id();
+            let view = test_view(template.path().as_str());
+            let path = template.path().clone();
 
-            let found = repo
-                .find_raw_template_view(&key("templates/hello.json"))
-                .unwrap();
-            assert!(found.is_some());
+            // The view is keyed by TemplateId; reading it back by path must
+            // resolve path -> id -> view through TEMPLATE_ID_BY_PATH.
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(id, &view).unwrap();
+
+            let found = repo.find_raw_template_view(&path).unwrap();
+            assert!(
+                found.is_some(),
+                "expected the view to be retrievable by path via the id index"
+            );
         }
     }
 
@@ -522,32 +541,23 @@ mod tests {
 
         #[test]
         fn returns_correct_order_with_missing_in_between() {
-            let (store, repo) = setup_repo();
-            let view1 = test_view("templates/a.json");
-            let view2 = test_view("templates/c.json");
+            use crate::repository::WriteRepository;
 
-            store
-                .write(|tx| {
-                    let mut table =
-                        tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
-                    let bytes1 = view1.to_bytes().expect("serialize");
-                    let bytes2 = view2.to_bytes().expect("serialize");
-                    table.insert(
-                        trace_db::DbPathKey::from(view1.path()),
-                        bytes1.as_slice(),
-                    )?;
-                    table.insert(
-                        trace_db::DbPathKey::from(view2.path()),
-                        bytes2.as_slice(),
-                    )?;
-                    Ok(())
-                })
-                .expect("direct insert");
+            let (_store, repo) = setup_repo();
+            let template_a = test_template("a");
+            let template_c = test_template("c");
+            let view_a = test_view(template_a.path().as_str());
+            let view_c = test_view(template_c.path().as_str());
+
+            repo.save_template(&template_a).unwrap();
+            repo.save_raw_template_view(*template_a.id(), &view_a).unwrap();
+            repo.save_template(&template_c).unwrap();
+            repo.save_raw_template_view(*template_c.id(), &view_c).unwrap();
 
             let paths = vec![
-                key("templates/a.json"),
-                key("templates/b.json"),
-                key("templates/c.json"),
+                template_a.path().clone(),
+                key("templates/b.md"),
+                template_c.path().clone(),
             ];
             let results =
                 repo.find_raw_template_views_by_paths(&paths).unwrap();

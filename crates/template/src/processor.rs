@@ -533,7 +533,7 @@ impl TemplateProcessor<Refresh, StaleMetadata> {
         let (file, path_key, mut status) = self.into_parts();
         status.view.update_metadata(file.metadata().clone());
         repository
-            .save_raw_template_view(&status.view)
+            .save_raw_template_view(status.id, &status.view)
             .map_err(TemplateError::Repository)?;
         Ok(Self::transition_from_parts(file, path_key, Fresh {
             id: status.id,
@@ -601,7 +601,7 @@ impl TemplateProcessor<Construction, New> {
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&view)
+            .save_raw_template_view(*template.id(), &view)
             .map_err(TemplateError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
@@ -650,7 +650,7 @@ impl TemplateProcessor<Construction, Changed> {
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&view)
+            .save_raw_template_view(*template.id(), &view)
             .map_err(TemplateError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
@@ -997,6 +997,22 @@ mod tests {
             };
 
             let repo = InMemoryRepository::new();
+            // The StaleMetadata branch is only reached for a template already
+            // present in the repo; seed it so the path index resolves the
+            // view by id (path -> id -> view).
+            let template = Template::new(
+                id,
+                path_key.clone(),
+                TemplateName::try_new(
+                    std::path::Path::new("templates/test.md"),
+                    std::path::Path::new("templates"),
+                )
+                .unwrap(),
+                crate::aggregate::TemplateBody::try_new("content".to_owned())
+                    .unwrap(),
+            );
+            repo.save_template(&template).unwrap();
+
             let next = processor.sync_metadata(&repo).expect("sync metadata");
 
             assert_eq!(

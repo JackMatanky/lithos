@@ -498,7 +498,11 @@ where
                 .find_template_id_by_path(&entry.path_key)
                 .map_err(TemplateError::Repository)?;
             let discovered = match (id, view) {
-                (None, None) => {
+                // No template ID for the path. Raw views are keyed by
+                // template ID and resolved through the same path index, so the
+                // view slot is necessarily `None` here — an orphaned view
+                // without an ID is unrepresentable.
+                (None, _) => {
                     DiscoveredTemplate::new_missing(entry.file, entry.path_key)
                 }
                 (Some(id), Some(view)) => DiscoveredTemplate::new_present(
@@ -507,23 +511,14 @@ where
                     id,
                     view,
                 ),
+                // Recoverable: the aggregate's ID is indexed but its view is
+                // absent (e.g. an interrupted write). Rebuild from source.
                 (Some(id), None) => DiscoveredTemplate::new_corrupt(
                     entry.file,
                     entry.path_key,
                     id,
                     None,
                 ),
-                (None, Some(_)) => {
-                    return Err(TemplateError::Repository(
-                        TemplateRepositoryError::Storage(DbError::Corruption(
-                            format!(
-                                "raw template view exists without template id \
-                                 for path {}",
-                                entry.path_key.as_str()
-                            ),
-                        )),
-                    ));
-                }
             };
             results.push(discovered);
         }
@@ -863,6 +858,7 @@ mod tests {
 
             fn save_raw_template_view(
                 &self,
+                _id: TemplateId,
                 _view: &RawTemplateView,
             ) -> Result<(), TemplateRepositoryError> {
                 Ok(())
@@ -871,13 +867,6 @@ mod tests {
             fn delete_raw_template_view(
                 &self,
                 _path: &PathKey,
-            ) -> Result<(), TemplateRepositoryError> {
-                Ok(())
-            }
-
-            fn save_many_raw_template_views(
-                &self,
-                _views: &[RawTemplateView],
             ) -> Result<(), TemplateRepositoryError> {
                 Ok(())
             }
@@ -944,7 +933,7 @@ mod tests {
                 ),
                 SystemTime::now(),
             );
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
 
             let scanned = fixtures::scanned_template_for_path(path_key.clone());
             let results =
@@ -1006,43 +995,6 @@ mod tests {
                 ),
                 "expected Corrupt(Corrupted) with matching id and no view, \
                  got: {result:?}"
-            );
-        }
-
-        #[test]
-        fn returns_corruption_when_view_exists_without_template_id() {
-            let repo = InMemoryRepository::new();
-            let path_key =
-                PathKey::try_new("templates/orphan-view.md").unwrap();
-            let view = RawTemplateView::new(
-                path_key.clone(),
-                Blake3Hash::compute(HashInput::Text("content".to_owned())),
-                trace_fs::metadata::FileMetadata::new(
-                    trace_fs::metadata::FsTimes::new(None, None),
-                    7,
-                    false,
-                ),
-                SystemTime::now(),
-            );
-            repo.save_raw_template_view(&view).unwrap();
-
-            let scanned = fixtures::scanned_template_for_path(path_key);
-            let result =
-                TemplateService::<
-                    InMemoryRepository,
-                    trace_fs::FsWriter,
-                    MiniJinjaEngine,
-                >::check_batch_existence(&repo, vec![scanned]);
-
-            assert!(
-                matches!(
-                    result,
-                    Err(TemplateError::Repository(
-                        TemplateRepositoryError::Storage(_)
-                    ))
-                ),
-                "expected Storage corruption error for orphan view, got: \
-                 {result:?}"
             );
         }
 
@@ -1160,7 +1112,7 @@ mod tests {
                 content,
                 fixtures::scanned_metadata(&temp_dir, "fresh.md"),
             );
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
 
             let repo =
                 repo.with_failure_injector(Box::new(fixtures::FailOnWrite));
@@ -1197,7 +1149,7 @@ mod tests {
                 "old content",
                 fixtures::stale_metadata(11),
             );
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
 
             let service = service_for(&temp_dir, config, repo);
             let summary = service.process_all().expect("process_all succeeds");
@@ -1240,7 +1192,7 @@ mod tests {
                 content,
                 fixtures::stale_metadata(0),
             );
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
             repo.harness().counters().reset();
 
             let service = service_for(&temp_dir, config, repo);
@@ -1270,11 +1222,14 @@ mod tests {
             let template =
                 fixtures::template(path_key.clone(), "deleted.md", "content");
             repo.save_template(&template).unwrap();
-            repo.save_raw_template_view(&fixtures::raw_view(
-                path_key.clone(),
-                "content",
-                fixtures::stale_metadata(7),
-            ))
+            repo.save_raw_template_view(
+                *template.id(),
+                &fixtures::raw_view(
+                    path_key.clone(),
+                    "content",
+                    fixtures::stale_metadata(7),
+                ),
+            )
             .unwrap();
 
             let service = service_for(&temp_dir, config, repo);
@@ -1313,11 +1268,14 @@ mod tests {
                 "orphan content",
             );
             repo.save_template(&orphan_template).unwrap();
-            repo.save_raw_template_view(&fixtures::raw_view(
-                orphan_path.clone(),
-                "orphan content",
-                fixtures::stale_metadata(14),
-            ))
+            repo.save_raw_template_view(
+                *orphan_template.id(),
+                &fixtures::raw_view(
+                    orphan_path.clone(),
+                    "orphan content",
+                    fixtures::stale_metadata(14),
+                ),
+            )
             .unwrap();
 
             let service = service_for(&temp_dir, config, repo);
@@ -1383,16 +1341,23 @@ mod tests {
         }
 
         #[test]
-        fn identifies_deleted_paths_from_cached_raw_views() {
+        fn identifies_deleted_paths_from_cached_templates() {
             let repo = InMemoryRepository::new();
-            let path_key = fixtures::path_key("orphan-view.md");
-            repo.save_raw_template_view(&fixtures::raw_view(
-                path_key.clone(),
-                "content",
-                fixtures::stale_metadata(7),
-            ))
+            let path_key = fixtures::path_key("orphan.md");
+            let template =
+                fixtures::template(path_key.clone(), "orphan.md", "content");
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(
+                *template.id(),
+                &fixtures::raw_view(
+                    path_key.clone(),
+                    "content",
+                    fixtures::stale_metadata(7),
+                ),
+            )
             .unwrap();
 
+            // Nothing was discovered on disk, so every cached path is deleted.
             let result =
                 TemplateService::<
                     InMemoryRepository,
