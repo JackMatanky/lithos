@@ -67,8 +67,13 @@ pub trait ReadRepository {
         path: &PathKey,
     ) -> Result<Option<TemplateId>, TemplateRepositoryError>;
 
-    /// Find template IDs for a set of vault-relative paths in a single
-    /// transaction.
+    /// Find template IDs for a set of vault-relative paths against a single
+    /// consistent view of the store.
+    ///
+    /// All paths are resolved atomically — every lookup observes the same
+    /// snapshot — so the result never mixes pre- and post-write states.
+    /// (Transactions are an adapter mechanism; the contract is the atomic
+    /// view, not the implementation.)
     ///
     /// Returns a vector with the same length and order as `paths`. Each entry
     /// is `Some(id)` when a template exists at the corresponding path and

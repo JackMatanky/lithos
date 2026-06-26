@@ -129,12 +129,17 @@ impl TemplateArtifact<TargetResolved> {
 
     /// Returns the byte length of the rendered content.
     ///
-    /// String lengths are always `usize`. On any supported platform `usize`
-    /// fits in `u64`, so the saturating conversion preserves the value.
+    /// String lengths are always `usize`. On every supported platform `usize`
+    /// is at most 64 bits, so widening to `u64` is lossless — the cast
+    /// commits to that platform invariant instead of silently saturating.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize -> u64 widens losslessly on supported platforms"
+    )]
     pub(crate) fn content_len(&self) -> u64 {
-        u64::try_from(self.content.len()).unwrap_or(u64::MAX)
+        self.content.len() as u64
     }
 
     /// Atomically writes the rendered content to the resolved target,

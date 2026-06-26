@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Template context domain types.
 //!
 //! Provides value objects and aggregates for the Template bounded context:
@@ -58,7 +57,7 @@ pub use views::RawTemplateView;
 // ============================================================================
 
 #[cfg(test)]
-#[allow(clippy::panic, reason = "tests use panic for assertions")]
+#[expect(clippy::panic, reason = "tests use panic for assertions")]
 mod policy {
     /// Verifies that no import/use of the rendering-engine crate appears
     /// anywhere in the template context module source files.

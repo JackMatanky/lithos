@@ -35,6 +35,12 @@ struct ScannedTemplate {
     path_key: PathKey,
 }
 
+/// Classified discovery results paired with the path set they were built from.
+///
+/// Returned by `check_batch_existence` so orphan detection reuses the path set
+/// instead of rebuilding it from the same scanned slice.
+type BatchExistence = (Vec<DiscoveredTemplate>, Vec<PathKey>);
+
 /// Input for [`TemplateService::create`].
 ///
 /// Carries the requested template name, the vault-relative output path, the
@@ -337,10 +343,11 @@ where
     #[inline]
     pub fn process_all(&self) -> Result<ProcessSummary, TemplateError> {
         let scanned = Self::scan_templates(&self.config)?;
-        let paths: Vec<PathKey> =
-            scanned.iter().map(|entry| entry.path_key.clone()).collect();
 
-        let discovered =
+        // `check_batch_existence` already materializes the discovered path set;
+        // reuse it here rather than building a second `Vec<PathKey>` from the
+        // same slice.
+        let (discovered, paths) =
             Self::check_batch_existence(&self.repository, scanned)?;
         let deleted_paths =
             Self::identify_deleted_template_paths(&self.repository, &paths)?;
@@ -410,7 +417,7 @@ where
             return Ok(());
         };
 
-        let discovered =
+        let (discovered, _paths) =
             Self::check_batch_existence(&self.repository, vec![matching])?;
 
         let file_reader =
@@ -456,6 +463,10 @@ where
 
     /// Fetches cached template IDs and raw views for discovered paths.
     ///
+    /// Returns the classified [`DiscoveredTemplate`]s alongside the
+    /// vault-relative path set built from `scanned`, so callers that need the
+    /// path set (for orphan detection) do not rebuild it from the same slice.
+    ///
     /// # Errors
     ///
     /// Returns [`TemplateError`] when repository reads fail or when the
@@ -463,7 +474,7 @@ where
     fn check_batch_existence(
         repository: &R,
         scanned: Vec<ScannedTemplate>,
-    ) -> Result<Vec<DiscoveredTemplate>, TemplateError> {
+    ) -> Result<BatchExistence, TemplateError> {
         let paths: Vec<PathKey> =
             scanned.iter().map(|entry| entry.path_key.clone()).collect();
         let views = repository
@@ -517,7 +528,7 @@ where
             results.push(discovered);
         }
 
-        Ok(results)
+        Ok((results, paths))
     }
 
     /// Scans the configured template directory for markdown template files.
@@ -672,7 +683,9 @@ mod tests {
                 .into_iter()
                 .filter_map(|node| match node {
                     trace_fs::entry::FsNode::File(file) => Some(file),
-                    trace_fs::entry::FsNode::Dir(_) | _ => None,
+                    // `FsNode` is `#[non_exhaustive]`, so a catch-all is
+                    // required; only `File` nodes carry template metadata.
+                    _ => None,
                 })
                 .find(|file| {
                     file.path()
@@ -890,7 +903,8 @@ mod tests {
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
-            let results = results.expect("batch existence should succeed");
+            let (results, _paths) =
+                results.expect("batch existence should succeed");
             let result = results.first();
 
             assert_eq!(results.len(), 1);
@@ -940,7 +954,8 @@ mod tests {
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
-            let results = results.expect("batch existence should succeed");
+            let (results, _paths) =
+                results.expect("batch existence should succeed");
             let result = results.first();
 
             assert_eq!(results.len(), 1);
@@ -979,7 +994,8 @@ mod tests {
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
-            let results = results.expect("batch existence should succeed");
+            let (results, _paths) =
+                results.expect("batch existence should succeed");
             let result = results.first();
 
             assert!(
