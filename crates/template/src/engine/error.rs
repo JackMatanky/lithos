@@ -3,6 +3,13 @@
 //! Engine errors preserve the underlying `MiniJinja` source error for
 //! diagnostics while keeping the Template engine port signatures Traces-shaped.
 
+// CONTEXT: CONTEXT.md says "MiniJinja types do not appear in Template domain
+// models, repositories, service requests, or service responses." The engine
+// error type is the documented exception: TemplateEngineError is the engine
+// boundary, so it deliberately carries `minijinja::Error` in its source chain
+// for diagnostics. The boundary is the Template domain/service public API, not
+// the crate dependency graph; engine error variants live on the engine side of
+// that boundary.
 /// Error returned by template engine operations.
 ///
 /// Each variant stores the template name for user-facing diagnostics and keeps

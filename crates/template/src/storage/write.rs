@@ -93,8 +93,15 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         self.store
             .write(|tx| {
+                // Open all three tables once. `remove` is a no-op on absent
+                // keys, so unconditional opens are simpler than gating the
+                // index tables behind the aggregate lookup.
                 let mut templates_table =
                     tx.try_open_table(TEMPLATES.definition())?;
+                let mut name_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
+                let mut path_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
 
                 let template_indexes: Option<(String, PathKey)> =
                     templates_table
@@ -107,12 +114,7 @@ impl WriteRepository for RedbRepository {
                         .transpose()?;
 
                 if let Some((ref name, ref path)) = template_indexes {
-                    let mut name_index =
-                        tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
                     let _ = name_index.remove(name.as_str())?;
-
-                    let mut path_index =
-                        tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
                     let _ = path_index.remove(DbPathKey::from(path))?;
                 }
 
@@ -190,6 +192,11 @@ impl WriteRepository for RedbRepository {
         &self,
         paths: &[PathKey],
     ) -> Result<(), crate::error::TemplateRepositoryError> {
+        // Nothing to delete: skip opening any tables.
+        if paths.is_empty() {
+            return Ok(());
+        }
+
         self.store
             .write(|tx| {
                 let mut path_index =
@@ -499,6 +506,30 @@ mod tests {
         fn empty_slice_does_not_error() {
             let (_, repo) = setup_repo();
             repo.save_many_raw_template_views(&[]).unwrap();
+        }
+    }
+
+    mod delete_many_templates {
+        use super::*;
+
+        #[test]
+        fn empty_slice_does_not_error() {
+            let (_, repo) = setup_repo();
+            repo.delete_many_templates(&[]).unwrap();
+        }
+
+        #[test]
+        fn removes_template_and_view_for_each_path() {
+            let (_, repo) = setup_repo();
+            let template = test_template("delete-batch");
+            let path = template.path().clone();
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(&test_view(path.as_str())).unwrap();
+
+            repo.delete_many_templates(std::slice::from_ref(&path)).unwrap();
+
+            assert!(repo.find_template_by_path(&path).unwrap().is_none());
+            assert!(repo.find_raw_template_view(&path).unwrap().is_none());
         }
     }
 }

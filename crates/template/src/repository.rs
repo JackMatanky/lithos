@@ -202,14 +202,20 @@ pub trait WriteRepository {
         views: &[RawTemplateView],
     ) -> Result<(), TemplateRepositoryError>;
 
-    /// Delete templates for a set of vault-relative paths in a single
-    /// transaction.
+    /// Delete templates for a set of vault-relative paths.
     ///
     /// For each path, removes both the [`Template`] aggregate (resolving the
     /// ID from the path index) and the matching
     /// [`RawTemplateView`](crate::views::RawTemplateView). Idempotent: paths
     /// without a matching template aggregate or raw view are skipped without
     /// error.
+    ///
+    /// # Atomicity
+    ///
+    /// All paths are processed against a single consistent view: either every
+    /// deletion commits or none do. Implementations must not leave a partial
+    /// deletion visible to concurrent readers — callers may rely on the batch
+    /// being all-or-nothing across adapters.
     ///
     /// # Errors
     ///
