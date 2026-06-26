@@ -1670,13 +1670,16 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "miette",
+ "pretty_assertions",
  "rkyv",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "trace-app",
+ "trace-db",
  "trace-fs",
+ "trace-indexer",
  "trace-settings",
  "tracing",
 ]

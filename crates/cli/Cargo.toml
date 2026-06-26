@@ -24,18 +24,20 @@ trace-fs.workspace = true
 clap = { version = "4.6", features = ["env", "derive"] }
 miette = { workspace = true, features = ["fancy"] }
 thiserror.workspace = true
-# anyhow.workspace = true  # COMMENTED: Completely unused - codebase uses thiserror exclusively
 tracing.workspace = true
 rkyv.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+trace-indexer = { version = "0.1.0", path = "../indexer" }
 
 # Note: tokio removed per Phase 5 - sync-first design
 # If async is needed later for parallel operations, add it back and use
 # tokio::task::spawn_blocking to keep async at edges only
 
 [dev-dependencies]
+pretty_assertions.workspace = true
 tempfile.workspace = true
+trace-db.workspace = true
 
 [lints]
 workspace = true

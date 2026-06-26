@@ -70,7 +70,7 @@ pub enum IndexScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IndexOptions {
     /// Re-index all nodes even if they appear current.
-    reindex: bool,
+    rebuild: bool,
     /// Perform a dry run: discover nodes but do not persist index changes.
     dry_run: bool,
 }
@@ -79,9 +79,9 @@ impl IndexOptions {
     /// Creates a new `IndexOptions`.
     #[inline]
     #[must_use]
-    pub fn new(reindex: bool, dry_run: bool) -> Self {
+    pub fn new(rebuild: bool, dry_run: bool) -> Self {
         Self {
-            reindex,
+            rebuild,
             dry_run,
         }
     }
@@ -89,8 +89,8 @@ impl IndexOptions {
     /// Whether to re-index all nodes even if they appear current.
     #[inline]
     #[must_use]
-    pub(crate) const fn reindex(self) -> bool {
-        self.reindex
+    pub(crate) const fn rebuild(self) -> bool {
+        self.rebuild
     }
 
     /// Whether to perform a dry run.
@@ -204,14 +204,14 @@ mod tests {
             #[test]
             fn options_defaults_are_false() {
                 let opts = IndexOptions::default();
-                assert!(!opts.reindex());
+                assert!(!opts.rebuild());
                 assert!(!opts.dry_run());
             }
 
             #[test]
             fn options_can_be_set() {
                 let opts = IndexOptions::new(true, true);
-                assert!(opts.reindex());
+                assert!(opts.rebuild());
                 assert!(opts.dry_run());
             }
         }

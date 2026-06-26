@@ -2,11 +2,11 @@
 title: 06-indexer-cli-command
 category: enhancement
 label: ready-for-agent
-status: open
-branch:
-merge_commit:
+status: closed
+branch: 06-cli-command
+merge_commit: c2bdd9f1
 date_created: 2026-06-09
-date_completed:
+date_completed: 2026-06-25
 ---
 
 # Issue 06: `traces index` CLI command
@@ -263,3 +263,28 @@ review.
 | `crates/cli/src/commands/mod.rs` | Add `pub(crate) mod index;` |
 | `crates/cli/src/commands/index.rs` | **NEW:** Handler + output + error mapping |
 | `crates/cli/src/error.rs` | Add `IndexCommandError`, `CliError::Index`, exit codes |
+
+---
+
+## Implementation Notes
+
+- **Implementation Complete**: All 10 TDD cycles have been implemented and verified.
+- **Arg Parsing**: Added `--rebuild`, `--path`, `--dry-run`, and `--format` using `clap`. The global CLI framework handles verbosity.
+- **Model Mapping**: Correctly handles fallback to `IndexScope::Full` if no `--path` is supplied. When `--path` is given, it safely delegates building `DirPath` leveraging existing path-joining helpers and domain validation constraints.
+- **Renaming to `--rebuild`**: `IndexOptions::reindex` was refactored to `rebuild` deeply within `trace-indexer` and `trace-app` context. Tests were refactored.
+- **Output**:
+  - *Human*: Outputs standard left-padded `{:>9}: {}` strings perfectly matching the layout explicitly stated in the specifications.
+  - *JSON*: Serializes directly via `serde_json` matching the provided string output shape exactly.
+- **Error Mapping & Diagnostics**: Implemented `IndexCommandError` which uses the `miette` ecosystem native to `trace-cli`. We properly implemented `From<trace_app::AppError>` bridging across deep boundaries into human-actionable exit-code bounded outputs. Exit codes are properly driven (0 = Success, 2 = PathNotFound/StorageFailure, 3 = AccessDenied/IoError).
+- **Test Safety & Best Practices**:
+  - Maintained zero unwrap/expect invariants in source (`#![deny(clippy::unwrap_used)]`).
+  - Added CLI test safety. Avoided `#![allow(clippy::unwrap_used)]` on production code.
+  - Executed tests locally in isolated subagent scope (`trace_app::index::tests`). E2E coverage added correctly parsing all parameters and enforcing constraints.
+- **Adversarial Review (second pass, `c2bdd9f1`)**:
+  - `write_report_json` refactored from `serde_json::json!()` macro to typed `IndexReportPayload` struct — compile-time field name safety, matching `doctor.rs`/`config.rs` pattern.
+  - Tests restructured into Structure A submodules (`build_index_command`, `write_report_human`, `write_report_json`) per `unit-naming.md` hard rule for files with 3+ tests.
+  - Redundant `json_output_contains_all_keys_and_values` removed — `json_output_is_valid_json` already covers it via parsed JSON assertions.
+  - Three silent `return;` in `let-else` patterns replaced with `panic!` + `#[expect(clippy::panic)]` so test invariant violations fail loud.
+  - Crate-level `#![allow(unused_assignments)]` retained but narrowed from generic justification to explicit miette `#[diagnostic(help)]` behavior.
+  - Test renamed to verb-first: `converts_bootstrap_error_to_cli_error` → `wraps_discovery_error_in_bootstrap_variant`.
+  - Commented-out `anyhow` dependency removed from `Cargo.toml`.

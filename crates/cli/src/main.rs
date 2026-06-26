@@ -156,6 +156,16 @@ fn run_main() -> Result<(), CliError> {
             &mut out,
             &mut err,
         ),
+        Command::Index(args) => crate::commands::index::run_index(
+            &bootstrapper,
+            flags,
+            &anchor,
+            args,
+            format,
+            verbose,
+            &mut out,
+            &mut err,
+        ),
     }
 }
 
