@@ -65,11 +65,10 @@ mod policy {
 
     /// Files allowed to reference the rendering engine.
     ///
-    /// `engine/mini_jinja.rs` is the adapter (it *must* import the crate);
-    /// `engine/error.rs` is the documented engine error boundary that carries
-    /// `minijinja::Error` in its source chain (see its `CONTEXT:` comment).
-    const ENGINE_BOUNDARY_FILES: [&str; 2] =
-        ["engine/mini_jinja.rs", "engine/error.rs"];
+    /// `engine/mini_jinja.rs` is the adapter (it *must* import the crate).
+    /// The port (`engine.rs`) uses a boxed `dyn Error` source and never imports
+    /// the rendering engine crate directly.
+    const ENGINE_BOUNDARY_FILES: [&str; 1] = ["engine/mini_jinja.rs"];
 
     /// The forbidden crate name, assembled at runtime so the literal never
     /// appears in this file and trips the policy test against itself.

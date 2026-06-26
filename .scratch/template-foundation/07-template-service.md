@@ -676,3 +676,47 @@ AR-1 freshness safeguard: owner selected **option 3** (per-template
 | 18 | `5565385c` | `mod construction` → `mod constructor`. |
 | 19 | `5565385c` | `fixtures::scanned_metadata` terminal lookup uses a contextual `.expect(...)` (static message; the crate forbids `panic!`/`unreachable!` and interpolating `expect`). |
 | 20 | `220e8dcf` / `d1bcbf51` | F4 first-error-wins is moot — `create()` no longer loops (Action 4). F5 single-`Vec` build: `check_batch_existence` returns the path set (`BatchExistence` alias) for reuse. F12 cross-links added on `new`. F14 `find_template_ids_by_paths` doc reworded to atomic-view, not transactions. |
+
+### Follow-up pass — raw-view storage keying (`bff5c7eb`)
+
+Post-review owner correction: `RAW_TEMPLATE_VIEWS` was created as a
+`PathTable` but should be a `UuidTable`, to match `RAW_SCHEMA_VIEWS` in
+the schema context. Re-keyed views by `TemplateId` (TDD red→green→refactor).
+
+- **Storage shape:** `RAW_TEMPLATE_VIEWS: PathTable<&[u8]>` →
+  `UuidTable<TemplateId, &[u8]>`. `RawTemplateView` struct unchanged (still
+  records its `path`; the ID is the table key, as `RawSchemaView` does — no
+  new field needed).
+- **Trait:** `save_raw_template_view(&self, view)` →
+  `save_raw_template_view(&self, id, view)`. The three processor sites
+  (`create` / `update` / `sync_metadata`) pass the in-hand `TemplateId`.
+- **Reads:** `find_raw_template_view` / `find_raw_template_views_by_paths`
+  resolve `path → id → view` via `TEMPLATE_ID_BY_PATH` (mirrors schema
+  `read.rs`); `list_template_path_keys` enumerates that index.
+- **Deletes:** `delete_raw_template_view` and the redb/in-memory
+  `delete_many_templates` remove the view by resolved ID.
+- **Orphan view collapsed:** with views reachable only through their ID, a
+  view-without-template is unrepresentable. Removed the `(None, Some(_))`
+  corruption arm in `check_batch_existence` and its test
+  (`returns_corruption_when_view_exists_without_template_id`); the
+  remaining `(Some, None)` recoverable-corrupt arm stays. Guarded with a
+  comment rather than a runtime assert — the case is structurally
+  prevented (both lookups key off the same path index).
+- **Removed `save_many_raw_template_views`** (owner option B): no
+  production caller, and a `&[RawTemplateView]` batch carries no IDs to key
+  by. Views are saved per-ID beside their aggregate.
+- **No migration:** the redb adapter is not yet wired into any binary, so
+  there is no persisted data to migrate.
+- **ADR:** decision recorded here in the log only (owner declined a
+  standalone ADR).
+
+trace-template: 218/218; workspace: 2159/2159; verify green.
+
+#### Deferred (not implemented)
+
+- **`to_path` on `TemplateConfigSpec`:** flagged for consideration. The
+  service currently derives the template root via the fallible
+  `to_dir_path()` and threads `&Path` into helpers (`derives_name`,
+  `scan_templates`, processor). Whether to add a convenience `to_path`
+  accessor is an open design question left for a separate change; not in
+  scope for the raw-view re-key.

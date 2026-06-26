@@ -422,7 +422,7 @@ mod tests {
 
             TemplateEngineError::Compile {
                 name: "invalid".to_owned(),
-                source,
+                source: Box::new(source),
             }
         }
 
