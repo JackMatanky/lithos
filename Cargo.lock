@@ -1884,6 +1884,7 @@ dependencies = [
  "trace-utils",
  "tracing",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

@@ -188,7 +188,7 @@ Legend:
 ### walkdir
 - Purpose: recursive filesystem traversal.
 - Why selected: robust, battle-tested directory walking with useful filtering semantics.
-- Where used: vault/file scanning adapters.
+- Where used: vault/file scanning adapters; template crate policy test (dev-only source-file discovery).
 - Important flags: default.
 - Upgrade concerns: symlink/traversal edge-case behavior and platform-specific path handling.
 

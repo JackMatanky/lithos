@@ -59,97 +59,119 @@ pub use views::RawTemplateView;
 #[cfg(test)]
 #[expect(clippy::panic, reason = "tests use panic for assertions")]
 mod policy {
-    /// Verifies that no import/use of the rendering-engine crate appears
-    /// anywhere in the template context module source files.
+    use std::path::{Path, PathBuf};
+
+    use walkdir::WalkDir;
+
+    /// Files allowed to reference the rendering engine.
     ///
-    /// This is a policy invariant: Jinja syntax validation is the engine's
-    /// responsibility, not the domain's.
-    #[test]
-    fn no_rendering_engine_import_in_template_context() {
-        let template_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    /// `engine/mini_jinja.rs` is the adapter (it *must* import the crate);
+    /// `engine/error.rs` is the documented engine error boundary that carries
+    /// `minijinja::Error` in its source chain (see its `CONTEXT:` comment).
+    const ENGINE_BOUNDARY_FILES: [&str; 2] =
+        ["engine/mini_jinja.rs", "engine/error.rs"];
 
-        let source_files = [
-            template_dir.join("lib.rs"),
-            template_dir.join("artifact.rs"),
-            template_dir.join("aggregate.rs"),
-            template_dir.join("engine").join("mod.rs"),
-            template_dir.join("error.rs"),
-            template_dir.join("raw.rs"),
-            template_dir.join("repository.rs"),
-            template_dir.join("service.rs"),
-            template_dir.join("views.rs"),
-        ];
+    /// The forbidden crate name, assembled at runtime so the literal never
+    /// appears in this file and trips the policy test against itself.
+    fn engine_crate() -> String {
+        ["mini", "j", "inja"].concat()
+    }
 
-        // Build the forbidden crate name at runtime to avoid the literal
-        // appearing in this source file and causing the test to falsely
-        // flag itself. The crate name is: "mini" + "j" + "inja"
-        let engine_crate = ["mini", "j", "inja"].concat();
+    fn src_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    }
 
-        let forbidden_patterns = [
+    /// Discovers every `*.rs` file under `src/`, returning each as a
+    /// `(path, relative-string)` pair so callers can apply boundary
+    /// exclusions. Replaces the previously hand-maintained file list so new
+    /// source files are covered automatically.
+    fn rust_source_files(src: &Path) -> Vec<(PathBuf, String)> {
+        WalkDir::new(src)
+            .into_iter()
+            .map(|entry| {
+                entry.unwrap_or_else(|e| panic!("walk {}: {e}", src.display()))
+            })
+            .filter(|entry| {
+                entry.file_type().is_file()
+                    && entry.path().extension().is_some_and(|ext| ext == "rs")
+            })
+            .map(|entry| {
+                let rel = entry
+                    .path()
+                    .strip_prefix(src)
+                    .unwrap_or_else(|e| {
+                        panic!("strip {}: {e}", entry.path().display())
+                    })
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (entry.path().to_path_buf(), rel)
+            })
+            .collect()
+    }
+
+    fn forbidden_patterns(engine_crate: &str) -> [String; 3] {
+        [
             format!("use {engine_crate}"),
             format!("extern crate {engine_crate}"),
             format!("::{engine_crate}::"),
-        ];
+        ]
+    }
 
-        for path in &source_files {
-            let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+    /// Verifies that no import/use of the rendering-engine crate appears in any
+    /// template-context source file outside the engine boundary.
+    ///
+    /// This is a policy invariant: Jinja syntax validation is the engine's
+    /// responsibility, not the domain's. The file set is discovered by
+    /// walking `src/`, so a new `*.rs` file cannot silently slip a forbidden
+    /// import past the check.
+    #[test]
+    fn no_rendering_engine_import_in_template_context() {
+        let src = src_dir();
+        let engine_crate = engine_crate();
+        let forbidden = forbidden_patterns(&engine_crate);
+
+        for (path, rel) in rust_source_files(&src) {
+            if ENGINE_BOUNDARY_FILES.contains(&rel.as_str()) {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!("Could not read {}: {e}", path.display())
             });
-            for pattern in &forbidden_patterns {
+            for pattern in &forbidden {
                 assert!(
                     !content.contains(pattern.as_str()),
-                    "Found '{}' import in {}. Template domain types must not \
-                     import the rendering engine crate.",
-                    engine_crate,
-                    path.display()
+                    "Found '{engine_crate}' import in {rel}. Template domain \
+                     types must not import the rendering engine crate."
                 );
             }
         }
     }
 
-    /// Verifies that rendering-engine imports stay inside the engine adapter
-    /// rather than leaking into template domain or service-facing modules.
+    /// Verifies that rendering-engine imports stay confined to the engine
+    /// boundary and that the adapter actually imports the crate.
     #[test]
     fn rendering_engine_imports_are_confined_to_engine_adapter() {
-        let template_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src = src_dir();
+        let engine_crate = engine_crate();
+        let forbidden = forbidden_patterns(&engine_crate);
 
-        let engine_crate = ["mini", "j", "inja"].concat();
-        let forbidden_patterns = [
-            format!("use {engine_crate}"),
-            format!("extern crate {engine_crate}"),
-            format!("::{engine_crate}::"),
-        ];
-
-        let forbidden_files = [
-            template_dir.join("lib.rs"),
-            template_dir.join("artifact.rs"),
-            template_dir.join("aggregate.rs"),
-            template_dir.join("engine").join("mod.rs"),
-            template_dir.join("error.rs"),
-            template_dir.join("raw.rs"),
-            template_dir.join("repository.rs"),
-            template_dir.join("service.rs"),
-            template_dir.join("views.rs"),
-        ];
-
-        for path in &forbidden_files {
-            let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        for (path, rel) in rust_source_files(&src) {
+            if ENGINE_BOUNDARY_FILES.contains(&rel.as_str()) {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!("Could not read {}: {e}", path.display())
             });
-            for pattern in &forbidden_patterns {
+            for pattern in &forbidden {
                 assert!(
                     !content.contains(pattern.as_str()),
-                    "Found '{}' import in {}. Rendering-engine imports must \
-                     stay confined to the engine adapter.",
-                    engine_crate,
-                    path.display()
+                    "Found '{engine_crate}' import in {rel}. Rendering-engine \
+                     imports must stay confined to the engine adapter."
                 );
             }
         }
 
-        let engine_adapter = template_dir.join("engine").join("mini_jinja.rs");
+        let engine_adapter = src.join("engine").join("mini_jinja.rs");
         let content =
             std::fs::read_to_string(&engine_adapter).unwrap_or_else(|e| {
                 panic!("Could not read {}: {e}", engine_adapter.display())

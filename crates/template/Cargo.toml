@@ -39,5 +39,6 @@ testing = ["trace-db/testing", "trace-support/testing"]
 [dev-dependencies]
 pretty_assertions.workspace = true
 tempfile.workspace = true
+walkdir.workspace = true
 trace-db = { path = "../db", features = ["testing"] }
 trace-support = { path = "../support", features = ["testing"] }
