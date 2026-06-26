@@ -18,11 +18,14 @@ use trace_fs::{DirScanner, FileNode, FileWriter, PathKey, WriteTarget};
 use trace_settings::template::TemplateConfigSpec;
 
 use crate::{
-    aggregate::{Template, TemplateName},
+    aggregate::TemplateName,
     artifact::TemplateArtifact,
-    engine::TemplateEngine,
+    engine::{RenderedTemplate, TemplateEngine},
     error::{TemplateError, TemplateRepositoryError},
-    processor::{Discovered, DiscoveredTemplate, Init, TemplateProcessor},
+    processor::{
+        Discovered, DiscoveredTemplate, Init, ProcessOutcomeKind,
+        TemplateProcessor,
+    },
     repository::{ReadRepository, WriteRepository},
 };
 
@@ -50,23 +53,39 @@ pub struct CreateInput {
     pub dry_run: bool,
 }
 
-/// Rendered template text returned by a dry-run preview.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenderedTemplate(String);
+/// Counts produced by [`TemplateService::process_all`].
+///
+/// Reports how many templates were created, updated, left unchanged, or
+/// deleted during a full filesystem-to-repository reconciliation. Intended for
+/// observability and tests; the indexed aggregates themselves live in the
+/// repository, which is the source of truth after a successful pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct ProcessSummary {
+    /// Templates newly created during this pass.
+    pub created: usize,
+    /// Existing templates rebuilt from changed (or recovered) source.
+    pub updated: usize,
+    /// Cached templates that were already in sync with disk.
+    pub unchanged: usize,
+    /// Orphaned templates removed because their source file is gone.
+    pub deleted: usize,
+}
 
-impl RenderedTemplate {
-    /// Returns the rendered template content as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Consumes the wrapper and returns the owned rendered string.
-    #[inline]
-    #[must_use]
-    pub fn into_inner(self) -> String {
-        self.0
+impl ProcessSummary {
+    /// Increments the count matching a per-template processor outcome.
+    fn record(&mut self, outcome: ProcessOutcomeKind) {
+        match outcome {
+            ProcessOutcomeKind::Created => {
+                self.created = self.created.saturating_add(1);
+            }
+            ProcessOutcomeKind::Updated => {
+                self.updated = self.updated.saturating_add(1);
+            }
+            ProcessOutcomeKind::Unchanged => {
+                self.unchanged = self.unchanged.saturating_add(1);
+            }
+        }
     }
 }
 
@@ -95,13 +114,20 @@ pub enum CreateTemplateOutcome {
     },
 }
 
-/// Orchestrates template ingestion (load) and rendering-to-commit (create).
+/// Orchestrates template ingestion ([`process_all`](Self::process_all)) and
+/// rendering-to-commit ([`create`](Self::create)).
 ///
 /// `TemplateService` is generic over its three ports: the repository
 /// (`R: ReadRepository + WriteRepository`), the filesystem writer
 /// (`W: FileWriter`), and the rendering engine (`E: TemplateEngine`). The
 /// composition root injects concrete implementations; tests inject in-memory
 /// doubles or the production engine directly.
+///
+/// `TemplateService` is intentionally not bound `Send + Sync + 'static`. Those
+/// bounds are runtime-specific (axum / tokio injection sites), not
+/// hexagonal-architecture-intrinsic, and the foundation service has no async
+/// surface. When a runtime needs them, the composition root adds them at the
+/// injection point; the service is otherwise free of runtime assumptions.
 pub struct TemplateService<R, W, E> {
     repository: R,
     writer: W,
@@ -117,9 +143,29 @@ where
 {
     /// Creates a new `TemplateService` from the four dependencies it requires.
     ///
-    /// The engine instance persists across `create()` calls — compiled
-    /// templates accumulate in the engine, and re-compiling an already-
-    /// registered name updates the source in place.
+    /// The engine instance persists across [`create`](Self::create) calls —
+    /// compiled templates accumulate in the engine, and re-compiling an
+    /// already-registered name updates the source in place.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use trace_template::TemplateService;
+    /// # use trace_settings::template::TemplateConfigSpec;
+    /// # fn wire<R, W, E>(
+    /// #     repository: R,
+    /// #     writer: W,
+    /// #     engine: E,
+    /// #     config: TemplateConfigSpec,
+    /// # ) -> TemplateService<R, W, E>
+    /// # where
+    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
+    /// #     W: trace_fs::FileWriter,
+    /// #     E: trace_template::TemplateEngine,
+    /// # {
+    /// TemplateService::new(repository, writer, engine, config)
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(
@@ -139,44 +185,93 @@ where
     /// Renders the requested template and either writes it to the vault or
     /// returns a preview when [`CreateInput::dry_run`] is set.
     ///
+    /// The repository is the source of truth: `create` fetches the requested
+    /// [`Template`] from the repository by name rather than accepting a
+    /// caller-supplied map, so a render can never bypass the processor
+    /// pipeline.
+    ///
     /// Steps:
-    /// 1. Look up the requested template from `templates` by name; return
+    /// 1. [`verify_path`](Self::verify_path) reprocesses the single requested
+    ///    template if its source file is stale, keeping the repository in sync
+    ///    with disk without walking the whole tree.
+    /// 2. Fetch the requested template from the repository by name; return
     ///    [`TemplateError::NotFound`] if absent.
-    /// 2. Compile every template in `templates` into the engine. Re-compiling
-    ///    an already-registered name updates the source in place.
-    /// 3. Render the requested template with the supplied context.
-    /// 4. Resolve the output target via the artifact pipeline.
-    /// 5. When `dry_run` is `false`, commit the artifact to disk through the
+    /// 3. Compile **only** the requested template into the engine. Re-compiling
+    ///    an already-registered name updates the source in place (`MiniJinja`'s
+    ///    `add_template_owned` is idempotent on re-registration).
+    /// 4. Render the requested template with the supplied context.
+    /// 5. Resolve the output target via the artifact pipeline.
+    /// 6. When `dry_run` is `false`, commit the artifact to disk through the
     ///    [`FileWriter`]; otherwise return a preview without writing.
+    ///
+    /// # Dry-run semantics
+    ///
+    /// When `input.dry_run` is `true`, the service renders the template and
+    /// validates the output target path syntactically, but does **not** check
+    /// whether the destination file already exists on disk.
+    /// Destination-collision errors
+    /// ([`WriteError::AlreadyExists`](trace_fs::error::WriteError::AlreadyExists))
+    /// surface only at commit time. A successful preview is therefore not a
+    /// guarantee that a subsequent non-dry `create` call will succeed.
     ///
     /// # Errors
     ///
-    /// Returns [`TemplateError::NotFound`] when the template name is not in
-    /// `templates`, [`TemplateError::Engine`] when compilation or rendering
-    /// fails, and [`TemplateError::Artifact`] when target validation or the
-    /// filesystem commit fails.
+    /// Returns [`TemplateError::NotFound`] when no template with the requested
+    /// name is persisted, [`TemplateError::Engine`] when compilation or
+    /// rendering fails, [`TemplateError::Artifact`] when target validation or
+    /// the filesystem commit fails, and any ingestion error surfaced while
+    /// reconciling the requested path via
+    /// [`verify_path`](Self::verify_path).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::collections::HashMap;
+    /// # use trace_template::{CreateInput, TemplateName, TemplateService};
+    /// # fn run<R, W, E>(
+    /// #     mut service: TemplateService<R, W, E>,
+    /// #     name: TemplateName,
+    /// # ) -> Result<(), trace_template::TemplateError>
+    /// # where
+    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
+    /// #     W: trace_fs::FileWriter,
+    /// #     E: trace_template::TemplateEngine,
+    /// # {
+    /// let input = CreateInput {
+    ///     name,
+    ///     output_path: "notes/out.md".to_owned(),
+    ///     context: HashMap::new(),
+    ///     dry_run: true,
+    /// };
+    /// let _outcome = service.create(&input)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn create(
         &mut self,
-        templates: &HashMap<TemplateName, Template>,
         input: &CreateInput,
     ) -> Result<CreateTemplateOutcome, TemplateError> {
-        let template = templates.get(&input.name).ok_or_else(|| {
-            TemplateError::NotFound {
-                name: input.name.as_str().to_owned(),
-            }
-        })?;
+        self.verify_path(&input.name)?;
 
-        for entry in templates.values() {
-            self.engine.compile(entry).map_err(TemplateError::Engine)?;
-        }
+        let template = self
+            .repository
+            .find_template_by_name(&input.name)
+            .map_err(TemplateError::Repository)?
+            .ok_or_else(|| TemplateError::NotFound {
+                name: input.name.clone(),
+            })?;
 
-        let rendered_text = self
+        self.engine.compile(&template).map_err(TemplateError::Engine)?;
+
+        let rendered = self
             .engine
-            .render(template, &input.context)
+            .render(&template, &input.context)
             .map_err(TemplateError::Engine)?;
-        let artifact =
-            TemplateArtifact::rendered(template.name().clone(), rendered_text);
+        let artifact = TemplateArtifact::rendered(
+            template.name().clone(),
+            rendered.into_inner(),
+        );
 
         let resolved = artifact
             .try_resolve_target(&input.output_path)
@@ -184,10 +279,10 @@ where
 
         if input.dry_run {
             let output_path = resolved.target_path().clone();
-            let rendered = RenderedTemplate(resolved.into_content());
+            let preview = RenderedTemplate::new(resolved.into_content());
             return Ok(CreateTemplateOutcome::Preview {
                 output_path,
-                rendered,
+                rendered: preview,
             });
         }
 
@@ -202,25 +297,45 @@ where
         })
     }
 
-    /// Loads all templates from the configured template directory.
+    /// Reconciles the repository with every template file on disk.
     ///
-    /// Runs the [`TemplateProcessor`] pipeline for each discovered file,
-    /// persists the resulting [`Template`] aggregates and `RawTemplateView`s
-    /// via the repository, and removes any cached templates/views whose
-    /// source files were deleted from disk since the previous scan.
+    /// Walks the configured template directory, runs the
+    /// [`TemplateProcessor`] pipeline for each discovered file, persists the
+    /// resulting [`Template`] aggregates and `RawTemplateView`s via the
+    /// repository, and removes any cached templates/views whose source files
+    /// were deleted from disk since the previous scan.
     ///
-    /// Returns a `HashMap` keyed by [`TemplateName`] so downstream callers
-    /// (notably [`create`](Self::create)) can look up and compile templates
-    /// without re-querying the repository.
+    /// This is the indexer that makes the repository the source of truth: after
+    /// a successful pass, every persisted template matches a file on disk and
+    /// every deleted file's cache entry is gone. Returns a [`ProcessSummary`]
+    /// describing the work done (created / updated / unchanged / deleted) for
+    /// observability and tests, rather than the aggregates themselves — callers
+    /// fetch templates from the repository by name.
     ///
     /// # Errors
     ///
     /// Returns [`TemplateError`] when scanning, reading, validation, or any
     /// repository operation fails during ingestion.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use trace_template::TemplateService;
+    /// # fn run<R, W, E>(
+    /// #     service: TemplateService<R, W, E>,
+    /// # ) -> Result<(), trace_template::TemplateError>
+    /// # where
+    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
+    /// #     W: trace_fs::FileWriter,
+    /// #     E: trace_template::TemplateEngine,
+    /// # {
+    /// let summary = service.process_all()?;
+    /// println!("created {} templates", summary.created);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    pub fn load(
-        &self,
-    ) -> Result<HashMap<TemplateName, Template>, TemplateError> {
+    pub fn process_all(&self) -> Result<ProcessSummary, TemplateError> {
         let scanned = Self::scan_templates(&self.config)?;
         let paths: Vec<PathKey> =
             scanned.iter().map(|entry| entry.path_key.clone()).collect();
@@ -236,27 +351,87 @@ where
             TemplateError::Path(crate::error::TemplatePathError::from(e))
         })?;
 
-        let mut results: HashMap<TemplateName, Template> =
-            HashMap::with_capacity(discovered.len());
+        let mut summary = ProcessSummary::default();
         for discovered_template in discovered {
-            let template =
+            let completed =
                 TemplateProcessor::<Init, Discovered>::new(discovered_template)
                     .run(
                         &self.repository,
                         &file_reader,
                         template_root.as_path(),
-                    )?
-                    .into_template();
-            results.insert(template.name().clone(), template);
+                    )?;
+            summary.record(completed.outcome());
         }
 
         if !deleted_paths.is_empty() {
             self.repository
                 .delete_many_templates(&deleted_paths)
                 .map_err(TemplateError::Repository)?;
+            summary.deleted = deleted_paths.len();
         }
 
-        Ok(results)
+        Ok(summary)
+    }
+
+    /// Reprocesses a single requested template so its repository entry is fresh
+    /// before a render.
+    ///
+    /// This is the per-template freshness safeguard for
+    /// [`create`](Self::create): rather than walking the whole tree on every
+    /// render (which would bound render latency to directory size), it scans
+    /// only the file backing `name`, runs the processor pipeline for that one
+    /// path, and lets the pipeline's cheap metadata/hash comparison skip work
+    /// when the cache is already in sync. A stale single entry self-heals; a
+    /// fresh one costs only a `stat` and a hash compare.
+    ///
+    /// When no file on disk derives `name`, the repository is left untouched —
+    /// `create` then surfaces [`TemplateError::NotFound`] from its own
+    /// repository lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateError`] when scanning, reading, validation, or any
+    /// repository operation fails while reprocessing the requested path.
+    #[inline]
+    pub fn verify_path(
+        &self,
+        name: &TemplateName,
+    ) -> Result<(), TemplateError> {
+        let template_root = self.config.to_dir_path().map_err(|e| {
+            TemplateError::Path(crate::error::TemplatePathError::from(e))
+        })?;
+
+        let scanned = Self::scan_templates(&self.config)?;
+        let Some(matching) = scanned.into_iter().find(|entry| {
+            Self::derives_name(&entry.file, template_root.as_path(), name)
+        }) else {
+            // No source file derives this name; leave the repository as-is and
+            // let create()'s own lookup report NotFound.
+            return Ok(());
+        };
+
+        let discovered =
+            Self::check_batch_existence(&self.repository, vec![matching])?;
+
+        let file_reader =
+            trace_fs::reader::FileReader::new(self.config.root().as_path());
+        for discovered_template in discovered {
+            TemplateProcessor::<Init, Discovered>::new(discovered_template)
+                .run(&self.repository, &file_reader, template_root.as_path())?;
+        }
+
+        Ok(())
+    }
+
+    /// Returns `true` when the scanned file derives the requested template
+    /// name under `template_root`.
+    fn derives_name(
+        file: &FileNode,
+        template_root: &std::path::Path,
+        name: &TemplateName,
+    ) -> bool {
+        TemplateName::try_new(file.path().as_ref(), template_root)
+            .is_ok_and(|derived| &derived == name)
     }
 
     /// Identifies cached raw template paths that were not discovered on disk.
@@ -395,7 +570,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        engine::mini_jinja::MiniJinjaEngine,
+        aggregate::Template, engine::mini_jinja::MiniJinjaEngine,
         storage::testing::InMemoryRepository,
     };
 
@@ -871,23 +1046,30 @@ mod tests {
         }
     }
 
-    mod load {
+    mod process_all {
         use pretty_assertions::assert_eq;
         use trace_support::{Blake3Hash, HasContentHash, HashInput};
 
         use super::*;
 
         #[test]
-        fn returns_empty_map_when_template_directory_is_empty() {
+        fn returns_empty_summary_when_template_directory_is_empty() {
             let temp_dir = fixtures::empty_temp_dir();
             let config = fixtures::config_for_dir(&temp_dir);
             let repo = InMemoryRepository::new();
             let service = service_for(&temp_dir, config, repo);
 
-            let result = service.load();
-            assert!(result.is_ok(), "Expected load success, got: {result:?}");
-            let map = result.expect("load should succeed");
-            assert!(map.is_empty(), "Expected empty map from empty directory");
+            let result = service.process_all();
+            assert!(
+                result.is_ok(),
+                "Expected process_all success, got: {result:?}"
+            );
+            let summary = result.expect("process_all should succeed");
+            assert_eq!(
+                summary,
+                ProcessSummary::default(),
+                "Expected zeroed summary from empty directory"
+            );
         }
 
         #[test]
@@ -904,11 +1086,15 @@ mod tests {
             fixtures::write_template_file(&temp_dir, "ignored.txt", "ignored");
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
-            assert_eq!(map.len(), 1);
+            assert_eq!(summary.created, 1);
             let name = fixtures::template_name("new_template.md");
-            let template = map.get(&name).expect("template by name");
+            let template = service
+                .repository
+                .find_template_by_name(&name)
+                .unwrap()
+                .expect("template persisted by name");
             assert_eq!(template.name().as_str(), "new_template");
             assert_eq!(template.body().as_str(), "test content");
 
@@ -942,11 +1128,14 @@ mod tests {
                 repo.with_failure_injector(Box::new(fixtures::FailOnWrite));
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
-            let loaded =
-                map.get(template.name()).expect("template present in map");
-            assert_eq!(map.len(), 1);
+            let loaded = service
+                .repository
+                .find_template_by_name(template.name())
+                .unwrap()
+                .expect("template present in repository");
+            assert_eq!(summary.unchanged, 1);
             assert_eq!(loaded.id(), template.id());
         }
 
@@ -973,13 +1162,9 @@ mod tests {
             repo.save_raw_template_view(&view).unwrap();
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
-            let loaded =
-                map.get(template.name()).expect("template present in map");
-            assert_eq!(map.len(), 1);
-            assert_eq!(loaded.id(), template.id());
-            assert_eq!(loaded.body().as_str(), new_content);
+            assert_eq!(summary.updated, 1);
 
             let updated_template = service
                 .repository
@@ -993,6 +1178,7 @@ mod tests {
                 .unwrap();
             let expected_hash =
                 Blake3Hash::compute(HashInput::Text(new_content.to_owned()));
+            assert_eq!(updated_template.id(), template.id());
             assert_eq!(updated_template.body().as_str(), new_content);
             assert!(updated_view.is_content_match(&expected_hash));
         }
@@ -1020,7 +1206,7 @@ mod tests {
             repo.harness().counters().reset();
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
             let updated_view = service
                 .repository
@@ -1028,12 +1214,9 @@ mod tests {
                 .unwrap()
                 .unwrap();
             let snapshot = service.repository.harness().counters().snapshot();
-            let loaded =
-                map.get(template.name()).expect("template present in map");
             let expected_size = u64::try_from(content.len()).unwrap();
 
-            assert_eq!(map.len(), 1);
-            assert_eq!(loaded.id(), template.id());
+            assert_eq!(summary.unchanged, 1);
             assert_eq!(updated_view.metadata().size(), expected_size);
             assert_eq!(snapshot.writes, 1);
         }
@@ -1057,14 +1240,14 @@ mod tests {
             .unwrap();
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
             let remaining_template =
                 service.repository.find_template_by_path(&path_key).unwrap();
             let remaining_view =
                 service.repository.find_raw_template_view(&path_key).unwrap();
 
-            assert!(map.is_empty());
+            assert_eq!(summary.deleted, 1);
             assert!(
                 remaining_template.is_none(),
                 "expected orphaned template to be deleted"
@@ -1100,11 +1283,22 @@ mod tests {
             .unwrap();
 
             let service = service_for(&temp_dir, config, repo);
-            let map = service.load().expect("load should succeed");
+            let summary = service.process_all().expect("process_all succeeds");
 
-            assert_eq!(map.len(), 1, "only the active template should remain");
+            assert_eq!(
+                summary.created, 1,
+                "only the active template should be created"
+            );
+            assert_eq!(summary.deleted, 1, "the orphan should be deleted");
             let active_name = fixtures::template_name("active.md");
-            assert!(map.contains_key(&active_name));
+            assert!(
+                service
+                    .repository
+                    .find_template_by_name(&active_name)
+                    .unwrap()
+                    .is_some(),
+                "expected active template to be persisted"
+            );
 
             assert!(
                 service
@@ -1125,10 +1319,9 @@ mod tests {
         }
 
         #[test]
-        fn returns_loaded_map_with_template_name_keys() {
-            // Sanity: the map returned by load() is keyed by TemplateName so
-            // create() can look up templates by name without re-querying the
-            // repository.
+        fn persists_template_retrievable_by_name() {
+            // Sanity: process_all persists templates so create() can look them
+            // up by name from the repository (the source of truth).
             let temp_dir = fixtures::empty_temp_dir();
             let config = fixtures::config_for_dir(&temp_dir);
             fixtures::write_template_file(
@@ -1139,9 +1332,16 @@ mod tests {
 
             let service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let map = service.load().expect("load");
+            service.process_all().expect("process_all");
             let name = fixtures::template_name("greeting.md");
-            assert!(map.contains_key(&name));
+            assert!(
+                service
+                    .repository
+                    .find_template_by_name(&name)
+                    .unwrap()
+                    .is_some(),
+                "expected template retrievable by name after process_all"
+            );
         }
 
         #[test]
@@ -1175,17 +1375,14 @@ mod tests {
         use super::*;
         use crate::error::TemplateArtifactError;
 
-        /// Helper that builds a `templates` map with one template.
-        fn template_map(
-            name: &str,
-            body: &str,
-        ) -> HashMap<TemplateName, Template> {
-            let path_key = fixtures::path_key(&format!("{name}.md"));
-            let template =
-                fixtures::template(path_key, &format!("{name}.md"), body);
-            let mut map = HashMap::new();
-            map.insert(template.name().clone(), template);
-            map
+        /// Writes a template source file to disk so `create` can reconcile it
+        /// into the repository via `verify_path`.
+        fn seed_template(temp_dir: &TempDir, name: &str, body: &str) {
+            fixtures::write_template_file(
+                temp_dir,
+                &format!("{name}.md"),
+                body,
+            );
         }
 
         fn create_input(
@@ -1202,23 +1399,24 @@ mod tests {
         }
 
         #[test]
-        fn returns_not_found_when_template_name_missing_from_map() {
+        fn returns_not_found_when_template_name_missing_from_repository() {
             let temp_dir = fixtures::empty_temp_dir();
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates: HashMap<TemplateName, Template> = HashMap::new();
+            let missing = fixtures::template_name("missing.md");
 
-            let result = service.create(
-                &templates,
-                &create_input("missing", "out/x.md", false),
+            let result =
+                service.create(&create_input("missing", "out/x.md", false));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::NotFound { ref name })
+                        if *name == missing
+                ),
+                "expected NotFound for unindexed name, got: {result:?}"
             );
-
-            assert!(matches!(
-                result,
-                Err(TemplateError::NotFound { ref name })
-                    if name == "missing"
-            ));
         }
 
         #[test]
@@ -1228,12 +1426,12 @@ mod tests {
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
 
-            let templates = template_map("greeting", "Hello {{ name }}");
+            seed_template(&temp_dir, "greeting", "Hello {{ name }}");
             let mut context = HashMap::new();
             context.insert("name".to_owned(), "Alice".to_owned());
 
             let outcome = service
-                .create(&templates, &CreateInput {
+                .create(&CreateInput {
                     name: fixtures::template_name("greeting.md"),
                     output_path: "notes/out.md".to_owned(),
                     context,
@@ -1270,12 +1468,12 @@ mod tests {
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
 
-            let templates = template_map("greeting", "Hello {{ name }}");
+            seed_template(&temp_dir, "greeting", "Hello {{ name }}");
             let mut context = HashMap::new();
             context.insert("name".to_owned(), "Alice".to_owned());
 
             let outcome = service
-                .create(&templates, &CreateInput {
+                .create(&CreateInput {
                     name: fixtures::template_name("greeting.md"),
                     output_path: "notes/preview.md".to_owned(),
                     context,
@@ -1312,14 +1510,15 @@ mod tests {
                 service_for(&temp_dir, config, InMemoryRepository::new());
 
             // Broken Jinja syntax: unterminated `{{ name`.
-            let templates = template_map("broken", "Hello {{ name");
+            seed_template(&temp_dir, "broken", "Hello {{ name");
 
-            let result = service.create(
-                &templates,
-                &create_input("broken", "notes/x.md", false),
+            let result =
+                service.create(&create_input("broken", "notes/x.md", false));
+
+            assert!(
+                matches!(result, Err(TemplateError::Engine(_))),
+                "expected Engine error, got: {result:?}"
             );
-
-            assert!(matches!(result, Err(TemplateError::Engine(_))));
         }
 
         #[test]
@@ -1328,19 +1527,20 @@ mod tests {
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service.create(
-                &templates,
-                &create_input("greeting", "/abs/x.md", false),
+            let result =
+                service.create(&create_input("greeting", "/abs/x.md", false));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Path(
+                        WriteTargetError::Absolute(_)
+                    )))
+                ),
+                "expected Absolute path rejection, got: {result:?}"
             );
-
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Path(
-                    WriteTargetError::Absolute(_)
-                )))
-            ));
         }
 
         #[test]
@@ -1349,19 +1549,23 @@ mod tests {
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service.create(
-                &templates,
-                &create_input("greeting", "../escape.md", false),
-            );
-
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Path(
-                    WriteTargetError::Traversal(_)
-                )))
+            let result = service.create(&create_input(
+                "greeting",
+                "../escape.md",
+                false,
             ));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Path(
+                        WriteTargetError::Traversal(_)
+                    )))
+                ),
+                "expected Traversal path rejection, got: {result:?}"
+            );
         }
 
         #[test]
@@ -1370,19 +1574,23 @@ mod tests {
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service.create(
-                &templates,
-                &create_input("greeting", ".hidden/x.md", false),
-            );
-
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Path(
-                    WriteTargetError::Hidden(_)
-                )))
+            let result = service.create(&create_input(
+                "greeting",
+                ".hidden/x.md",
+                false,
             ));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Path(
+                        WriteTargetError::Hidden(_)
+                    )))
+                ),
+                "expected Hidden path rejection, got: {result:?}"
+            );
         }
 
         #[test]
@@ -1391,17 +1599,19 @@ mod tests {
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service
-                .create(&templates, &create_input("greeting", "", false));
+            let result = service.create(&create_input("greeting", "", false));
 
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Path(
-                    WriteTargetError::Empty
-                )))
-            ));
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Path(
+                        WriteTargetError::Empty
+                    )))
+                ),
+                "expected Empty path rejection, got: {result:?}"
+            );
         }
 
         #[test]
@@ -1410,17 +1620,20 @@ mod tests {
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service
-                .create(&templates, &create_input("greeting", "./x.md", false));
+            let result =
+                service.create(&create_input("greeting", "./x.md", false));
 
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Path(
-                    WriteTargetError::CurrentDir(_)
-                )))
-            ));
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Path(
+                        WriteTargetError::CurrentDir(_)
+                    )))
+                ),
+                "expected CurrentDir path rejection, got: {result:?}"
+            );
         }
 
         #[test]
@@ -1436,19 +1649,23 @@ mod tests {
 
             let mut service =
                 service_for(&temp_dir, config, InMemoryRepository::new());
-            let templates = template_map("greeting", "Hello");
+            seed_template(&temp_dir, "greeting", "Hello");
 
-            let result = service.create(
-                &templates,
-                &create_input("greeting", "notes/out.md", false),
-            );
-
-            assert!(matches!(
-                result,
-                Err(TemplateError::Artifact(TemplateArtifactError::Write(
-                    WriteError::AlreadyExists { .. }
-                )))
+            let result = service.create(&create_input(
+                "greeting",
+                "notes/out.md",
+                false,
             ));
+
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Artifact(TemplateArtifactError::Write(
+                        WriteError::AlreadyExists { .. }
+                    )))
+                ),
+                "expected AlreadyExists write rejection, got: {result:?}"
+            );
             assert_eq!(
                 std::fs::read_to_string(temp_dir.path().join("notes/out.md"))
                     .expect("read existing"),

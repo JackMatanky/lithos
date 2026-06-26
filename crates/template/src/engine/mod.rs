@@ -11,14 +11,16 @@ use super::Template;
 
 mod error;
 pub mod mini_jinja;
+mod rendered;
 
 pub use error::TemplateEngineError;
+pub use rendered::RenderedTemplate;
 
 /// Rendering-engine boundary for checking and rendering supplied templates.
 ///
 /// The trait intentionally has no `Clone`, `Send`, `Sync`, or `'static` bounds;
-/// concrete orchestration needs should drive future bounds. `render` returns
-/// the rendered text only — the [`crate::TemplateService`] wraps it in a
+/// concrete orchestration needs should drive future bounds. `render` returns a
+/// [`RenderedTemplate`] — the [`crate::TemplateService`] feeds it into a
 /// [`crate::artifact::TemplateArtifact`] before driving the write pipeline,
 /// keeping the artifact typestate confined to the crate.
 pub trait TemplateEngine {
@@ -34,7 +36,7 @@ pub trait TemplateEngine {
     ) -> Result<(), TemplateEngineError>;
 
     /// Renders a compiled template with a flat string context, returning the
-    /// rendered text.
+    /// rendered text wrapped in a [`RenderedTemplate`].
     ///
     /// # Errors
     ///
@@ -44,5 +46,5 @@ pub trait TemplateEngine {
         &self,
         template: &Template,
         context: &HashMap<String, String>,
-    ) -> Result<String, TemplateEngineError>;
+    ) -> Result<RenderedTemplate, TemplateEngineError>;
 }

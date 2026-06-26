@@ -606,6 +606,7 @@ impl TemplateProcessor<Construction, New> {
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Created,
         }))
     }
 }
@@ -654,6 +655,7 @@ impl TemplateProcessor<Construction, Changed> {
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Updated,
         }))
     }
 }
@@ -681,6 +683,7 @@ impl TemplateProcessor<Construction, Fresh> {
             })?;
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Unchanged,
         }))
     }
 }
@@ -692,16 +695,46 @@ impl TemplateProcessor<Construction, Fresh> {
 /// Terminal phase after a template has been produced.
 pub(crate) struct CompletedPhase;
 
+/// Classifies how a completed template reached its terminal state.
+///
+/// Drives the per-template counts reported in
+/// [`ProcessSummary`](crate::ProcessSummary): a freshly created aggregate, an
+/// existing aggregate rebuilt from changed (or recovered) source, or a cached
+/// aggregate fetched unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessOutcomeKind {
+    /// A new template aggregate and raw view were created.
+    Created,
+    /// An existing template aggregate was rebuilt from changed source.
+    Updated,
+    /// A cached template aggregate was fetched without changes.
+    Unchanged,
+}
+
 #[derive(Debug)]
-/// Terminal status carrying the produced template aggregate.
+/// Terminal status carrying the produced template aggregate and how it was
+/// produced.
 pub(crate) struct Completed {
+    // Read by `into_template`, which is exercised only by the processor's own
+    // unit tests; production callers consume the outcome classification.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "template aggregate read only in tests")
+    )]
     template: Template,
+    outcome: ProcessOutcomeKind,
 }
 
 impl TemplateProcessor<CompletedPhase, Completed> {
     /// Consumes the completed processor and returns the template aggregate.
+    #[cfg(test)]
     pub(crate) fn into_template(self) -> Template {
         self.status.template
+    }
+
+    /// Returns how the completed template reached its terminal state.
+    pub(crate) const fn outcome(&self) -> ProcessOutcomeKind {
+        self.status.outcome
     }
 }
 

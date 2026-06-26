@@ -11,7 +11,7 @@ use thiserror::Error;
 use trace_db::DbError;
 use trace_fs::PathKey;
 
-use super::TemplateEngineError;
+use super::{TemplateEngineError, aggregate::TemplateName};
 
 // ============================================================================
 // TemplateError
@@ -48,11 +48,11 @@ pub enum TemplateError {
     /// A template artifact pipeline error.
     #[error(transparent)]
     Artifact(#[from] TemplateArtifactError),
-    /// A requested template name was not found in the loaded template set.
+    /// A requested template name was not found in the repository.
     #[error("template not found: {name}")]
     NotFound {
         /// Name of the missing template.
-        name: String,
+        name: TemplateName,
     },
 }
 
@@ -468,8 +468,13 @@ mod tests {
 
         #[test]
         fn not_found_displays_name() {
+            let name = crate::aggregate::TemplateName::try_new(
+                std::path::Path::new("templates/daily.md"),
+                std::path::Path::new("templates"),
+            )
+            .expect("derivable template name");
             let err = TemplateError::NotFound {
-                name: "daily".to_owned(),
+                name,
             };
             let msg = err.to_string();
             assert!(

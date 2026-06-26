@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use minijinja::{AutoEscape, Environment, UndefinedBehavior};
 
-use super::{TemplateEngine, TemplateEngineError};
+use super::{RenderedTemplate, TemplateEngine, TemplateEngineError};
 use crate::Template;
 
 /// MiniJinja-backed implementation of the template engine port.
@@ -61,16 +61,18 @@ impl TemplateEngine for MiniJinjaEngine {
         &self,
         template: &Template,
         context: &HashMap<String, String>,
-    ) -> Result<String, TemplateEngineError> {
+    ) -> Result<RenderedTemplate, TemplateEngineError> {
         let loaded = self.env.get_template(template.name().as_ref()).map_err(
             |source| TemplateEngineError::Render {
                 name: template.name().as_ref().to_owned(),
                 source,
             },
         )?;
-        loaded.render(context).map_err(|source| TemplateEngineError::Render {
-            name: template.name().as_ref().to_owned(),
-            source,
+        loaded.render(context).map(RenderedTemplate::new).map_err(|source| {
+            TemplateEngineError::Render {
+                name: template.name().as_ref().to_owned(),
+                source,
+            }
         })
     }
 }
@@ -150,7 +152,7 @@ mod tests {
                 .render(&template, &context)
                 .expect("expected template to render");
 
-            assert_eq!(text, "Hello Alice");
+            assert_eq!(text.as_str(), "Hello Alice");
         }
 
         #[test]
@@ -186,7 +188,7 @@ mod tests {
                 .render(&template, &context)
                 .expect("expected markdown to render");
 
-            assert_eq!(text, markdown);
+            assert_eq!(text.as_str(), markdown);
         }
 
         #[test]
@@ -204,7 +206,7 @@ mod tests {
                 .render(&changed, &context)
                 .expect("expected compiled source to render");
 
-            assert_eq!(text, "Hello Alice");
+            assert_eq!(text.as_str(), "Hello Alice");
         }
 
         #[test]

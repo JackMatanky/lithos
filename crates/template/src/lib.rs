@@ -9,8 +9,18 @@
 //! - [`RawTemplateView`] — flat freshness/cache struct
 //! - [`Template`] — primary renderable aggregate
 //! - [`TemplateError`], [`TemplateNameError`], [`TemplateBodyError`],
-//!   [`TemplateRepositoryError`], [`TemplateEngineError`] — domain, repository,
-//!   and engine errors
+//!   [`TemplateRepositoryError`], [`TemplateArtifactError`],
+//!   [`TemplateEngineError`] — domain, repository, artifact, and engine errors
+//!
+//! Service and engine surface:
+//! - [`TemplateService`] — use-case orchestrator for ingestion and rendering
+//! - [`CreateInput`], [`CreateTemplateOutcome`] — render-to-commit request and
+//!   outcome
+//! - [`ProcessSummary`] — counts returned by [`TemplateService::process_all`]
+//! - [`TemplateEngine`], [`MiniJinjaEngine`] — rendering port and adapter
+//! - [`RenderedTemplate`] — load-bearing rendered-output newtype
+//! - [`ReadRepository`], [`WriteRepository`], [`Repository`] — persistence
+//!   ports
 //!
 //! Domain and service-facing APIs stay free of `MiniJinja` imports. Rendering
 //! mechanics are confined to the engine adapter, while engine errors preserve
@@ -29,7 +39,8 @@ pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
 pub use engine::{
-    TemplateEngine, TemplateEngineError, mini_jinja::MiniJinjaEngine,
+    RenderedTemplate, TemplateEngine, TemplateEngineError,
+    mini_jinja::MiniJinjaEngine,
 };
 pub use error::{
     TemplateArtifactError, TemplateBodyError, TemplateError, TemplateNameError,
@@ -38,7 +49,7 @@ pub use error::{
 pub use raw::RawTemplate;
 pub use repository::{ReadRepository, Repository, WriteRepository};
 pub use service::{
-    CreateInput, CreateTemplateOutcome, RenderedTemplate, TemplateService,
+    CreateInput, CreateTemplateOutcome, ProcessSummary, TemplateService,
 };
 pub use views::RawTemplateView;
 
