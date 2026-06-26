@@ -681,7 +681,10 @@ mod tests {
                         .is_some_and(|name| name == file_name)
                 })
                 .map(|file| file.metadata().clone())
-                .unwrap()
+                .expect(
+                    "scanned_metadata: no markdown file with the requested \
+                     name under temp/templates",
+                )
         }
 
         pub fn raw_view(
@@ -891,10 +894,13 @@ mod tests {
             let result = results.first();
 
             assert_eq!(results.len(), 1);
-            assert!(matches!(
-                result.map(DiscoveredTemplate::cache),
-                Some(DiscoveredCacheState::New(Missing))
-            ));
+            assert!(
+                matches!(
+                    result.map(DiscoveredTemplate::cache),
+                    Some(DiscoveredCacheState::New(Missing))
+                ),
+                "expected New(Missing) cache state, got: {result:?}"
+            );
         }
 
         #[test]
@@ -938,11 +944,15 @@ mod tests {
             let result = results.first();
 
             assert_eq!(results.len(), 1);
-            assert!(matches!(
-                result.map(DiscoveredTemplate::cache),
-                Some(DiscoveredCacheState::Exists(Present { id, view: cached_view }))
-                    if *id == *template.id() && cached_view.path().as_str() == "templates/test.md"
-            ));
+            assert!(
+                matches!(
+                    result.map(DiscoveredTemplate::cache),
+                    Some(DiscoveredCacheState::Exists(Present { id, view: cached_view }))
+                        if *id == *template.id() && cached_view.path().as_str() == "templates/test.md"
+                ),
+                "expected Exists(Present) with matching id and path, got: \
+                 {result:?}"
+            );
         }
 
         #[test]
@@ -972,11 +982,15 @@ mod tests {
             let results = results.expect("batch existence should succeed");
             let result = results.first();
 
-            assert!(matches!(
-                result.map(DiscoveredTemplate::cache),
-                Some(DiscoveredCacheState::Corrupt(Corrupted { id, view: None }))
-                    if *id == *template.id()
-            ));
+            assert!(
+                matches!(
+                    result.map(DiscoveredTemplate::cache),
+                    Some(DiscoveredCacheState::Corrupt(Corrupted { id, view: None }))
+                        if *id == *template.id()
+                ),
+                "expected Corrupt(Corrupted) with matching id and no view, \
+                 got: {result:?}"
+            );
         }
 
         #[test]
@@ -1004,12 +1018,16 @@ mod tests {
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
 
-            assert!(matches!(
-                result,
-                Err(TemplateError::Repository(
-                    TemplateRepositoryError::Storage(_)
-                ))
-            ));
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Repository(
+                        TemplateRepositoryError::Storage(_)
+                    ))
+                ),
+                "expected Storage corruption error for orphan view, got: \
+                 {result:?}"
+            );
         }
 
         #[test]
@@ -1025,16 +1043,20 @@ mod tests {
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
 
-            assert!(matches!(
-                result,
-                Err(TemplateError::Repository(
-                    TemplateRepositoryError::Storage(_)
-                ))
-            ));
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::Repository(
+                        TemplateRepositoryError::Storage(_)
+                    ))
+                ),
+                "expected Storage error for batch length mismatch, got: \
+                 {result:?}"
+            );
         }
     }
 
-    mod construction {
+    mod constructor {
         use super::*;
 
         #[test]
@@ -1420,7 +1442,7 @@ mod tests {
         }
 
         #[test]
-        fn renders_and_commits_file_to_disk() {
+        fn returns_created_outcome_when_template_renders() {
             let temp_dir = fixtures::empty_temp_dir();
             let config = fixtures::config_for_dir(&temp_dir);
             let mut service =
@@ -1452,6 +1474,27 @@ mod tests {
                 "expected Created outcome with correct path and length, got: \
                  {outcome:?}"
             );
+        }
+
+        #[test]
+        fn writes_rendered_content_to_disk_when_dry_run_is_false() {
+            let temp_dir = fixtures::empty_temp_dir();
+            let config = fixtures::config_for_dir(&temp_dir);
+            let mut service =
+                service_for(&temp_dir, config, InMemoryRepository::new());
+
+            seed_template(&temp_dir, "greeting", "Hello {{ name }}");
+            let mut context = HashMap::new();
+            context.insert("name".to_owned(), "Alice".to_owned());
+
+            service
+                .create(&CreateInput {
+                    name: fixtures::template_name("greeting.md"),
+                    output_path: "notes/out.md".to_owned(),
+                    context,
+                    dry_run: false,
+                })
+                .expect("create should succeed");
 
             let written = temp_dir.path().join("notes/out.md");
             assert!(written.exists(), "expected file written to disk");
