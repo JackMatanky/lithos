@@ -637,3 +637,42 @@ If a future change requires collision-aware previews, add a `target_exists` chec
 | 18 | Rename `mod construction` → `mod constructor`. | F17 | Low |
 | 19 | Add context message to `fixtures::scanned_metadata`'s final `.unwrap()`. | F20 | Low |
 | 20 | Document first-error-wins compile-loop behaviour, single-Vec construction, cross-links, trait wording. | F4, F5, F12, F14 | Low |
+
+---
+
+## Implementation log (review-fix pass)
+
+Implemented on `feat/07-template-service` in worktree
+`.worktrees/07-template-service`, base commit `d3641d2e`. Five
+Conventional-Commit batches; every commit passed `mise run fmt`,
+`cargo clippy --all-targets --all-features --locked -- -D warnings`,
+`cargo nextest run -p trace-template`, `cargo nextest run --workspace`,
+and `mise run verify`. Test counts grew from 220/220 (trace-template) and
+2161/2161 (workspace) at `f3643dd5` to 225/225 and 2166/2166 — a net
+increase, no regressions.
+
+AR-1 freshness safeguard: owner selected **option 3** (per-template
+`verify_path`), implemented as `TemplateService::verify_path(&TemplateName)`.
+
+| # | Commit | Note |
+| - | ------ | ---- |
+| 1 | `982fa0bf` | Policy tests discover `src/*.rs` via `WalkDir`, excluding `engine/mini_jinja.rs` + `engine/error.rs`; verified it flags an injected import. walkdir added as dev-dep; DEPENDENCIES.md updated. |
+| 2 | `d1bcbf51` | `load()` → `process_all()` returning `ProcessSummary`; `create()` drops `&HashMap`, fetches by name, adds `verify_path` (AR-1 opt 3). |
+| 3 | `d1bcbf51` | `RenderedTemplate` moved to `engine::rendered`; `TemplateEngine::render` returns it. |
+| 4 | `d1bcbf51` | `create()` compiles only the requested template (no batch loop). |
+| 5 | `d1bcbf51` | `# Dry-run semantics` section added to `create()` docstring. |
+| 6 | `d1bcbf51` | `Send + Sync + 'static` deferral doc-comment added to `TemplateService`. |
+| 7 | `220e8dcf` | Dropped `FsNode::Dir(_) \| _` collapse. `FsNode` is `#[non_exhaustive]`, so a single commented `_ => None` is required; F1's "`Dir(_) => None` is exhaustive" premise does not hold for a foreign `#[non_exhaustive]` enum. |
+| 8 | `220e8dcf` | **Deviation:** `#![feature(trivial_bounds)]` was dead across lib/test/all-features builds, so it was *removed* rather than documented — a CONTEXT comment justifying a feature nothing needs would itself be misleading (Apollo Ch.8). |
+| 9 | `5565385c` | Split `renders_and_commits_file_to_disk` into `returns_created_outcome_when_template_renders` + `writes_rendered_content_to_disk_when_dry_run_is_false`; added diagnostics to bare `assert!(matches!())` calls. |
+| 10 | `a0141a54` | `# Atomicity` section added to `delete_many_templates` trait doc. |
+| 11 | `d1bcbf51` | `lib.rs` `//!` updated to list the new public surface. |
+| 12 | `d1bcbf51` | `# Examples` doc-tests added to `new`, `process_all`, `create`. |
+| 13 | `a0141a54` | Inline `CONTEXT:` comment on `TemplateEngineError` documenting the engine error boundary exception. |
+| 14 | `d1bcbf51` | `TemplateError::NotFound { name }` changed `String` → `TemplateName`. |
+| 15 | `220e8dcf` | **Deviation:** the crate forbids bare `as` (`as_conversions`) and `expect_used`/`unreachable` in production, and `cast_possible_truncation` does not fire on a widening cast. `content_len` now uses `self.content.len() as u64` under `#[expect(clippy::as_conversions)]` — lossless, non-saturating, lint-clean. |
+| 16 | `220e8dcf` | `lib.rs` policy `#[allow(clippy::panic)]` → `#[expect]`. **Deviation:** the six redb storage `#[allow(dead_code)]` sites were *not* converted — those items are dead only in the lib profile and live in the test profile, so `#[expect]` is unfulfillable across cfgs; retained `#[allow(..., reason=...)]` per Apollo Ch.2 §2.4 (documented false-positive fallback). |
+| 17 | `a0141a54` | redb `delete_many_templates` early-returns on empty input; `delete_template` opens all tables unconditionally. Added empty-slice + single-path tests. |
+| 18 | `5565385c` | `mod construction` → `mod constructor`. |
+| 19 | `5565385c` | `fixtures::scanned_metadata` terminal lookup uses a contextual `.expect(...)` (static message; the crate forbids `panic!`/`unreachable!` and interpolating `expect`). |
+| 20 | `220e8dcf` / `d1bcbf51` | F4 first-error-wins is moot — `create()` no longer loops (Action 4). F5 single-`Vec` build: `check_batch_existence` returns the path set (`BatchExistence` alias) for reuse. F12 cross-links added on `new`. F14 `find_template_ids_by_paths` doc reworded to atomic-view, not transactions. |
