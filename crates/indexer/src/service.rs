@@ -474,6 +474,29 @@ mod tests {
             assert_eq!(result.report().skipped().len(), 1);
         }
 
+        #[test]
+        fn scanner_error_aborts_run() {
+            let (_tmp, vault) = make_vault_root();
+            let err = crate::error::ScannerError::Traversal {
+                path: "/bad".into(),
+                source: std::io::Error::other("test"),
+            };
+            let scanner = MockScanner::new(vec![Err(err)]);
+            let repo = empty_repo();
+            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service.run(&scope, IndexOptions::new(false, false));
+            assert!(matches!(
+                result,
+                Err(IndexerError::Scanner(
+                    crate::error::ScannerError::Traversal { .. }
+                ))
+            ));
+        }
+
         // ─── Capturing mock for scope delegation tests ──────
 
         struct CapturingMockScanner {
@@ -788,6 +811,11 @@ mod tests {
             assert_eq!(result.indexed().dirs().len(), 1);
             assert_eq!(result.report().new_count(), 3);
             assert_eq!(result.report().scanned(), 3);
+
+            // sub/c.md (files[1]) must be parented to the sub dir record.
+            let sub_id = result.indexed().dirs().first().unwrap().id();
+            let child = result.indexed().files().get(1).unwrap();
+            assert_eq!(child.node().parent_id(), FsParentId::Id(sub_id));
         }
 
         #[test]

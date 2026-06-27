@@ -675,6 +675,28 @@ mod tests {
         }
 
         #[test]
+        fn list_files_by_parent_root() {
+            use crate::repository::WriteRepository;
+
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let record = FileRecord::new(
+                id,
+                FsParentId::Root,
+                PathKey::try_new("root_file.md").unwrap(),
+                FileName::new("root_file.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+            repo.save_file(&record).unwrap();
+
+            let results = repo.list_files_by_parent(FsParentId::Root).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first(), Some(&record));
+        }
+
+        #[test]
         fn all_paths_deduplicates_across_file_and_dir_tables() {
             let (_tempdir, repo) = setup_repo();
             let shared = PathKey::try_new("shared").unwrap();
