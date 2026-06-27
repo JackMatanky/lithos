@@ -221,15 +221,22 @@ impl ReadRepository for RedbRepository {
                     tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
 
                 let mut paths = Vec::new();
+                let mut seen = std::collections::HashSet::new();
 
                 for result in file_path_table.iter()? {
                     let (path, _id) = result?;
-                    paths.push(path.value().into_inner());
+                    let pk = path.value().into_inner();
+                    if seen.insert(pk.clone()) {
+                        paths.push(pk);
+                    }
                 }
 
                 for result in dir_path_table.iter()? {
                     let (path, _id) = result?;
-                    paths.push(path.value().into_inner());
+                    let pk = path.value().into_inner();
+                    if seen.insert(pk.clone()) {
+                        paths.push(pk);
+                    }
                 }
 
                 Ok(paths.into_boxed_slice())
@@ -665,6 +672,37 @@ mod tests {
             assert_eq!(results.len(), 2);
             assert!(results.contains(&file_path));
             assert!(results.contains(&dir_path));
+        }
+
+        #[test]
+        fn all_paths_deduplicates_across_file_and_dir_tables() {
+            let (_tempdir, repo) = setup_repo();
+            let shared = PathKey::try_new("shared").unwrap();
+
+            repo.store
+                .write(|tx| {
+                    let mut f_p_table = tx
+                        .inner
+                        .open_table(FILE_ID_BY_PATH.definition())
+                        .unwrap();
+                    f_p_table
+                        .insert(DbPathKey::from(&shared), FsRecordId::new())
+                        .unwrap();
+
+                    let mut d_p_table = tx
+                        .inner
+                        .open_table(DIR_ID_BY_PATH.definition())
+                        .unwrap();
+                    d_p_table
+                        .insert(DbPathKey::from(&shared), FsRecordId::new())
+                        .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.all_paths().unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first(), Some(&shared));
         }
     }
 

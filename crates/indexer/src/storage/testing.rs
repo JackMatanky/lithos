@@ -157,8 +157,15 @@ impl ReadRepository for InMemoryRepository {
 
     fn all_paths(&self) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
         let state = self.state.read().unwrap();
-        let mut paths: Vec<_> = state.file_path_to_id.keys().cloned().collect();
-        paths.extend(state.dir_path_to_id.keys().cloned());
+        let mut paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for pk in
+            state.file_path_to_id.keys().chain(state.dir_path_to_id.keys())
+        {
+            if seen.insert(pk.clone()) {
+                paths.push(pk.clone());
+            }
+        }
         Ok(paths.into_boxed_slice())
     }
 }
@@ -347,9 +354,43 @@ impl InMemoryRepository {
 mod tests {
     use std::time::SystemTime;
 
-    use traces_fs::{FileMetadata, metadata::FsTimes, name::FileName};
+    use traces_fs::{
+        DirMetadata, FileMetadata,
+        metadata::FsTimes,
+        name::{DirName, FileName},
+    };
 
     use super::*;
+
+    #[test]
+    fn all_paths_deduplicates_across_file_and_dir_tables() {
+        let repo = InMemoryRepository::new();
+        let shared = PathKey::try_new("shared").unwrap();
+
+        repo.save_file(&FileRecord::new(
+            FsRecordId::new(),
+            FsParentId::Root,
+            shared.clone(),
+            FileName::new("shared".into()),
+            FileFormat::Unknown,
+            FileMetadata::new(FsTimes::new(None, None), 0, false),
+            SystemTime::now(),
+        ))
+        .unwrap();
+        repo.save_dir(&DirRecord::new(
+            FsRecordId::new(),
+            FsParentId::Root,
+            shared.clone(),
+            DirName::new("shared".into()),
+            DirMetadata::new(FsTimes::new(None, None), false),
+            SystemTime::now(),
+        ))
+        .unwrap();
+
+        let results = repo.all_paths().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results.first(), Some(&shared));
+    }
 
     #[test]
     fn repository_double_supports_save_and_find() {
