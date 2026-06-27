@@ -24,7 +24,7 @@
 //! If serialization or table write fails, the transaction is automatically
 //! rolled back by `redb`. No partial writes are visible to concurrent readers.
 //!
-//! [`WriteRepository`]: crate::repository::WriteRepository
+//! [`WriteRepository`]: crate::storage::WriteRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
 //! [`TEMPLATES`]: crate::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::storage::tables::TEMPLATE_ID_BY_NAME
@@ -38,9 +38,8 @@ use trace_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId},
-    repository::WriteRepository,
     storage::{
-        RedbRepository,
+        RedbRepository, WriteRepository,
         tables::{
             RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATE_ID_BY_PATH,
             TEMPLATES,
@@ -235,8 +234,9 @@ mod tests {
 
     use crate::{
         aggregate::{Template, TemplateId, TemplateName},
-        repository::{ReadRepository, WriteRepository},
-        storage::{RedbRepository, tables::TEMPLATES},
+        storage::{
+            ReadRepository, RedbRepository, WriteRepository, tables::TEMPLATES,
+        },
         views::RawTemplateView,
     };
 

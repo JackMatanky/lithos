@@ -12,20 +12,13 @@
 //!   capability-based access control. The unified [`Repository`] trait is
 //!   automatically implemented via blanket impl for any type implementing both.
 //!
-//! # Modules
-//!
-//! - [`tables`]: Public table definitions and constants
-//! - `read`: Internal [`ReadRepository`] implementation
-//! - `write`: Internal [`WriteRepository`] implementation
-//! - [`testing`]: Test utilities (available in `#[cfg(test)]`)
-//!
 //! # Example
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
 //! use trace_db::Store;
 //! use trace_template::storage::RedbRepository;
-//! use trace_template::repository::Repository;
+//! use trace_template::storage::Repository;
 //!
 //! let store = Arc::new(Store::open("templates.db")?);
 //! let repo = RedbRepository::new(store);
@@ -33,17 +26,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [`ReadRepository`]: crate::repository::ReadRepository
-//! [`WriteRepository`]: crate::repository::WriteRepository
-//! [`Repository`]: crate::repository::Repository
-
-pub(crate) mod read;
-pub(crate) mod write;
-
-pub mod tables;
-
-#[cfg(any(test, feature = "testing"))]
-pub(crate) mod testing;
+//! [`ReadRepository`]: super::ReadRepository
+//! [`WriteRepository`]: super::WriteRepository
+//! [`Repository`]: super::Repository
 
 use std::sync::Arc;
 

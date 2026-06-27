@@ -26,7 +26,7 @@ use crate::{
         Discovered, DiscoveredTemplate, Init, ProcessOutcomeKind,
         TemplateProcessor,
     },
-    repository::{ReadRepository, WriteRepository},
+    storage::{ReadRepository, WriteRepository},
 };
 
 #[derive(Debug)]

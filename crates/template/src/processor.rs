@@ -13,7 +13,7 @@
 //!
 //! The dual-typestate design prevents invalid transitions at compile time and
 //! keeps orchestration in the
-//! [`Repository`](crate::repository::Repository).
+//! [`Repository`](crate::storage::Repository).
 //!
 //! # Flow
 //!
@@ -54,7 +54,7 @@ use crate::{
     aggregate::{Template, TemplateId, TemplateName},
     error::{TemplateError, TemplateReadError, TemplateRepositoryError},
     raw::RawTemplate,
-    repository::{ReadRepository, WriteRepository},
+    storage::{ReadRepository, WriteRepository},
     views::RawTemplateView,
 };
 
@@ -756,9 +756,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        repository::WriteRepository, storage::testing::InMemoryRepository,
-    };
+    use crate::storage::{WriteRepository, testing::InMemoryRepository};
 
     mod fixtures {
         use super::*;

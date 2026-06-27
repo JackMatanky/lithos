@@ -3,7 +3,7 @@
 //! These constants define the tables used by the `redb`-backed
 //! [`RedbRepository`] to persist template aggregates and raw template views.
 //!
-//! [`RedbRepository`]: super::RedbRepository
+//! [`RedbRepository`]: super::core::RedbRepository
 
 use trace_db::{PathUuidTable, Table, UuidTable, impl_redb_uuid};
 

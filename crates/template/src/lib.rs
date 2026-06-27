@@ -31,7 +31,6 @@ pub(crate) mod engine;
 pub(crate) mod error;
 pub(crate) mod processor;
 pub(crate) mod raw;
-pub(crate) mod repository;
 pub(crate) mod service;
 pub(crate) mod storage;
 pub(crate) mod views;
@@ -46,10 +45,10 @@ pub use error::{
     TemplateRepositoryError,
 };
 pub use raw::RawTemplate;
-pub use repository::{ReadRepository, Repository, WriteRepository};
 pub use service::{
     CreateInput, CreateTemplateOutcome, ProcessSummary, TemplateService,
 };
+pub use storage::{ReadRepository, Repository, WriteRepository};
 pub use views::RawTemplateView;
 
 // ============================================================================

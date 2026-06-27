@@ -24,7 +24,7 @@
 //! `RedbRepository` should be tested against a shared contract suite in
 //! `traces-core/tests/template_storage.rs`.
 //!
-//! [`Repository`]: crate::repository::Repository
+//! [`Repository`]: crate::storage::Repository
 
 use std::{
     collections::HashMap,
@@ -37,7 +37,7 @@ use trace_fs::PathKey;
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},
     error::TemplateRepositoryError,
-    repository::{ReadRepository, WriteRepository},
+    storage::{ReadRepository, WriteRepository},
     views::RawTemplateView,
 };
 
@@ -68,7 +68,7 @@ use crate::{
 ///   serialization/durability)
 /// - Production code (no persistence guarantees)
 ///
-/// [`Repository`]: crate::repository::Repository
+/// [`Repository`]: crate::storage::Repository
 #[derive(Debug, Clone)]
 pub(crate) struct InMemoryRepository {
     /// Test harness for operation instrumentation and failure injection.

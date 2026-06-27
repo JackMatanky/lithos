@@ -16,10 +16,22 @@
 //!
 //! # Implementations
 //!
-//! - [`crate::storage::RedbRepository`] — `redb`-backed production adapter
+//! - [`crate::storage::core::RedbRepository`] — `redb`-backed production
+//!   adapter
 //! - [`crate::storage::testing::InMemoryRepository`] — in-memory test double
 //!
 //! Repository errors are reported via [`TemplateRepositoryError`].
+
+pub(crate) mod core;
+pub(crate) mod read;
+pub(crate) mod write;
+
+pub mod tables;
+
+#[cfg(any(test, feature = "testing"))]
+pub(crate) mod testing;
+
+pub use core::RedbRepository;
 
 use trace_fs::PathKey;
 
@@ -205,7 +217,7 @@ pub trait WriteRepository {
     ///
     /// For each path, removes both the [`Template`] aggregate (resolving the
     /// ID from the path index) and the matching
-    /// [`RawTemplateView`](crate::views::RawTemplateView). Idempotent: paths
+    /// [`RawTemplateView`]. Idempotent: paths
     /// without a matching template aggregate or raw view are skipped without
     /// error.
     ///

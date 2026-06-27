@@ -18,7 +18,7 @@
 //! - [`TEMPLATE_ID_BY_PATH`]: Path-to-ID index
 //! - [`RAW_TEMPLATE_VIEWS`]: Raw template views by template ID
 //!
-//! [`ReadRepository`]: crate::repository::ReadRepository
+//! [`ReadRepository`]: crate::storage::ReadRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
 //! [`Store`]: trace_db::Store
 //! [`TEMPLATES`]: crate::storage::tables::TEMPLATES
@@ -32,9 +32,8 @@ use trace_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},
-    repository::ReadRepository,
     storage::{
-        RedbRepository,
+        ReadRepository, RedbRepository,
         tables::{
             RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATE_ID_BY_PATH,
             TEMPLATES,
@@ -323,9 +322,8 @@ mod tests {
 
     use crate::{
         aggregate::{Template, TemplateId, TemplateName},
-        repository::ReadRepository,
         storage::{
-            RedbRepository,
+            ReadRepository, RedbRepository,
             tables::{TEMPLATE_ID_BY_NAME, TEMPLATES},
         },
         views::RawTemplateView,
@@ -515,7 +513,7 @@ mod tests {
 
         #[test]
         fn returns_view_by_path_after_saving_template_and_view() {
-            use crate::repository::WriteRepository;
+            use crate::storage::WriteRepository;
 
             let (_store, repo) = setup_repo();
             let template = test_template("hello");
@@ -541,7 +539,7 @@ mod tests {
 
         #[test]
         fn returns_correct_order_with_missing_in_between() {
-            use crate::repository::WriteRepository;
+            use crate::storage::WriteRepository;
 
             let (_store, repo) = setup_repo();
             let template_a = test_template("a");
