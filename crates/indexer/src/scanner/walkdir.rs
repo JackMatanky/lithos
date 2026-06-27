@@ -10,11 +10,37 @@ use crate::{
     scan::ScanFilters,
 };
 
-/// Adapter for walkdir-based filesystem traversal.
+/// Walkdir-based filesystem traversal adapter.
 ///
-/// Zero-size struct — receives the resolved `DirPath` per call via the port
-/// contract. No vault knowledge lives here.
+/// Stateless: receives the resolved `DirPath` per call via the port contract.
+/// No vault knowledge lives here.
 pub struct WalkdirAdapter;
+
+/// Classify a [`ScanError`] raised while converting a walkdir entry into a
+/// [`SkippedEntry`].
+///
+/// `Traversal` errors carry permission/IO failures, so they map to
+/// [`SkipReason::PermissionDenied`]. Every other variant — including the
+/// `#[non_exhaustive]` fallthrough — is a structural problem with the entry
+/// (e.g. a non-UTF-8 `Path` error or an unsupported entry type) and maps to
+/// [`SkipReason::UnsupportedEntryType`] so its context is not mislabeled as a
+/// permission failure.
+fn classify_scan_error(e: ScanError) -> SkippedEntry {
+    let (path, reason) = match e {
+        ScanError::UnsupportedEntryType(p) => {
+            (p, SkipReason::UnsupportedEntryType)
+        }
+        ScanError::Traversal {
+            path,
+            ..
+        } => (path, SkipReason::PermissionDenied),
+        _ => (PathBuf::new(), SkipReason::UnsupportedEntryType),
+    };
+    SkippedEntry {
+        path,
+        reason,
+    }
+}
 
 impl WalkdirAdapter {
     fn filter_entry(entry: &walkdir::DirEntry, filters: &ScanFilters) -> bool {
@@ -62,26 +88,15 @@ impl TryFrom<walkdir::DirEntry> for ScanEntry {
         match FsNode::try_from(entry) {
             Ok(FsNode::File(n)) => Ok(ScanEntry::File(n)),
             Ok(FsNode::Dir(n)) => Ok(ScanEntry::Dir(n)),
+            // `FsNode` is `#[non_exhaustive]`; this arm is required by the
+            // compiler for forward compatibility. The originating
+            // `walkdir::DirEntry` is consumed by `FsNode::try_from`, so the
+            // path cannot be recovered here — graceful degradation only.
             Ok(_) => Ok(ScanEntry::Skipped(SkippedEntry {
                 path: PathBuf::new(),
                 reason: SkipReason::UnsupportedEntryType,
             })),
-            Err(e) => {
-                let (path, reason) = match e {
-                    ScanError::UnsupportedEntryType(p) => {
-                        (p, SkipReason::UnsupportedEntryType)
-                    }
-                    ScanError::Traversal {
-                        path,
-                        ..
-                    } => (path, SkipReason::PermissionDenied),
-                    _ => (PathBuf::new(), SkipReason::PermissionDenied),
-                };
-                Ok(ScanEntry::Skipped(SkippedEntry {
-                    path,
-                    reason,
-                }))
-            }
+            Err(e) => Ok(ScanEntry::Skipped(classify_scan_error(e))),
         }
     }
 }
@@ -112,8 +127,34 @@ impl ScannerPort for WalkdirAdapter {
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
+    use traces_fs::error::PathError;
 
     use super::*;
+
+    #[test]
+    fn classify_scan_error_maps_path_error_to_unsupported() {
+        let skipped = classify_scan_error(ScanError::Path(PathError::Empty));
+        assert_eq!(skipped.reason, SkipReason::UnsupportedEntryType);
+    }
+
+    #[test]
+    fn classify_scan_error_maps_traversal_to_permission_denied() {
+        let skipped = classify_scan_error(ScanError::Traversal {
+            path: PathBuf::from("/blocked"),
+            source: std::io::Error::other("denied"),
+        });
+        assert_eq!(skipped.path, PathBuf::from("/blocked"));
+        assert_eq!(skipped.reason, SkipReason::PermissionDenied);
+    }
+
+    #[test]
+    fn classify_scan_error_maps_unsupported_entry_type() {
+        let skipped = classify_scan_error(ScanError::UnsupportedEntryType(
+            PathBuf::from("/socket"),
+        ));
+        assert_eq!(skipped.path, PathBuf::from("/socket"));
+        assert_eq!(skipped.reason, SkipReason::UnsupportedEntryType);
+    }
 
     #[test]
     fn returns_nodes_when_scope_is_full() {
