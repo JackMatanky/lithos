@@ -2,7 +2,7 @@
 //!
 //! Defines segregated read and write interfaces following ADR 016.
 
-use trace_fs::{FileFormat, PathKey};
+use traces_fs::{FileFormat, PathKey};
 
 use super::{
     error::VaultRepositoryError,

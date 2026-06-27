@@ -13,7 +13,7 @@
 
 use std::{io, path::PathBuf};
 
-use trace_fs::PathError;
+use traces_fs::PathError;
 
 /// Fatal errors encountered during vault or global configuration discovery.
 ///

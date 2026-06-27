@@ -8,8 +8,8 @@
 use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
-use trace_fs::{PathKey, metadata::FileMetadata};
-use trace_support::{Blake3Hash, HasContentHash, HasContentHashMut};
+use traces_fs::{PathKey, metadata::FileMetadata};
+use traces_support::{Blake3Hash, HasContentHash, HasContentHashMut};
 
 // ============================================================================
 // RawTemplateView
@@ -124,7 +124,7 @@ impl HasContentHashMut for RawTemplateView {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::metadata::FsTimes;
+    use traces_fs::metadata::FsTimes;
 
     use super::*;
 

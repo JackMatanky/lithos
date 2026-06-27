@@ -11,8 +11,8 @@ use std::{
 };
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::FileMetadata;
-use trace_support::Blake3Hash;
+use traces_fs::FileMetadata;
+use traces_support::Blake3Hash;
 
 use crate::{
     error::SchemaError,
@@ -96,10 +96,10 @@ impl SchemaVersion {
     /// # Examples
     ///
     /// ```no_run
-    /// # use trace_schema::views::SchemaVersion;
-    /// # use trace_schema::raw::RawSchema;
-    /// # use trace_fs::metadata::FileMetadata;
-    /// # use trace_schema::views::HashRecord;
+    /// # use traces_schema::views::SchemaVersion;
+    /// # use traces_schema::raw::RawSchema;
+    /// # use traces_fs::metadata::FileMetadata;
+    /// # use traces_schema::views::HashRecord;
     /// #
     /// # let raw: RawSchema = todo!();
     /// # let metadata: FileMetadata = todo!();
@@ -503,20 +503,20 @@ mod tests {
                     );
                     crate::raw::property::RawPropertyMap::from_map(map)
                 },
-                metadata: trace_fs::metadata::FileMetadata::new(
-                    trace_fs::metadata::FsTimes::new(None, None),
+                metadata: traces_fs::metadata::FileMetadata::new(
+                    traces_fs::metadata::FsTimes::new(None, None),
                     0,
                     false,
                 ),
             };
 
-            let metadata = trace_fs::metadata::FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+            let metadata = traces_fs::metadata::FileMetadata::new(
+                traces_fs::metadata::FsTimes::new(None, None),
                 100,
                 false,
             );
             let hashes = crate::views::hashes::HashRecord::new(
-                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                traces_support::Blake3Hash::from_bytes(&[0; 32]),
                 crate::views::RawPropertyHashIndex::default(),
             );
 
@@ -545,13 +545,13 @@ mod tests {
             )
             .unwrap();
 
-            let metadata = trace_fs::metadata::FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+            let metadata = traces_fs::metadata::FileMetadata::new(
+                traces_fs::metadata::FsTimes::new(None, None),
                 100,
                 false,
             );
             let hashes = crate::views::hashes::HashRecord::new(
-                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                traces_support::Blake3Hash::from_bytes(&[0; 32]),
                 crate::views::RawPropertyHashIndex::default(),
             );
 
@@ -577,20 +577,20 @@ mod tests {
             let raw = RawPropertyBank {
                 version: crate::raw::RawSchemaVersion::default(),
                 properties: crate::raw::property::RawPropertyMap::new(),
-                metadata: trace_fs::metadata::FileMetadata::new(
-                    trace_fs::metadata::FsTimes::new(None, None),
+                metadata: traces_fs::metadata::FileMetadata::new(
+                    traces_fs::metadata::FsTimes::new(None, None),
                     0,
                     false,
                 ),
             };
 
-            let metadata = trace_fs::metadata::FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+            let metadata = traces_fs::metadata::FileMetadata::new(
+                traces_fs::metadata::FsTimes::new(None, None),
                 100,
                 false,
             );
             let hashes = crate::views::hashes::HashRecord::new(
-                trace_support::Blake3Hash::from_bytes(&[0; 32]),
+                traces_support::Blake3Hash::from_bytes(&[0; 32]),
                 crate::views::RawPropertyHashIndex::default(),
             );
 

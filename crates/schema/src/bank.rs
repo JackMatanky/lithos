@@ -26,12 +26,12 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// # use trace_schema::bank::PropertyBank;
-/// # use trace_schema::property::{
+/// # use traces_schema::bank::PropertyBank;
+/// # use traces_schema::property::{
 /// #     Multiplicity, Optionality, Property, PropertyId, PropertyMap,
 /// #     PropertyName,
 /// # };
-/// # use trace_schema::property_spec::{PropertySpec, BoolSpec};
+/// # use traces_schema::property_spec::{PropertySpec, BoolSpec};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut bank = PropertyBank::new();
 /// let name = PropertyName::try_new("is_active")?;
@@ -64,7 +64,7 @@ impl PropertyBank {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::bank::PropertyBank;
+    /// use traces_schema::bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// assert_eq!(bank.all().count(), 0);
@@ -82,7 +82,7 @@ impl PropertyBank {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::{bank::PropertyBank, property::PropertyName};
+    /// use traces_schema::{bank::PropertyBank, property::PropertyName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let bank = PropertyBank::new();
     /// let name = PropertyName::try_new("flag")?;
@@ -101,7 +101,7 @@ impl PropertyBank {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::{bank::PropertyBank, property::PropertyName};
+    /// use traces_schema::{bank::PropertyBank, property::PropertyName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let bank = PropertyBank::new();
     /// let name = PropertyName::try_new("flag")?;
@@ -119,7 +119,7 @@ impl PropertyBank {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::bank::PropertyBank;
+    /// use traces_schema::bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// let count = bank.all().count();
@@ -170,7 +170,7 @@ impl TryFrom<RawPropertyBank> for PropertyBank {
     ///
     /// # Examples
     /// ```ignore
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     bank::PropertyBank,
     ///     raw::RawPropertyBank,
     /// };

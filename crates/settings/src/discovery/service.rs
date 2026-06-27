@@ -1,7 +1,7 @@
 //! Service facade, configuration, and boundary data for the redesigned
 //! discovery service.
 
-use trace_fs::{DirPath, FilePath};
+use traces_fs::{DirPath, FilePath};
 
 use crate::discovery::{
     context::DiscoveryContext,
@@ -227,7 +227,7 @@ impl DiscoveryServiceConfig {
 /// `pub(crate)` [`DiscoveryService::new`] constructor.
 ///
 /// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
-/// [`Bootstrapper::from_platform`]: trace_app::bootstrap::Bootstrapper::from_platform
+/// [`Bootstrapper::from_platform`]: traces_app::bootstrap::Bootstrapper::from_platform
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiscoveryService {
     /// Stable service configuration.
@@ -324,7 +324,7 @@ impl DiscoveryPort for DiscoveryService {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::FilePath;
+    use traces_fs::FilePath;
 
     use super::*;
 

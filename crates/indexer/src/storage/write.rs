@@ -10,7 +10,7 @@
 //! [`WriteRepository`]: crate::repository::WriteRepository
 
 use redb::ReadableTable;
-use trace_db::{DbError, path::DbPathKey};
+use traces_db::{DbError, path::DbPathKey};
 
 use crate::{
     error::IndexerRepositoryError,
@@ -28,7 +28,7 @@ use crate::{
 
 impl RedbRepository {
     fn load_file_delete_context(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         id: FsRecordId,
     ) -> Result<Option<FileRecord>, DbError> {
         let table = tx.inner.open_table(FILES.definition())?;
@@ -44,7 +44,7 @@ impl RedbRepository {
     }
 
     fn load_dir_delete_context(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         id: FsRecordId,
     ) -> Result<Option<DirRecord>, DbError> {
         let table = tx.inner.open_table(DIRS.definition())?;
@@ -60,7 +60,7 @@ impl RedbRepository {
     }
 
     fn remove_file_graph(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         record: &FileRecord,
     ) -> Result<(), DbError> {
         let mut path_table =
@@ -87,7 +87,7 @@ impl RedbRepository {
     }
 
     fn remove_dir_graph(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         record: &DirRecord,
     ) -> Result<(), DbError> {
         let mut path_table =
@@ -107,7 +107,7 @@ impl RedbRepository {
 
     #[inline]
     fn save_file_in_tx(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         record: &FileRecord,
         bytes: &[u8],
     ) -> Result<(), DbError> {
@@ -143,7 +143,7 @@ impl RedbRepository {
 
     #[inline]
     fn save_dir_in_tx(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         record: &DirRecord,
         bytes: &[u8],
     ) -> Result<(), DbError> {
@@ -171,7 +171,7 @@ impl RedbRepository {
 
     #[inline]
     fn delete_file_in_tx(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         id: FsRecordId,
     ) -> Result<(), DbError> {
         // Load the record first to know what to remove from indexes
@@ -185,7 +185,7 @@ impl RedbRepository {
 
     #[inline]
     fn delete_dir_in_tx(
-        tx: &trace_db::WriteTx,
+        tx: &traces_db::WriteTx,
         id: FsRecordId,
     ) -> Result<(), DbError> {
         // Load the record first to know what to remove from indexes
@@ -327,8 +327,8 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
-    use trace_db::Store;
-    use trace_fs::{
+    use traces_db::Store;
+    use traces_fs::{
         FileFormat,
         metadata::{FileMetadata, FsTimes},
         name::FileName,
@@ -407,9 +407,9 @@ mod tests {
             let id = FsRecordId::new();
             let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("subdir").unwrap();
-            let name = trace_fs::name::DirName::new("subdir".into());
+            let name = traces_fs::name::DirName::new("subdir".into());
             let metadata =
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false);
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
             let record = DirRecord::new(
@@ -505,9 +505,9 @@ mod tests {
             let id = FsRecordId::new();
             let parent_id = FsParentId::Id(FsRecordId::new());
             let path = PathKey::try_new("dir/subdir").unwrap();
-            let name = trace_fs::name::DirName::new("subdir".into());
+            let name = traces_fs::name::DirName::new("subdir".into());
             let metadata =
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false);
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
             let record = DirRecord::new(
@@ -622,9 +622,9 @@ mod tests {
             let id = FsRecordId::new();
             let parent_id = FsParentId::Id(FsRecordId::new());
             let old_path = PathKey::try_new("old/dir").unwrap();
-            let name = trace_fs::name::DirName::new("dir".into());
+            let name = traces_fs::name::DirName::new("dir".into());
             let metadata =
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false);
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
             let old_record = DirRecord::new(
@@ -691,8 +691,8 @@ mod tests {
                 d_id,
                 FsParentId::Root,
                 d_path.clone(),
-                trace_fs::name::DirName::new("subdir".into()),
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                traces_fs::name::DirName::new("subdir".into()),
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
                 SystemTime::now(),
             );
 
@@ -735,8 +735,8 @@ mod tests {
                 d_id,
                 FsParentId::Root,
                 d_path.clone(),
-                trace_fs::name::DirName::new("subdir".into()),
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                traces_fs::name::DirName::new("subdir".into()),
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
                 SystemTime::now(),
             );
 

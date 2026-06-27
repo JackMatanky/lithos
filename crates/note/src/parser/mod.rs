@@ -40,7 +40,7 @@
 //!
 //! ```ignore
 //! // Conceptual usage of the parsing pipeline (Adapter Layer)
-//! use trace_note::parser::{
+//! use traces_note::parser::{
 //!     config::EventStreamConfig,
 //!     stream::MarkdownEventStream
 //! };
@@ -92,7 +92,7 @@ pub(crate) mod types;
 mod context_integration_test;
 
 use pulldown_cmark::Options;
-use trace_settings::task::TaskConfigSpec;
+use traces_settings::task::TaskConfigSpec;
 
 use crate::{
     error::NoteIngestError,
@@ -153,7 +153,7 @@ impl MarkdownParser {
     reason = "Tests prioritize readability with assertions"
 )]
 mod tests {
-    use trace_settings::task::TaskConfigSpec;
+    use traces_settings::task::TaskConfigSpec;
 
     use super::*;
     use crate::{error::NoteError, raw::RawListDepth};

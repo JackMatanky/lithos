@@ -36,7 +36,7 @@ pub trait DiscoveryPort {
 #[cfg(test)]
 mod tests {
     use mockall::{mock, predicate::always};
-    use trace_fs::{DirPath, FilePath, PathError};
+    use traces_fs::{DirPath, FilePath, PathError};
 
     use super::*;
     use crate::discovery::{

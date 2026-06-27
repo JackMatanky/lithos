@@ -1,6 +1,6 @@
 //! Integration tests for the indexing pipeline wiring.
 //!
-//! This module verifies that the `trace_app` composition root successfully
+//! This module verifies that the `traces_app` composition root successfully
 //! orchestrates the concrete `WalkdirAdapter`, `RedbRepository`, and
 //! `IndexerService` by running actual filesystem traversals against
 //! temporary test vaults.
@@ -9,9 +9,9 @@ use std::fs;
 
 use pretty_assertions::assert_eq;
 use tempfile::tempdir;
-use trace_app::index::{IndexCommand, run_index};
-use trace_fs::DirPath;
-use trace_indexer::{IndexOptions, IndexScope, ScanFilters};
+use traces_app::index::{IndexCommand, run_index};
+use traces_fs::DirPath;
+use traces_indexer::{IndexOptions, IndexScope, ScanFilters};
 
 fn setup_test_vault(vault_tmp: &tempfile::TempDir) {
     let file1 = vault_tmp.path().join("file1.md");
@@ -25,7 +25,7 @@ fn setup_test_vault(vault_tmp: &tempfile::TempDir) {
 
 #[test]
 fn run_index_with_temp_vault_returns_correct_counts() {
-    let test_db = trace_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestDb::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -54,7 +54,7 @@ fn run_index_with_temp_vault_returns_correct_counts() {
 
 #[test]
 fn run_index_handles_empty_vault() {
-    let test_db = trace_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestDb::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
 
@@ -78,7 +78,7 @@ fn run_index_handles_empty_vault() {
 
 #[test]
 fn rebuild_option_creates_all_new_nodes() {
-    let test_db = trace_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestDb::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -107,7 +107,7 @@ fn rebuild_option_creates_all_new_nodes() {
 
 #[test]
 fn partial_scope_restricts_scan() {
-    let test_db = trace_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestDb::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -131,7 +131,7 @@ fn partial_scope_restricts_scan() {
 
 #[test]
 fn dry_run_performs_no_writes() {
-    let test_db = trace_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestDb::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);

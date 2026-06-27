@@ -6,7 +6,7 @@
 //! surface. Items here may change freely as implementation needs evolve.
 //!
 //! Boundary rule:
-//! - Public, stable contracts belong in `trace_utils`.
+//! - Public, stable contracts belong in `traces_utils`.
 //! - `crate` stays crate-private and must not be exposed to external consumers.
 
 /// BLAKE3 content hashing utilities and types.

@@ -212,9 +212,9 @@ use criterion::{
 };
 use redb::{ReadableTable, TableDefinition};
 use tempfile::TempDir;
-use trace_db::{ArchivedEntity, Store};
-use trace_fs::metadata::{FileMetadata, FsTimes};
-use trace_note::{
+use traces_db::{ArchivedEntity, Store};
+use traces_fs::metadata::{FileMetadata, FsTimes};
+use traces_note::{
     aggregate::{Note, NoteId},
     paths::NotePath,
 };

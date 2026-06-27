@@ -26,7 +26,7 @@
 
 use std::{collections::HashSet, marker::PhantomData, path::PathBuf};
 
-use trace_fs::DirPath;
+use traces_fs::DirPath;
 
 use super::{
     context::DiscoveryContext,
@@ -848,7 +848,7 @@ mod tests {
 
     use std::path::Path;
 
-    use trace_fs::DirPath;
+    use traces_fs::DirPath;
 
     use super::*;
     use crate::discovery::{

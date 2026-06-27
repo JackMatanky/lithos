@@ -37,7 +37,7 @@ impl ReferenceDefinitions {
     /// ```rust,ignore
     /// // Note: Cannot run doctest for pub(crate) types from external test crate
     /// use std::collections::HashMap;
-    /// use trace_note::parser::references::ReferenceDefinitions;
+    /// use traces_note::parser::references::ReferenceDefinitions;
     ///
     /// let mut raw = HashMap::new();
     /// raw.insert("  Foo  BAR  ".to_string(), "/url".to_string());
@@ -68,7 +68,7 @@ impl ReferenceDefinitions {
     /// ```rust,ignore
     /// // Note: Cannot run doctest for pub(crate) types from external test crate
     /// use std::collections::HashMap;
-    /// use trace_note::parser::references::ReferenceDefinitions;
+    /// use traces_note::parser::references::ReferenceDefinitions;
     ///
     /// let mut raw = HashMap::new();
     /// raw.insert("label".to_string(), "/dest".to_string());
@@ -104,7 +104,7 @@ impl ReferenceLabel {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_note::parser::references::ReferenceLabel;
+    /// use traces_note::parser::references::ReferenceLabel;
     ///
     /// let label = ReferenceLabel::new("  Foo  BAR  ");
     /// assert_eq!(label.as_str(), "foo bar");

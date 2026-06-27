@@ -20,15 +20,15 @@
 //!
 //! [`ReadRepository`]: crate::storage::ReadRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
-//! [`Store`]: trace_db::Store
+//! [`Store`]: traces_db::Store
 //! [`TEMPLATES`]: crate::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::storage::tables::TEMPLATE_ID_BY_NAME
 //! [`TEMPLATE_ID_BY_PATH`]: crate::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`RAW_TEMPLATE_VIEWS`]: crate::storage::tables::RAW_TEMPLATE_VIEWS
 
 use redb::ReadableTable;
-use trace_db::{ArchivedEntity, path::DbPathKey};
-use trace_fs::PathKey;
+use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},
@@ -317,8 +317,8 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::{ArchivedEntity, Store};
-    use trace_fs::PathKey;
+    use traces_db::{ArchivedEntity, Store};
+    use traces_fs::PathKey;
 
     use crate::{
         aggregate::{Template, TemplateId, TemplateName},
@@ -348,8 +348,8 @@ mod tests {
     fn test_view(path: &str) -> RawTemplateView {
         use std::time::SystemTime;
 
-        use trace_fs::metadata::{FileMetadata, FsTimes};
-        use trace_support::Blake3Hash;
+        use traces_fs::metadata::{FileMetadata, FsTimes};
+        use traces_support::Blake3Hash;
 
         let key = PathKey::try_new(path).unwrap();
         let hash = Blake3Hash::from_bytes(format!("hash:{path}").as_bytes());

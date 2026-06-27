@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use trace_settings::config::dirs::AppDirs;
-//! use trace_settings::config::EnvVars;
+//! use traces_settings::config::dirs::AppDirs;
+//! use traces_settings::config::EnvVars;
 //!
 //! let vars = EnvVars::capture();
 //! let app = AppDirs::new(&vars);

@@ -23,9 +23,9 @@
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
-//! use trace_db::Store;
-//! use trace_schema::storage::RedbRepository;
-//! use trace_schema::repository::Repository;
+//! use traces_db::Store;
+//! use traces_schema::storage::RedbRepository;
+//! use traces_schema::repository::Repository;
 //!
 //! let store = Arc::new(Store::open("schemas.db")?);
 //! let repo = RedbRepository::new(store);
@@ -47,7 +47,7 @@ pub(crate) mod testing;
 
 use std::sync::Arc;
 
-use trace_db::Store;
+use traces_db::Store;
 
 /// Repository implementation for `redb`-backed schema storage.
 ///
@@ -84,8 +84,8 @@ impl RedbRepository {
     ///
     /// ```rust,ignore
     /// use std::sync::Arc;
-    /// use trace_db::Store;
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_db::Store;
+    /// use traces_schema::storage::RedbRepository;
     ///
     /// let store = Arc::new(Store::open("schemas.db")?);
     /// let repo = RedbRepository::new(Arc::clone(&store));

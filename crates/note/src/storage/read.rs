@@ -6,7 +6,7 @@
 //! # Architecture
 //!
 //! - **Transaction Boundaries**: Each method manages its own read transaction
-//!   via the shared [`Store`](trace_db::Store).
+//!   via the shared [`Store`](traces_db::Store).
 //! - **Zero-Copy Deserialization**: Uses rkyv for efficient deserialization
 //!   directly from database bytes without intermediate allocations.
 //! - **Graceful Degradation**: Returns `Ok(None)` or `Ok(Vec::new())` when
@@ -22,7 +22,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use trace_note::{
+//! use traces_note::{
 //!     repository::ReadRepository,
 //!     storage::RedbRepository,
 //! };
@@ -40,7 +40,7 @@
 //! ```
 
 use redb::ReadableTable;
-use trace_db::{ArchivedEntity, path::DbPathKey};
+use traces_db::{ArchivedEntity, path::DbPathKey};
 
 use super::{NOTES, RedbRepository};
 use crate::{
@@ -257,7 +257,7 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::Store;
+    use traces_db::Store;
 
     use crate::{
         aggregate::{Note, NoteId},

@@ -4,7 +4,7 @@
 //! requests filesystem traversal, along with the `ScanEntry` type it yields.
 //! Implementations (adapters) live in the scanner submodule.
 
-use trace_fs::{DirNode, FileNode};
+use traces_fs::{DirNode, FileNode};
 
 use crate::{error::ScannerError, report::SkippedEntry, scan::ScanFilters};
 
@@ -47,7 +47,7 @@ pub trait ScannerPort {
     /// Returns a `ScannerError` if traversal initialization fails.
     fn walk(
         &self,
-        root: &trace_fs::DirPath,
+        root: &traces_fs::DirPath,
         filters: &ScanFilters,
     ) -> Result<WalkIter, ScannerError>;
 }
@@ -59,7 +59,7 @@ pub trait ScannerPort {
 #[cfg(test)]
 mod tests {
     use mockall::{mock, predicate::always};
-    use trace_fs::DirPath;
+    use traces_fs::DirPath;
 
     use crate::{
         error::ScannerError,

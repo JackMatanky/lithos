@@ -4,7 +4,7 @@
 //!
 //! # Examples
 //! ```
-//! use trace_schema::{GraphNode, Node};
+//! use traces_schema::{GraphNode, Node};
 //!
 //! let node = Node::new(Box::<str>::from("payload"));
 //! assert_eq!(&**node.payload(), "payload");
@@ -37,7 +37,7 @@ pub trait GraphNodeMut: GraphNode {
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{GraphNode, Node};
+/// use traces_schema::{GraphNode, Node};
 ///
 /// let node = Node::new(Box::<str>::from("payload"));
 /// assert_eq!(&**node.payload(), "payload");

@@ -4,7 +4,7 @@
 //! persistence boundary of the indexer context. Adapters (e.g.,
 //! `RedbRepository`, `InMemoryRepository`) live in the storage submodule.
 
-use trace_fs::{FileFormat, path::PathKey};
+use traces_fs::{FileFormat, path::PathKey};
 
 use crate::{
     error::IndexerRepositoryError,

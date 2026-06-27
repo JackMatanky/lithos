@@ -32,11 +32,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use trace_db::testing::{
+use traces_db::testing::{
     FailureInjector, FailurePoint, InMemoryDbError, InMemoryHarness, read_lock,
     write_lock,
 };
-use trace_fs::{BaseName, FileFormat, PathKey};
+use traces_fs::{BaseName, FileFormat, PathKey};
 
 use crate::{
     error::VaultRepositoryError,
@@ -465,8 +465,8 @@ impl WriteRepository for InMemoryRepository {
 
 #[cfg(test)]
 mod tests {
-    use trace_db::testing::InMemoryHarness;
-    use trace_fs::FsTimes;
+    use traces_db::testing::InMemoryHarness;
+    use traces_fs::FsTimes;
 
     use super::*;
 
@@ -526,10 +526,10 @@ mod tests {
                 FileView::new(
                     id,
                     None,
-                    trace_fs::FileName::new(name.into()),
+                    traces_fs::FileName::new(name.into()),
                     FileFormat::Markdown,
-                    trace_fs::FileMetadata::new(
-                        trace_fs::FsTimes::new(None, None),
+                    traces_fs::FileMetadata::new(
+                        traces_fs::FsTimes::new(None, None),
                         64,
                         false,
                     ),
@@ -549,9 +549,9 @@ mod tests {
                 DirView::new(
                     id,
                     None,
-                    trace_fs::DirName::new(name.into()),
-                    trace_fs::DirMetadata::new(
-                        trace_fs::FsTimes::new(None, None),
+                    traces_fs::DirName::new(name.into()),
+                    traces_fs::DirMetadata::new(
+                        traces_fs::FsTimes::new(None, None),
                         false,
                     ),
                 ),
@@ -697,9 +697,13 @@ mod tests {
             let file = FileView::new(
                 id,
                 Some(parent_id),
-                trace_fs::FileName::new("child.md".into()),
+                traces_fs::FileName::new("child.md".into()),
                 FileFormat::Markdown,
-                trace_fs::FileMetadata::new(FsTimes::new(None, None), 0, false),
+                traces_fs::FileMetadata::new(
+                    FsTimes::new(None, None),
+                    0,
+                    false,
+                ),
                 [0u8; 32],
             );
 
@@ -728,9 +732,13 @@ mod tests {
             let f2 = FileView::new(
                 id2,
                 None,
-                trace_fs::FileName::new("b.json".into()),
+                traces_fs::FileName::new("b.json".into()),
                 FileFormat::Json,
-                trace_fs::FileMetadata::new(FsTimes::new(None, None), 0, false),
+                traces_fs::FileMetadata::new(
+                    FsTimes::new(None, None),
+                    0,
+                    false,
+                ),
                 [0u8; 32],
             );
 
@@ -772,9 +780,13 @@ mod tests {
             let file2 = FileView::new(
                 id,
                 None,
-                trace_fs::FileName::new("new.md".into()),
+                traces_fs::FileName::new("new.md".into()),
                 FileFormat::Markdown,
-                trace_fs::FileMetadata::new(FsTimes::new(None, None), 0, false),
+                traces_fs::FileMetadata::new(
+                    FsTimes::new(None, None),
+                    0,
+                    false,
+                ),
                 [0u8; 32],
             );
 
@@ -802,8 +814,11 @@ mod tests {
                 DirView::new(
                     id,
                     None,
-                    trace_fs::DirName::new("new_dir".into()),
-                    trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                    traces_fs::DirName::new("new_dir".into()),
+                    traces_fs::DirMetadata::new(
+                        FsTimes::new(None, None),
+                        false,
+                    ),
                 ),
             );
 

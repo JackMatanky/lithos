@@ -6,10 +6,10 @@
 use std::{fmt, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
-use trace_fs::{
+use traces_fs::{
     DirMetadata, DirName, FileFormat, FileMetadata, FileName, PathKey,
 };
-use trace_utils::UuidV7;
+use traces_utils::UuidV7;
 
 /// Stable identifier for an indexed filesystem record (file or directory).
 ///
@@ -375,7 +375,7 @@ mod tests {
         mod constructor {
             use std::time::SystemTime;
 
-            use trace_fs::{
+            use traces_fs::{
                 FileFormat,
                 metadata::{FileMetadata, FsTimes},
                 name::FileName,
@@ -445,7 +445,7 @@ mod tests {
         mod constructor {
             use std::time::SystemTime;
 
-            use trace_fs::{
+            use traces_fs::{
                 metadata::{DirMetadata, FsTimes},
                 name::DirName,
                 path::PathKey,
@@ -516,7 +516,7 @@ mod tests {
 
     mod path_conversions {
 
-        use trace_fs::{DirPath, FilePath};
+        use traces_fs::{DirPath, FilePath};
 
         #[test]
         fn file_path_requires_vault_root_to_produce_path_key() {

@@ -26,8 +26,8 @@
 
 use std::fmt;
 
-use trace_settings::task::TaskConfigSpec;
-use trace_utils::UuidV7;
+use traces_settings::task::TaskConfigSpec;
+use traces_utils::UuidV7;
 
 use super::{
     error::{ListError, NoteError},

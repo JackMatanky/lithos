@@ -12,11 +12,11 @@
 use std::{collections::HashSet, fmt, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::metadata::FileMetadata;
-use trace_settings::{
+use traces_fs::metadata::FileMetadata;
+use traces_settings::{
     frontmatter::FrontmatterConfigSpec, task::TaskConfigSpec,
 };
-use trace_utils::UuidV7;
+use traces_utils::UuidV7;
 use uuid::Uuid;
 
 use super::{
@@ -63,7 +63,7 @@ impl NoteId {
     /// # Examples
     ///
     /// ```
-    /// # use trace_note::aggregate::NoteId;
+    /// # use traces_note::aggregate::NoteId;
     /// let id = NoteId::new();
     /// ```
     #[inline]
@@ -77,17 +77,17 @@ impl NoteId {
     /// # Examples
     ///
     /// ```
-    /// # use trace_note::aggregate::NoteId;
+    /// # use traces_note::aggregate::NoteId;
     /// let id_str = "018e5462-8e31-7000-8000-000000000000";
     /// let id = NoteId::parse(id_str).unwrap();
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`trace_utils::UuidV7Error`] if parsing fails or UUID is not
+    /// Returns [`traces_utils::UuidV7Error`] if parsing fails or UUID is not
     /// v7.
     #[inline]
-    pub fn parse(id: &str) -> Result<Self, trace_utils::UuidV7Error> {
+    pub fn parse(id: &str) -> Result<Self, traces_utils::UuidV7Error> {
         Ok(Self(UuidV7::parse(id)?))
     }
 
@@ -121,7 +121,7 @@ impl From<NoteId> for Uuid {
 }
 
 impl TryFrom<Uuid> for NoteId {
-    type Error = trace_utils::UuidV7Error;
+    type Error = traces_utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
@@ -260,7 +260,7 @@ impl Note {
             id,
             path,
             FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+                traces_fs::metadata::FsTimes::new(None, None),
                 0,
                 false,
             ),
@@ -550,7 +550,7 @@ impl Note {
     }
 
     fn should_promote_task(
-        spec: &trace_settings::task::TaskConfigSpec,
+        spec: &traces_settings::task::TaskConfigSpec,
         tags: &[Tag],
     ) -> bool {
         if !spec.enabled {
@@ -745,7 +745,7 @@ impl<'source>
 )]
 mod tests {
     use chrono::NaiveDate;
-    use trace_settings::{
+    use traces_settings::{
         aggregate::Config,
         raw::RawVaultConfig,
         task::TaskConfigSpec,
@@ -985,12 +985,12 @@ mod tests {
         )
         .expect("valid test config");
 
-        trace_settings::builder::build_from_layers(
+        traces_settings::builder::build_from_layers(
             None,
             Some(&raw),
             VaultId::new(),
             test_vault_root(),
-            trace_settings::aggregate::Version::initial(),
+            traces_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }
@@ -1011,12 +1011,12 @@ mod tests {
         )
         .expect("valid test config");
 
-        trace_settings::builder::build_from_layers(
+        traces_settings::builder::build_from_layers(
             None,
             Some(&raw),
             VaultId::new(),
             test_vault_root(),
-            trace_settings::aggregate::Version::initial(),
+            traces_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }

@@ -50,8 +50,8 @@ impl<'source> MarkdownEventStream<'source> {
     ///
     /// ```rust,ignore
     /// // Note: Cannot run doctest for pub(crate) types from external test crate
-    /// use trace_note::parser::stream::MarkdownEventStream;
-    /// use trace_note::parser::config::EventStreamConfig;
+    /// use traces_note::parser::stream::MarkdownEventStream;
+    /// use traces_note::parser::config::EventStreamConfig;
     ///
     /// let source = "Here is some markdown text.";
     /// let config = EventStreamConfig::default();

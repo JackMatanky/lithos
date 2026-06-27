@@ -28,7 +28,7 @@
 //! ```
 //! use std::path::PathBuf;
 //!
-//! use trace_fs::PathValidator;
+//! use traces_fs::PathValidator;
 //!
 //! // Flexible validator for config files (allows dotfile symlinks).
 //! let validator = PathValidator::new_flexible();
@@ -99,7 +99,7 @@ impl Validator {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::validator::Validator;
+    /// use traces_fs::validator::Validator;
     ///
     /// let validator = Validator::new_flexible();
     /// assert!(validator.validate("config.toml").is_ok());
@@ -133,7 +133,7 @@ impl Validator {
     /// ```no_run
     /// use std::path::PathBuf;
     ///
-    /// use trace_fs::validator::Validator;
+    /// use traces_fs::validator::Validator;
     ///
     /// let root = PathBuf::from("/path/to/vault");
     /// let validator = Validator::try_new_strict(root)?;
@@ -179,7 +179,7 @@ impl Validator {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::PathValidator;
+    /// use traces_fs::PathValidator;
     ///
     /// assert!(
     ///     PathValidator::validate_vault_path("notes/daily.md", Some("md"))
@@ -258,7 +258,7 @@ impl Validator {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::validator::Validator;
+    /// use traces_fs::validator::Validator;
     ///
     /// let v = Validator::new_flexible();
     /// assert!(v.validate("safe/path.txt").is_ok());
@@ -327,7 +327,7 @@ impl Validator {
     /// ```no_run
     /// use std::path::PathBuf;
     ///
-    /// use trace_fs::validator::Validator;
+    /// use traces_fs::validator::Validator;
     ///
     /// let root = PathBuf::from("/path/to/vault");
     /// let validator = Validator::try_new_strict(root)?;

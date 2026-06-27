@@ -16,7 +16,7 @@ use crate::position::SourceByteOffset;
 /// # Examples
 ///
 /// ```
-/// # use trace_note::{heading::{Heading, HeadingLevel}, position::SourceByteOffset};
+/// # use traces_note::{heading::{Heading, HeadingLevel}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let level = HeadingLevel::try_new(1)?;
 /// let heading =
@@ -102,7 +102,7 @@ impl TryFrom<&RawHeading<'_>> for Heading {
 /// # Examples
 ///
 /// ```
-/// # use trace_note::heading::HeadingLevel;
+/// # use traces_note::heading::HeadingLevel;
 /// let h1 = HeadingLevel::try_new(1).unwrap();
 /// assert_eq!(h1.as_u8(), 1);
 ///

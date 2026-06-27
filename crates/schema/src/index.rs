@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use trace_fs::PathKey;
+use traces_fs::PathKey;
 
 use crate::{
     error::SchemaError,

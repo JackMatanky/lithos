@@ -37,7 +37,7 @@ use std::{
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_utils::UuidV7;
+use traces_utils::UuidV7;
 use uuid::Uuid;
 
 use super::{
@@ -56,7 +56,7 @@ use super::{
 ///
 /// # Examples
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     property::{
 ///         Multiplicity, Optionality, Property, PropertyId, PropertyMap,
 ///         PropertyName,
@@ -378,7 +378,7 @@ fn inline_multi(raw: &RawPropertyInline) -> bool {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     property::{
 ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
 ///     },
@@ -477,7 +477,7 @@ impl Property {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     property::{Multiplicity, Optionality, Property, PropertyId},
     ///     property_spec::{BoolSpec, PropertySpec},
     /// };
@@ -530,7 +530,7 @@ impl Property {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property::PropertyId;
+/// use traces_schema::property::PropertyId;
 ///
 /// let id = PropertyId::new();
 /// let _ = id.as_uuid_v7();
@@ -576,7 +576,7 @@ impl From<UuidV7> for PropertyId {
 }
 
 impl TryFrom<Uuid> for PropertyId {
-    type Error = trace_utils::UuidV7Error;
+    type Error = traces_utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
@@ -608,7 +608,7 @@ impl Display for PropertyId {
 ///
 /// # Examples
 /// ```
-/// # use trace_schema::property::PropertyName;
+/// # use traces_schema::property::PropertyName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let name = PropertyName::try_new("status")?;
 /// assert_eq!(name.as_str(), "status", "Name should match input");
@@ -658,7 +658,7 @@ impl PropertyName {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::property::PropertyName;
+    /// use traces_schema::property::PropertyName;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = PropertyName::try_new("status")?;
     /// assert_eq!(name.as_str(), "status");
@@ -775,7 +775,7 @@ impl<'de> serde::Deserialize<'de> for PropertyName {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property::Optionality;
+/// use traces_schema::property::Optionality;
 ///
 /// let optional = Optionality::from(false);
 /// let required = Optionality::from(true);
@@ -819,7 +819,7 @@ impl From<bool> for Optionality {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property::Multiplicity;
+/// use traces_schema::property::Multiplicity;
 ///
 /// let single = Multiplicity::from(false);
 /// let many = Multiplicity::from(true);

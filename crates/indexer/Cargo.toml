@@ -1,5 +1,5 @@
 [package]
-name = "trace-indexer"
+name = "traces-indexer"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -23,9 +23,9 @@ serde_json.workspace = true
 toml.workspace = true
 base64.workspace = true
 dirs.workspace = true
-trace-db = { path = "../db" }
-trace-fs = { path = "../fs" }
-trace-utils = { path = "../utils" }
+traces-db = { path = "../db" }
+traces-fs = { path = "../fs" }
+traces-utils = { path = "../utils" }
 walkdir.workspace = true
 
 [lints]
@@ -34,4 +34,4 @@ workspace = true
 [dev-dependencies]
 mockall.workspace = true
 tempfile.workspace = true
-trace-db = { path = "../db", features = ["testing"] }
+traces-db = { path = "../db", features = ["testing"] }

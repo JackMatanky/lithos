@@ -3,8 +3,8 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use trace_fs::FileReader;
-use trace_settings::aggregate::Config;
+use traces_fs::FileReader;
+use traces_settings::aggregate::Config;
 
 use crate::{
     aggregate::Schema,
@@ -175,11 +175,11 @@ where
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
-    use trace_fs::{
+    use traces_fs::{
         FileNode, FileReader,
         path::{DirPath, RelativeDirPath, RelativeFilePath},
     };
-    use trace_settings::{aggregate::Config, schema::SchemaConfigSpec};
+    use traces_settings::{aggregate::Config, schema::SchemaConfigSpec};
 
     use super::*;
     use crate::{
@@ -193,15 +193,15 @@ mod tests {
 
     /// Helper to setup test config for a given temp directory.
     fn setup_test_config(temp: &TempDir) -> Config {
-        trace_settings::builder::build_from_layers(
+        traces_settings::builder::build_from_layers(
             None,
             None,
-            trace_settings::vault::VaultId::new(),
-            trace_settings::vault::VaultRoot::try_new(
+            traces_settings::vault::VaultId::new(),
+            traces_settings::vault::VaultRoot::try_new(
                 temp.path().to_path_buf(),
             )
             .unwrap(),
-            trace_settings::aggregate::Version::initial(),
+            traces_settings::aggregate::Version::initial(),
         )
         .unwrap()
     }

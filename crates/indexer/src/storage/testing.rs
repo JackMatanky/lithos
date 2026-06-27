@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use trace_fs::{FileFormat, path::PathKey};
+use traces_fs::{FileFormat, path::PathKey};
 
 use crate::{
     error::IndexerRepositoryError,
@@ -347,7 +347,7 @@ impl InMemoryRepository {
 mod tests {
     use std::time::SystemTime;
 
-    use trace_fs::{FileMetadata, metadata::FsTimes, name::FileName};
+    use traces_fs::{FileMetadata, metadata::FsTimes, name::FileName};
 
     use super::*;
 

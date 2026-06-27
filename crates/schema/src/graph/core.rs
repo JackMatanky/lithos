@@ -7,7 +7,7 @@
 //! # Examples
 //!
 //! ```
-//! use trace_schema::{GraphBuilder, Node};
+//! use traces_schema::{GraphBuilder, Node};
 //!
 //! let mut builder = GraphBuilder::new();
 //! builder.add_node(1u8, Node::new(Box::<str>::from("A")));
@@ -34,7 +34,7 @@ type GraphParts<Id, N> =
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{GraphBuilder, Node};
+/// use traces_schema::{GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
 /// builder.add_node(1u8, Node::new(Box::<str>::from("A")));
@@ -198,7 +198,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{GraphBuilder, Node};
+/// use traces_schema::{GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
 /// builder.add_node(1u8, Node::new(Box::<str>::from("A")));

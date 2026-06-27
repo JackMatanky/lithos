@@ -28,7 +28,7 @@
 //! Building a schema inheritance graph:
 //!
 //! ```
-//! use trace_schema::{DagGraph, GraphBuilder, GraphError, Node};
+//! use traces_schema::{DagGraph, GraphBuilder, GraphError, Node};
 //!
 //! # fn main() -> Result<(), GraphError<u8>> {
 //! let mut builder = GraphBuilder::new();

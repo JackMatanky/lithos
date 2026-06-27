@@ -148,7 +148,7 @@ mod tests {
         mod constructor {
             use std::time::SystemTime;
 
-            use trace_fs::{
+            use traces_fs::{
                 FileFormat,
                 metadata::{DirMetadata, FileMetadata, FsTimes},
                 name::{DirName, FileName},

@@ -18,10 +18,10 @@
 
 use std::path::PathBuf;
 
-use trace_app::error::AppError;
-use trace_fs::{PathError, error::RootScopeError};
-use trace_indexer::{IndexerError, IndexerRepositoryError, ScannerError};
-use trace_settings::DiscoveryError;
+use traces_app::error::AppError;
+use traces_fs::{PathError, error::RootScopeError};
+use traces_indexer::{IndexerError, IndexerRepositoryError, ScannerError};
+use traces_settings::DiscoveryError;
 
 /// Top-level CLI error that wraps the bootstrap pipeline error.
 ///
@@ -256,9 +256,9 @@ fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
 mod tests {
     use std::path::PathBuf;
 
-    use trace_app::error::AppError;
-    use trace_fs::PathError;
-    use trace_settings::{
+    use traces_app::error::AppError;
+    use traces_fs::PathError;
+    use traces_settings::{
         DiscoveryError,
         discovery::error::{
             EnvironmentOverrideError, FlagOverrideError, ServiceConfigError,
@@ -287,9 +287,9 @@ mod tests {
     }
 
     mod index_command_error {
-        use trace_db::DbError;
-        use trace_fs::error::RootScopeError;
-        use trace_indexer::{
+        use traces_db::DbError;
+        use traces_fs::error::RootScopeError;
+        use traces_indexer::{
             IndexerError, IndexerRepositoryError, ScannerError,
         };
 
@@ -423,7 +423,7 @@ mod tests {
 
         #[test]
         fn maps_duplicate_path_from_repository() {
-            let path_key = trace_fs::PathKey::try_new("dup").unwrap();
+            let path_key = traces_fs::PathKey::try_new("dup").unwrap();
             let repo_err = IndexerRepositoryError::DuplicatePath(path_key);
             let indexer_err: IndexerError = repo_err.into();
             let cmd_err: IndexCommandError = indexer_err.into();

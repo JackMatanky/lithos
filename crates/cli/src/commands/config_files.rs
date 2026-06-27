@@ -14,8 +14,8 @@
 
 use std::{io::Write, path::PathBuf};
 
-use trace_app::bootstrap::Bootstrapper;
-use trace_settings::{DiscoveryFlags, port::DiscoveryPort};
+use traces_app::bootstrap::Bootstrapper;
+use traces_settings::{DiscoveryFlags, port::DiscoveryPort};
 
 use crate::{cli::OutputFormat, error::CliError, output};
 
@@ -132,8 +132,8 @@ fn write_json(
 
 #[cfg(test)]
 mod config_files_handler {
-    use trace_app::bootstrap::Bootstrapper;
-    use trace_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_app::bootstrap::Bootstrapper;
+    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
 
     use super::run_config_files;
     use crate::cli::OutputFormat;

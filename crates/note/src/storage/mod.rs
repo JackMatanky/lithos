@@ -33,7 +33,7 @@ pub(crate) mod tables;
 use std::sync::Arc;
 
 pub use tables::{LIST_VIEWS, NOTE_ID_BY_PATH, NOTES};
-use trace_db::Store;
+use traces_db::Store;
 
 /// Repository implementation for `redb`-backed note storage.
 ///
@@ -73,8 +73,8 @@ impl RedbRepository {
     ///
     /// ```rust,ignore
     /// use std::sync::Arc;
-    /// use trace_db::Store;
-    /// use trace_note::storage::RedbRepository;
+    /// use traces_db::Store;
+    /// use traces_note::storage::RedbRepository;
     ///
     /// let store = Arc::new(Store::open("notes.db")?);
     /// let repo = RedbRepository::new(Arc::clone(&store));

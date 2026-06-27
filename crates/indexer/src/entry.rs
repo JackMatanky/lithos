@@ -3,7 +3,7 @@
 //! Each entry pairs a domain record (identity + metadata) with its runtime
 //! filesystem path and current index classification.
 
-use trace_fs::{DirPath, FilePath};
+use traces_fs::{DirPath, FilePath};
 
 use super::model::{DirRecord, FileRecord, FsRecordId};
 
@@ -163,7 +163,7 @@ mod tests {
         mod constructor {
             use std::time::SystemTime;
 
-            use trace_fs::{
+            use traces_fs::{
                 FileFormat,
                 metadata::{FileMetadata, FsTimes},
                 name::FileName,
@@ -242,7 +242,7 @@ mod tests {
         mod constructor {
             use std::time::SystemTime;
 
-            use trace_fs::{
+            use traces_fs::{
                 metadata::{DirMetadata, FsTimes},
                 name::DirName,
                 path::{DirPath, PathKey},

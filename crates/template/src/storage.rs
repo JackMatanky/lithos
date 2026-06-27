@@ -33,7 +33,7 @@ pub(crate) mod testing;
 
 pub use core::RedbRepository;
 
-use trace_fs::PathKey;
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},

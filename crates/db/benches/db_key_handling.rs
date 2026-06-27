@@ -167,7 +167,7 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use redb::TableDefinition;
 use tempfile::TempDir;
-use trace_db::{ArchivedEntity, Store};
+use traces_db::{ArchivedEntity, Store};
 use uuid::Uuid;
 
 const TEMPLATES_TABLE_UUID: TableDefinition<[u8; 16], &[u8]> =

@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use trace_fs::DirPath;
-use trace_settings::{
+use traces_fs::DirPath;
+use traces_settings::{
     DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags, EnvVars,
     aggregate::Config,
     builder::Builder,
@@ -101,7 +101,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     ///
     /// Builds the [`DiscoveryContext`] from the provided runtime inputs and
     /// runs discovery through the port, returning the raw discovery result and
-    /// report.  The [`trace_settings::builder::Builder`] is never invoked, so
+    /// report.  The [`traces_settings::builder::Builder`] is never invoked, so
     /// invalid TOML in candidate files does not cause an error.
     ///
     /// # Parameters
@@ -230,8 +230,8 @@ mod tests {
     use std::ffi::OsStr;
 
     use mockall::{mock, predicate::always};
-    use trace_fs::{DirPath, FilePath, PathError};
-    use trace_settings::{
+    use traces_fs::{DirPath, FilePath, PathError};
+    use traces_settings::{
         DiscoveryContext, DiscoveryError,
         report::{
             DiscoveryReport, GlobalResolutionSkipReason,
@@ -244,7 +244,7 @@ mod tests {
 
     mock! {
         DiscoveryPort {}
-        impl trace_settings::port::DiscoveryPort for DiscoveryPort {
+        impl traces_settings::port::DiscoveryPort for DiscoveryPort {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,
@@ -312,8 +312,8 @@ mod tests {
         }
     }
 
-    fn placeholder_cache_root() -> trace_settings::location::CacheRoot {
-        use trace_settings::location::{
+    fn placeholder_cache_root() -> traces_settings::location::CacheRoot {
+        use traces_settings::location::{
             CacheLocation, CacheRoot, GlobalCacheLocation,
         };
         CacheRoot::new(
@@ -607,7 +607,7 @@ mod tests {
     }
 
     mod bootstrap_error {
-        use trace_settings::error::ConfigError;
+        use traces_settings::error::ConfigError;
 
         use super::*;
 
@@ -620,8 +620,8 @@ mod tests {
 
     mod run {
         use mockall::predicate::always;
-        use trace_fs::{DirPath, FilePath};
-        use trace_settings::{
+        use traces_fs::{DirPath, FilePath};
+        use traces_settings::{
             service::{CandidatePath, DiscoveryResult},
             storage::testing::InMemoryRepository,
         };
@@ -689,7 +689,7 @@ mod tests {
             mock.expect_discover().with(always()).once().returning(|_| {
                 Err(DiscoveryError::InvalidAnchorDirectory {
                     path: std::path::PathBuf::from("/bad"),
-                    source: trace_fs::PathError::NotADirectory(
+                    source: traces_fs::PathError::NotADirectory(
                         std::path::PathBuf::from("/bad"),
                     ),
                 })
@@ -1135,7 +1135,7 @@ mod tests {
 
         #[test]
         fn run_builds_config_from_vault_with_platform_bootstrapper() {
-            use trace_settings::storage::testing::InMemoryRepository;
+            use traces_settings::storage::testing::InMemoryRepository;
 
             let root = tempfile::tempdir().expect("vault root");
             let config_path = root.path().join("traces.toml");

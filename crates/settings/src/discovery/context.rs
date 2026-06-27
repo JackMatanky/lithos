@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use trace_fs::{DirPath, FilePath};
+use traces_fs::{DirPath, FilePath};
 
 use crate::discovery::{
     env::EnvVars,
@@ -368,7 +368,7 @@ impl<'a> DiscoveryEnv<'a> {
 mod tests {
     use std::ffi::OsStr;
 
-    use trace_fs::path::{DirPath, FilePath};
+    use traces_fs::path::{DirPath, FilePath};
 
     use super::*;
 

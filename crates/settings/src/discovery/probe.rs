@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use trace_fs::{
+use traces_fs::{
     format::StructuredFileFormat,
     path::{DirPath, FilePath},
 };

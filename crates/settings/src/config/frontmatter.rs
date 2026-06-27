@@ -18,7 +18,7 @@ use super::{error::ConfigError, raw::RawFrontmatter};
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::frontmatter::Frontmatter;
+/// use traces_settings::config::frontmatter::Frontmatter;
 ///
 /// let config = Frontmatter::default();
 /// assert_eq!(config.title().as_str(), "title");

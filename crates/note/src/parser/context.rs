@@ -24,7 +24,7 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use trace_note::parser::{ParserContext, EventStreamConfig};
+//! use traces_note::parser::{ParserContext, EventStreamConfig};
 //!
 //! let source = "# Heading\n\nParagraph with [ref].\n\n[ref]: /url";
 //! let config = EventStreamConfig::default();

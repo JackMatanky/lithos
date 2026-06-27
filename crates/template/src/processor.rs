@@ -47,8 +47,10 @@
 
 use std::marker::PhantomData;
 
-use trace_fs::{FileNode, FileReader, PathKey};
-use trace_support::{Blake3Hash, HasContentHash, HasContentHashMut, HashInput};
+use traces_fs::{FileNode, FileReader, PathKey};
+use traces_support::{
+    Blake3Hash, HasContentHash, HasContentHashMut, HashInput,
+};
 
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},
@@ -401,7 +403,7 @@ impl TemplateProcessor<Comparison, Suspect> {
         let (file, path_key, status) = self.into_parts();
         let content =
             source.read_to_string(file.path().as_ref()).map_err(|e| {
-                TemplateReadError::Read(trace_fs::ReadError::Io {
+                TemplateReadError::Read(traces_fs::ReadError::Io {
                     path: file.path().as_ref().to_path_buf(),
                     source: std::io::Error::other(e.to_string()),
                 })
@@ -451,7 +453,7 @@ impl TemplateProcessor<Parsed, Missing> {
     ) -> Result<TemplateProcessor<Construction, New>, TemplateReadError> {
         let content =
             source.read_to_string(self.file.path().as_ref()).map_err(|e| {
-                TemplateReadError::Read(trace_fs::ReadError::Io {
+                TemplateReadError::Read(traces_fs::ReadError::Io {
                     path: self.file.path().as_ref().to_path_buf(),
                     source: std::io::Error::other(e.to_string()),
                 })
@@ -492,7 +494,7 @@ impl TemplateProcessor<Parsed, Corrupted> {
         let (file, path_key, status) = self.into_parts();
         let content =
             source.read_to_string(file.path().as_ref()).map_err(|e| {
-                TemplateReadError::Read(trace_fs::ReadError::Io {
+                TemplateReadError::Read(traces_fs::ReadError::Io {
                     path: file.path().as_ref().to_path_buf(),
                     source: std::io::Error::other(e.to_string()),
                 })
@@ -747,10 +749,10 @@ mod tests {
     use std::{fs, time::SystemTime};
 
     use tempfile::NamedTempFile;
-    use trace_db::testing::{
+    use traces_db::testing::{
         FailureInjector, FailurePoint as FPFake, InMemoryDbError,
     };
-    use trace_fs::{
+    use traces_fs::{
         FilePath, PathKey,
         metadata::{FileMetadata, FsTimes},
     };
@@ -1539,7 +1541,7 @@ mod tests {
 
     mod run {
         use pretty_assertions::assert_eq;
-        use trace_support::HasContentHash;
+        use traces_support::HasContentHash;
 
         use super::{fixtures, *};
 

@@ -82,7 +82,7 @@ pub enum InMemoryDbError {
 /// ```rust,no_run
 /// use std::sync::RwLock;
 ///
-/// use trace_db::testing::{InMemoryHarness, read_lock, write_lock};
+/// use traces_db::testing::{InMemoryHarness, read_lock, write_lock};
 ///
 /// struct InMemoryRepository {
 ///     data: RwLock<Vec<String>>,
@@ -299,7 +299,7 @@ pub trait FailureInjector {
 /// ```rust,no_run
 /// use std::sync::RwLock;
 ///
-/// use trace_db::testing::read_lock;
+/// use traces_db::testing::read_lock;
 ///
 /// let data = RwLock::new(42);
 /// let guard = read_lock(&data, "my_operation").unwrap();
@@ -361,7 +361,7 @@ pub fn mutex_lock<'a, T>(
 /// the same temporary directory:
 ///
 /// ```rust,no_run
-/// use trace_db::testing::TestDb;
+/// use traces_db::testing::TestDb;
 ///
 /// let db = TestDb::new().unwrap();
 /// let vault_root = db.dir_path().to_path_buf();

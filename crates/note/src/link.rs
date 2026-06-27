@@ -28,7 +28,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// # use trace_note::{link::{Link, Target}, position::SourceByteOffset};
+/// # use traces_note::{link::{Link, Target}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let target = Target::Unresolved {
 ///     raw: "Main Page".into(),
@@ -474,7 +474,7 @@ impl FrontmatterLink {
 /// # Examples
 ///
 /// ```
-/// # use trace_note::link::Target;
+/// # use traces_note::link::Target;
 /// let external = Target::External {
 ///     url: "https://rust-lang.org".into(),
 /// };
@@ -586,7 +586,7 @@ impl Target {
 /// # Examples
 ///
 /// ```
-/// # use trace_note::link::Anchor;
+/// # use traces_note::link::Anchor;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let heading = Anchor::heading("Introduction")?;
 /// let block = Anchor::block_ref("abc123")?;
@@ -748,7 +748,7 @@ impl EmbedType {
     /// # Examples
     ///
     /// ```
-    /// # use trace_note::link::EmbedType;
+    /// # use traces_note::link::EmbedType;
     /// assert_eq!(EmbedType::from_extension("image.png"), EmbedType::Image);
     /// assert_eq!(EmbedType::from_extension("video.mp4"), EmbedType::Video);
     /// assert_eq!(EmbedType::from_extension("audio.mp3"), EmbedType::Audio);

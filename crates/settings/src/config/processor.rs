@@ -40,7 +40,7 @@
 //! ## Basic Usage
 //!
 //! ```rust,no_run
-//! use trace_settings::config::{
+//! use traces_settings::config::{
 //!     processor::{
 //!         ConfigFileProcessor, GlobalConfig, ProcessorOutcome,
 //!         ComparisonBranch, AnalysisBranch,
@@ -75,7 +75,7 @@
 
 use std::{collections::HashSet, marker::PhantomData};
 
-use trace_support::{Blake3HashIndex, HasHashIndex, HasHashIndexMut};
+use traces_support::{Blake3HashIndex, HasHashIndex, HasHashIndexMut};
 
 use crate::config::{
     error::ConfigError,
@@ -119,7 +119,7 @@ impl ConfigType for GlobalConfig {
 
     #[inline]
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         let mut hashes = ConfigFieldHashes::new();
 
@@ -198,7 +198,7 @@ impl ConfigType for VaultConfig {
 
     #[inline]
     fn compute_field_hashes(raw: &Self::Raw) -> ConfigFieldHashes {
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         let mut hashes = ConfigFieldHashes::new();
 
@@ -289,7 +289,7 @@ impl ConfigType for VaultConfig {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use trace_settings::config::{
+/// use traces_settings::config::{
 ///     config::processor::{ConfigField, ConfigFieldHashes},
 ///     support::content_hash::Blake3Hash,
 /// };
@@ -318,7 +318,7 @@ impl ConfigFieldHashes {
     pub(crate) fn insert(
         &mut self,
         field: ConfigField,
-        hash: trace_support::Blake3Hash,
+        hash: traces_support::Blake3Hash,
     ) {
         let _previous = self.inner.insert(field, hash);
     }
@@ -333,7 +333,7 @@ impl ConfigFieldHashes {
     pub(crate) fn get(
         &self,
         field: &ConfigField,
-    ) -> Option<&trace_support::Blake3Hash> {
+    ) -> Option<&traces_support::Blake3Hash> {
         self.inner.get(field)
     }
 
@@ -348,7 +348,7 @@ impl ConfigFieldHashes {
     #[inline]
     pub(crate) fn iter(
         &self,
-    ) -> impl Iterator<Item = (&ConfigField, &trace_support::Blake3Hash)> {
+    ) -> impl Iterator<Item = (&ConfigField, &traces_support::Blake3Hash)> {
         self.inner.iter()
     }
 
@@ -565,7 +565,7 @@ impl<T: ConfigType> ConfigFileProcessor<T, Comparison, Unknown<T>> {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use trace_settings::processor::{ConfigFileProcessor, GlobalConfig};
+    /// use traces_settings::processor::{ConfigFileProcessor, GlobalConfig};
     ///
     /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(None, None);
@@ -778,7 +778,7 @@ impl<T: ConfigType> ConfigFileProcessor<T, Completed, PropertyChanges<T>> {
 mod tests {
     use std::time::SystemTime;
 
-    use trace_fs::metadata::{FileMetadata, FsTimes};
+    use traces_fs::metadata::{FileMetadata, FsTimes};
 
     use super::*;
     use crate::config::{raw::RawLogging, views::RawFileVersion};
@@ -1027,7 +1027,7 @@ mod tests {
     }
 
     mod has_hash_index {
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         use super::*;
 
@@ -1044,7 +1044,7 @@ mod tests {
     }
 
     mod has_hash_index_mut {
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         use super::*;
 

@@ -19,8 +19,8 @@ use std::path::Path;
 
 use common::*;
 use tempfile::TempDir;
-use trace_fs::{DirPath, FileMetadata, FileNode, FilePath, FileReader};
-use trace_schema::{
+use traces_fs::{DirPath, FileMetadata, FileNode, FilePath, FileReader};
+use traces_schema::{
     base_processor::{BaseSchemaProcessor, BaseSchemaResolution},
     property::PropertyName,
     property_bank_processor::PropertyBankProcessor,

@@ -121,7 +121,7 @@
 use std::collections::HashMap;
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_support::{
+use traces_support::{
     Blake3Hash, Blake3HashIndex, HasContentHash, HasContentHashMut,
     HasHashIndex, HasHashIndexMut,
 };
@@ -141,8 +141,8 @@ use crate::property::PropertyName;
 /// # Examples
 ///
 /// ```rust,ignore
-/// # use trace_schema::views::{HashRecord, RawPropertyHashIndex};
-/// # use trace_support::content_hash::Blake3Hash;
+/// # use traces_schema::views::{HashRecord, RawPropertyHashIndex};
+/// # use traces_support::content_hash::Blake3Hash;
 /// #
 /// let content_hash = Blake3Hash::compute(b"content");
 /// let record = HashRecord::new(content_hash, RawPropertyHashIndex::default());
@@ -164,8 +164,8 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use trace_schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use trace_support::content_hash::Blake3Hash;
+    /// # use traces_schema::views::{HashRecord, RawPropertyHashIndex};
+    /// # use traces_support::content_hash::Blake3Hash;
     /// #
     /// let content_hash = Blake3Hash::compute(b"content");
     /// let property_hashes = RawPropertyHashIndex::default();
@@ -188,8 +188,8 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use trace_schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use trace_support::content_hash::Blake3Hash;
+    /// # use traces_schema::views::{HashRecord, RawPropertyHashIndex};
+    /// # use traces_support::content_hash::Blake3Hash;
     /// #
     /// let content = Blake3Hash::compute(b"test");
     /// let record = HashRecord::new(content, RawPropertyHashIndex::default());
@@ -209,8 +209,8 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use trace_schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use trace_support::content_hash::Blake3Hash;
+    /// # use traces_schema::views::{HashRecord, RawPropertyHashIndex};
+    /// # use traces_support::content_hash::Blake3Hash;
     /// #
     /// let record = HashRecord::new(
     ///     Blake3Hash::compute(b"c"),
@@ -231,8 +231,8 @@ impl HashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use trace_schema::views::{HashRecord, RawPropertyHashIndex};
-    /// # use trace_support::content_hash::Blake3Hash;
+    /// # use traces_schema::views::{HashRecord, RawPropertyHashIndex};
+    /// # use traces_support::content_hash::Blake3Hash;
     /// #
     /// let hash = Blake3Hash::compute(b"test");
     /// let record = HashRecord::new(hash, RawPropertyHashIndex::default());
@@ -277,9 +277,9 @@ impl ArchivedHashRecord {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// # use trace_schema::views::hashes::{HashRecord, ArchivedHashRecord};
-    /// # use trace_schema::views::RawPropertyHashIndex;
-    /// # use trace_support::content_hash::Blake3Hash;
+    /// # use traces_schema::views::hashes::{HashRecord, ArchivedHashRecord};
+    /// # use traces_schema::views::RawPropertyHashIndex;
+    /// # use traces_support::content_hash::Blake3Hash;
     /// # use rkyv::access;
     /// #
     /// let hash = Blake3Hash::compute(b"test");

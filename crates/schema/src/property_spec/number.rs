@@ -1,7 +1,7 @@
 //! Number property validation constraints.
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_utils::bounds::Bounds;
+use traces_utils::bounds::Bounds;
 
 use crate::{
     error::{
@@ -15,11 +15,11 @@ use crate::{
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property_spec::NumberSpec;
+/// use traces_schema::property_spec::NumberSpec;
 ///
 /// let spec = NumberSpec::try_new(Some(0.0), Some(10.0), None)?;
 /// spec.validate_value(5.0)?;
-/// # Ok::<_, trace_schema::error::SchemaError>(())
+/// # Ok::<_, traces_schema::error::SchemaError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
@@ -48,10 +48,10 @@ impl NumberSpec {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::property_spec::NumberSpec;
+    /// use traces_schema::property_spec::NumberSpec;
     ///
     /// let _spec = NumberSpec::try_new(Some(0.0), Some(10.0), Some(1.0))?;
-    /// # Ok::<_, trace_schema::error::SchemaError>(())
+    /// # Ok::<_, traces_schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn try_new(
@@ -106,11 +106,11 @@ impl NumberSpec {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::property_spec::NumberSpec;
+    /// use traces_schema::property_spec::NumberSpec;
     ///
     /// let spec = NumberSpec::try_new(Some(0.0), Some(10.0), None)?;
     /// spec.validate_value(5.0)?;
-    /// # Ok::<_, trace_schema::error::SchemaError>(())
+    /// # Ok::<_, traces_schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
@@ -184,12 +184,14 @@ impl NumberSpec {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::{property_spec::NumberSpec, raw::number::RawNumberSpec};
+    /// use traces_schema::{
+    ///     property_spec::NumberSpec, raw::number::RawNumberSpec,
+    /// };
     ///
     /// let base = NumberSpec::try_new(None, None, None)?;
     /// let overrides = RawNumberSpec::default();
     /// let _updated = base.apply_overrides(&overrides)?;
-    /// # Ok::<_, trace_schema::error::SchemaError>(())
+    /// # Ok::<_, traces_schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn apply_overrides(

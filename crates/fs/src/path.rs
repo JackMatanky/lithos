@@ -36,7 +36,7 @@
 //! # Examples
 //!
 //! ```rust
-//! # use trace_fs::PathKey;
+//! # use traces_fs::PathKey;
 //! // Normalizing a string for storage
 //! let key = PathKey::try_new("notes\\daily\\today.md").unwrap();
 //! assert_eq!(key.as_str(), "notes/daily/today.md");
@@ -938,7 +938,7 @@ impl TryFrom<&str> for RelativeDirPath {
 /// # Examples
 ///
 /// ```
-/// # use trace_fs::PathKey;
+/// # use traces_fs::PathKey;
 /// // Normalizes backslashes to forward slashes
 /// let key = PathKey::try_new("notes\\daily\\today.md").unwrap();
 /// assert_eq!(key.as_str(), "notes/daily/today.md");

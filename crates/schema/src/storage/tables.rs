@@ -1,6 +1,6 @@
 //! Table definitions for schema storage.
 
-use trace_db::{PathTable, Table, UuidTable, impl_redb_uuid};
+use traces_db::{PathTable, Table, UuidTable, impl_redb_uuid};
 
 use crate::identifier::SchemaId;
 

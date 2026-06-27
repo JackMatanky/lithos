@@ -37,8 +37,8 @@ mod output;
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use trace_app::bootstrap::Bootstrapper;
-use trace_settings::DiscoveryFlags;
+use traces_app::bootstrap::Bootstrapper;
+use traces_settings::DiscoveryFlags;
 
 use crate::{
     cli::{Command, ConfigSubcommand},
@@ -96,8 +96,8 @@ fn run_main() -> Result<(), CliError> {
 
     // Resolve the current working directory as the discovery anchor.
     let anchor = std::env::current_dir().map_err(|source| {
-        CliError::Bootstrap(trace_app::error::AppError::Discovery(
-            trace_settings::DiscoveryError::CanonicalizePath {
+        CliError::Bootstrap(traces_app::error::AppError::Discovery(
+            traces_settings::DiscoveryError::CanonicalizePath {
                 path: std::path::PathBuf::from("."),
                 source,
             },
@@ -195,7 +195,7 @@ fn build_discovery_flags(
         cli.bootstrap.no_global_config,
     )
     .map_err(|e| {
-        CliError::Bootstrap(trace_app::error::AppError::Discovery(e))
+        CliError::Bootstrap(traces_app::error::AppError::Discovery(e))
     })?;
 
     Ok(Some(flags))

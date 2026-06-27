@@ -22,14 +22,14 @@
 //! # Examples
 //!
 //! ```rust,ignore
-//! use trace_note::storage::tables::NOTES;
+//! use traces_note::storage::tables::NOTES;
 //!
 //! // Open table in a read transaction
 //! let table = tx.open_table(NOTES.definition())?;
 //! let note_bytes = table.get(&note_id)?;
 //! ```
 
-use trace_db::{PathUuidTable, UuidTable, impl_redb_uuid};
+use traces_db::{PathUuidTable, UuidTable, impl_redb_uuid};
 
 use crate::aggregate::NoteId;
 
@@ -66,11 +66,11 @@ pub const LIST_VIEWS: UuidTable<NoteId, &[u8]> = UuidTable::new("list_views");
 
 /// Path-to-ID index for path-based note lookup.
 ///
-/// Maps vault-relative [`PathKey`](trace_fs::PathKey) paths to their
+/// Maps vault-relative [`PathKey`](traces_fs::PathKey) paths to their
 /// corresponding [`NoteId`](crate::aggregate::NoteId), enabling O(1)
 /// path-based note retrieval and enforcing path uniqueness at write time.
 ///
-/// Key: [`PathKey`](trace_fs::PathKey) (vault-relative path)
+/// Key: [`PathKey`](traces_fs::PathKey) (vault-relative path)
 /// Value: [`NoteId`](crate::aggregate::NoteId)
 ///
 /// # Consistency
@@ -82,8 +82,8 @@ pub const LIST_VIEWS: UuidTable<NoteId, &[u8]> = UuidTable::new("list_views");
 /// # Example
 ///
 /// ```rust,ignore
-/// use trace_note::storage::tables::NOTE_ID_BY_PATH;
-/// use trace_fs::PathKey;
+/// use traces_note::storage::tables::NOTE_ID_BY_PATH;
+/// use traces_fs::PathKey;
 ///
 /// let path = PathKey::try_new("daily/2024-05-25.md")?;
 /// let table = tx.open_table(NOTE_ID_BY_PATH.definition())?;

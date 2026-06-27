@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use trace_fs::{DirPath, FsNode, error::ScanError};
+use traces_fs::{DirPath, FsNode, error::ScanError};
 use walkdir::WalkDir;
 
 use crate::{

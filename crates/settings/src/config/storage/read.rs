@@ -2,11 +2,11 @@
 //!
 //! Implements the [`ReadRepository`] trait against redb storage. Each method
 //! opens a read transaction and uses
-//! [`ReadTx::try_open_table`](trace_db::ReadTx::try_open_table)
+//! [`ReadTx::try_open_table`](traces_db::ReadTx::try_open_table)
 //! to handle uninitialized tables gracefully.
 
 use redb::ReadableTable as _;
-use trace_db::ArchivedEntity;
+use traces_db::ArchivedEntity;
 
 use super::{
     RedbRepository,
@@ -153,7 +153,7 @@ impl ReadRepository for RedbRepository {
                 };
 
                 Version::try_from(max).map(Some).map_err(|e| {
-                    trace_db::DbError::Deserialization(e.to_string())
+                    traces_db::DbError::Deserialization(e.to_string())
                 })
             })
             .map_err(ConfigRepositoryError::from)
@@ -257,7 +257,7 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::{ArchivedEntity, Store};
+    use traces_db::{ArchivedEntity, Store};
 
     use super::*;
     use crate::config::aggregate::fixtures as config_fixtures;
@@ -298,7 +298,7 @@ mod tests {
                     tx.inner.open_table(GLOBAL_CONFIG.definition())?;
                 table.insert("1", bytes1.as_slice())?;
                 table.insert("2", bytes2.as_slice())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
 
@@ -319,7 +319,7 @@ mod tests {
                     tx.inner.open_table(VAULT_CONFIG.definition())?;
                 let key = format!("{vault_id}:1");
                 table.insert(key.as_str(), bytes.as_slice())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
 
@@ -341,7 +341,7 @@ mod tests {
                     tx.inner.open_table(CONFIG_VERSIONS.definition())?;
                 let key = format!("{vault_id}:{}", version.value());
                 table.insert(key.as_str(), bytes.as_slice())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
 
@@ -361,7 +361,7 @@ mod tests {
                 let mut table =
                     tx.inner.open_table(VAULT_ID_BY_PATH.definition())?;
                 table.insert(root.as_key().as_str(), id_bytes.as_slice())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
 

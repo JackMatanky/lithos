@@ -1,6 +1,6 @@
 //! Schema repository trait and error types.
 
-use trace_fs::PathKey;
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::Schema,
@@ -27,11 +27,11 @@ pub trait ReadRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::ReadRepository;
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_schema::repository::ReadRepository;
+    /// use traces_schema::storage::RedbRepository;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     ///
     /// match repo.find_schema_by_id(schema_id)? {
@@ -125,12 +125,12 @@ pub trait ReadRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::ReadRepository;
-    /// use trace_schema::storage::RedbRepository;
-    /// use trace_fs::PathKey;
+    /// use traces_schema::repository::ReadRepository;
+    /// use traces_schema::storage::RedbRepository;
+    /// use traces_fs::PathKey;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     /// let path = PathKey::try_new("schemas/note.json")?;
     ///
@@ -281,11 +281,11 @@ pub trait ReadRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::ReadRepository;
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_schema::repository::ReadRepository;
+    /// use traces_schema::storage::RedbRepository;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     ///
     /// match repo.find_base_schema_by_id(schema_id)? {
@@ -328,11 +328,11 @@ pub trait WriteRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::{ReadRepository, WriteRepository};
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_schema::repository::{ReadRepository, WriteRepository};
+    /// use traces_schema::storage::RedbRepository;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     ///
     /// // Save schema and verify index was updated atomically
@@ -359,11 +359,11 @@ pub trait WriteRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::{ReadRepository, WriteRepository};
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_schema::repository::{ReadRepository, WriteRepository};
+    /// use traces_schema::storage::RedbRepository;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     ///
     /// // Atomically save multiple schemas
@@ -444,11 +444,11 @@ pub trait WriteRepository {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// use trace_schema::repository::{ReadRepository, WriteRepository};
-    /// use trace_schema::storage::RedbRepository;
+    /// use traces_schema::repository::{ReadRepository, WriteRepository};
+    /// use traces_schema::storage::RedbRepository;
     /// use std::sync::Arc;
     ///
-    /// # let store = Arc::new(trace_db::Store::open_temp()?);
+    /// # let store = Arc::new(traces_db::Store::open_temp()?);
     /// let repo = RedbRepository::new(store);
     ///
     /// repo.save_base_schema(&base_schema)?;
@@ -521,8 +521,8 @@ pub trait WriteRepository {
 /// # Example
 ///
 /// ```rust,ignore
-/// use trace_schema::repository::Repository;
-/// use trace_schema::storage::RedbRepository;
+/// use traces_schema::repository::Repository;
+/// use traces_schema::storage::RedbRepository;
 ///
 /// fn process_schemas<R: Repository>(repo: &R) {
 ///     // Can use both read and write methods

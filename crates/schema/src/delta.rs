@@ -14,7 +14,7 @@ use std::{
     path::PathBuf,
 };
 
-use trace_support::{Blake3Hash, hash_structured};
+use traces_support::{Blake3Hash, hash_structured};
 
 use crate::{
     error::{SchemaBuilderError, SchemaError},

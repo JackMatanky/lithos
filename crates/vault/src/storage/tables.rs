@@ -27,7 +27,7 @@
 //! [`RedbRepository`]: super::RedbRepository
 
 use redb::MultimapTableDefinition;
-use trace_db::{PathUuidTable, UuidMultimap, UuidPathTable, UuidTable};
+use traces_db::{PathUuidTable, UuidMultimap, UuidPathTable, UuidTable};
 
 use super::super::model::{DirId, FileId};
 
@@ -155,7 +155,7 @@ pub(crate) const PATH_BY_DIR_ID: UuidPathTable<DirId> =
 
 #[cfg(test)]
 mod path_by_file_id {
-    use trace_db::Store;
+    use traces_db::Store;
 
     use super::*;
 
@@ -178,7 +178,7 @@ mod path_by_file_id {
 
 #[cfg(test)]
 mod path_by_dir_id {
-    use trace_db::Store;
+    use traces_db::Store;
 
     use super::*;
 

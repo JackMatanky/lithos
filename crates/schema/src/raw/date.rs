@@ -22,7 +22,7 @@ pub struct RawDateProperty {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::raw::date::RawDateSpec;
+/// use traces_schema::raw::date::RawDateSpec;
 ///
 /// let _spec = RawDateSpec::default();
 /// ```

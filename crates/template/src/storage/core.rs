@@ -16,9 +16,9 @@
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
-//! use trace_db::Store;
-//! use trace_template::storage::RedbRepository;
-//! use trace_template::storage::Repository;
+//! use traces_db::Store;
+//! use traces_template::storage::RedbRepository;
+//! use traces_template::storage::Repository;
 //!
 //! let store = Arc::new(Store::open("templates.db")?);
 //! let repo = RedbRepository::new(store);
@@ -32,7 +32,7 @@
 
 use std::sync::Arc;
 
-use trace_db::Store;
+use traces_db::Store;
 
 /// Repository implementation for `redb`-backed template storage.
 ///
@@ -70,8 +70,8 @@ impl RedbRepository {
     ///
     /// ```rust,ignore
     /// use std::sync::Arc;
-    /// use trace_db::Store;
-    /// use trace_template::storage::RedbRepository;
+    /// use traces_db::Store;
+    /// use traces_template::storage::RedbRepository;
     ///
     /// let store = Arc::new(Store::open("templates.db")?);
     /// let repo = RedbRepository::new(Arc::clone(&store));

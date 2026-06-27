@@ -13,8 +13,8 @@
 //! [`ReadRepository`]: crate::repository::ReadRepository
 
 use redb::ReadableTable;
-use trace_db::{DbError, path::DbPathKey};
-use trace_fs::path::PathKey;
+use traces_db::{DbError, path::DbPathKey};
+use traces_fs::path::PathKey;
 
 use crate::{
     error::IndexerRepositoryError,
@@ -166,7 +166,7 @@ impl ReadRepository for RedbRepository {
     #[inline]
     fn list_files_by_format(
         &self,
-        format: trace_fs::FileFormat,
+        format: traces_fs::FileFormat,
     ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
         self.store
             .read(|tx| {
@@ -246,8 +246,8 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
-    use trace_db::{DbPathKey, Store};
-    use trace_fs::{
+    use traces_db::{DbPathKey, Store};
+    use traces_fs::{
         FileFormat,
         metadata::{FileMetadata, FsTimes},
         name::FileName,
@@ -335,9 +335,9 @@ mod tests {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
             let path = PathKey::try_new("test_dir").unwrap();
-            let name = trace_fs::name::DirName::new("test_dir".into());
+            let name = traces_fs::name::DirName::new("test_dir".into());
             let metadata =
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false);
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
             let record = DirRecord::new(
@@ -407,9 +407,9 @@ mod tests {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
             let path = PathKey::try_new("test_dir").unwrap();
-            let name = trace_fs::name::DirName::new("test_dir".into());
+            let name = traces_fs::name::DirName::new("test_dir".into());
             let metadata =
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false);
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false);
             let recorded_at = SystemTime::now();
 
             let record = DirRecord::new(
@@ -578,8 +578,8 @@ mod tests {
                 dir1_id,
                 parent_id,
                 PathKey::try_new("parent/dir1").unwrap(),
-                trace_fs::name::DirName::new("dir1".into()),
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                traces_fs::name::DirName::new("dir1".into()),
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
                 SystemTime::now(),
             );
 
@@ -588,8 +588,8 @@ mod tests {
                 dir2_id,
                 parent_id,
                 PathKey::try_new("parent/dir2").unwrap(),
-                trace_fs::name::DirName::new("dir2".into()),
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                traces_fs::name::DirName::new("dir2".into()),
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
                 SystemTime::now(),
             );
 
@@ -598,8 +598,8 @@ mod tests {
                 other_id,
                 FsParentId::Root,
                 PathKey::try_new("root_dir").unwrap(),
-                trace_fs::name::DirName::new("root_dir".into()),
-                trace_fs::DirMetadata::new(FsTimes::new(None, None), false),
+                traces_fs::name::DirName::new("root_dir".into()),
+                traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
                 SystemTime::now(),
             );
 

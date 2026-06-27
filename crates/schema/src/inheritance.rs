@@ -36,7 +36,7 @@
 //! # Usage
 //!
 //! ```rust
-//! use trace_schema::{
+//! use traces_schema::{
 //!     identifier::SchemaId,
 //!     inheritance::{InheritanceGraph, SchemaGraphBuilder},
 //! };
@@ -80,7 +80,7 @@ use crate::{
 /// # Example
 ///
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     identifier::SchemaId,
 ///     inheritance::{InheritanceGraph, SchemaGraphBuilder},
 /// };
@@ -412,7 +412,7 @@ where
 /// # Example
 ///
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     graph::Node,
 ///     identifier::SchemaId,
 ///     inheritance::{ProcessingGraph, SchemaGraphBuilder},
@@ -493,7 +493,7 @@ where
 /// ```
 /// use std::collections::HashSet;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     identifier::SchemaId,
 ///     inheritance::{SchemaGraphBuilder, affected_subtree},
 /// };

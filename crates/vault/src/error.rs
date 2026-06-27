@@ -2,9 +2,9 @@
 
 use std::path::PathBuf;
 
-use trace_db::DbError;
-use trace_fs::PathValidationError;
-use trace_note::error::NoteProcessError;
+use traces_db::DbError;
+use traces_fs::PathValidationError;
+use traces_note::error::NoteProcessError;
 
 /// Errors that occur while validating vault paths.
 #[derive(Debug, thiserror::Error)]
@@ -48,11 +48,11 @@ pub enum VaultRepositoryError {
 
     /// Entry requested by vault path was not found.
     #[error("path not found: {0}")]
-    PathNotFound(trace_fs::PathKey),
+    PathNotFound(traces_fs::PathKey),
 
     /// Persistence conflict where an entry already exists at the target path.
     #[error("duplicate path: entry already exists at {0}")]
-    DuplicatePath(trace_fs::PathKey),
+    DuplicatePath(traces_fs::PathKey),
 }
 
 // ----------------------------------------------------------- //
@@ -60,9 +60,9 @@ pub enum VaultRepositoryError {
 // ----------------------------------------------------------- //
 
 #[cfg(test)]
-impl From<trace_db::testing::InMemoryDbError> for VaultRepositoryError {
+impl From<traces_db::testing::InMemoryDbError> for VaultRepositoryError {
     #[inline]
-    fn from(value: trace_db::testing::InMemoryDbError) -> Self {
+    fn from(value: traces_db::testing::InMemoryDbError) -> Self {
         Self::Storage(DbError::Open(value.to_string()))
     }
 }

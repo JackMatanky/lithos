@@ -112,7 +112,7 @@ pub enum NoteError {
 
     /// Global or vault-specific configuration violation.
     #[error(transparent)]
-    Config(#[from] trace_settings::error::ConfigError),
+    Config(#[from] traces_settings::error::ConfigError),
 
     /// Filesystem-level error or vault path boundary violation.
     #[error(transparent)]
@@ -147,16 +147,16 @@ pub enum NoteIngestError {
     Domain(#[from] NoteError),
 }
 
-impl From<trace_fs::ReadError> for NoteIngestError {
+impl From<traces_fs::ReadError> for NoteIngestError {
     #[inline]
-    fn from(err: trace_fs::ReadError) -> Self {
+    fn from(err: traces_fs::ReadError) -> Self {
         let (path_str, message) = match &err {
-            trace_fs::ReadError::Io {
+            traces_fs::ReadError::Io {
                 path,
                 source,
             } => (path.to_string_lossy(), source.to_string()),
-            trace_fs::ReadError::RootScope(
-                trace_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+            traces_fs::ReadError::RootScope(
+                traces_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
                     path,
                     root,
                 },
@@ -232,9 +232,9 @@ pub enum NoteProcessError {
     Validation(#[from] NoteError),
 }
 
-impl From<trace_db::DbError> for NoteLoadError {
+impl From<traces_db::DbError> for NoteLoadError {
     #[inline]
-    fn from(err: trace_db::DbError) -> Self {
+    fn from(err: traces_db::DbError) -> Self {
         NoteLoadError::Persistence(NoteRepositoryError::Storage(err))
     }
 }
@@ -440,7 +440,7 @@ pub enum NoteParseError {
 pub enum NoteRepositoryError {
     /// Low-level database infrastructure failure.
     #[error("storage error: {0}")]
-    Storage(#[from] trace_db::DbError),
+    Storage(#[from] traces_db::DbError),
 
     /// Note requested by unique identifier was not found.
     #[error("note not found: {0}")]
@@ -771,7 +771,7 @@ mod tests {
     /// Tests error conversion chains and `#[from]` implementations.
     mod conversions {
 
-        use trace_db::DbError;
+        use traces_db::DbError;
 
         use super::*;
 
@@ -818,7 +818,7 @@ mod tests {
                 std::io::ErrorKind::NotFound,
                 "file not found",
             );
-            let read_err = trace_fs::ReadError::Io {
+            let read_err = traces_fs::ReadError::Io {
                 path: PathBuf::from("daily/note.md"),
                 source: io_err,
             };
@@ -836,8 +836,8 @@ mod tests {
 
         #[test]
         fn read_not_in_base_to_ingest_umbrella() {
-            let read_err = trace_fs::ReadError::RootScope(
-                trace_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+            let read_err = traces_fs::ReadError::RootScope(
+                traces_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
                     path: PathBuf::from("../outside.md"),
                     root: PathBuf::from("/vault"),
                 },

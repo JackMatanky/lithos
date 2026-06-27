@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-use trace_settings::value::DateSpec;
+use traces_settings::value::DateSpec;
 
 /// Typed value extracted during lexical parsing.
 ///

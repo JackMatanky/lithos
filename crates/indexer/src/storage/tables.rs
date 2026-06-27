@@ -6,7 +6,7 @@
 //! wrappers to avoid coupling entity types to the [`redb::Value`] trait.
 
 use redb::MultimapTableDefinition;
-use trace_db::{PathUuidTable, UuidMultimap, UuidTable, impl_redb_uuid};
+use traces_db::{PathUuidTable, UuidMultimap, UuidTable, impl_redb_uuid};
 
 use crate::model::FsRecordId;
 
@@ -40,7 +40,7 @@ pub(crate) const FILE_IDS_BY_FORMAT: MultimapTableDefinition<&str, FsRecordId> =
 
 #[cfg(test)]
 mod tests {
-    use trace_db::Store;
+    use traces_db::Store;
 
     use super::*;
 

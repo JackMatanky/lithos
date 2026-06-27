@@ -38,7 +38,7 @@ use super::{
 /// ```no_run
 /// use std::path::Path;
 ///
-/// use trace_fs::scanner::{DirScanInput, DirScanner};
+/// use traces_fs::scanner::{DirScanInput, DirScanner};
 ///
 /// let scanner = DirScanner::new("/path/to/schemas");
 ///
@@ -61,7 +61,7 @@ impl DirScanner {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanner;
+    /// use traces_fs::scanner::DirScanner;
     ///
     /// let scanner = DirScanner::new("/path/to/vault");
     /// ```
@@ -80,7 +80,7 @@ impl DirScanner {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_fs::scanner::DirScanner;
+    /// use traces_fs::scanner::DirScanner;
     ///
     /// let scanner = DirScanner::new("/vault");
     /// assert_eq!(scanner.path(), Path::new("/vault"));
@@ -262,7 +262,7 @@ impl DirScanner {
 /// # Examples
 ///
 /// ```
-/// use trace_fs::scanner::DirScanInput;
+/// use traces_fs::scanner::DirScanInput;
 ///
 /// // Simple glob pattern
 /// let input = DirScanInput::new().with_pattern("schemas/**/*.toml");
@@ -317,7 +317,7 @@ impl<'params> DirScanInput<'params> {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanInput;
+    /// use traces_fs::scanner::DirScanInput;
     ///
     /// let input = DirScanInput::new().with_pattern("**/*.toml");
     /// ```
@@ -333,7 +333,7 @@ impl<'params> DirScanInput<'params> {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanInput;
+    /// use traces_fs::scanner::DirScanInput;
     ///
     /// let input = DirScanInput::new().with_extensions(&["toml", "yaml", "yml"]);
     /// ```
@@ -352,7 +352,7 @@ impl<'params> DirScanInput<'params> {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanInput;
+    /// use traces_fs::scanner::DirScanInput;
     ///
     /// let input = DirScanInput::new().include_dirs(true);
     /// ```
@@ -368,7 +368,7 @@ impl<'params> DirScanInput<'params> {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanInput;
+    /// use traces_fs::scanner::DirScanInput;
     ///
     /// let input = DirScanInput::new().follow_symlinks(true);
     /// ```
@@ -384,7 +384,7 @@ impl<'params> DirScanInput<'params> {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::scanner::DirScanInput;
+    /// use traces_fs::scanner::DirScanInput;
     ///
     /// // Non-recursive (only immediate children)
     /// let input = DirScanInput::new().recursive(false);

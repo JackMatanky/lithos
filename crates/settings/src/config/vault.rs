@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::DirPath;
-use trace_utils::UuidV7;
+use traces_fs::DirPath;
+use traces_utils::UuidV7;
 
 use super::{
     cache::{CacheConfig, CacheDir},
@@ -167,7 +167,7 @@ impl Default for VaultRoot {
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::vault::Vault;
+/// use traces_settings::config::vault::Vault;
 ///
 /// let vault = Vault::default();
 /// assert!(vault.logging().is_none());
@@ -369,7 +369,7 @@ fn parse_schema(
 /// # Examples
 ///
 /// ```rust,no_run
-/// # use trace_settings::config::vault::{Metadata, VaultId, VaultRoot};
+/// # use traces_settings::config::vault::{Metadata, VaultId, VaultRoot};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let metadata = Metadata::new(
 ///     VaultId::new(),
@@ -492,7 +492,7 @@ impl VaultVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::vault::VaultVersion;
+    /// use traces_settings::vault::VaultVersion;
     ///
     /// let version = VaultVersion::initial();
     /// assert_eq!(version.value(), 1);
@@ -507,7 +507,7 @@ impl VaultVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::vault::VaultVersion;
+    /// use traces_settings::vault::VaultVersion;
     ///
     /// let version = VaultVersion::initial();
     /// assert_eq!(version.value(), 1);
@@ -526,7 +526,7 @@ impl VaultVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::vault::VaultVersion;
+    /// use traces_settings::vault::VaultVersion;
     ///
     /// let version = VaultVersion::initial();
     /// let next = version.next().expect("version increment succeeded");
@@ -829,7 +829,7 @@ mod tests {
         #[test]
         fn cache_dir_rejects_empty() {
             // GIVEN: empty cache_dir
-            use trace_fs::path::RelativeDirPath;
+            use traces_fs::path::RelativeDirPath;
             let result = RelativeDirPath::try_new("");
 
             // THEN: validation fails for cache_dir
@@ -916,7 +916,7 @@ mod tests {
         #[test]
         fn templates_dir_rejects_absolute() {
             // GIVEN: invalid template dir (absolute)
-            use trace_fs::path::RelativeDirPath;
+            use traces_fs::path::RelativeDirPath;
             let result = RelativeDirPath::try_new("/abs");
 
             // THEN: it fails

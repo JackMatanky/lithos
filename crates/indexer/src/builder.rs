@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, time::SystemTime};
 
-use trace_fs::{
+use traces_fs::{
     DirNode, DirPath, FileFormat, FileNode,
     name::{DirName, FileName},
     path::{DirPath as FsDirPath, FilePath as FsFilePath, PathKey},
@@ -440,7 +440,7 @@ mod tests {
         reason = "Test code often panics and shadows variables safely"
     )]
 
-    use trace_fs::metadata::{DirMetadata, FileMetadata, FsTimes};
+    use traces_fs::metadata::{DirMetadata, FileMetadata, FsTimes};
 
     use super::*;
     use crate::storage::InMemoryRepository;

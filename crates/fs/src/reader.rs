@@ -22,7 +22,7 @@
 //! ```no_run
 //! use std::path::Path;
 //!
-//! use trace_fs::FileReader;
+//! use traces_fs::FileReader;
 //!
 //! let reader = FileReader::new("/vault");
 //!
@@ -33,7 +33,7 @@
 //! let data: serde_json::Value =
 //!     reader.parse_structured(Path::new("config.json"))?;
 //!
-//! # Ok::<(), trace_fs::FsError>(())
+//! # Ok::<(), traces_fs::FsError>(())
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -110,7 +110,7 @@ impl FileReader {
     /// ```rust
     /// use std::path::Path;
     ///
-    /// use trace_fs::reader::FileReader;
+    /// use traces_fs::reader::FileReader;
     ///
     /// let fs = FileReader::from_system_root();
     ///

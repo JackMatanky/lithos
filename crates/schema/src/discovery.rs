@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use trace_fs::{
+use traces_fs::{
     DirScanInput, DirScanner, FileNode, FsNode, PathKey, StructuredFileFormat,
 };
-use trace_settings::schema::SchemaConfigSpec;
+use traces_settings::schema::SchemaConfigSpec;
 
 use crate::{
     error::{SchemaBuilderError, SchemaError, SchemaReadError},
@@ -406,7 +406,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
-    use trace_fs::FileNode;
+    use traces_fs::FileNode;
 
     use super::*;
     use crate::{
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn run_finds_all_files() {
-        use trace_fs::{
+        use traces_fs::{
             DirPath,
             path::{RelativeDirPath, RelativeFilePath},
         };
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn run_skips_schema_batch_lookups_when_no_schema_files_exist() {
-        use trace_fs::{
+        use traces_fs::{
             DirPath,
             path::{RelativeDirPath, RelativeFilePath},
         };
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn run_keeps_configured_property_bank_path_as_absolute_winner() {
-        use trace_fs::{
+        use traces_fs::{
             DirPath,
             path::{RelativeDirPath, RelativeFilePath},
         };

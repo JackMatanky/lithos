@@ -1,5 +1,5 @@
 [package]
-name = "trace-utils"
+name = "traces-utils"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

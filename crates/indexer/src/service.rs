@@ -12,7 +12,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use trace_fs::{DirPath, path::PathKey};
+use traces_fs::{DirPath, path::PathKey};
 
 use crate::{
     builder::{
@@ -229,7 +229,7 @@ mod tests {
         cell::RefCell, collections::HashSet, sync::Arc, time::SystemTime,
     };
 
-    use trace_fs::{
+    use traces_fs::{
         FileFormat,
         metadata::{DirMetadata, FileMetadata, FsTimes},
         name::{DirName, FileName},
@@ -246,7 +246,7 @@ mod tests {
         DirPath::try_new("/tmp/vault".into()).unwrap()
     }
 
-    fn make_file_node(path: &str) -> trace_fs::FileNode {
+    fn make_file_node(path: &str) -> traces_fs::FileNode {
         let p = std::path::PathBuf::from(path);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).unwrap();
@@ -258,15 +258,15 @@ mod tests {
             100,
             false,
         );
-        trace_fs::FileNode::new(fp, meta)
+        traces_fs::FileNode::new(fp, meta)
     }
 
-    fn make_dir_node(path: &str) -> trace_fs::DirNode {
+    fn make_dir_node(path: &str) -> traces_fs::DirNode {
         let p = std::path::PathBuf::from(path);
         std::fs::create_dir_all(&p).unwrap();
         let dp = DirPath::try_new(p).unwrap();
         let meta = DirMetadata::new(FsTimes::new(None, None), false);
-        trace_fs::DirNode::new(dp, meta)
+        traces_fs::DirNode::new(dp, meta)
     }
 
     fn empty_repo() -> InMemoryRepository {
@@ -335,13 +335,13 @@ mod tests {
             }
         }
 
-        fn single_file(node: trace_fs::FileNode) -> Self {
+        fn single_file(node: traces_fs::FileNode) -> Self {
             Self {
                 entries: RefCell::new(vec![Ok(ScanEntry::File(node))]),
             }
         }
 
-        fn single_dir(node: trace_fs::DirNode) -> Self {
+        fn single_dir(node: traces_fs::DirNode) -> Self {
             Self {
                 entries: RefCell::new(vec![Ok(ScanEntry::Dir(node))]),
             }
@@ -725,7 +725,10 @@ mod tests {
     mod integration {
         use super::*;
 
-        fn make_file_node_at(vault: &DirPath, rel: &str) -> trace_fs::FileNode {
+        fn make_file_node_at(
+            vault: &DirPath,
+            rel: &str,
+        ) -> traces_fs::FileNode {
             let full = vault.as_path().join(rel);
             std::fs::create_dir_all(full.parent().unwrap()).ok();
             std::fs::write(&full, "").unwrap();
@@ -735,15 +738,15 @@ mod tests {
                 0,
                 false,
             );
-            trace_fs::FileNode::new(fp, meta)
+            traces_fs::FileNode::new(fp, meta)
         }
 
-        fn make_dir_node_at(vault: &DirPath, rel: &str) -> trace_fs::DirNode {
+        fn make_dir_node_at(vault: &DirPath, rel: &str) -> traces_fs::DirNode {
             let full = vault.as_path().join(rel);
             std::fs::create_dir_all(&full).ok();
             let dp = DirPath::try_new(full).unwrap();
             let meta = DirMetadata::new(FsTimes::new(None, None), false);
-            trace_fs::DirNode::new(dp, meta)
+            traces_fs::DirNode::new(dp, meta)
         }
 
         #[test]

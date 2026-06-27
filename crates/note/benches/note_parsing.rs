@@ -221,9 +221,9 @@
 use std::{hint::black_box, path::Path};
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use trace_fs::FileReader;
-use trace_note::parser;
-use trace_settings::task::TaskConfigSpec;
+use traces_fs::FileReader;
+use traces_note::parser;
+use traces_settings::task::TaskConfigSpec;
 
 fn task_spec_fixture() -> TaskConfigSpec {
     TaskConfigSpec::new(

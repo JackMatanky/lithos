@@ -40,7 +40,7 @@ use super::error::SchemaError;
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property_spec::{BoolSpec, PropertySpec};
+/// use traces_schema::property_spec::{BoolSpec, PropertySpec};
 ///
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// match spec {
@@ -75,7 +75,7 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use trace_schema::{raw::property::RawPropertyInline, property_spec::PropertySpec};
+    /// # use traces_schema::{raw::property::RawPropertyInline, property_spec::PropertySpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let def: RawPropertyInline = serde_json::from_str(r#"{"type": "bool"}"#)?;
     /// let spec = PropertySpec::try_from(def)?;

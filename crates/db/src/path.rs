@@ -2,7 +2,7 @@
 
 use std::ops::Deref;
 
-use trace_fs::path::PathKey;
+use traces_fs::path::PathKey;
 
 /// A newtype wrapper around `PathKey` to implement foreign database traits.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -13,11 +13,11 @@ impl DbPathKey {
     ///
     /// # Errors
     ///
-    /// Returns [`trace_fs::PathError`] when the input is not a valid path key.
+    /// Returns [`traces_fs::PathError`] when the input is not a valid path key.
     #[inline]
     pub fn try_new<T: AsRef<str>>(
         value: T,
-    ) -> Result<Self, trace_fs::PathError> {
+    ) -> Result<Self, traces_fs::PathError> {
         PathKey::try_new(value.as_ref()).map(Self)
     }
 

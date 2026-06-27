@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize, with::Skip};
-use trace_utils::bounds::Bounds;
+use traces_utils::bounds::Bounds;
 
 use super::{
     error::ConfigError,
@@ -880,7 +880,7 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Some(Err(trace_utils::bounds::BoundsError::InvalidRange))
+                Some(Err(traces_utils::bounds::BoundsError::InvalidRange))
             ),
             "Expected InvalidRange error when min > max, but got: {result:?}"
         );

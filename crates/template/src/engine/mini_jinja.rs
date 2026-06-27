@@ -85,7 +85,7 @@ impl TemplateEngine for MiniJinjaEngine {
 mod tests {
     use std::{collections::HashMap, path::Path};
 
-    use trace_fs::PathKey;
+    use traces_fs::PathKey;
 
     use super::{MiniJinjaEngine, TemplateEngine};
     use crate::{Template, TemplateBody, TemplateId, TemplateName};

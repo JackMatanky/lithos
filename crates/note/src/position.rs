@@ -18,7 +18,7 @@ use super::error::{NoteError, StructureError};
 /// # Examples
 ///
 /// ```
-/// # use trace_note::position::SourceByteOffset;
+/// # use traces_note::position::SourceByteOffset;
 /// let offset = SourceByteOffset::new(1024);
 /// assert_eq!(u32::from(offset), 1024);
 /// ```
@@ -141,7 +141,7 @@ impl TryFrom<usize> for SourceByteOffset {
 /// # Examples
 ///
 /// ```
-/// # use trace_note::position::{SourceByteOffset, SourceByteRange};
+/// # use traces_note::position::{SourceByteOffset, SourceByteRange};
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(10);
 /// let range = SourceByteRange::new(start, end)?;

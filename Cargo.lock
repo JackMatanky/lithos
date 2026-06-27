@@ -1639,7 +1639,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
-name = "trace-app"
+name = "traces-app"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1656,16 +1656,16 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-indexer",
- "trace-settings",
+ "traces-db",
+ "traces-fs",
+ "traces-indexer",
+ "traces-settings",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "trace-cli"
+name = "traces-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -1676,16 +1676,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
- "trace-app",
- "trace-db",
- "trace-fs",
- "trace-indexer",
- "trace-settings",
+ "traces-app",
+ "traces-db",
+ "traces-fs",
+ "traces-indexer",
+ "traces-settings",
  "tracing",
 ]
 
 [[package]]
-name = "trace-db"
+name = "traces-db"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1700,14 +1700,14 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-fs",
- "trace-utils",
+ "traces-fs",
+ "traces-utils",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "trace-fs"
+name = "traces-fs"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1730,7 +1730,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "trace-indexer"
+name = "traces-indexer"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1745,16 +1745,16 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-utils",
+ "traces-db",
+ "traces-fs",
+ "traces-utils",
  "tracing",
  "uuid",
  "walkdir",
 ]
 
 [[package]]
-name = "trace-note"
+name = "traces-note"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1774,19 +1774,19 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-app",
- "trace-db",
- "trace-fs",
- "trace-settings",
- "trace-support",
- "trace-utils",
- "trace-vault",
+ "traces-app",
+ "traces-db",
+ "traces-fs",
+ "traces-settings",
+ "traces-support",
+ "traces-utils",
+ "traces-vault",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "trace-schema"
+name = "traces-schema"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1807,17 +1807,17 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-settings",
- "trace-support",
- "trace-utils",
+ "traces-db",
+ "traces-fs",
+ "traces-settings",
+ "traces-support",
+ "traces-utils",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "trace-settings"
+name = "traces-settings"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1836,16 +1836,16 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-support",
- "trace-utils",
+ "traces-db",
+ "traces-fs",
+ "traces-support",
+ "traces-utils",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "trace-support"
+name = "traces-support"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1864,7 +1864,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "trace-template"
+name = "traces-template"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1880,18 +1880,18 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-settings",
- "trace-support",
- "trace-utils",
+ "traces-db",
+ "traces-fs",
+ "traces-settings",
+ "traces-support",
+ "traces-utils",
  "tracing",
  "uuid",
  "walkdir",
 ]
 
 [[package]]
-name = "trace-utils"
+name = "traces-utils"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1909,7 +1909,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "trace-vault"
+name = "traces-vault"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1923,12 +1923,12 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
- "trace-db",
- "trace-fs",
- "trace-note",
- "trace-settings",
- "trace-support",
- "trace-utils",
+ "traces-db",
+ "traces-fs",
+ "traces-note",
+ "traces-settings",
+ "traces-support",
+ "traces-utils",
  "tracing",
  "uuid",
 ]

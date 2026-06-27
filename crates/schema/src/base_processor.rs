@@ -69,8 +69,8 @@
 
 use std::marker::PhantomData;
 
-use trace_fs::{DirPath, FileNode, FileReader, PathKey};
-use trace_support::Blake3Hash;
+use traces_fs::{DirPath, FileNode, FileReader, PathKey};
+use traces_support::Blake3Hash;
 
 use crate::{
     bank::PropertyBank,
@@ -252,7 +252,7 @@ impl BaseSchemaProcessor<Init, Unknown> {
     pub fn from_discovery(
         file: FileNode,
         root: &DirPath,
-    ) -> Result<Self, trace_fs::PathError> {
+    ) -> Result<Self, traces_fs::PathError> {
         let path_key = file.path().as_key(root)?;
         Ok(Self {
             file,
@@ -1605,7 +1605,7 @@ mod tests {
     };
 
     use tempfile::TempDir;
-    use trace_fs::{DirPath, FileNode};
+    use traces_fs::{DirPath, FileNode};
 
     use super::*;
     use crate::{
@@ -1702,9 +1702,9 @@ mod tests {
 
         let source = FileReader::new(vault_dir.path());
         let file_path =
-            trace_fs::FilePath::try_new(absolute.clone()).expect("file path");
+            traces_fs::FilePath::try_new(absolute.clone()).expect("file path");
         let metadata =
-            trace_fs::metadata::FsMetadata::from_path(file_path.as_path())
+            traces_fs::metadata::FsMetadata::from_path(file_path.as_path())
                 .expect("metadata")
                 .as_file()
                 .cloned()
@@ -1726,7 +1726,7 @@ mod tests {
     fn write_schema(fixture: &mut Fixture, content: &str) {
         std::fs::write(fixture.file.path().as_path(), content)
             .expect("write schema");
-        let metadata = trace_fs::metadata::FsMetadata::from_path(
+        let metadata = traces_fs::metadata::FsMetadata::from_path(
             fixture.file.path().as_path(),
         )
         .expect("metadata")
@@ -1774,7 +1774,7 @@ mod tests {
 
     /// Create a view with timestamps one hour in the past (triggers mismatch).
     fn stale_view(fixture: &Fixture, content: &str) -> RawSchemaView {
-        use trace_fs::metadata::{FileMetadata, FsTimes};
+        use traces_fs::metadata::{FileMetadata, FsTimes};
 
         let current = fixture.file.metadata().clone();
         let old_time = SystemTime::now()

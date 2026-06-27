@@ -3,7 +3,7 @@
 //! Provides the [`RawSchema`] type which represents a schema file before
 //! inheritance resolution.
 
-use trace_fs::metadata::{FileMetadata, FsTimes};
+use traces_fs::metadata::{FileMetadata, FsTimes};
 
 use crate::{
     error::{SchemaBuilderError, SchemaError},
@@ -30,8 +30,8 @@ use crate::{
 /// # Example
 ///
 /// ```ignore
-/// # use trace_schema::raw::{RawSchema, RawPropertyMap, RawProperty};
-/// # use trace_fs::metadata::{FileMetadata, FsTimes};
+/// # use traces_schema::raw::{RawSchema, RawPropertyMap, RawProperty};
+/// # use traces_fs::metadata::{FileMetadata, FsTimes};
 /// #
 /// # fn example() {
 /// // RawSchema is typically parsed from files, not constructed directly

@@ -27,11 +27,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use trace_db::{
+use traces_db::{
     DbError,
     testing::{FailurePoint, InMemoryHarness, read_lock, write_lock},
 };
-use trace_fs::PathKey;
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::Schema,
@@ -700,10 +700,10 @@ impl WriteRepository for InMemoryRepository {
 /// This avoids an intermediate custom error conversion at call sites that
 /// only need to satisfy repository trait error contracts.
 #[cfg(test)]
-impl From<trace_db::testing::InMemoryDbError> for SchemaRepositoryError {
+impl From<traces_db::testing::InMemoryDbError> for SchemaRepositoryError {
     #[inline]
-    fn from(err: trace_db::testing::InMemoryDbError) -> Self {
-        use trace_db::testing::InMemoryDbError as DbTestError;
+    fn from(err: traces_db::testing::InMemoryDbError) -> Self {
+        use traces_db::testing::InMemoryDbError as DbTestError;
 
         let db_error = match err {
             DbTestError::LockPoisoned {
@@ -728,7 +728,7 @@ impl From<trace_db::testing::InMemoryDbError> for SchemaRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use trace_db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
+    use traces_db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
 
     use super::*;
 

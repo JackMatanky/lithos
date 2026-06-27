@@ -1,10 +1,10 @@
 //! Vault domain types for files and folders.
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_db::impl_redb_uuid;
-use trace_fs::{DirMetadata, DirName, FileFormat, FileMetadata, FileName};
-use trace_support::Blake3Hash;
-use trace_utils::UuidV7;
+use traces_db::impl_redb_uuid;
+use traces_fs::{DirMetadata, DirName, FileFormat, FileMetadata, FileName};
+use traces_support::Blake3Hash;
+use traces_utils::UuidV7;
 
 /// UUID-based file identifier for vault entries.
 #[derive(
@@ -317,7 +317,7 @@ impl FsEntryView {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::FsTimes;
+    use traces_fs::FsTimes;
 
     use super::*;
 

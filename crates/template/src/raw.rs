@@ -17,7 +17,7 @@
 /// # Examples
 ///
 /// ```
-/// use trace_template::RawTemplate;
+/// use traces_template::RawTemplate;
 ///
 /// let raw = RawTemplate::new("# Hello {{ name }}".to_owned());
 /// assert_eq!(raw.as_ref(), "# Hello {{ name }}");
@@ -35,7 +35,7 @@ impl RawTemplate {
     /// # Examples
     ///
     /// ```
-    /// use trace_template::RawTemplate;
+    /// use traces_template::RawTemplate;
     ///
     /// let raw = RawTemplate::new("content".to_owned());
     /// assert_eq!(raw.as_ref(), "content");
@@ -51,7 +51,7 @@ impl RawTemplate {
     /// # Examples
     ///
     /// ```
-    /// use trace_template::RawTemplate;
+    /// use traces_template::RawTemplate;
     ///
     /// let raw = RawTemplate::new("content".to_owned());
     /// assert_eq!(raw.into_inner(), "content");

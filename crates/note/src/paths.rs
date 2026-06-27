@@ -19,7 +19,7 @@
 use std::fmt;
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::{PathError, path::PathKey};
+use traces_fs::{PathError, path::PathKey};
 
 use super::error::{NoteError, NoteFileError};
 
@@ -44,7 +44,7 @@ use super::error::{NoteError, NoteFileError};
 /// # Examples
 ///
 /// ```
-/// # use trace_note::paths::NotePath;
+/// # use traces_note::paths::NotePath;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let path = NotePath::try_new("daily/2024-01-01.md")?;
 /// assert_eq!(path.as_str(), "daily/2024-01-01.md");

@@ -5,7 +5,7 @@
 //! within that transaction.
 
 use redb::ReadableTable as _;
-use trace_db::ArchivedEntity;
+use traces_db::ArchivedEntity;
 
 use super::{
     RedbRepository,
@@ -93,11 +93,11 @@ impl WriteRepository for RedbRepository {
                 let next = if let Some(max) = max_version {
                     Version::try_from(max)
                         .map_err(|e| {
-                            trace_db::DbError::Deserialization(e.to_string())
+                            traces_db::DbError::Deserialization(e.to_string())
                         })?
                         .next()
                         .map_err(|e| {
-                            trace_db::DbError::Serialization(e.to_string())
+                            traces_db::DbError::Serialization(e.to_string())
                         })?
                 } else {
                     Version::initial()
@@ -182,7 +182,7 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::Store;
+    use traces_db::Store;
 
     use super::*;
     use crate::config::{

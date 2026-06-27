@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use trace_settings::config::{EnvVars, XDG_CACHE_HOME};
+//! use traces_settings::config::{EnvVars, XDG_CACHE_HOME};
 //!
 //! let vars = EnvVars::capture();
 //! let cache_base = XDG_CACHE_HOME.join("traces");

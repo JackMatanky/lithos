@@ -8,7 +8,7 @@ mod write;
 
 use std::sync::Arc;
 
-use trace_db::Store;
+use traces_db::Store;
 
 /// Repository implementation for `redb`-backed configuration storage.
 #[derive(Debug, Clone)]

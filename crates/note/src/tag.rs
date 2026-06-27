@@ -25,7 +25,7 @@ use super::{error::TagError, position::SourceByteRange};
 /// # Examples
 ///
 /// ```
-/// # use trace_note::tag::Tag;
+/// # use traces_note::tag::Tag;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let tag = Tag::try_new("#work/project/urgent")?;
 /// assert_eq!(tag.full_path(), "work/project/urgent");

@@ -14,8 +14,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use trace_settings::config::template::{TemplateConfig, TemplateConfigSpec, TemplateDir};
-//! use trace_fs::{DirPath, path::RelativeDirPath};
+//! use traces_settings::config::template::{TemplateConfig, TemplateConfigSpec, TemplateDir};
+//! use traces_fs::{DirPath, path::RelativeDirPath};
 //!
 //! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
 //! let template_dir = TemplateDir::new(RelativeDirPath::try_new("templates")?);
@@ -31,7 +31,7 @@
 //! ```
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::{DirPath, PathKey, path::RelativeDirPath};
+use traces_fs::{DirPath, PathKey, path::RelativeDirPath};
 
 use super::error::ConfigError;
 
@@ -167,7 +167,7 @@ impl TemplateConfigSpec {
     /// # Errors
     /// Returns an error if the derived directory path does not currently exist.
     #[inline]
-    pub fn to_dir_path(&self) -> Result<DirPath, trace_fs::PathError> {
+    pub fn to_dir_path(&self) -> Result<DirPath, traces_fs::PathError> {
         self.root.append_dir(&self.directory)
     }
 
@@ -177,7 +177,7 @@ impl TemplateConfigSpec {
     /// Returns an error when the absolute template directory path cannot be
     /// derived or key conversion fails.
     #[inline]
-    pub fn to_path_key(&self) -> Result<PathKey, trace_fs::PathError> {
+    pub fn to_path_key(&self) -> Result<PathKey, traces_fs::PathError> {
         self.to_dir_path()?.as_key(self.root())
     }
 }
@@ -188,7 +188,7 @@ impl TemplateConfigSpec {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::path::RelativeDirPath;
+    use traces_fs::path::RelativeDirPath;
 
     use super::*;
 
@@ -316,7 +316,7 @@ mod tests {
     }
 
     mod template_config_spec {
-        use trace_fs::DirPath;
+        use traces_fs::DirPath;
 
         use super::*;
 

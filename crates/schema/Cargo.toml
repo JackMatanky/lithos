@@ -1,5 +1,5 @@
 [package]
-name = "trace-schema"
+name = "traces-schema"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -23,11 +23,11 @@ serde_json.workspace = true
 toml.workspace = true
 base64.workspace = true
 dirs.workspace = true
-trace-db = { path = "../db" }
-trace-settings = { path = "../settings" }
-trace-utils = { path = "../utils" }
-trace-support = { path = "../support" }
-trace-fs = { path = "../fs" }
+traces-db = { path = "../db" }
+traces-settings = { path = "../settings" }
+traces-utils = { path = "../utils" }
+traces-support = { path = "../support" }
+traces-fs = { path = "../fs" }
 regex = { workspace = true }
 
 [lints]
@@ -41,8 +41,8 @@ ryu = "1"
 rstest.workspace = true
 serde_yaml.workspace = true
 tempfile.workspace = true
-trace-db = { path = "../db", features = ["testing"] }
-trace-support = { path = "../support", features = ["testing"] }
+traces-db = { path = "../db", features = ["testing"] }
+traces-support = { path = "../support", features = ["testing"] }
 
 # [[bench]]
 # name = "schema_loader"

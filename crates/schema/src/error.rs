@@ -67,17 +67,17 @@
 
 use std::path::PathBuf;
 
-use trace_db::DbError;
+use traces_db::DbError;
 
-impl From<trace_fs::error::ScanError> for SchemaReadError {
+impl From<traces_fs::error::ScanError> for SchemaReadError {
     #[inline]
-    fn from(err: trace_fs::error::ScanError) -> Self {
-        use trace_fs::error::ScanError;
+    fn from(err: traces_fs::error::ScanError) -> Self {
+        use traces_fs::error::ScanError;
         match err {
             ScanError::Traversal {
                 path,
                 source,
-            } => Self::Read(trace_fs::error::ReadError::Io {
+            } => Self::Read(traces_fs::error::ReadError::Io {
                 path,
                 source,
             }),
@@ -100,75 +100,75 @@ impl From<trace_fs::error::ScanError> for SchemaReadError {
     }
 }
 
-impl From<trace_fs::error::PathError> for SchemaReadError {
+impl From<traces_fs::error::PathError> for SchemaReadError {
     #[inline]
-    fn from(err: trace_fs::error::PathError) -> Self {
+    fn from(err: traces_fs::error::PathError) -> Self {
         Self::FileSystem {
             reason: err.to_string(),
         }
     }
 }
 
-impl From<trace_fs::error::PathError> for SchemaError {
+impl From<traces_fs::error::PathError> for SchemaError {
     #[inline]
-    fn from(err: trace_fs::error::PathError) -> Self {
+    fn from(err: traces_fs::error::PathError) -> Self {
         Self::Builder(Box::new(SchemaBuilderError::Read(
             SchemaReadError::from(err),
         )))
     }
 }
 
-impl From<trace_fs::error::ParseError> for SchemaError {
+impl From<traces_fs::error::ParseError> for SchemaError {
     #[inline]
-    fn from(err: trace_fs::error::ParseError) -> Self {
+    fn from(err: traces_fs::error::ParseError) -> Self {
         Self::Builder(Box::new(SchemaBuilderError::Parse(
             SchemaParseError::Parse(err),
         )))
     }
 }
 
-impl From<trace_fs::error::ReadError> for SchemaError {
+impl From<traces_fs::error::ReadError> for SchemaError {
     #[inline]
-    fn from(err: trace_fs::error::ReadError) -> Self {
+    fn from(err: traces_fs::error::ReadError) -> Self {
         Self::Builder(Box::new(SchemaBuilderError::Read(
             SchemaReadError::Read(err),
         )))
     }
 }
 
-impl From<trace_fs::error::ScanError> for SchemaError {
+impl From<traces_fs::error::ScanError> for SchemaError {
     #[inline]
-    fn from(err: trace_fs::error::ScanError) -> Self {
+    fn from(err: traces_fs::error::ScanError) -> Self {
         Self::Builder(Box::new(SchemaBuilderError::Read(
             SchemaReadError::from(err),
         )))
     }
 }
 
-impl From<trace_fs::error::PathError> for SchemaBuilderError {
+impl From<traces_fs::error::PathError> for SchemaBuilderError {
     #[inline]
-    fn from(err: trace_fs::error::PathError) -> Self {
+    fn from(err: traces_fs::error::PathError) -> Self {
         Self::Read(SchemaReadError::from(err))
     }
 }
 
-impl From<trace_fs::error::ParseError> for SchemaBuilderError {
+impl From<traces_fs::error::ParseError> for SchemaBuilderError {
     #[inline]
-    fn from(err: trace_fs::error::ParseError) -> Self {
+    fn from(err: traces_fs::error::ParseError) -> Self {
         Self::Parse(SchemaParseError::Parse(err))
     }
 }
 
-impl From<trace_fs::error::ReadError> for SchemaBuilderError {
+impl From<traces_fs::error::ReadError> for SchemaBuilderError {
     #[inline]
-    fn from(err: trace_fs::error::ReadError) -> Self {
+    fn from(err: traces_fs::error::ReadError) -> Self {
         Self::Read(SchemaReadError::Read(err))
     }
 }
 
-impl From<trace_fs::error::ScanError> for SchemaBuilderError {
+impl From<traces_fs::error::ScanError> for SchemaBuilderError {
     #[inline]
-    fn from(err: trace_fs::error::ScanError) -> Self {
+    fn from(err: traces_fs::error::ScanError) -> Self {
         Self::Read(SchemaReadError::from(err))
     }
 }
@@ -392,7 +392,7 @@ impl PartialEq for SchemaBuilderError {
 pub enum SchemaReadError {
     /// Failure at the filesystem layer.
     #[error(transparent)]
-    Read(#[from] trace_fs::error::ReadError),
+    Read(#[from] traces_fs::error::ReadError),
 
     /// Returned when a filename or basename is invalid.
     #[error("invalid filename: {path} ({reason})")]
@@ -447,7 +447,7 @@ impl PartialEq for SchemaReadError {
 pub enum SchemaParseError {
     /// Failure at the parsing layer.
     #[error(transparent)]
-    Parse(#[from] trace_fs::error::ParseError),
+    Parse(#[from] traces_fs::error::ParseError),
 
     /// Returned when cached view deserialization fails.
     #[error("cached view parse error in {path}: {reason}")]
@@ -486,7 +486,7 @@ pub enum SchemaRepositoryError {
 
     /// Returned when an expected entity is missing by path.
     #[error("schema path not found: {0}")]
-    NotFoundByPath(trace_fs::PathKey),
+    NotFoundByPath(traces_fs::PathKey),
 
     /// Returned when the property bank has not been initialized.
     #[error(
@@ -499,7 +499,7 @@ pub enum SchemaRepositoryError {
     #[error(
         "version history missing for {0} - cached view is corrupt or empty"
     )]
-    EmptyVersionHistory(trace_fs::PathKey),
+    EmptyVersionHistory(traces_fs::PathKey),
 }
 
 impl SchemaRepositoryError {
@@ -515,7 +515,7 @@ impl SchemaRepositoryError {
         // This is sufficient for events and logging.
         match self {
             Self::Storage(e) => {
-                Self::Storage(trace_db::DbError::Open(e.to_string()))
+                Self::Storage(traces_db::DbError::Open(e.to_string()))
             }
             Self::NotFoundById(id) => Self::NotFoundById(*id),
             Self::NotFoundByName(name) => Self::NotFoundByName(name.clone()),
@@ -1002,10 +1002,10 @@ pub enum SchemaResolutionError {
     },
 }
 
-impl From<trace_fs::error::FsError> for SchemaBuilderError {
+impl From<traces_fs::error::FsError> for SchemaBuilderError {
     #[inline]
-    fn from(err: trace_fs::error::FsError) -> Self {
-        use trace_fs::error::FsError;
+    fn from(err: traces_fs::error::FsError) -> Self {
+        use traces_fs::error::FsError;
         match err {
             FsError::Read(e) => Self::Read(SchemaReadError::Read(e)),
             FsError::Scan(e) => Self::Read(SchemaReadError::from(e)),
@@ -1024,9 +1024,9 @@ impl From<trace_fs::error::FsError> for SchemaBuilderError {
     }
 }
 
-impl From<trace_fs::error::FsError> for SchemaError {
+impl From<traces_fs::error::FsError> for SchemaError {
     #[inline]
-    fn from(err: trace_fs::error::FsError) -> Self {
+    fn from(err: traces_fs::error::FsError) -> Self {
         Self::Builder(Box::new(SchemaBuilderError::from(err)))
     }
 }
@@ -1130,11 +1130,11 @@ mod tests {
             "schema name not found: test"
         )]
         #[case::not_found_by_path(
-            SchemaRepositoryError::NotFoundByPath(trace_fs::PathKey::try_new("test.json").unwrap()),
+            SchemaRepositoryError::NotFoundByPath(traces_fs::PathKey::try_new("test.json").unwrap()),
             "schema path not found: test.json"
         )]
         #[case::empty_version_history(
-            SchemaRepositoryError::EmptyVersionHistory(trace_fs::PathKey::try_new("test.json").unwrap()),
+            SchemaRepositoryError::EmptyVersionHistory(traces_fs::PathKey::try_new("test.json").unwrap()),
             "version history missing for test.json"
         )]
         fn repository_error_display_contains_message(
@@ -1157,10 +1157,11 @@ mod tests {
 
         #[test]
         fn schema_read_io_exposes_source() {
-            let error = SchemaReadError::Read(trace_fs::error::ReadError::Io {
-                path: PathBuf::from("schemas/bad.json"),
-                source: std::io::Error::other("disk failed"),
-            });
+            let error =
+                SchemaReadError::Read(traces_fs::error::ReadError::Io {
+                    path: PathBuf::from("schemas/bad.json"),
+                    source: std::io::Error::other("disk failed"),
+                });
 
             let source = StdError::source(&error);
             assert!(
@@ -1275,7 +1276,7 @@ mod tests {
         #[test]
         fn parse_error_maps_to_schema_builder_error() {
             let error: SchemaBuilderError =
-                trace_fs::error::ParseError::UnsupportedFormat {
+                traces_fs::error::ParseError::UnsupportedFormat {
                     path: PathBuf::from("schemas/schema.xml"),
                     supported: &["json", "yaml"],
                 }
@@ -1284,7 +1285,7 @@ mod tests {
             assert!(matches!(
                 error,
                 SchemaBuilderError::Parse(SchemaParseError::Parse(
-                    trace_fs::error::ParseError::UnsupportedFormat {
+                    traces_fs::error::ParseError::UnsupportedFormat {
                         path: _,
                         supported: _,
                     },
@@ -1292,7 +1293,7 @@ mod tests {
             ));
 
             if let SchemaBuilderError::Parse(SchemaParseError::Parse(
-                trace_fs::error::ParseError::UnsupportedFormat {
+                traces_fs::error::ParseError::UnsupportedFormat {
                     path,
                     supported,
                 },

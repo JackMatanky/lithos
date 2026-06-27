@@ -15,8 +15,8 @@ use std::{
 
 use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::{BaseName, PathKey};
-use trace_utils::UuidV7;
+use traces_fs::{BaseName, PathKey};
+use traces_utils::UuidV7;
 use uuid::Uuid;
 
 use crate::error::{SchemaError, SchemaNameError};
@@ -31,7 +31,7 @@ use crate::error::{SchemaError, SchemaNameError};
 ///
 /// # Examples
 /// ```
-/// use trace_schema::identifier::SchemaId;
+/// use traces_schema::identifier::SchemaId;
 ///
 /// let id = SchemaId::new();
 /// let _uuid = id.as_uuid_v7().into_uuid();
@@ -57,7 +57,7 @@ impl SchemaId {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::identifier::SchemaId;
+    /// use traces_schema::identifier::SchemaId;
     ///
     /// let id = SchemaId::new();
     /// let _ = id.as_uuid_v7();
@@ -84,7 +84,7 @@ impl From<UuidV7> for SchemaId {
 }
 
 impl TryFrom<Uuid> for SchemaId {
-    type Error = trace_utils::UuidV7Error;
+    type Error = traces_utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
@@ -121,7 +121,7 @@ impl Display for SchemaId {
 /// # Examples
 ///
 /// ```
-/// use trace_schema::identifier::SchemaName;
+/// use traces_schema::identifier::SchemaName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let name = SchemaName::try_new("project-note")?;
@@ -164,7 +164,7 @@ impl SchemaName {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::identifier::SchemaName;
+    /// use traces_schema::identifier::SchemaName;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::try_new("test")?;
     /// assert_eq!(name.as_str(), "test");
@@ -212,7 +212,7 @@ impl SchemaName {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::identifier::SchemaName;
+    /// use traces_schema::identifier::SchemaName;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::try_new("project")?;
     /// assert_eq!(name.as_str(), "project");
@@ -298,8 +298,8 @@ impl TryFrom<BaseName> for SchemaName {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::name::BaseName;
-    /// use trace_schema::identifier::SchemaName;
+    /// use traces_fs::name::BaseName;
+    /// use traces_schema::identifier::SchemaName;
     ///
     /// let base = BaseName::new("daily-note".into());
     /// let name = SchemaName::try_from(base).unwrap();

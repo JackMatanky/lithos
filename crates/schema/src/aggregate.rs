@@ -53,7 +53,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     aggregate::Schema,
 ///     identifier::{SchemaId, SchemaName},
 ///     property::PropertyMap,
@@ -92,7 +92,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     aggregate::Schema,
     ///     identifier::{SchemaId, SchemaName},
     ///     property::PropertyMap,

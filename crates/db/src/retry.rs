@@ -51,7 +51,7 @@ impl Default for RetryConfig {
 /// # Examples
 ///
 /// ```
-/// use trace_db::{
+/// use traces_db::{
 ///     DbError,
 ///     retry::{RetryConfig, retry_on_transient},
 /// };

@@ -31,8 +31,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use trace_db::testing::{FailurePoint, InMemoryHarness, read_lock, write_lock};
-use trace_fs::PathKey;
+use traces_db::testing::{
+    FailurePoint, InMemoryHarness, read_lock, write_lock,
+};
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId, TemplateName},
@@ -120,7 +122,7 @@ impl InMemoryRepository {
     #[must_use]
     pub(crate) fn with_failure_injector(
         self,
-        injector: Box<dyn trace_db::testing::FailureInjector + Send + Sync>,
+        injector: Box<dyn traces_db::testing::FailureInjector + Send + Sync>,
     ) -> Self {
         self.with_harness(Arc::new(InMemoryHarness::with_injector(injector)))
     }
@@ -444,26 +446,26 @@ impl WriteRepository for InMemoryRepository {
 /// This avoids an intermediate custom error conversion at call sites that
 /// only need to satisfy repository trait error contracts.
 #[cfg(any(test, feature = "testing"))]
-impl From<trace_db::testing::InMemoryDbError> for TemplateRepositoryError {
+impl From<traces_db::testing::InMemoryDbError> for TemplateRepositoryError {
     #[inline]
-    fn from(err: trace_db::testing::InMemoryDbError) -> Self {
-        use trace_db::testing::InMemoryDbError as DbTestError;
+    fn from(err: traces_db::testing::InMemoryDbError) -> Self {
+        use traces_db::testing::InMemoryDbError as DbTestError;
 
         let db_error = match err {
             DbTestError::LockPoisoned {
                 context,
-            } => trace_db::DbError::Corruption(format!(
+            } => traces_db::DbError::Corruption(format!(
                 "Lock poisoned: {context}"
             )),
             DbTestError::InjectedFailure {
                 reason,
                 ..
-            } => trace_db::DbError::Corruption(format!(
+            } => traces_db::DbError::Corruption(format!(
                 "Injected failure: {reason}"
             )),
             DbTestError::InvariantViolation {
                 message,
-            } => trace_db::DbError::Corruption(message.into()),
+            } => traces_db::DbError::Corruption(message.into()),
         };
 
         TemplateRepositoryError::Storage(db_error)
@@ -476,7 +478,7 @@ impl From<trace_db::testing::InMemoryDbError> for TemplateRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use trace_db::{
+    use traces_db::{
         DbError,
         testing::{FailureInjector, FailurePoint as FPFake, InMemoryDbError},
     };
@@ -502,8 +504,8 @@ mod tests {
     fn test_view(path: &str) -> RawTemplateView {
         use std::time::SystemTime;
 
-        use trace_fs::metadata::{FileMetadata, FsTimes};
-        use trace_support::Blake3Hash;
+        use traces_fs::metadata::{FileMetadata, FsTimes};
+        use traces_support::Blake3Hash;
 
         let key = PathKey::try_new(path).unwrap();
         let hash = Blake3Hash::from_bytes(format!("hash:{path}").as_bytes());

@@ -14,7 +14,7 @@ use std::{
 };
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::DirPath;
+use traces_fs::DirPath;
 
 use super::{
     error::ConfigError,
@@ -57,7 +57,7 @@ impl GlobalVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::config::global::GlobalVersion;
+    /// use traces_settings::config::global::GlobalVersion;
     ///
     /// let version = GlobalVersion::initial();
     /// assert_eq!(version.value(), 1);
@@ -72,7 +72,7 @@ impl GlobalVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::config::global::GlobalVersion;
+    /// use traces_settings::config::global::GlobalVersion;
     ///
     /// let version = GlobalVersion::initial();
     /// assert_eq!(version.value(), 1);
@@ -91,7 +91,7 @@ impl GlobalVersion {
     ///
     /// # Examples
     /// ```
-    /// use trace_settings::config::global::GlobalVersion;
+    /// use traces_settings::config::global::GlobalVersion;
     ///
     /// let version = GlobalVersion::initial();
     /// let next = version.next().expect("version increment succeeded");
@@ -138,7 +138,7 @@ impl TryFrom<u64> for GlobalVersion {
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::global::Global;
+/// use traces_settings::config::global::Global;
 ///
 /// let global = Global::default();
 /// assert!(global.trusted_vaults().is_none());
@@ -323,7 +323,7 @@ fn parse_schema(
 ///
 /// ```rust
 /// # use std::collections::HashMap;
-/// # use trace_settings::config::global::{
+/// # use traces_settings::config::global::{
 /// #     TrustedVaults,
 /// #     TrustedVaultPath,
 /// #     TrustedVaultList,

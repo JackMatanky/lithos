@@ -1,5 +1,5 @@
 [package]
-name = "trace-support"
+name = "traces-support"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

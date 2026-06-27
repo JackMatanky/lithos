@@ -47,9 +47,9 @@ pub const INDEX_DB_FILENAME: &str = "index.redb";
 ///
 /// [`ReadRepository`]: crate::repository::ReadRepository
 /// [`WriteRepository`]: crate::repository::WriteRepository
-/// [`Store`]: trace_db::Store
+/// [`Store`]: traces_db::Store
 pub struct RedbRepository {
-    pub(crate) store: Arc<trace_db::Store>,
+    pub(crate) store: Arc<traces_db::Store>,
 }
 
 impl RedbRepository {
@@ -61,7 +61,7 @@ impl RedbRepository {
     /// or opened.
     #[inline]
     pub fn try_new(
-        store: Arc<trace_db::Store>,
+        store: Arc<traces_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
         store.write(|tx| {
@@ -91,7 +91,7 @@ mod tests {
     use std::sync::Arc;
 
     use tempfile::NamedTempFile;
-    use trace_db::Store;
+    use traces_db::Store;
 
     use super::*;
 

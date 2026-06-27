@@ -8,8 +8,8 @@
 //! - [`TemplateRepositoryError`] — persistence/storage errors
 
 use thiserror::Error;
-use trace_db::DbError;
-use trace_fs::PathKey;
+use traces_db::DbError;
+use traces_fs::PathKey;
 
 use super::{TemplateEngineError, aggregate::TemplateName};
 
@@ -94,13 +94,13 @@ pub enum TemplateBodyError {
 
 /// Errors returned when reading a template file from the filesystem.
 ///
-/// Wraps [`trace_fs::ReadError`] so file I/O failures surface through the
+/// Wraps [`traces_fs::ReadError`] so file I/O failures surface through the
 /// template error hierarchy without leaking `fs` internals into call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplateReadError {
     /// Embedded filesystem read error.
     #[error(transparent)]
-    Read(#[from] trace_fs::ReadError),
+    Read(#[from] traces_fs::ReadError),
 }
 
 // ============================================================================
@@ -109,13 +109,13 @@ pub enum TemplateReadError {
 
 /// Errors returned during path validation or resolution.
 ///
-/// Wraps [`trace_fs::error::PathError`] so path failures surface through the
+/// Wraps [`traces_fs::error::PathError`] so path failures surface through the
 /// template error hierarchy without leaking `fs` internals into call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplatePathError {
     /// Embedded filesystem path validation error.
     #[error(transparent)]
-    Path(#[from] trace_fs::error::PathError),
+    Path(#[from] traces_fs::error::PathError),
 }
 
 // ============================================================================
@@ -126,18 +126,18 @@ pub enum TemplatePathError {
 /// the write pipeline.
 ///
 /// `Path` covers all target-validation rejections from
-/// [`trace_fs::error::WriteTargetError`] — absolute, traversal, hidden, empty,
+/// [`traces_fs::error::WriteTargetError`] — absolute, traversal, hidden, empty,
 /// and current-dir. `Write` covers commit-time write failures from
-/// [`trace_fs::error::WriteError`] — `AlreadyExists` and `Io`.
+/// [`traces_fs::error::WriteError`] — `AlreadyExists` and `Io`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TemplateArtifactError {
     /// A target path was rejected during target resolution.
     #[error(transparent)]
-    Path(#[from] trace_fs::error::WriteTargetError),
+    Path(#[from] traces_fs::error::WriteTargetError),
     /// A filesystem write failed while committing the artifact.
     #[error(transparent)]
-    Write(#[from] trace_fs::error::WriteError),
+    Write(#[from] traces_fs::error::WriteError),
 }
 
 // ============================================================================
@@ -146,14 +146,14 @@ pub enum TemplateArtifactError {
 
 /// Errors returned during directory scanning.
 ///
-/// Wraps [`trace_fs::error::ScanError`] so file discovery failures surface
+/// Wraps [`traces_fs::error::ScanError`] so file discovery failures surface
 /// through the template error hierarchy without leaking `fs` internals into
 /// call sites.
 #[derive(Debug, thiserror::Error)]
 pub enum TemplateDirScanError {
     /// Embedded directory scanning error.
     #[error(transparent)]
-    Scan(#[from] trace_fs::error::ScanError),
+    Scan(#[from] traces_fs::error::ScanError),
 }
 
 // ============================================================================
@@ -242,7 +242,7 @@ mod tests {
         fn template_read_error_wraps_fs_read_error_via_from() {
             let io_err =
                 io::Error::new(io::ErrorKind::NotFound, "file not found");
-            let fs_err = trace_fs::ReadError::Io {
+            let fs_err = traces_fs::ReadError::Io {
                 path: std::path::PathBuf::from("test.md"),
                 source: io_err,
             };
@@ -258,35 +258,35 @@ mod tests {
 
         #[test]
         fn path_variant_wraps_write_target_error() {
-            let target_err = trace_fs::error::WriteTargetError::Absolute(
+            let target_err = traces_fs::error::WriteTargetError::Absolute(
                 PathBuf::from("/abs/x.md"),
             );
             let err: TemplateArtifactError = target_err.into();
             assert!(matches!(
                 err,
                 TemplateArtifactError::Path(
-                    trace_fs::error::WriteTargetError::Absolute(_)
+                    traces_fs::error::WriteTargetError::Absolute(_)
                 )
             ));
         }
 
         #[test]
         fn write_variant_wraps_write_error() {
-            let write_err = trace_fs::error::WriteError::AlreadyExists {
+            let write_err = traces_fs::error::WriteError::AlreadyExists {
                 path: PathBuf::from("note.md"),
             };
             let err: TemplateArtifactError = write_err.into();
             assert!(matches!(
                 err,
                 TemplateArtifactError::Write(
-                    trace_fs::error::WriteError::AlreadyExists { .. }
+                    traces_fs::error::WriteError::AlreadyExists { .. }
                 )
             ));
         }
 
         #[test]
         fn path_variant_preserves_display() {
-            let inner = trace_fs::error::WriteTargetError::Absolute(
+            let inner = traces_fs::error::WriteTargetError::Absolute(
                 PathBuf::from("/abs/x.md"),
             );
             let inner_msg = inner.to_string();
@@ -304,11 +304,12 @@ mod tests {
                 std::io::ErrorKind::PermissionDenied,
                 "permission denied",
             );
-            let err =
-                TemplateArtifactError::Write(trace_fs::error::WriteError::Io {
+            let err = TemplateArtifactError::Write(
+                traces_fs::error::WriteError::Io {
                     path: PathBuf::from("note.md"),
                     source: io_err,
-                });
+                },
+            );
             assert!(
                 err.source().is_some(),
                 "transparent Write variant should forward its source"
@@ -318,7 +319,7 @@ mod tests {
         #[test]
         fn implements_error_trait() {
             let err = TemplateArtifactError::Path(
-                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
+                traces_fs::error::WriteTargetError::Absolute(PathBuf::from(
                     "/abs/x.md",
                 )),
             );
@@ -379,7 +380,7 @@ mod tests {
             use std::io;
             let io_err =
                 io::Error::new(io::ErrorKind::NotFound, "file not found");
-            let fs_err = trace_fs::ReadError::Io {
+            let fs_err = traces_fs::ReadError::Io {
                 path: std::path::PathBuf::from("test.md"),
                 source: io_err,
             };
@@ -486,7 +487,7 @@ mod tests {
         #[test]
         fn artifact_variant_wraps_template_artifact_error() {
             let artifact_err = TemplateArtifactError::Path(
-                trace_fs::error::WriteTargetError::Absolute(PathBuf::from(
+                traces_fs::error::WriteTargetError::Absolute(PathBuf::from(
                     "/abs/x.md",
                 )),
             );

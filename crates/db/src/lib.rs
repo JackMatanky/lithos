@@ -30,7 +30,7 @@
 //! ```no_run
 //! use std::path::Path;
 //!
-//! use trace_db::Store;
+//! use traces_db::Store;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let store = Store::open(Path::new("my_data.db"))?;

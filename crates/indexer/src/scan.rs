@@ -3,7 +3,7 @@
 //! Defines the boundaries and options used to control which filesystem nodes
 //! are eligible for indexing and how an indexing run is executed.
 
-use trace_fs::DirPath;
+use traces_fs::DirPath;
 
 /// Filters applied during a filesystem scan to include or exclude nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -173,7 +173,7 @@ mod tests {
 
     mod index_scope {
         mod constructor {
-            use trace_fs::DirPath;
+            use traces_fs::DirPath;
 
             use crate::scan::{IndexOptions, IndexScope, ScanFilters};
 

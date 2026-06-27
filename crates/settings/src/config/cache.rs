@@ -14,8 +14,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use trace_settings::config::cache::{CacheConfig, CacheConfigSpec, CacheDir};
-//! use trace_fs::{DirPath, path::RelativeDirPath};
+//! use traces_settings::config::cache::{CacheConfig, CacheConfigSpec, CacheDir};
+//! use traces_fs::{DirPath, path::RelativeDirPath};
 //!
 //! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
 //! let relative = RelativeDirPath::try_new(".cache")?;
@@ -27,7 +27,7 @@
 //! ```
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::{DirPath, PathKey, path::RelativeDirPath};
+use traces_fs::{DirPath, PathKey, path::RelativeDirPath};
 
 use super::error::ConfigError;
 
@@ -174,10 +174,10 @@ impl CacheConfigSpec {
     ///
     /// # Errors
     ///
-    /// Returns [`trace_fs::PathError`] if the resolved path does not exist or
+    /// Returns [`traces_fs::PathError`] if the resolved path does not exist or
     /// is not a directory.
     #[inline]
-    pub fn to_dir_path(&self) -> Result<DirPath, trace_fs::PathError> {
+    pub fn to_dir_path(&self) -> Result<DirPath, traces_fs::PathError> {
         self.root.append_dir(&self.directory)
     }
 
@@ -185,11 +185,11 @@ impl CacheConfigSpec {
     ///
     /// # Errors
     ///
-    /// Returns [`trace_fs::PathError`] if the resolved path does not exist, is
+    /// Returns [`traces_fs::PathError`] if the resolved path does not exist, is
     /// not a directory, or cannot be expressed as a relative key from the vault
     /// root.
     #[inline]
-    pub fn to_path_key(&self) -> Result<PathKey, trace_fs::PathError> {
+    pub fn to_path_key(&self) -> Result<PathKey, traces_fs::PathError> {
         self.to_dir_path()?.as_key(self.root())
     }
 }
@@ -200,7 +200,7 @@ impl CacheConfigSpec {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::path::RelativeDirPath;
+    use traces_fs::path::RelativeDirPath;
 
     use super::*;
 
@@ -322,7 +322,7 @@ mod tests {
     }
 
     mod cache_config_spec {
-        use trace_fs::DirPath;
+        use traces_fs::DirPath;
 
         use super::*;
 

@@ -86,7 +86,7 @@ impl DbError {
     /// # Examples
     ///
     /// ```
-    /// use trace_db::{DbError, DbErrorKind};
+    /// use traces_db::{DbError, DbErrorKind};
     ///
     /// let err = DbError::Serialization("failed".into());
     /// assert_eq!(err.kind(), DbErrorKind::Serialization);
@@ -122,7 +122,7 @@ impl DbError {
     /// # Examples
     ///
     /// ```
-    /// use trace_db::DbError;
+    /// use traces_db::DbError;
     ///
     /// let redb_err = redb::DatabaseError::from(std::io::Error::new(
     ///     std::io::ErrorKind::Other,

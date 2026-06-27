@@ -238,7 +238,7 @@ impl Config {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use trace_settings::config::aggregate::Config;
+    /// # use traces_settings::config::aggregate::Config;
     /// # fn example(config: &Config) {
     /// let spec = config.to_schema_spec().expect("schema spec should build");
     /// // spec.root() returns vault root
@@ -248,7 +248,7 @@ impl Config {
     /// ```
     #[inline]
     pub fn to_schema_spec(&self) -> Result<SchemaConfigSpec, ConfigError> {
-        use trace_fs::path::RelativeFilePath;
+        use traces_fs::path::RelativeFilePath;
 
         let root = self.vault_metadata.root().as_dir_path().clone();
 

@@ -32,7 +32,7 @@
 //! The trait defines per-method documentation; this file contains the
 //! concrete [`redb`] access patterns for each operation.
 
-use trace_db::{ArchivedEntity, path::DbPathKey};
+use traces_db::{ArchivedEntity, path::DbPathKey};
 
 use super::{NOTES, RedbRepository};
 use crate::{
@@ -230,7 +230,7 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::Store;
+    use traces_db::Store;
 
     use crate::{
         aggregate::{Note, NoteId},

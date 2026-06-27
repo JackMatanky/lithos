@@ -46,7 +46,7 @@ use super::{
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::task::Task;
+/// use traces_settings::config::task::Task;
 ///
 /// let config = Task::default();
 /// assert!(config.enabled());

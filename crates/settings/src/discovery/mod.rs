@@ -30,12 +30,12 @@
 //! # Usage Example
 //!
 //! ```rust,ignore
-//! use trace_settings::config::{
+//! use traces_settings::config::{
 //!     DiscoveryService, DiscoveryFlags, DiscoveryEnv,
 //!     port::DiscoveryPort,
 //!     service::DiscoveryServiceConfig,
 //! };
-//! use trace_settings::config::context::DiscoveryContext;
+//! use traces_settings::config::context::DiscoveryContext;
 //!
 //! let service = DiscoveryService::new(DiscoveryServiceConfig::default())
 //!     .expect("valid config");
@@ -45,7 +45,7 @@
 //! println!("cache root: {:?}", result.cache_root().path());
 //! ```
 //!
-//! [`Config`]: trace_settings
+//! [`Config`]: traces_settings
 //! [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
 //! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
 

@@ -9,8 +9,8 @@
 use std::{fmt, path::Path, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
-use trace_fs::PathKey;
-use trace_utils::UuidV7;
+use traces_fs::PathKey;
+use traces_utils::UuidV7;
 use uuid::Uuid;
 
 use super::error::{TemplateBodyError, TemplateNameError};
@@ -27,7 +27,7 @@ use super::error::{TemplateBodyError, TemplateNameError};
 /// # Examples
 ///
 /// ```
-/// use trace_template::TemplateId;
+/// use traces_template::TemplateId;
 ///
 /// let id = TemplateId::new();
 /// let _uuid = id.as_uuid_v7();
@@ -54,7 +54,7 @@ impl TemplateId {
     /// # Examples
     ///
     /// ```
-    /// use trace_template::TemplateId;
+    /// use traces_template::TemplateId;
     ///
     /// let id = TemplateId::new();
     /// let _ = id.as_uuid_v7();
@@ -69,13 +69,13 @@ impl TemplateId {
     ///
     /// # Errors
     ///
-    /// Returns [`trace_utils::UuidV7Error`] if parsing fails or the UUID is
+    /// Returns [`traces_utils::UuidV7Error`] if parsing fails or the UUID is
     /// not v7.
     ///
     /// # Examples
     ///
     /// ```
-    /// use trace_template::TemplateId;
+    /// use traces_template::TemplateId;
     ///
     /// let id = TemplateId::new();
     /// let s = id.to_string();
@@ -83,7 +83,7 @@ impl TemplateId {
     /// assert_eq!(id, parsed);
     /// ```
     #[inline]
-    pub fn parse(id: &str) -> Result<Self, trace_utils::UuidV7Error> {
+    pub fn parse(id: &str) -> Result<Self, traces_utils::UuidV7Error> {
         Ok(Self(UuidV7::parse(id)?))
     }
 
@@ -117,7 +117,7 @@ impl From<UuidV7> for TemplateId {
 }
 
 impl TryFrom<Uuid> for TemplateId {
-    type Error = trace_utils::UuidV7Error;
+    type Error = traces_utils::UuidV7Error;
 
     #[inline]
     fn try_from(value: Uuid) -> Result<Self, Self::Error> {
@@ -147,7 +147,7 @@ impl AsRef<UuidV7> for TemplateId {
 /// ```
 /// use std::path::Path;
 ///
-/// use trace_template::TemplateName;
+/// use traces_template::TemplateName;
 ///
 /// // Flat template: templates/standup.md → "standup"
 /// let name = TemplateName::try_new(
@@ -190,7 +190,7 @@ impl TemplateName {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_template::TemplateName;
+    /// use traces_template::TemplateName;
     ///
     /// let name = TemplateName::try_new(
     ///     Path::new("templates/daily/standup.md"),
@@ -252,7 +252,7 @@ impl TemplateName {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_template::TemplateName;
+    /// use traces_template::TemplateName;
     ///
     /// let name = TemplateName::try_new(
     ///     Path::new("templates/standup.md"),
@@ -294,7 +294,7 @@ impl AsRef<str> for TemplateName {
 /// # Examples
 ///
 /// ```
-/// use trace_template::TemplateBody;
+/// use traces_template::TemplateBody;
 ///
 /// let body = TemplateBody::try_new("Hello {{ name }}!").unwrap();
 /// assert_eq!(body.as_str(), "Hello {{ name }}!");
@@ -313,7 +313,7 @@ impl TemplateBody {
     /// # Examples
     ///
     /// ```
-    /// use trace_template::TemplateBody;
+    /// use traces_template::TemplateBody;
     ///
     /// assert!(TemplateBody::try_new("").is_err());
     /// assert!(TemplateBody::try_new("hello").is_ok());
@@ -334,7 +334,7 @@ impl TemplateBody {
     /// # Examples
     ///
     /// ```
-    /// use trace_template::TemplateBody;
+    /// use traces_template::TemplateBody;
     ///
     /// let body = TemplateBody::try_new("Hello!").unwrap();
     /// assert_eq!(body.as_str(), "Hello!");
@@ -371,8 +371,8 @@ impl AsRef<str> for TemplateBody {
 /// ```
 /// use std::path::Path;
 ///
-/// use trace_fs::PathKey;
-/// use trace_template::{Template, TemplateBody, TemplateId, TemplateName};
+/// use traces_fs::PathKey;
+/// use traces_template::{Template, TemplateBody, TemplateId, TemplateName};
 ///
 /// let id = TemplateId::new();
 /// let path = PathKey::try_new("templates/standup.md").unwrap();
@@ -409,8 +409,8 @@ impl Template {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_fs::PathKey;
-    /// use trace_template::{Template, TemplateBody, TemplateId, TemplateName};
+    /// use traces_fs::PathKey;
+    /// use traces_template::{Template, TemplateBody, TemplateId, TemplateName};
     ///
     /// let id = TemplateId::new();
     /// let path = PathKey::try_new("templates/standup.md").unwrap();

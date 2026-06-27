@@ -3,7 +3,7 @@
 //! Provides the [`RawPropertyBank`] type which represents a property bank
 //! file as parsed from the filesystem.
 
-use trace_fs::metadata::{FileMetadata, FsTimes};
+use traces_fs::metadata::{FileMetadata, FsTimes};
 
 use crate::raw::{
     RawPropertyBankEntry, RawPropertyMap, version::RawSchemaVersion,

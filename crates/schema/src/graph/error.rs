@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use trace_schema::GraphError;
+//! use traces_schema::GraphError;
 //!
 //! let err: GraphError<u8> = GraphError::MissingNode {
 //!     id: 7,
@@ -22,7 +22,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```
-/// use trace_schema::GraphError;
+/// use traces_schema::GraphError;
 ///
 /// let err: GraphError<u8> = GraphError::CycleDetected {
 ///     nodes: vec![1, 2],
@@ -59,7 +59,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use trace_schema::graph::CycleError;
+/// use traces_schema::graph::CycleError;
 ///
 /// let err: CycleError<u8> = CycleError::CycleDetected {
 ///     nodes: vec![1],

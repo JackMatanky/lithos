@@ -64,17 +64,17 @@ tempfile = "3.27"
 criterion = { version = "0.8.2", features = ["html_reports", "async_tokio"] }
 
 # Internal Workspace Crates
-trace-note = { path = "crates/note" }
-trace-app = { path = "crates/app" }
-trace-settings = { path = "crates/settings" }
-trace-template = { path = "crates/template" }
-trace-utils = { path = "crates/utils" }
-trace-schema = { path = "crates/schema" }
-trace-support = { path = "crates/support" }
-trace-db = { path = "crates/db" }
-trace-fs = { path = "crates/fs" }
-trace-indexer = { path = "crates/indexer" }
-trace-vault = { path = "crates/vault" }
+traces-note = { path = "crates/note" }
+traces-app = { path = "crates/app" }
+traces-settings = { path = "crates/settings" }
+traces-template = { path = "crates/template" }
+traces-utils = { path = "crates/utils" }
+traces-schema = { path = "crates/schema" }
+traces-support = { path = "crates/support" }
+traces-db = { path = "crates/db" }
+traces-fs = { path = "crates/fs" }
+traces-indexer = { path = "crates/indexer" }
+traces-vault = { path = "crates/vault" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

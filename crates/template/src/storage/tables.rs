@@ -5,7 +5,7 @@
 //!
 //! [`RedbRepository`]: super::core::RedbRepository
 
-use trace_db::{PathUuidTable, Table, UuidTable, impl_redb_uuid};
+use traces_db::{PathUuidTable, Table, UuidTable, impl_redb_uuid};
 
 use crate::aggregate::TemplateId;
 

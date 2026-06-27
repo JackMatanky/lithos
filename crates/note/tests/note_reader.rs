@@ -29,18 +29,18 @@ mod tests {
         sync::Arc,
     };
 
-    use trace_db::testing::TestDb;
-    use trace_note::{
+    use traces_db::testing::TestDb;
+    use traces_note::{
         aggregate::Note, repository::ReadRepository as _,
         storage::RedbRepository, tag::Tag as NoteTag, task::Task,
     };
-    use trace_settings::{
+    use traces_settings::{
         aggregate::{Config, Version},
         builder,
         task::StatusSymbol,
         vault::{VaultId, VaultRoot},
     };
-    use trace_vault::VaultProcessor;
+    use traces_vault::VaultProcessor;
 
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 

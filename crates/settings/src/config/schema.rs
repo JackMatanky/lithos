@@ -15,8 +15,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use trace_settings::config::schema::{PropertyBankFile, SchemaConfig, SchemaConfigSpec, SchemaDir};
-//! use trace_fs::{DirPath, path::RelativeFilePath};
+//! use traces_settings::config::schema::{PropertyBankFile, SchemaConfig, SchemaConfigSpec, SchemaDir};
+//! use traces_fs::{DirPath, path::RelativeFilePath};
 //!
 //! # fn example(root: DirPath) -> Result<(), Box<dyn std::error::Error>> {
 //! let config = SchemaConfig::new(
@@ -41,7 +41,7 @@
 use std::path::PathBuf;
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::{
+use traces_fs::{
     DirPath, FileName, FilePath, PathKey,
     path::{RelativeDirPath, RelativeFilePath},
 };
@@ -321,7 +321,7 @@ impl SchemaConfigSpec {
     #[inline]
     pub fn schema_directory_path(
         &self,
-    ) -> Result<DirPath, trace_fs::PathError> {
+    ) -> Result<DirPath, traces_fs::PathError> {
         self.root.append_dir(&self.directory)
     }
 
@@ -332,7 +332,7 @@ impl SchemaConfigSpec {
     #[inline]
     pub fn property_bank_file_path(
         &self,
-    ) -> Result<FilePath, trace_fs::PathError> {
+    ) -> Result<FilePath, traces_fs::PathError> {
         self.root.append_file(&self.property_bank)
     }
 
@@ -342,7 +342,9 @@ impl SchemaConfigSpec {
     /// Returns an error when the absolute schema directory path cannot be
     /// derived or key conversion fails.
     #[inline]
-    pub fn schema_directory_key(&self) -> Result<PathKey, trace_fs::PathError> {
+    pub fn schema_directory_key(
+        &self,
+    ) -> Result<PathKey, traces_fs::PathError> {
         self.schema_directory_path()?.as_key(self.root())
     }
 
@@ -352,7 +354,7 @@ impl SchemaConfigSpec {
     /// Returns an error when the absolute property bank file path cannot be
     /// derived or key conversion fails.
     #[inline]
-    pub fn property_bank_key(&self) -> Result<PathKey, trace_fs::PathError> {
+    pub fn property_bank_key(&self) -> Result<PathKey, traces_fs::PathError> {
         self.property_bank_file_path()?.as_key(self.root())
     }
 
@@ -377,7 +379,7 @@ impl SchemaConfigSpec {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::FileName;
+    use traces_fs::FileName;
 
     use super::*;
 
@@ -519,7 +521,7 @@ mod tests {
     }
 
     mod schema_config_spec {
-        use trace_fs::{
+        use traces_fs::{
             DirPath,
             path::{RelativeDirPath, RelativeFilePath},
         };

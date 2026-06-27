@@ -90,7 +90,7 @@ impl TryFrom<&Path> for FileName {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_fs::FileName;
+    /// use traces_fs::FileName;
     ///
     /// let name = FileName::try_from(Path::new("notes/readme.md")).unwrap();
     /// assert_eq!(name.as_str(), "readme.md");
@@ -171,7 +171,7 @@ impl TryFrom<FileName> for BaseName {
     /// # Examples
     ///
     /// ```
-    /// use trace_fs::{BaseName, FileName};
+    /// use traces_fs::{BaseName, FileName};
     ///
     /// let base =
     ///     BaseName::try_from(FileName::from("note.md".to_owned())).unwrap();
@@ -204,7 +204,7 @@ impl TryFrom<&Path> for BaseName {
     /// ```
     /// use std::path::Path;
     ///
-    /// use trace_fs::BaseName;
+    /// use traces_fs::BaseName;
     ///
     /// let base = BaseName::try_from(Path::new("notes/readme.md")).unwrap();
     /// assert_eq!(base.as_str(), "readme");

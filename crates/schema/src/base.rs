@@ -41,7 +41,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{
+/// use traces_schema::{
 ///     base::BaseSchema,
 ///     identifier::{SchemaId, SchemaName},
 ///     property::PropertyMap,
@@ -83,7 +83,7 @@ impl BaseSchema {
     /// # Examples
     ///
     /// ```
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     base::BaseSchema,
     ///     identifier::{SchemaId, SchemaName},
     ///     property::PropertyMap,

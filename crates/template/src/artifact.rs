@@ -6,7 +6,7 @@
 //! [`Committed`]) carry the resolved write target as the
 //! artifact moves toward a committed vault file.
 
-use trace_fs::{FileWriter, WriteTarget};
+use traces_fs::{FileWriter, WriteTarget};
 
 use super::TemplateName;
 use crate::error::TemplateArtifactError;
@@ -98,7 +98,7 @@ impl TemplateArtifact<Rendered> {
     /// # Errors
     ///
     /// Returns [`TemplateArtifactError::Path`] wrapping the underlying
-    /// [`trace_fs::error::WriteTargetError`] when the path fails validation.
+    /// [`traces_fs::error::WriteTargetError`] when the path fails validation.
     pub(crate) fn try_resolve_target(
         self,
         path: &str,
@@ -147,7 +147,7 @@ impl TemplateArtifact<TargetResolved> {
     /// [`Committed`] state.
     ///
     /// Uses `File::create_new` via the FS writer, which fails with
-    /// [`trace_fs::error::WriteError::AlreadyExists`] if the destination
+    /// [`traces_fs::error::WriteError::AlreadyExists`] if the destination
     /// already exists. Performing the existence check and creation in one
     /// atomic operation eliminates the TOCTOU race a separate pre-check would
     /// introduce. Parent directories are automatically created if missing.
@@ -204,7 +204,7 @@ mod tests {
 
     mod state {
         use pretty_assertions::assert_eq;
-        use trace_fs::WriteTarget;
+        use traces_fs::WriteTarget;
 
         use super::{
             Committed, Rendered, TargetResolved, TemplateArtifact,
@@ -259,7 +259,7 @@ mod tests {
 
     mod validation {
         use pretty_assertions::assert_eq;
-        use trace_fs::error::WriteTargetError;
+        use traces_fs::error::WriteTargetError;
 
         use super::{
             super::super::error::TemplateArtifactError, TemplateArtifact,
@@ -369,7 +369,7 @@ mod tests {
     mod create {
         use pretty_assertions::assert_eq;
         use tempfile::TempDir;
-        use trace_fs::FsWriter;
+        use traces_fs::FsWriter;
 
         use super::{
             super::super::error::TemplateArtifactError, TemplateArtifact,
@@ -441,7 +441,7 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(TemplateArtifactError::Write(
-                    trace_fs::error::WriteError::AlreadyExists { .. }
+                    traces_fs::error::WriteError::AlreadyExists { .. }
                 ))
             ));
             assert_eq!(
@@ -484,7 +484,7 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(TemplateArtifactError::Write(
-                    trace_fs::error::WriteError::Io { .. }
+                    traces_fs::error::WriteError::Io { .. }
                 ))
             ));
         }
@@ -493,7 +493,7 @@ mod tests {
     mod pipeline {
         use pretty_assertions::assert_eq;
         use tempfile::TempDir;
-        use trace_fs::FsWriter;
+        use traces_fs::FsWriter;
 
         use super::{
             super::super::error::TemplateArtifactError, TemplateArtifact,
@@ -544,7 +544,7 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(TemplateArtifactError::Write(
-                    trace_fs::error::WriteError::AlreadyExists { .. }
+                    traces_fs::error::WriteError::AlreadyExists { .. }
                 ))
             ));
             assert_eq!(

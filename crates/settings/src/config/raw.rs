@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use trace_fs::metadata::FileMetadata;
+use traces_fs::metadata::FileMetadata;
 
 /// Raw config parsed from the global config file.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

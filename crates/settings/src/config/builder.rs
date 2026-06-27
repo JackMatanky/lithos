@@ -18,7 +18,7 @@
 //! file changes.
 
 // ...
-use trace_fs::{
+use traces_fs::{
     FileReader,
     metadata::{FileMetadata, FsMetadata},
 };
@@ -644,7 +644,7 @@ where
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
-    use trace_fs::{DirPath, FilePath};
+    use traces_fs::{DirPath, FilePath};
 
     use super::*;
     use crate::config::storage::testing::InMemoryRepository;

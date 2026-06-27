@@ -26,7 +26,7 @@ pub struct RawFileProperty {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::raw::file::RawFileSpec;
+/// use traces_schema::raw::file::RawFileSpec;
 ///
 /// let _spec = RawFileSpec::default();
 /// ```

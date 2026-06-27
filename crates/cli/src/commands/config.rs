@@ -12,8 +12,8 @@
 
 use std::{io::Write, path::Path};
 
-use trace_app::bootstrap::Bootstrapper;
-use trace_settings::{
+use traces_app::bootstrap::Bootstrapper;
+use traces_settings::{
     DiscoveryFlags, InMemoryRepository,
     port::DiscoveryPort,
     report::{DiscoveryReport, SkippedCeilingReason},
@@ -116,9 +116,9 @@ fn write_diagnostics(
 
 /// Formats the local traversal stop reason as a short string.
 fn format_stop_reason(
-    reason: &trace_settings::report::LocalTraversalStopReason,
+    reason: &traces_settings::report::LocalTraversalStopReason,
 ) -> &'static str {
-    use trace_settings::report::LocalTraversalStopReason;
+    use traces_settings::report::LocalTraversalStopReason;
     match reason {
         LocalTraversalStopReason::FilesystemRoot => "filesystem root",
         LocalTraversalStopReason::ExplicitConfigFile => "explicit config file",
@@ -237,8 +237,8 @@ fn write_json(
 
 #[cfg(test)]
 mod config_handler {
-    use trace_app::bootstrap::Bootstrapper;
-    use trace_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_app::bootstrap::Bootstrapper;
+    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
 
     use super::run_config;
     use crate::cli::OutputFormat;

@@ -18,7 +18,7 @@
 use std::{collections::HashMap, fmt};
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
-use trace_settings::frontmatter::FrontmatterConfigSpec;
+use traces_settings::frontmatter::FrontmatterConfigSpec;
 
 use super::{
     error::{FrontmatterError, NoteError},
@@ -235,8 +235,8 @@ impl Frontmatter {
     ///
     /// ```
     /// # use std::collections::HashMap;
-    /// # use trace_note::frontmatter::Frontmatter;
-    /// # use trace_note::value::FieldValue;
+    /// # use traces_note::frontmatter::Frontmatter;
+    /// # use traces_note::value::FieldValue;
     /// let mut fields = HashMap::new();
     /// fields.insert("key".into(), FieldValue::String("value".into()));
     /// let fm = Frontmatter::new(fields);
@@ -256,8 +256,8 @@ impl Frontmatter {
     ///
     /// ```
     /// # use std::collections::HashMap;
-    /// # use trace_note::frontmatter::Frontmatter;
-    /// # use trace_note::value::FieldValue;
+    /// # use traces_note::frontmatter::Frontmatter;
+    /// # use traces_note::value::FieldValue;
     /// let mut fields = HashMap::new();
     /// fields.insert("key".into(), FieldValue::String("value".into()));
     /// let fm = Frontmatter::new(fields);
@@ -285,8 +285,8 @@ impl Frontmatter {
     ///
     /// ```
     /// # use std::collections::HashMap;
-    /// # use trace_note::frontmatter::Frontmatter;
-    /// # use trace_note::value::FieldValue;
+    /// # use traces_note::frontmatter::Frontmatter;
+    /// # use traces_note::value::FieldValue;
     /// let mut fields = HashMap::new();
     /// fields.insert("active".into(), FieldValue::Boolean(true));
     /// let fm = Frontmatter::new(fields);
@@ -316,8 +316,8 @@ impl Frontmatter {
     ///
     /// ```
     /// # use std::collections::HashMap;
-    /// # use trace_note::frontmatter::Frontmatter;
-    /// # use trace_note::value::FieldValue;
+    /// # use traces_note::frontmatter::Frontmatter;
+    /// # use traces_note::value::FieldValue;
     /// let mut fields = HashMap::new();
     /// fields.insert("title".into(), FieldValue::String("My Note".into()));
     /// let fm = Frontmatter::new(fields);
@@ -352,8 +352,8 @@ impl Frontmatter {
     ///
     /// ```
     /// # use std::collections::HashMap;
-    /// # use trace_note::frontmatter::Frontmatter;
-    /// # use trace_note::value::FieldValue;
+    /// # use traces_note::frontmatter::Frontmatter;
+    /// # use traces_note::value::FieldValue;
     /// let mut fields = HashMap::new();
     /// fields.insert("title".into(), FieldValue::String("My Note".into()));
     /// let fm = Frontmatter::new(fields);

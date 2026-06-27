@@ -28,7 +28,7 @@
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
-//! [`Store`]: trace_db::Store
+//! [`Store`]: traces_db::Store
 //! [`SCHEMAS`]: crate::storage::tables::SCHEMAS
 //! [`RAW_SCHEMA_VIEWS`]: crate::storage::tables::RAW_SCHEMA_VIEWS
 //! [`SCHEMA_ID_BY_NAME`]: crate::storage::tables::SCHEMA_ID_BY_NAME
@@ -39,8 +39,8 @@
 use std::collections::{HashMap, HashSet};
 
 use redb::ReadableTable;
-use trace_db::{ArchivedEntity, DbPathKey, UuidTableReadExt};
-use trace_fs::PathKey;
+use traces_db::{ArchivedEntity, DbPathKey, UuidTableReadExt};
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::Schema,
@@ -470,9 +470,9 @@ impl ReadRepository for RedbRepository {
 
         crate::index::SchemaIndex::from_pairs(name_pairs, path_pairs).map_err(
             |e| {
-                SchemaRepositoryError::from(trace_db::DbError::Deserialization(
-                    e.to_string(),
-                ))
+                SchemaRepositoryError::from(
+                    traces_db::DbError::Deserialization(e.to_string()),
+                )
             },
         )
     }
@@ -544,11 +544,11 @@ impl ReadRepository for RedbRepository {
 /// ```
 ///
 /// [`SCHEMA_ID_BY_NAME`]: crate::storage::tables::SCHEMA_ID_BY_NAME
-/// [`DbError::Deserialization`]: trace_db::DbError::Deserialization
+/// [`DbError::Deserialization`]: traces_db::DbError::Deserialization
 #[inline]
-fn parse_schema_name_key(key: &str) -> Result<SchemaName, trace_db::DbError> {
+fn parse_schema_name_key(key: &str) -> Result<SchemaName, traces_db::DbError> {
     SchemaName::try_from(key).map_err(|error| {
-        trace_db::DbError::Deserialization(format!(
+        traces_db::DbError::Deserialization(format!(
             "invalid schema-name index key '{key}': {error}"
         ))
     })
@@ -573,11 +573,11 @@ fn parse_schema_name_key(key: &str) -> Result<SchemaName, trace_db::DbError> {
 /// ```
 ///
 /// [`SCHEMA_ID_BY_PATH`]: crate::storage::tables::SCHEMA_ID_BY_PATH
-/// [`DbError::Deserialization`]: trace_db::DbError::Deserialization
+/// [`DbError::Deserialization`]: traces_db::DbError::Deserialization
 #[inline]
-fn parse_path_key(key: &str) -> Result<PathKey, trace_db::DbError> {
+fn parse_path_key(key: &str) -> Result<PathKey, traces_db::DbError> {
     PathKey::try_new(key).map_err(|error| {
-        trace_db::DbError::Deserialization(format!(
+        traces_db::DbError::Deserialization(format!(
             "invalid schema-path index key '{key}': {error}"
         ))
     })
@@ -591,12 +591,12 @@ fn parse_path_key(key: &str) -> Result<PathKey, trace_db::DbError> {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::{ArchivedEntity, DbPathKey, Store};
-    use trace_fs::{
+    use traces_db::{ArchivedEntity, DbPathKey, Store};
+    use traces_fs::{
         PathKey,
         metadata::{FileMetadata, FsTimes},
     };
-    use trace_support::Blake3Hash;
+    use traces_support::Blake3Hash;
 
     use crate::{
         aggregate::Schema,

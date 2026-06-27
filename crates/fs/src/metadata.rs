@@ -52,7 +52,7 @@ impl FsMetadata {
     /// use std::fs;
     ///
     /// use tempfile::tempdir;
-    /// use trace_fs::metadata::FsMetadata;
+    /// use traces_fs::metadata::FsMetadata;
     ///
     /// let temp_dir = tempdir().unwrap();
     /// let file_path = temp_dir.path().join("test.txt");
@@ -223,7 +223,7 @@ impl FileMetadata {
     /// use std::fs;
     ///
     /// use tempfile::tempdir;
-    /// use trace_fs::metadata::FileMetadata;
+    /// use traces_fs::metadata::FileMetadata;
     ///
     /// let temp_dir = tempdir().unwrap();
     /// let file_path = temp_dir.path().join("test.txt");
@@ -345,7 +345,7 @@ impl DirMetadata {
     /// use std::fs;
     ///
     /// use tempfile::tempdir;
-    /// use trace_fs::metadata::DirMetadata;
+    /// use traces_fs::metadata::DirMetadata;
     ///
     /// let temp_dir = tempdir().unwrap();
     ///
@@ -477,12 +477,12 @@ impl ArchivedFsTimes {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_fs::metadata::FsTimes;
+    /// use traces_fs::metadata::FsTimes;
     ///
     /// let times = FsTimes::new(Some(SystemTime::UNIX_EPOCH), None);
     /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&times).unwrap();
     /// let archived = rkyv::access::<
-    ///     trace_fs::metadata::ArchivedFsTimes,
+    ///     traces_fs::metadata::ArchivedFsTimes,
     ///     rkyv::rancor::Error,
     /// >(&bytes)
     /// .unwrap();
@@ -537,13 +537,13 @@ impl ArchivedFileMetadata {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_fs::metadata::{FileMetadata, FsTimes};
+    /// use traces_fs::metadata::{FileMetadata, FsTimes};
     ///
     /// let times = FsTimes::new(Some(SystemTime::UNIX_EPOCH), None);
     /// let metadata = FileMetadata::new(times, 1024, false);
     /// let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&metadata).unwrap();
     /// let archived = rkyv::access::<
-    ///     trace_fs::metadata::ArchivedFileMetadata,
+    ///     traces_fs::metadata::ArchivedFileMetadata,
     ///     rkyv::rancor::Error,
     /// >(&bytes)
     /// .unwrap();

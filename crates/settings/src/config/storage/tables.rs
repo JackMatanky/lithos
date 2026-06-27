@@ -1,6 +1,6 @@
 //! Table definitions for configuration storage.
 
-use trace_db::{Table, UuidTable, impl_redb_uuid};
+use traces_db::{Table, UuidTable, impl_redb_uuid};
 
 use crate::config::vault::VaultId;
 

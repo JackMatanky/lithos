@@ -7,8 +7,8 @@
 
 use std::path::PathBuf;
 
-use trace_db::DbError;
-use trace_fs::{PathKey, error::PathError};
+use traces_db::DbError;
+use traces_fs::{PathKey, error::PathError};
 
 /// Unified error type for the indexer context.
 #[derive(Debug, thiserror::Error)]
@@ -86,14 +86,14 @@ mod tests {
         #[test]
         fn converts_db_error_to_repository_error_to_indexer_error() {
             let db_err =
-                trace_db::DbError::Serialization("failed to serialize".into());
+                traces_db::DbError::Serialization("failed to serialize".into());
             let repo_err: IndexerRepositoryError = db_err.into();
             let indexer_err: IndexerError = repo_err.into();
 
             assert!(matches!(
                 indexer_err,
                 IndexerError::Repository(IndexerRepositoryError::Storage(
-                    trace_db::DbError::Serialization(_)
+                    traces_db::DbError::Serialization(_)
                 ))
             ));
 

@@ -136,7 +136,7 @@ description = "Build all workspace crates"
 alias = "b"
 depends = ["fmt"]
 sources = ["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
-outputs = ["target/debug/trace-cli"]
+outputs = ["target/debug/traces-cli"]
 usage = '''
 flag "-r --release" help="Build in release mode"
 '''

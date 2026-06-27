@@ -26,7 +26,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use trace_support::{Blake3Hash, Blake3HashIndex, hash_structured};
+use traces_support::{Blake3Hash, Blake3HashIndex, hash_structured};
 
 use super::{
     bool::RawBoolProperty,
@@ -92,7 +92,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"name": "value"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -110,7 +110,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"name": "value"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -128,8 +128,8 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
-    /// # use trace_schema::property::PropertyName;
+    /// # use traces_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::property::PropertyName;
     /// # use serde_json;
     /// let json = r#"{"name": "value"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -147,7 +147,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"a": "1", "b": "2"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -163,7 +163,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"a": "1", "b": "2"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -180,7 +180,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -197,7 +197,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"a": "1", "b": "2"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -213,7 +213,7 @@ impl<T> RawPropertyMap<T> {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyMap;
+    /// # use traces_schema::raw::property::RawPropertyMap;
     /// # use serde_json;
     /// let json = r#"{"a": "1", "b": "2"}"#;
     /// let map: RawPropertyMap<String> = serde_json::from_str(json).unwrap();
@@ -309,7 +309,7 @@ impl<'lifetime, T> IntoIterator for &'lifetime RawPropertyMap<T> {
 ///
 /// # Examples
 /// ```ignore
-/// use trace_schema::raw::{RawProperty, RawPropertyInline};
+/// use traces_schema::raw::{RawProperty, RawPropertyInline};
 ///
 /// let property = RawProperty::Inline(RawPropertyInline::Bool(
 ///     crate::raw::bool::RawBoolProperty {
@@ -466,7 +466,7 @@ impl RawPropertyRefPath {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyRefPath;
+    /// # use traces_schema::raw::property::RawPropertyRefPath;
     /// # use serde_json;
     /// let json = r##""#property_bank/status""##;
     /// let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();
@@ -483,7 +483,7 @@ impl RawPropertyRefPath {
     /// # Examples
     ///
     /// ```
-    /// # use trace_schema::raw::property::RawPropertyRefPath;
+    /// # use traces_schema::raw::property::RawPropertyRefPath;
     /// # use serde_json;
     /// let json = r##""#property_bank/flag""##;
     /// let path: RawPropertyRefPath = serde_json::from_str(json).unwrap();

@@ -37,7 +37,9 @@
 
 use std::{collections::HashMap, sync::RwLock};
 
-use trace_db::testing::{FailurePoint, InMemoryHarness, read_lock, write_lock};
+use traces_db::testing::{
+    FailurePoint, InMemoryHarness, read_lock, write_lock,
+};
 
 use crate::config::{
     aggregate::{Config, Version},
@@ -89,7 +91,7 @@ impl InMemoryRepository {
     #[inline]
     #[must_use]
     pub fn with_injector(
-        injector: Box<dyn trace_db::testing::FailureInjector + Send + Sync>,
+        injector: Box<dyn traces_db::testing::FailureInjector + Send + Sync>,
     ) -> Self {
         let mut repo = Self::new();
         repo.harness = InMemoryHarness::with_injector(injector);
@@ -99,7 +101,7 @@ impl InMemoryRepository {
     /// Returns a reference to the operation counters.
     #[inline]
     #[must_use]
-    pub fn counters(&self) -> &trace_db::testing::OpCounters {
+    pub fn counters(&self) -> &traces_db::testing::OpCounters {
         self.harness.counters()
     }
 }
@@ -322,7 +324,7 @@ impl Default for InMemoryRepository {
 
 #[cfg(test)]
 mod tests {
-    use trace_db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
+    use traces_db::testing::{FailureInjector, FailurePoint, InMemoryDbError};
 
     use super::*;
 

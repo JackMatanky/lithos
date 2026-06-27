@@ -12,18 +12,18 @@ use std::{
     sync::Arc,
 };
 
-use trace_db::Store;
-use trace_fs::{
+use traces_db::Store;
+use traces_fs::{
     DirName, DirScanInput, DirScanner, FileFormat, FileName, FileReader,
     FsNode, PathKey,
 };
-use trace_note::{
+use traces_note::{
     error::NoteProcessError,
     paths::NotePath,
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository as note_repository, storage as note_storage,
 };
-use trace_settings::aggregate::Config;
+use traces_settings::aggregate::Config;
 
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
@@ -386,7 +386,7 @@ impl VaultProcessor<Discovery, Unknown> {
         let mut dirs = Vec::with_capacity(raw_dir_entries.len());
         let mut dir_ids_by_path = HashMap::with_capacity(raw_dir_entries.len());
         let root =
-            trace_fs::path::DirPath::try_new(scanner.path().to_path_buf())
+            traces_fs::path::DirPath::try_new(scanner.path().to_path_buf())
                 .map_err(|error| VaultFileError::InvalidPath {
                     path: scanner.path().display().to_string().into(),
                     reason: error.to_string().into(),
@@ -755,7 +755,7 @@ fn evaluate_dir(
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::{DirMetadata, DirName, FileMetadata, FileName, FsTimes};
+    use traces_fs::{DirMetadata, DirName, FileMetadata, FileName, FsTimes};
 
     use super::*;
 
@@ -844,7 +844,7 @@ mod tests {
 
     mod path_conversion {
         use tempfile::TempDir;
-        use trace_fs::path::{DirPath, FilePath};
+        use traces_fs::path::{DirPath, FilePath};
 
         #[test]
         fn converts_dir_paths_via_typed_fs_layer() {

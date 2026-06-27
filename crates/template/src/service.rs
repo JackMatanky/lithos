@@ -13,9 +13,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use trace_db::DbError;
-use trace_fs::{DirScanner, FileNode, FileWriter, PathKey, WriteTarget};
-use trace_settings::template::TemplateConfigSpec;
+use traces_db::DbError;
+use traces_fs::{DirScanner, FileNode, FileWriter, PathKey, WriteTarget};
+use traces_settings::template::TemplateConfigSpec;
 
 use crate::{
     aggregate::TemplateName,
@@ -156,8 +156,8 @@ where
     /// # Examples
     ///
     /// ```no_run
-    /// # use trace_template::TemplateService;
-    /// # use trace_settings::template::TemplateConfigSpec;
+    /// # use traces_template::TemplateService;
+    /// # use traces_settings::template::TemplateConfigSpec;
     /// # fn wire<R, W, E>(
     /// #     repository: R,
     /// #     writer: W,
@@ -165,9 +165,9 @@ where
     /// #     config: TemplateConfigSpec,
     /// # ) -> TemplateService<R, W, E>
     /// # where
-    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
-    /// #     W: trace_fs::FileWriter,
-    /// #     E: trace_template::TemplateEngine,
+    /// #     R: traces_template::ReadRepository + traces_template::WriteRepository,
+    /// #     W: traces_fs::FileWriter,
+    /// #     E: traces_template::TemplateEngine,
     /// # {
     /// TemplateService::new(repository, writer, engine, config)
     /// # }
@@ -216,7 +216,7 @@ where
     /// validates the output target path syntactically, but does **not** check
     /// whether the destination file already exists on disk.
     /// Destination-collision errors
-    /// ([`WriteError::AlreadyExists`](trace_fs::error::WriteError::AlreadyExists))
+    /// ([`WriteError::AlreadyExists`](traces_fs::error::WriteError::AlreadyExists))
     /// surface only at commit time. A successful preview is therefore not a
     /// guarantee that a subsequent non-dry `create` call will succeed.
     ///
@@ -233,15 +233,15 @@ where
     ///
     /// ```no_run
     /// # use std::collections::HashMap;
-    /// # use trace_template::{CreateInput, TemplateName, TemplateService};
+    /// # use traces_template::{CreateInput, TemplateName, TemplateService};
     /// # fn run<R, W, E>(
     /// #     mut service: TemplateService<R, W, E>,
     /// #     name: TemplateName,
-    /// # ) -> Result<(), trace_template::TemplateError>
+    /// # ) -> Result<(), traces_template::TemplateError>
     /// # where
-    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
-    /// #     W: trace_fs::FileWriter,
-    /// #     E: trace_template::TemplateEngine,
+    /// #     R: traces_template::ReadRepository + traces_template::WriteRepository,
+    /// #     W: traces_fs::FileWriter,
+    /// #     E: traces_template::TemplateEngine,
     /// # {
     /// let input = CreateInput {
     ///     name,
@@ -326,14 +326,14 @@ where
     /// # Examples
     ///
     /// ```no_run
-    /// # use trace_template::TemplateService;
+    /// # use traces_template::TemplateService;
     /// # fn run<R, W, E>(
     /// #     service: TemplateService<R, W, E>,
-    /// # ) -> Result<(), trace_template::TemplateError>
+    /// # ) -> Result<(), traces_template::TemplateError>
     /// # where
-    /// #     R: trace_template::ReadRepository + trace_template::WriteRepository,
-    /// #     W: trace_fs::FileWriter,
-    /// #     E: trace_template::TemplateEngine,
+    /// #     R: traces_template::ReadRepository + traces_template::WriteRepository,
+    /// #     W: traces_fs::FileWriter,
+    /// #     E: traces_template::TemplateEngine,
     /// # {
     /// let summary = service.process_all()?;
     /// println!("created {} templates", summary.created);
@@ -353,7 +353,7 @@ where
             Self::identify_deleted_template_paths(&self.repository, &paths)?;
 
         let file_reader =
-            trace_fs::reader::FileReader::new(self.config.root().as_path());
+            traces_fs::reader::FileReader::new(self.config.root().as_path());
         let template_root = self.config.to_dir_path().map_err(|e| {
             TemplateError::Path(crate::error::TemplatePathError::from(e))
         })?;
@@ -421,7 +421,7 @@ where
             Self::check_batch_existence(&self.repository, vec![matching])?;
 
         let file_reader =
-            trace_fs::reader::FileReader::new(self.config.root().as_path());
+            traces_fs::reader::FileReader::new(self.config.root().as_path());
         for discovered_template in discovered {
             TemplateProcessor::<Init, Discovered>::new(discovered_template)
                 .run(&self.repository, &file_reader, template_root.as_path())?;
@@ -534,7 +534,7 @@ where
             TemplateError::Path(crate::error::TemplatePathError::from(e))
         })?);
 
-        let input = trace_fs::scanner::DirScanInput::new()
+        let input = traces_fs::scanner::DirScanInput::new()
             .with_extensions(&["md"])
             .include_dirs(false)
             .recursive(true);
@@ -545,7 +545,7 @@ where
         })?;
 
         for node in entries {
-            if let trace_fs::entry::FsNode::File(file) = node {
+            if let traces_fs::entry::FsNode::File(file) = node {
                 let path_key =
                     file.path().as_key(config.root()).map_err(|e| {
                         TemplateError::Path(
@@ -572,7 +572,7 @@ mod tests {
     use std::collections::HashMap;
 
     use tempfile::TempDir;
-    use trace_fs::path::{DirPath, RelativeDirPath};
+    use traces_fs::path::{DirPath, RelativeDirPath};
 
     use super::*;
     use crate::{
@@ -588,9 +588,9 @@ mod tests {
         temp_dir: &TempDir,
         config: TemplateConfigSpec,
         repo: InMemoryRepository,
-    ) -> TemplateService<InMemoryRepository, trace_fs::FsWriter, MiniJinjaEngine>
+    ) -> TemplateService<InMemoryRepository, traces_fs::FsWriter, MiniJinjaEngine>
     {
-        let writer = trace_fs::FsWriter::new(temp_dir.path());
+        let writer = traces_fs::FsWriter::new(temp_dir.path());
         TemplateService::new(
             repo,
             writer,
@@ -602,11 +602,11 @@ mod tests {
     mod fixtures {
         use std::time::SystemTime;
 
-        use trace_db::testing::{
+        use traces_db::testing::{
             FailureInjector, FailurePoint as FPFake, InMemoryDbError,
         };
-        use trace_fs::scanner::{DirScanInput, DirScanner};
-        use trace_support::{Blake3Hash, HashInput};
+        use traces_fs::scanner::{DirScanInput, DirScanner};
+        use traces_support::{Blake3Hash, HashInput};
 
         use super::*;
         use crate::{
@@ -669,7 +669,7 @@ mod tests {
         pub fn scanned_metadata(
             temp_dir: &TempDir,
             file_name: &str,
-        ) -> trace_fs::metadata::FileMetadata {
+        ) -> traces_fs::metadata::FileMetadata {
             let entries = DirScanner::new(temp_dir.path().join("templates"))
                 .entries(DirScanInput::new())
                 .unwrap();
@@ -677,7 +677,7 @@ mod tests {
             entries
                 .into_iter()
                 .filter_map(|node| match node {
-                    trace_fs::entry::FsNode::File(file) => Some(file),
+                    traces_fs::entry::FsNode::File(file) => Some(file),
                     // `FsNode` is `#[non_exhaustive]`, so a catch-all is
                     // required; only `File` nodes carry template metadata.
                     _ => None,
@@ -698,7 +698,7 @@ mod tests {
         pub fn raw_view(
             path_key: PathKey,
             content: &str,
-            metadata: trace_fs::metadata::FileMetadata,
+            metadata: traces_fs::metadata::FileMetadata,
         ) -> RawTemplateView {
             RawTemplateView::new(
                 path_key,
@@ -717,13 +717,13 @@ mod tests {
                 .expect("path has file name");
             let file_path = temp_dir.path().join(file_name);
             std::fs::write(&file_path, "content").unwrap();
-            let file_path = trace_fs::FilePath::try_new(file_path).unwrap();
-            let metadata = trace_fs::metadata::FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+            let file_path = traces_fs::FilePath::try_new(file_path).unwrap();
+            let metadata = traces_fs::metadata::FileMetadata::new(
+                traces_fs::metadata::FsTimes::new(None, None),
                 7,
                 false,
             );
-            let file = trace_fs::entry::FileNode::new(file_path, metadata);
+            let file = traces_fs::entry::FileNode::new(file_path, metadata);
 
             ScannedTemplate {
                 file,
@@ -731,9 +731,9 @@ mod tests {
             }
         }
 
-        pub fn stale_metadata(size: u64) -> trace_fs::metadata::FileMetadata {
-            trace_fs::metadata::FileMetadata::new(
-                trace_fs::metadata::FsTimes::new(None, None),
+        pub fn stale_metadata(size: u64) -> traces_fs::metadata::FileMetadata {
+            traces_fs::metadata::FileMetadata::new(
+                traces_fs::metadata::FsTimes::new(None, None),
                 size,
                 false,
             )
@@ -759,7 +759,7 @@ mod tests {
         use std::time::SystemTime;
 
         use pretty_assertions::assert_eq;
-        use trace_support::{Blake3Hash, HashInput};
+        use traces_support::{Blake3Hash, HashInput};
 
         use super::*;
         use crate::{
@@ -888,7 +888,7 @@ mod tests {
             let results =
                 TemplateService::<
                     InMemoryRepository,
-                    trace_fs::FsWriter,
+                    traces_fs::FsWriter,
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
@@ -926,8 +926,8 @@ mod tests {
             let view = RawTemplateView::new(
                 path_key.clone(),
                 Blake3Hash::compute(HashInput::Text("content".to_owned())),
-                trace_fs::metadata::FileMetadata::new(
-                    trace_fs::metadata::FsTimes::new(None, None),
+                traces_fs::metadata::FileMetadata::new(
+                    traces_fs::metadata::FsTimes::new(None, None),
                     7,
                     false,
                 ),
@@ -939,7 +939,7 @@ mod tests {
             let results =
                 TemplateService::<
                     InMemoryRepository,
-                    trace_fs::FsWriter,
+                    traces_fs::FsWriter,
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
@@ -979,7 +979,7 @@ mod tests {
             let results =
                 TemplateService::<
                     InMemoryRepository,
-                    trace_fs::FsWriter,
+                    traces_fs::FsWriter,
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
             assert!(results.is_ok(), "Expected success, got: {results:?}");
@@ -1007,7 +1007,7 @@ mod tests {
             let result =
                 TemplateService::<
                     ShortBatchRepository,
-                    trace_fs::FsWriter,
+                    traces_fs::FsWriter,
                     MiniJinjaEngine,
                 >::check_batch_existence(&repo, vec![scanned]);
 
@@ -1038,7 +1038,7 @@ mod tests {
 
     mod process_all {
         use pretty_assertions::assert_eq;
-        use trace_support::{Blake3Hash, HasContentHash, HashInput};
+        use traces_support::{Blake3Hash, HasContentHash, HashInput};
 
         use super::*;
 
@@ -1361,7 +1361,7 @@ mod tests {
             let result =
                 TemplateService::<
                     InMemoryRepository,
-                    trace_fs::FsWriter,
+                    traces_fs::FsWriter,
                     MiniJinjaEngine,
                 >::identify_deleted_template_paths(&repo, &[]);
             assert!(result.is_ok(), "Expected success, got: {result:?}");
@@ -1373,7 +1373,7 @@ mod tests {
 
     mod create {
         use pretty_assertions::assert_eq;
-        use trace_fs::error::{WriteError, WriteTargetError};
+        use traces_fs::error::{WriteError, WriteTargetError};
 
         use super::*;
         use crate::error::TemplateArtifactError;

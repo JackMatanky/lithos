@@ -27,8 +27,8 @@
 use std::time::SystemTime;
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
-use trace_fs::metadata::FileMetadata;
-use trace_support::{Blake3Hash, HasContentHash, HasContentHashMut};
+use traces_fs::metadata::FileMetadata;
+use traces_support::{Blake3Hash, HasContentHash, HasContentHashMut};
 
 fn hash_raw_global(raw: &crate::config::raw::RawGlobalConfig) -> Blake3Hash {
     let serialized = toml::to_string(raw).unwrap_or_default();
@@ -420,7 +420,7 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use crate::views::RawFileVersion;
-    /// use trace_fs::metadata::{FileMetadata, FsTimes};
+    /// use traces_fs::metadata::{FileMetadata, FsTimes};
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
@@ -468,7 +468,7 @@ impl RawFileVersion {
     ///
     /// ```ignore
     /// use crate::views::RawFileVersion;
-    /// use trace_fs::metadata::{FileMetadata, FsTimes};
+    /// use traces_fs::metadata::{FileMetadata, FsTimes};
     /// use std::time::SystemTime;
     ///
     /// let content = b"vault_path = \"/vault\"";
@@ -566,7 +566,7 @@ impl HasContentHashMut for RawFileVersion {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::metadata::FsTimes;
+    use traces_fs::metadata::FsTimes;
 
     use super::*;
 

@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use trace_db::Store;
-pub use trace_db::testing::TestDb;
-use trace_schema::{
+use traces_db::Store;
+pub use traces_db::testing::TestDb;
+use traces_schema::{
     aggregate::Schema,
     identifier::SchemaName,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},

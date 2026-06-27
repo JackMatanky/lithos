@@ -53,7 +53,7 @@ use super::{
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     events::SchemaCreated,
 ///     identifier::{SchemaId, SchemaName},
 /// };
@@ -87,7 +87,7 @@ impl SchemaCreated {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     events::SchemaCreated,
     ///     identifier::{SchemaId, SchemaName},
     /// };
@@ -117,7 +117,7 @@ impl SchemaCreated {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     events::SchemaResolved,
 ///     identifier::{SchemaId, SchemaName},
 /// };
@@ -150,7 +150,7 @@ impl SchemaResolved {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     events::SchemaResolved,
     ///     identifier::{SchemaId, SchemaName},
     /// };
@@ -180,7 +180,7 @@ impl SchemaResolved {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     events::SchemaDeleted,
 ///     identifier::{SchemaId, SchemaName},
 /// };
@@ -213,7 +213,7 @@ impl SchemaDeleted {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     events::SchemaDeleted,
     ///     identifier::{SchemaId, SchemaName},
     /// };
@@ -243,7 +243,7 @@ impl SchemaDeleted {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     events::PropertyRegistered,
 ///     property::{PropertyId, PropertyName},
 /// };
@@ -276,7 +276,7 @@ impl PropertyRegistered {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_schema::{
+    /// use traces_schema::{
     ///     events::PropertyRegistered,
     ///     property::{PropertyId, PropertyName},
     /// };
@@ -310,7 +310,7 @@ impl PropertyRegistered {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::events::PropertyBankLoaded;
+/// use traces_schema::events::PropertyBankLoaded;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let event = PropertyBankLoaded::new(3, SystemTime::now());
 /// assert_eq!(event.property_count, 3);
@@ -335,7 +335,7 @@ impl PropertyBankLoaded {
     /// ```
     /// use std::time::SystemTime;
     ///
-    /// use trace_schema::events::PropertyBankLoaded;
+    /// use traces_schema::events::PropertyBankLoaded;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let _event = PropertyBankLoaded::new(1, SystemTime::now());
     /// # Ok(())
@@ -357,7 +357,7 @@ impl PropertyBankLoaded {
 /// ```
 /// use std::time::SystemTime;
 ///
-/// use trace_schema::{
+/// use traces_schema::{
 ///     events::{Events, SchemaCreated},
 ///     identifier::{SchemaId, SchemaName},
 /// };
@@ -561,7 +561,7 @@ pub enum PropertyBankEvent {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::events::{
+/// use traces_schema::events::{
 ///     PropertyBankEvent, SchemaEvent, SchemaEventHandler,
 /// };
 ///
@@ -893,7 +893,7 @@ fn log_error_events(event: &SchemaEvent) {
 /// ```
 /// use std::path::PathBuf;
 ///
-/// use trace_schema::events::{
+/// use traces_schema::events::{
 ///     LoggingHandler, SchemaEvent, SchemaEventHandler,
 /// };
 ///
@@ -912,7 +912,7 @@ impl LoggingHandler {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::events::LoggingHandler;
+    /// use traces_schema::events::LoggingHandler;
     ///
     /// let handler = LoggingHandler::new();
     /// ```
@@ -981,7 +981,7 @@ impl SchemaEventHandler for LoggingHandler {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::events::MetricsHandler;
+/// use traces_schema::events::MetricsHandler;
 ///
 /// let handler = MetricsHandler::new();
 /// ```
@@ -994,7 +994,7 @@ impl MetricsHandler {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::events::MetricsHandler;
+    /// use traces_schema::events::MetricsHandler;
     ///
     /// let handler = MetricsHandler::new();
     /// ```
@@ -1027,7 +1027,7 @@ impl SchemaEventHandler for MetricsHandler {
 ///
 /// # Examples
 /// ```
-/// # use trace_schema::events::{EventCollector, SchemaEvent, SchemaEventHandler};
+/// # use traces_schema::events::{EventCollector, SchemaEvent, SchemaEventHandler};
 /// # use std::path::PathBuf;
 /// let collector = EventCollector::new();
 /// collector.handle_schema(&SchemaEvent::ScanStarted {

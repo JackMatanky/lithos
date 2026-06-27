@@ -41,7 +41,7 @@ pub(crate) use tables::{
     DIR_ID_BY_PATH, DIR_VIEWS, FILE_ID_BY_PATH, FILE_IDS_BY_BASENAME,
     FILE_IDS_BY_FORMAT, FILE_IDS_BY_PARENT, FILE_VIEWS,
 };
-use trace_db::Store;
+use traces_db::Store;
 
 /// Repository implementation for `redb`-backed vault storage.
 ///
@@ -95,8 +95,8 @@ impl RedbRepository {
     ///
     /// ```rust,ignore
     /// use std::sync::Arc;
-    /// use trace_db::Store;
-    /// use trace_vault::storage::RedbRepository;
+    /// use traces_db::Store;
+    /// use traces_vault::storage::RedbRepository;
     ///
     /// let store = Arc::new(Store::open("vault.db")?);
     /// let repo = RedbRepository::new(Arc::clone(&store));

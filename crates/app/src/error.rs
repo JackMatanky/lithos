@@ -6,7 +6,7 @@
 //! which is subsequently wrapped and surfaced by executable adapters (e.g.,
 //! CLI).
 
-use trace_settings::{DiscoveryError, config::error::ConfigError};
+use traces_settings::{DiscoveryError, config::error::ConfigError};
 
 /// App-owned bootstrap error boundary.
 #[derive(Debug, thiserror::Error)]
@@ -25,7 +25,7 @@ pub enum AppError {
 
     /// Indexing pipeline failed.
     #[error(transparent)]
-    Indexer(#[from] trace_indexer::IndexerError),
+    Indexer(#[from] traces_indexer::IndexerError),
 }
 
 // ----------------------------------------------------------- //
@@ -41,8 +41,8 @@ mod tests {
 
         #[test]
         fn converts_indexer_error_to_app_error() {
-            let inner = trace_indexer::IndexerError::Scanner(
-                trace_indexer::ScannerError::Traversal {
+            let inner = traces_indexer::IndexerError::Scanner(
+                traces_indexer::ScannerError::Traversal {
                     path: std::path::PathBuf::from("/"),
                     source: std::io::Error::from(std::io::ErrorKind::NotFound),
                 },
@@ -53,8 +53,8 @@ mod tests {
 
         #[test]
         fn preserves_discovery_error_variant() {
-            let inner = trace_settings::DiscoveryError::Env(
-                trace_settings::discovery::error::EnvironmentOverrideError::GlobalConfigPathNotFound { path: std::path::PathBuf::from("/") }
+            let inner = traces_settings::DiscoveryError::Env(
+                traces_settings::discovery::error::EnvironmentOverrideError::GlobalConfigPathNotFound { path: std::path::PathBuf::from("/") }
             );
             let app_err = AppError::from(inner);
             assert!(matches!(app_err, AppError::Discovery(_)));
@@ -62,7 +62,7 @@ mod tests {
 
         #[test]
         fn preserves_config_error_variant() {
-            let inner = trace_settings::config::error::ConfigError::DependencyViolation {
+            let inner = traces_settings::config::error::ConfigError::DependencyViolation {
                 field: "foo".into(),
                 depends_on: "bar".into(),
             };

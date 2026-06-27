@@ -23,7 +23,7 @@ use super::{error::ConfigError, raw::RawLogging};
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::logging::{LogLevel, Logging};
+/// use traces_settings::config::logging::{LogLevel, Logging};
 ///
 /// let logging = Logging::new(LogLevel::Debug);
 /// assert_eq!(logging.level_str(), "debug");

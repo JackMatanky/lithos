@@ -27,11 +27,11 @@
 //!
 //! ```rust,ignore
 //! # use std::sync::Arc;
-//! # use trace_settings::config::{
+//! # use traces_settings::config::{
 //! #     builder::Builder,
 //! #     storage::RedbStorage,
 //! # };
-//! # use trace_db::Store;
+//! # use traces_db::Store;
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # let db_path = std::path::Path::new("/tmp/test.redb");
 //! # let store = Arc::new(Store::open(db_path)?);
@@ -64,7 +64,7 @@
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
 //! - [`builder`] - Orchestrates: build → process → merge → persist
-//! - [`trace_settings`] - Pre-config vault root and path discovery (Discovery
+//! - [`traces_settings`] - Pre-config vault root and path discovery (Discovery
 //!   context)
 //!
 //! ## Storage & Views
@@ -145,4 +145,4 @@ pub mod views;
 // ----------------------------------------------------------- //
 
 // Removed legacy db_table definitions. Use
-// trace_settings::config::storage::tables instead.
+// traces_settings::config::storage::tables instead.

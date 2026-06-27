@@ -1,7 +1,7 @@
-//! [`UuidV7`](trace_utils::UuidV7) `redb` integration.
+//! [`UuidV7`](traces_utils::UuidV7) `redb` integration.
 //!
 //! Provides wrapper-first DB key support for
-//! [`UuidV7`](trace_utils::UuidV7)-backed ID types.
+//! [`UuidV7`](traces_utils::UuidV7)-backed ID types.
 
 #[doc(hidden)]
 pub mod sealed {
@@ -152,23 +152,23 @@ where
 }
 
 /// Marker trait for domain ID wrappers that are valid
-/// [`UuidV7`](trace_utils::UuidV7) DB key types.
+/// [`UuidV7`](traces_utils::UuidV7) DB key types.
 pub trait UuidV7DbType: sealed::Sealed + Value + Key {}
 
 /// Derive macro to implement `redb::Value` and `redb::Key` for
-/// [`UuidV7`](trace_utils::UuidV7) wrappers.
+/// [`UuidV7`](traces_utils::UuidV7) wrappers.
 ///
 /// Usage:
 /// ```ignore
-/// use trace_db::uuid::impl_redb_uuid;
+/// use traces_db::uuid::impl_redb_uuid;
 ///
-/// impl_redb_uuid!(trace_schema::identifier::SchemaId);
-/// impl_redb_uuid!(trace_note::identifier::NoteId);
+/// impl_redb_uuid!(traces_schema::identifier::SchemaId);
+/// impl_redb_uuid!(traces_note::identifier::NoteId);
 /// ```
 ///
 /// # Requirements
 ///
-/// The wrapper must be a tuple struct with [`UuidV7`](trace_utils::UuidV7)
+/// The wrapper must be a tuple struct with [`UuidV7`](traces_utils::UuidV7)
 /// as the first field. The inner field **must be accessible from `db::uuid`**
 /// (e.g., `pub(crate) pub struct SchemaId(pub(crate) UuidV7);`).
 ///
@@ -192,7 +192,7 @@ macro_rules! impl_redb_uuid {
             where
                 Self: 'bytes,
             {
-                let Ok(uuid) = trace_utils::UuidV7::try_from(data) else {
+                let Ok(uuid) = traces_utils::UuidV7::try_from(data) else {
                     panic!("UUID data from database must be valid UUIDv7");
                 };
 
@@ -236,7 +236,7 @@ mod tests {
     use super::*;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct TestId(trace_utils::UuidV7);
+    struct TestId(traces_utils::UuidV7);
 
     impl_redb_uuid!(TestId);
 
@@ -269,7 +269,7 @@ mod tests {
     {
         use redb::TableDefinition;
         use tempfile::tempdir;
-        use trace_utils::UuidV7;
+        use traces_utils::UuidV7;
 
         use crate::Store;
 
@@ -315,7 +315,7 @@ mod tests {
     {
         use redb::TableDefinition;
         use tempfile::tempdir;
-        use trace_utils::UuidV7;
+        use traces_utils::UuidV7;
 
         use crate::Store;
         let temp = tempdir()?;
@@ -355,7 +355,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         use redb::MultimapTableDefinition;
         use tempfile::tempdir;
-        use trace_utils::UuidV7;
+        use traces_utils::UuidV7;
 
         use super::UuidMultimapReadExt;
         use crate::Store;

@@ -34,7 +34,7 @@ pub enum Events {
 /// # Examples
 ///
 /// ```rust
-/// use trace_settings::config::events::ConfigUpdated;
+/// use traces_settings::config::events::ConfigUpdated;
 ///
 /// let event = ConfigUpdated::new("vault", 1234567890);
 /// assert_eq!(event.timestamp, 1234567890);

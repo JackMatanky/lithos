@@ -153,7 +153,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use trace_schema::{
+use traces_schema::{
     identifier::SchemaName, property::PropertyName, property_spec::DateSpec,
 };
 

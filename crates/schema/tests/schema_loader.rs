@@ -51,11 +51,11 @@ use std::path::Path;
 
 use common::*;
 use tempfile::TempDir;
-use trace_fs::{DirPath, FileReader};
-use trace_schema::{
+use traces_fs::{DirPath, FileReader};
+use traces_schema::{
     builder::Builder, property::PropertyName, repository::ReadRepository as _,
 };
-use trace_settings::{
+use traces_settings::{
     aggregate::{Config, Version},
     builder,
     vault::{VaultId, VaultRoot},
@@ -352,7 +352,7 @@ mod initial_loading {
 
         // Verify raw view was persisted
         let vault_root = DirPath::try_new(vault_dir.path().to_path_buf())?;
-        let bank_path = trace_fs::path::PathKey::from_rooted_path(
+        let bank_path = traces_fs::path::PathKey::from_rooted_path(
             &vault_root,
             &vault_dir.path().join("schemas/property_bank.json"),
         )?;
@@ -635,7 +635,7 @@ mod incremental_loading {
 
         // VERIFY: Check that RawSchemaView was persisted
         let repository3 = setup_repository(test_db.store());
-        let path = trace_fs::path::PathKey::try_new("schemas/task.json")?;
+        let path = traces_fs::path::PathKey::try_new("schemas/task.json")?;
         let view = repository3.find_raw_schema_view_by_path(&path)?;
         assert!(view.is_some(), "RawSchemaView should be persisted");
 

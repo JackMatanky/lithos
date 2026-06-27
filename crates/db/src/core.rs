@@ -96,7 +96,7 @@ impl Store {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use trace_db::Store;
+    /// use traces_db::Store;
     ///
     /// let (_tempdir, store) = Store::open_temp().unwrap();
     /// store.read(|tx| Ok(())).unwrap();

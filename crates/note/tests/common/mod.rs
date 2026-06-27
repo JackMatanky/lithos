@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::sync::Arc;
-use trace_db::Store;
+use traces_db::Store;
 use storage::RedbRepository;
 
 pub type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;

@@ -56,7 +56,7 @@ pub enum SectionKind {
 /// # Examples
 ///
 /// ```
-/// # use trace_note::{structure::{Section, SectionKind}, position::SourceByteRange, position::SourceByteOffset};
+/// # use traces_note::{structure::{Section, SectionKind}, position::SourceByteRange, position::SourceByteOffset};
 /// let range = SourceByteRange::new(
 ///     SourceByteOffset::new(0),
 ///     SourceByteOffset::new(50),

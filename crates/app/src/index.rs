@@ -8,10 +8,10 @@
 
 use std::sync::Arc;
 
-use trace_db::Store;
-use trace_fs::DirPath;
-pub use trace_indexer::{IndexOptions, IndexResult, IndexScope, ScanFilters};
-use trace_indexer::{
+use traces_db::Store;
+use traces_fs::DirPath;
+pub use traces_indexer::{IndexOptions, IndexResult, IndexScope, ScanFilters};
+use traces_indexer::{
     IndexerError, IndexerService, RedbRepository, scanner::WalkdirAdapter,
     storage::INDEX_DB_FILENAME,
 };
@@ -81,7 +81,7 @@ pub fn run_index(
 
 #[cfg(test)]
 mod tests {
-    use trace_indexer::ScanFilters;
+    use traces_indexer::ScanFilters;
 
     use super::*;
 

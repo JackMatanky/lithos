@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use trace_db::DbError;
+use traces_db::DbError;
 
 /// Primary error type for configuration operations.
 ///
@@ -201,10 +201,10 @@ impl From<ConfigRepositoryError> for ConfigError {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl From<trace_db::testing::InMemoryDbError> for ConfigRepositoryError {
+impl From<traces_db::testing::InMemoryDbError> for ConfigRepositoryError {
     #[inline]
-    fn from(err: trace_db::testing::InMemoryDbError) -> Self {
-        use trace_db::testing::InMemoryDbError as DbTestError;
+    fn from(err: traces_db::testing::InMemoryDbError) -> Self {
+        use traces_db::testing::InMemoryDbError as DbTestError;
 
         let db_error = match err {
             DbTestError::LockPoisoned {
@@ -223,11 +223,11 @@ impl From<trace_db::testing::InMemoryDbError> for ConfigRepositoryError {
     }
 }
 
-impl From<trace_fs::ParseError> for ConfigIngestError {
+impl From<traces_fs::ParseError> for ConfigIngestError {
     #[inline]
-    fn from(error: trace_fs::ParseError) -> Self {
+    fn from(error: traces_fs::ParseError) -> Self {
         match error {
-            trace_fs::ParseError::Toml {
+            traces_fs::ParseError::Toml {
                 path,
                 message,
                 line,
@@ -258,15 +258,15 @@ impl From<trace_fs::ParseError> for ConfigIngestError {
                     source,
                 }
             }
-            trace_fs::ParseError::Json {
+            traces_fs::ParseError::Json {
                 path,
                 ..
             }
-            | trace_fs::ParseError::Yaml {
+            | traces_fs::ParseError::Yaml {
                 path,
                 ..
             }
-            | trace_fs::ParseError::UnsupportedFormat {
+            | traces_fs::ParseError::UnsupportedFormat {
                 path,
                 ..
             } => Self::Io {
@@ -284,19 +284,19 @@ impl From<trace_fs::ParseError> for ConfigIngestError {
     }
 }
 
-impl From<trace_fs::ReadError> for ConfigIngestError {
+impl From<traces_fs::ReadError> for ConfigIngestError {
     #[inline]
-    fn from(error: trace_fs::ReadError) -> Self {
+    fn from(error: traces_fs::ReadError) -> Self {
         match error {
-            trace_fs::ReadError::Io {
+            traces_fs::ReadError::Io {
                 path,
                 source,
             } => Self::Io {
                 path,
                 source,
             },
-            trace_fs::ReadError::RootScope(
-                trace_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+            traces_fs::ReadError::RootScope(
+                traces_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
                     path,
                     root,
                 },
@@ -312,20 +312,20 @@ impl From<trace_fs::ReadError> for ConfigIngestError {
     }
 }
 
-impl From<trace_fs::FsError> for ConfigIngestError {
+impl From<traces_fs::FsError> for ConfigIngestError {
     #[inline]
-    fn from(error: trace_fs::FsError) -> Self {
+    fn from(error: traces_fs::FsError) -> Self {
         match error {
-            trace_fs::FsError::Read(e) => Self::from(e),
-            trace_fs::FsError::Scan(e) => Self::from(e),
-            trace_fs::FsError::Parse(e) => Self::from(e),
-            trace_fs::FsError::Path(e) => Self::from(e),
-            trace_fs::FsError::Validation(e) => Self::Io {
+            traces_fs::FsError::Read(e) => Self::from(e),
+            traces_fs::FsError::Scan(e) => Self::from(e),
+            traces_fs::FsError::Parse(e) => Self::from(e),
+            traces_fs::FsError::Path(e) => Self::from(e),
+            traces_fs::FsError::Validation(e) => Self::Io {
                 path: PathBuf::from("unknown"),
                 source: std::io::Error::other(e.to_string()),
             },
-            trace_fs::FsError::RootScope(
-                trace_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
+            traces_fs::FsError::RootScope(
+                traces_fs::error::RootScopeError::PathOutsideVaultRootBoundary {
                     path,
                     root,
                 },
@@ -341,29 +341,29 @@ impl From<trace_fs::FsError> for ConfigIngestError {
     }
 }
 
-impl From<trace_fs::ScanError> for ConfigIngestError {
+impl From<traces_fs::ScanError> for ConfigIngestError {
     #[inline]
-    fn from(error: trace_fs::ScanError) -> Self {
+    fn from(error: traces_fs::ScanError) -> Self {
         match error {
-            trace_fs::ScanError::Traversal {
+            traces_fs::ScanError::Traversal {
                 path,
                 source,
             } => Self::Io {
                 path,
                 source,
             },
-            trace_fs::ScanError::InvalidPattern {
+            traces_fs::ScanError::InvalidPattern {
                 pattern,
                 message,
             } => Self::Io {
                 path: PathBuf::from(pattern.as_ref()),
                 source: std::io::Error::other(message.as_ref()),
             },
-            trace_fs::ScanError::UnsupportedEntryType(path) => Self::Io {
+            traces_fs::ScanError::UnsupportedEntryType(path) => Self::Io {
                 path,
                 source: std::io::Error::other("Unsupported entry type"),
             },
-            trace_fs::ScanError::Path(e) => Self::from(e),
+            traces_fs::ScanError::Path(e) => Self::from(e),
             _ => Self::Io {
                 path: PathBuf::from("unknown"),
                 source: std::io::Error::other("Unknown scan error"),
@@ -372,9 +372,9 @@ impl From<trace_fs::ScanError> for ConfigIngestError {
     }
 }
 
-impl From<trace_fs::PathError> for ConfigIngestError {
+impl From<traces_fs::PathError> for ConfigIngestError {
     #[inline]
-    fn from(error: trace_fs::PathError) -> Self {
+    fn from(error: traces_fs::PathError) -> Self {
         Self::Io {
             path: PathBuf::from("unknown"),
             source: std::io::Error::other(error.to_string()),
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn config_repository_error_converts_from_in_memory_db_error() {
-        use trace_db::testing::InMemoryDbError;
+        use traces_db::testing::InMemoryDbError;
         let db_err = InMemoryDbError::LockPoisoned {
             context: "test",
         };

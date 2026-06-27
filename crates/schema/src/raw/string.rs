@@ -33,7 +33,7 @@ pub struct RawStringProperty {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::raw::string::RawStringSpec;
+/// use traces_schema::raw::string::RawStringSpec;
 ///
 /// let _spec = RawStringSpec::default();
 /// ```

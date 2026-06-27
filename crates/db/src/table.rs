@@ -19,7 +19,7 @@ use crate::{events::EventId, path::DbPathKey};
 ///
 /// # Why this exists
 ///
-/// Many domain IDs are [`UuidV7`](trace_utils::UuidV7)s. Formatting a UUID as
+/// Many domain IDs are [`UuidV7`](traces_utils::UuidV7)s. Formatting a UUID as
 /// a 36-byte string for every lookup is expensive in hot paths (e.g., LSP
 /// indexing). This wrapper allows using the 16-byte raw UUID representation
 /// directly as a key.
@@ -105,7 +105,7 @@ impl<V: Value + 'static> PathTable<V> {
     /// # Examples
     ///
     /// ```
-    /// use trace_db::PathTable;
+    /// use traces_db::PathTable;
     /// # use redb::TableDefinition;
     ///
     /// const FILES: PathTable<&str> = PathTable::new("file_metadata");
@@ -136,8 +136,8 @@ impl<V: Value + 'static> PathTable<V> {
 /// # Examples
 ///
 /// ```ignore
-/// use trace_db::PathUuidTable;
-/// use trace_vault::model::FileId;
+/// use traces_db::PathUuidTable;
+/// use traces_vault::model::FileId;
 ///
 /// const FILE_ID_BY_PATH: PathUuidTable<FileId> =
 ///     PathUuidTable::new("file_id_by_path");
@@ -172,8 +172,8 @@ impl<V: UuidV7DbType + 'static> PathUuidTable<V> {
 /// # Examples
 ///
 /// ```ignore
-/// use trace_db::UuidPathTable;
-/// use trace_vault::model::FileId;
+/// use traces_db::UuidPathTable;
+/// use traces_vault::model::FileId;
 ///
 /// const PATH_BY_FILE_ID: UuidPathTable<FileId> =
 ///     UuidPathTable::new("path_by_file_id");
@@ -208,7 +208,7 @@ impl<K: UuidV7DbType + 'static> UuidPathTable<K> {
 /// # Examples
 ///
 /// ```
-/// use trace_db::Table;
+/// use traces_db::Table;
 /// # use redb::TableDefinition;
 ///
 /// const COUNTERS: Table<&str, u64> = Table::new("counters");
@@ -223,7 +223,7 @@ impl<K: Key + 'static, V: Value + 'static> Table<K, V> {
     /// # Examples
     ///
     /// ```
-    /// use trace_db::Table;
+    /// use traces_db::Table;
     /// # use redb::TableDefinition;
     ///
     /// const SETTINGS: Table<&str, &str> = Table::new("app_settings");
@@ -322,7 +322,7 @@ mod tests {
     }
 
     mod uuid_path_table {
-        use trace_utils::UuidV7;
+        use traces_utils::UuidV7;
 
         use super::*;
         use crate::{impl_redb_uuid, path::DbPathKey};

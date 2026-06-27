@@ -12,8 +12,10 @@
 
 use std::{io::Write, path::Path};
 
-use trace_app::bootstrap::Bootstrapper;
-use trace_settings::{DiscoveryFlags, InMemoryRepository, port::DiscoveryPort};
+use traces_app::bootstrap::Bootstrapper;
+use traces_settings::{
+    DiscoveryFlags, InMemoryRepository, port::DiscoveryPort,
+};
 
 use crate::{cli::OutputFormat, error::CliError, output};
 
@@ -110,7 +112,7 @@ fn write_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &trace_settings::report::DiscoveryReport,
+    report: &traces_settings::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     match format {
@@ -148,7 +150,7 @@ fn write_human_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &trace_settings::report::DiscoveryReport,
+    report: &traces_settings::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let vault_root_str = vault_root
@@ -221,7 +223,7 @@ fn write_json_success(
     vault_root: Option<&Path>,
     vault_config: Option<&Path>,
     global_config: Option<&Path>,
-    report: &trace_settings::report::DiscoveryReport,
+    report: &traces_settings::report::DiscoveryReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let payload = DoctorOutput {
@@ -275,8 +277,8 @@ fn write_json_failure(
 #[cfg(test)]
 mod doctor_handler {
     use clap::Parser;
-    use trace_app::bootstrap::Bootstrapper;
-    use trace_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_app::bootstrap::Bootstrapper;
+    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
 
     use super::run_doctor;
     use crate::{

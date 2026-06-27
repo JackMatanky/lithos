@@ -50,7 +50,7 @@ mod common;
 use std::collections::HashMap;
 
 use common::*;
-use trace_schema::{
+use traces_schema::{
     aggregate::Schema,
     bank::PropertyBank,
     base::BaseSchema,
@@ -809,7 +809,7 @@ mod regression {
     /// bug was wrong API usage.
     #[test]
     fn returns_deserialized_schemas_when_scanned_sequentially() -> TestResult {
-        use trace_db::ArchivedEntity;
+        use traces_db::ArchivedEntity;
 
         // Create 2 schemas
         let (seq_field1_name, seq_field1) =

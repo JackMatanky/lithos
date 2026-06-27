@@ -36,8 +36,8 @@
 //! [`SCHEMA_ID_BY_NAME`]: crate::storage::tables::SCHEMA_ID_BY_NAME
 
 use redb::ReadableTable;
-use trace_db::{ArchivedEntity, DbError, DbPathKey};
-use trace_fs::PathKey;
+use traces_db::{ArchivedEntity, DbError, DbPathKey};
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::Schema,
@@ -293,7 +293,7 @@ struct DeleteContext {
 /// [`SCHEMAS`]: crate::storage::tables::SCHEMAS
 /// [`RAW_SCHEMA_VIEWS`]: crate::storage::tables::RAW_SCHEMA_VIEWS
 fn load_delete_context(
-    tx: &trace_db::WriteTx,
+    tx: &traces_db::WriteTx,
     id: crate::identifier::SchemaId,
 ) -> Result<DeleteContext, DbError> {
     let schemas = tx.try_open_table(SCHEMAS.definition())?;
@@ -325,7 +325,7 @@ fn load_delete_context(
 ///
 /// [`SCHEMAS`]: crate::storage::tables::SCHEMAS
 fn remove_schema(
-    tx: &trace_db::WriteTx,
+    tx: &traces_db::WriteTx,
     id: crate::identifier::SchemaId,
 ) -> Result<(), DbError> {
     let mut schemas = tx.try_open_table(SCHEMAS.definition())?;
@@ -339,7 +339,7 @@ fn remove_schema(
 ///
 /// [`SCHEMA_ID_BY_NAME`]: crate::storage::tables::SCHEMA_ID_BY_NAME
 fn remove_name_id_index(
-    tx: &trace_db::WriteTx,
+    tx: &traces_db::WriteTx,
     schema_name: Option<&str>,
 ) -> Result<(), DbError> {
     let mut name_index = tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
@@ -357,7 +357,7 @@ fn remove_name_id_index(
 ///
 /// [`SCHEMA_ID_BY_PATH`]: crate::storage::tables::SCHEMA_ID_BY_PATH
 fn remove_path_id_index(
-    tx: &trace_db::WriteTx,
+    tx: &traces_db::WriteTx,
     view_path: Option<&PathKey>,
 ) -> Result<(), DbError> {
     let mut path_index = tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
@@ -375,7 +375,7 @@ fn remove_path_id_index(
 ///
 /// [`RAW_SCHEMA_VIEWS`]: crate::storage::tables::RAW_SCHEMA_VIEWS
 fn remove_raw_schema_view(
-    tx: &trace_db::WriteTx,
+    tx: &traces_db::WriteTx,
     id: crate::identifier::SchemaId,
 ) -> Result<(), DbError> {
     let mut raw_views = tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
@@ -392,7 +392,7 @@ mod tests {
     mod save_schema {
         use std::sync::Arc;
 
-        use trace_db::{ArchivedEntity, Store};
+        use traces_db::{ArchivedEntity, Store};
 
         use crate::{
             aggregate::Schema,
@@ -454,7 +454,7 @@ mod tests {
             repo.save_schema(&schema).unwrap();
 
             // Verify that a failed write transaction rolls back
-            let result: Result<(), trace_db::DbError> = store.write(|tx| {
+            let result: Result<(), traces_db::DbError> = store.write(|tx| {
                 use crate::storage::tables::SCHEMAS;
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 let id2 = SchemaId::new();
@@ -468,7 +468,7 @@ mod tests {
                 );
                 let bytes = schema2.to_bytes()?;
                 table.insert(*schema2.id(), bytes.as_slice())?;
-                Err(trace_db::DbError::Serialization(
+                Err(traces_db::DbError::Serialization(
                     "forced failure".to_owned(),
                 ))
             });
@@ -508,7 +508,7 @@ mod tests {
     mod save_many_schemas {
         use std::sync::Arc;
 
-        use trace_db::Store;
+        use traces_db::Store;
 
         use crate::{
             aggregate::Schema,
@@ -604,7 +604,7 @@ mod tests {
     mod save_property_bank {
         use std::sync::Arc;
 
-        use trace_db::Store;
+        use traces_db::Store;
 
         use crate::{
             bank::PropertyBank,
@@ -652,12 +652,12 @@ mod tests {
     mod save_raw_schema_view {
         use std::sync::Arc;
 
-        use trace_db::Store;
-        use trace_fs::{
+        use traces_db::Store;
+        use traces_fs::{
             PathKey,
             metadata::{FileMetadata, FsTimes},
         };
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         use crate::{
             identifier::SchemaId,
@@ -749,7 +749,7 @@ mod tests {
     mod save_topological_graph {
         use std::sync::Arc;
 
-        use trace_db::Store;
+        use traces_db::Store;
 
         use crate::{
             identifier::SchemaId,
@@ -796,12 +796,12 @@ mod tests {
     mod delete_schema {
         use std::sync::Arc;
 
-        use trace_db::Store;
-        use trace_fs::{
+        use traces_db::Store;
+        use traces_fs::{
             PathKey,
             metadata::{FileMetadata, FsTimes},
         };
-        use trace_support::Blake3Hash;
+        use traces_support::Blake3Hash;
 
         use crate::{
             aggregate::Schema,
@@ -911,7 +911,7 @@ mod tests {
     mod base_schema {
         use std::sync::Arc;
 
-        use trace_db::Store;
+        use traces_db::Store;
 
         use crate::{
             base::BaseSchema,

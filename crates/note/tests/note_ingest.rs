@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use trace_fs::metadata::{FileMetadata, FsTimes};
-use trace_note::{
+use traces_fs::metadata::{FileMetadata, FsTimes};
+use traces_note::{
     paths::NotePath,
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository::ReadRepository,
     storage::RedbRepository,
 };
-use trace_settings::{
+use traces_settings::{
     aggregate::Version,
     builder,
     vault::{VaultId, VaultRoot},
@@ -17,7 +17,7 @@ use trace_settings::{
 
 #[cfg(test)]
 mod tests {
-    use trace_db::testing::TestDb;
+    use traces_db::testing::TestDb;
 
     use super::*;
 
@@ -47,7 +47,7 @@ mod tests {
 
         let store = Arc::clone(db.store());
         let repository = RedbRepository::new(Arc::clone(&store));
-        let source = trace_fs::FileReader::new(root.as_path());
+        let source = traces_fs::FileReader::new(root.as_path());
 
         let note_path =
             NotePath::try_new("notes/ingest.md").expect("note path");

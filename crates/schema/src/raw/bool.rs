@@ -17,7 +17,7 @@ pub struct RawBoolProperty {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::raw::bool::RawBoolSpec;
+/// use traces_schema::raw::bool::RawBoolSpec;
 ///
 /// let _spec = RawBoolSpec;
 /// ```

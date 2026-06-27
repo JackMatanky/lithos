@@ -14,11 +14,11 @@ use crate::{
 ///
 /// # Examples
 /// ```
-/// use trace_schema::property_spec::FileSpec;
+/// use traces_schema::property_spec::FileSpec;
 ///
 /// let spec = FileSpec::try_new(None, None)?;
 /// let _ = spec;
-/// # Ok::<_, trace_schema::error::SchemaError>(())
+/// # Ok::<_, traces_schema::error::SchemaError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
@@ -37,11 +37,11 @@ impl FileSpec {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::property_spec::FileSpec;
+    /// use traces_schema::property_spec::FileSpec;
     ///
     /// let spec = FileSpec::try_new(Some("attachments"), None)?;
     /// let _ = spec;
-    /// # Ok::<_, trace_schema::error::SchemaError>(())
+    /// # Ok::<_, traces_schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn try_new(
@@ -97,12 +97,12 @@ impl FileSpec {
     ///
     /// # Examples
     /// ```
-    /// use trace_schema::{property_spec::FileSpec, raw::file::RawFileSpec};
+    /// use traces_schema::{property_spec::FileSpec, raw::file::RawFileSpec};
     ///
     /// let base = FileSpec::try_new(None, None)?;
     /// let overrides = RawFileSpec::default();
     /// let _updated = base.apply_overrides(&overrides)?;
-    /// # Ok::<_, trace_schema::error::SchemaError>(())
+    /// # Ok::<_, traces_schema::error::SchemaError>(())
     /// ```
     ///
     /// Fields that are `None` in the overrides preserve the base values.

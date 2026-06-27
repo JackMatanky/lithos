@@ -26,7 +26,7 @@ pub struct RawNumberProperty {
 ///
 /// # Examples
 /// ```
-/// use trace_schema::raw::number::RawNumberSpec;
+/// use traces_schema::raw::number::RawNumberSpec;
 ///
 /// let _spec = RawNumberSpec::default();
 /// ```

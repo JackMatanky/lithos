@@ -94,12 +94,12 @@
 //! [`RawPropertyBankView`]: super::raw::RawPropertyBankView
 //! [`SchemaVersion`]: super::snapshots::SchemaVersion
 //! [`PropertyBankVersion`]: super::snapshots::PropertyBankVersion
-//! [`FileMetadata`]: trace_fs::metadata::FileMetadata
+//! [`FileMetadata`]: traces_fs::metadata::FileMetadata
 
 use std::time::SystemTime;
 
-use trace_fs::metadata::{FileMetadata, FsTimes};
-use trace_support::Blake3Hash;
+use traces_fs::metadata::{FileMetadata, FsTimes};
+use traces_support::Blake3Hash;
 
 use super::HashRecord;
 use crate::error::SchemaRepositoryError;

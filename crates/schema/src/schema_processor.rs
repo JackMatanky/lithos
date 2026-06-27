@@ -57,11 +57,11 @@ use std::{
     sync::Arc,
 };
 
-use trace_fs::{
+use traces_fs::{
     FileReader, PathKey,
     metadata::{FileMetadata, FsTimes},
 };
-use trace_support::Blake3Hash;
+use traces_support::Blake3Hash;
 
 pub(crate) use crate::delta::{ExcludesDelta, PropertyDelta};
 use crate::{
@@ -90,7 +90,7 @@ use crate::{
 fn schema_stem_from_path(
     path: &std::path::Path,
 ) -> Result<String, SchemaError> {
-    trace_fs::BaseName::try_from(path)
+    traces_fs::BaseName::try_from(path)
         .map(|basename| basename.as_str().to_owned())
         .map_err(SchemaError::from)
 }
@@ -753,7 +753,7 @@ impl SchemaProcessor<Discovery, NeverSeen> {
             let metadata = schema_discovery
                 .entry
                 .into_file()
-                .map(trace_fs::entry::FileNode::into_metadata)
+                .map(traces_fs::entry::FileNode::into_metadata)
                 .ok_or_else(|| {
                     SchemaError::from(SchemaBuilderError::Read(
                         SchemaReadError::FileSystem {
@@ -2852,7 +2852,7 @@ fn stage_variant_error(
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::FsNode;
+    use traces_fs::FsNode;
 
     use super::*;
     use crate::{
@@ -2955,8 +2955,8 @@ mod tests {
 
     fn make_view(name: &str, content_hash: Blake3Hash) -> RawSchemaView {
         let raw = make_raw_schema(name);
-        let metadata = trace_fs::metadata::FileMetadata::new(
-            trace_fs::metadata::FsTimes::new(None, None),
+        let metadata = traces_fs::metadata::FileMetadata::new(
+            traces_fs::metadata::FsTimes::new(None, None),
             0,
             false,
         );
@@ -3222,9 +3222,9 @@ mod tests {
         let times = FsTimes::new(Some(created), Some(modified));
         let metadata = FileMetadata::new(times, 1234, false);
 
-        let file_path = trace_fs::path::FilePath::try_new(full_path).unwrap();
+        let file_path = traces_fs::path::FilePath::try_new(full_path).unwrap();
         let fs_file =
-            trace_fs::entry::FileNode::new(file_path, metadata.clone());
+            traces_fs::entry::FileNode::new(file_path, metadata.clone());
         let entry = FsNode::File(fs_file);
 
         let view = make_view("schema", Blake3Hash::new([7u8; 32]));

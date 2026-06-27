@@ -10,8 +10,8 @@
 //! concrete [`redb`] access patterns for each operation.
 
 use redb::ReadableTable as _;
-use trace_db::{ArchivedEntity, path::DbPathKey};
-use trace_fs::{FileFormat, PathKey};
+use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_fs::{FileFormat, PathKey};
 
 use super::{
     RedbRepository,
@@ -333,8 +333,8 @@ mod tests {
     //! organised by capability following the Structure A convention.
     use std::sync::Arc;
 
-    use trace_db::{ArchivedEntity, Store};
-    use trace_fs::{
+    use traces_db::{ArchivedEntity, Store};
+    use traces_fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
         PathKey,
     };
@@ -361,7 +361,7 @@ mod tests {
                 let mut table =
                     tx.try_open_table(super::FILE_VIEWS.definition())?;
                 table.insert(&file.id(), bytes.as_ref())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
     }
@@ -374,7 +374,7 @@ mod tests {
                 let mut table =
                     tx.try_open_table(super::DIR_VIEWS.definition())?;
                 table.insert(&dir.id(), bytes.as_ref())?;
-                Ok::<_, trace_db::DbError>(())
+                Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
     }
@@ -475,9 +475,11 @@ mod tests {
                     let mut path_table =
                         tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
                     file_table.insert(&file.id(), file_bytes.as_ref())?;
-                    path_table
-                        .insert(trace_db::DbPathKey::from(&path), &file.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                    path_table.insert(
+                        traces_db::DbPathKey::from(&path),
+                        &file.id(),
+                    )?;
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -507,8 +509,8 @@ mod tests {
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
                     dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
                     path_table
-                        .insert(trace_db::DbPathKey::from(&path), &dir.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                        .insert(traces_db::DbPathKey::from(&path), &dir.id())?;
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -550,12 +552,14 @@ mod tests {
                     let mut dir_path_table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
                     file_table.insert(&file.id(), file_bytes.as_ref())?;
-                    file_path_table
-                        .insert(trace_db::DbPathKey::from(&path), &file.id())?;
+                    file_path_table.insert(
+                        traces_db::DbPathKey::from(&path),
+                        &file.id(),
+                    )?;
                     dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
                     dir_path_table
-                        .insert(trace_db::DbPathKey::from(&path), &dir.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                        .insert(traces_db::DbPathKey::from(&path), &dir.id())?;
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -611,7 +615,7 @@ mod tests {
                     file_table.insert(&file2.id(), f2_bytes.as_ref())?;
                     basename_map.insert("shared", &file1.id())?;
                     basename_map.insert("shared", &file2.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -650,7 +654,7 @@ mod tests {
                     )?;
                     file_table.insert(&file.id(), file_bytes.as_ref())?;
                     parent_map.insert(&parent_id, &file.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -697,7 +701,7 @@ mod tests {
                     file_table.insert(&json_file.id(), json_bytes.as_ref())?;
                     format_map.insert("markdown", &md_file.id())?;
                     format_map.insert("json", &json_file.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -740,7 +744,7 @@ mod tests {
                     file_table.insert(&json_file.id(), json_bytes.as_ref())?;
                     format_map.insert("markdown", &md_file.id())?;
                     format_map.insert("json", &json_file.id())?;
-                    Ok::<_, trace_db::DbError>(())
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -810,9 +814,9 @@ mod tests {
                 .write(|tx| {
                     let mut table =
                         tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                    table.insert(trace_db::DbPathKey::from(&path1), &id1)?;
-                    table.insert(trace_db::DbPathKey::from(&path2), &id2)?;
-                    Ok::<_, trace_db::DbError>(())
+                    table.insert(traces_db::DbPathKey::from(&path1), &id1)?;
+                    table.insert(traces_db::DbPathKey::from(&path2), &id2)?;
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 
@@ -855,9 +859,9 @@ mod tests {
                 .write(|tx| {
                     let mut table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
-                    table.insert(trace_db::DbPathKey::from(&path1), &id1)?;
-                    table.insert(trace_db::DbPathKey::from(&path2), &id2)?;
-                    Ok::<_, trace_db::DbError>(())
+                    table.insert(traces_db::DbPathKey::from(&path1), &id1)?;
+                    table.insert(traces_db::DbPathKey::from(&path2), &id2)?;
+                    Ok::<_, traces_db::DbError>(())
                 })
                 .unwrap();
 

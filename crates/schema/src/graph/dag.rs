@@ -5,7 +5,7 @@
 //! # Examples
 //!
 //! ```
-//! use trace_schema::{DagGraph, GraphBuilder, Node};
+//! use traces_schema::{DagGraph, GraphBuilder, Node};
 //!
 //! let mut builder = GraphBuilder::new();
 //! builder.add_node(1u8, Node::new(Box::<str>::from("A")));
@@ -30,7 +30,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// use trace_schema::{DagGraph, GraphBuilder, Node};
+/// use traces_schema::{DagGraph, GraphBuilder, Node};
 ///
 /// let mut builder = GraphBuilder::new();
 /// builder.add_node(1u8, Node::new(Box::<str>::from("A")));

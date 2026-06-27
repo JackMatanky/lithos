@@ -32,8 +32,8 @@
 //! concrete [`redb`] access patterns for each operation.
 
 use redb::ReadableTable as _;
-use trace_db::{ArchivedEntity, DbError, WriteTx, path::DbPathKey};
-use trace_fs::{BaseName, PathKey};
+use traces_db::{ArchivedEntity, DbError, WriteTx, path::DbPathKey};
+use traces_fs::{BaseName, PathKey};
 
 use super::{
     RedbRepository,
@@ -279,7 +279,7 @@ impl RedbRepository {
 
     fn remove_file_format_index(
         tx: &WriteTx,
-        format: Option<trace_fs::FileFormat>,
+        format: Option<traces_fs::FileFormat>,
         file_id: FileId,
     ) -> Result<(), DbError> {
         if let Some(format) = format {
@@ -352,7 +352,7 @@ struct FileDeleteContext {
     path: Option<PathKey>,
     basename: Option<BaseName>,
     parent_id: Option<DirId>,
-    format: Option<trace_fs::FileFormat>,
+    format: Option<traces_fs::FileFormat>,
 }
 
 impl FileDeleteContext {
@@ -476,8 +476,8 @@ impl DirDeleteContext {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::Store;
-    use trace_fs::{
+    use traces_db::Store;
+    use traces_fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
         PathKey,
     };

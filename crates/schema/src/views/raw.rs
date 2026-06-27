@@ -9,8 +9,8 @@
 use std::{path::Path, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize};
-use trace_fs::PathKey;
-use trace_support::Blake3Hash;
+use traces_fs::PathKey;
+use traces_support::Blake3Hash;
 
 use crate::{
     error::{SchemaError, SchemaRepositoryError},
@@ -380,7 +380,7 @@ impl RawViewRead for ArchivedRawPropertyBankView {
 
 #[cfg(test)]
 mod tests {
-    use trace_fs::metadata::{FileMetadata, FsTimes};
+    use traces_fs::metadata::{FileMetadata, FsTimes};
 
     use super::*;
 

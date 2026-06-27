@@ -2,13 +2,13 @@
 
 use std::{io::Write, path::Path};
 
-use trace_app::{
+use traces_app::{
     bootstrap::Bootstrapper,
     index::{
         IndexOptions, IndexScope, ScanFilters, run_index as app_run_index,
     },
 };
-use trace_settings::DiscoveryFlags;
+use traces_settings::DiscoveryFlags;
 
 use crate::{
     cli::{IndexArgs, OutputFormat},
@@ -27,11 +27,11 @@ use crate::{
 /// resolved to a valid directory path.
 pub(crate) fn build_index_command(
     args: IndexArgs,
-    vault_root: &trace_fs::DirPath,
-) -> Result<trace_app::index::IndexCommand, CliError> {
+    vault_root: &traces_fs::DirPath,
+) -> Result<traces_app::index::IndexCommand, CliError> {
     let scope = if let Some(rel_path) = args.path {
         let abs_path = vault_root.as_path().join(rel_path);
-        let dir_path = trace_fs::DirPath::try_from(abs_path)
+        let dir_path = traces_fs::DirPath::try_from(abs_path)
             .map_err(|e| CliError::InvalidPath(e.to_string()))?;
         IndexScope::Partial {
             root: dir_path,
@@ -46,7 +46,7 @@ pub(crate) fn build_index_command(
 
     let opts = IndexOptions::new(args.rebuild, args.dry_run);
 
-    Ok(trace_app::index::IndexCommand::new(scope, opts))
+    Ok(traces_app::index::IndexCommand::new(scope, opts))
 }
 
 /// Executes the `index` subcommand.
@@ -65,7 +65,7 @@ pub(crate) fn build_index_command(
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_index(
-    bootstrapper: &Bootstrapper<impl trace_settings::port::DiscoveryPort>,
+    bootstrapper: &Bootstrapper<impl traces_settings::port::DiscoveryPort>,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     args: IndexArgs,
@@ -91,12 +91,12 @@ pub(crate) fn run_index(
 
     // 3. Execute
     let cache_dir_path = discovery.cache_root().path().to_path_buf();
-    let cache_dir = trace_fs::DirPath::try_from(cache_dir_path)
+    let cache_dir = traces_fs::DirPath::try_from(cache_dir_path)
         .map_err(|e| CliError::InvalidPath(e.to_string()))?;
 
     let result =
         app_run_index(&vault_root, &cache_dir, &cmd).map_err(|e| match e {
-            trace_app::error::AppError::Indexer(idx_err) => {
+            traces_app::error::AppError::Indexer(idx_err) => {
                 CliError::Index(crate::error::IndexCommandError::from(idx_err))
             }
             other => CliError::Bootstrap(other),
@@ -114,7 +114,7 @@ pub(crate) fn run_index(
 
 /// Writes a human-readable index report to `out`.
 fn write_report_human(
-    report: &trace_indexer::IndexReport,
+    report: &traces_indexer::IndexReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     writeln!(out, "  scanned: {}", report.scanned())
@@ -145,7 +145,7 @@ struct IndexReportPayload {
 
 /// Writes a JSON index report to `out`.
 fn write_report_json(
-    report: &trace_indexer::IndexReport,
+    report: &traces_indexer::IndexReport,
     out: &mut impl Write,
 ) -> Result<(), CliError> {
     let payload = IndexReportPayload {
@@ -167,9 +167,9 @@ fn write_report_json(
 mod tests {
     use std::path::PathBuf;
 
-    use trace_app::index::{IndexOptions, IndexScope, ScanFilters};
-    use trace_fs::DirPath;
-    use trace_indexer::{
+    use traces_app::index::{IndexOptions, IndexScope, ScanFilters};
+    use traces_fs::DirPath;
+    use traces_indexer::{
         FsRecordId, FsRecordType, IndexNodeFailure, IndexReport,
     };
 
@@ -364,8 +364,8 @@ mod tests {
         use std::fs;
 
         use tempfile::tempdir;
-        use trace_app::bootstrap::Bootstrapper;
-        use trace_settings::{DiscoveryFlags, service::DiscoveryService};
+        use traces_app::bootstrap::Bootstrapper;
+        use traces_settings::{DiscoveryFlags, service::DiscoveryService};
 
         use super::super::run_index;
         use crate::cli::{IndexArgs, OutputFormat};

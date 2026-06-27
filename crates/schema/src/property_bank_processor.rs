@@ -66,7 +66,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use trace_schema::property_bank_processor::{
+//! use traces_schema::property_bank_processor::{
 //!     AnalysisBranch, Comparison, ContentBranch,
 //!     Init, PropertyBankProcessor, TimestampBranch, Unknown,
 //! };
@@ -107,8 +107,8 @@
 
 use std::{collections::HashSet, marker::PhantomData, time::SystemTime};
 
-use trace_fs::{DirPath, FileNode, FileReader, PathKey};
-use trace_support::Blake3Hash;
+use traces_fs::{DirPath, FileNode, FileReader, PathKey};
+use traces_support::Blake3Hash;
 
 use crate::{
     bank::PropertyBank,
@@ -236,7 +236,7 @@ impl PropertyBankProcessor<Init, Unknown> {
     pub fn from_discovery(
         file: FileNode,
         root: &DirPath,
-    ) -> Result<Self, trace_fs::PathError> {
+    ) -> Result<Self, traces_fs::PathError> {
         let path_key = file.path().as_key(root)?;
         Ok(Self {
             file,
@@ -960,7 +960,7 @@ mod tests {
     use std::time::Duration;
 
     use tempfile::TempDir;
-    use trace_fs::{DirPath, FileNode};
+    use traces_fs::{DirPath, FileNode};
 
     use super::*;
     use crate::{
@@ -996,10 +996,10 @@ mod tests {
             std::fs::write(&absolute, content).expect("write file");
 
             let source = FileReader::new(vault_dir.path());
-            let file_path = trace_fs::FilePath::try_new(absolute.clone())
+            let file_path = traces_fs::FilePath::try_new(absolute.clone())
                 .expect("file path");
             let metadata =
-                trace_fs::metadata::FsMetadata::from_path(file_path.as_path())
+                traces_fs::metadata::FsMetadata::from_path(file_path.as_path())
                     .expect("metadata")
                     .as_file()
                     .cloned()
@@ -1034,7 +1034,7 @@ mod tests {
             key: PathKey,
             content_hash: Blake3Hash,
         ) -> RawPropertyBankView {
-            use trace_fs::metadata::{FileMetadata, FsTimes};
+            use traces_fs::metadata::{FileMetadata, FsTimes};
 
             let property_hashes = raw.properties().compute_hashes();
             let raw_hash =
@@ -1209,7 +1209,7 @@ mod tests {
                 .expect("seed bank");
 
             // Reload file metadata after modification
-            let modified_metadata = trace_fs::metadata::FsMetadata::from_path(
+            let modified_metadata = traces_fs::metadata::FsMetadata::from_path(
                 fixture.file.path().as_path(),
             )
             .expect("metadata")

@@ -33,8 +33,8 @@
 //! [`delete_template`]: WriteRepository::delete_template
 
 use redb::ReadableTable;
-use trace_db::{ArchivedEntity, path::DbPathKey};
-use trace_fs::PathKey;
+use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId},
@@ -229,8 +229,8 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use trace_db::{ArchivedEntity, Store};
-    use trace_fs::PathKey;
+    use traces_db::{ArchivedEntity, Store};
+    use traces_fs::PathKey;
 
     use crate::{
         aggregate::{Template, TemplateId, TemplateName},
@@ -259,8 +259,8 @@ mod tests {
     fn test_view(path: &str) -> RawTemplateView {
         use std::time::SystemTime;
 
-        use trace_fs::metadata::{FileMetadata, FsTimes};
-        use trace_support::Blake3Hash;
+        use traces_fs::metadata::{FileMetadata, FsTimes};
+        use traces_support::Blake3Hash;
 
         let key = PathKey::try_new(path).unwrap();
         let hash = Blake3Hash::from_bytes(format!("hash:{path}").as_bytes());
@@ -336,7 +336,7 @@ mod tests {
 
             repo.save_template(&template).unwrap();
 
-            let result: Result<(), trace_db::DbError> = store.write(|tx| {
+            let result: Result<(), traces_db::DbError> = store.write(|tx| {
                 use std::path::Path;
 
                 let mut table = tx.try_open_table(TEMPLATES.definition())?;
@@ -352,7 +352,7 @@ mod tests {
                 let t2 = Template::new(id2, path2, name2, body2);
                 let bytes = t2.to_bytes()?;
                 table.insert(*t2.id(), bytes.as_slice())?;
-                Err(trace_db::DbError::Serialization(
+                Err(traces_db::DbError::Serialization(
                     "forced failure".to_owned(),
                 ))
             });
