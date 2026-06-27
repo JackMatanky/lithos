@@ -21,7 +21,7 @@ A configured root path and set of inclusion/exclusion patterns that define which
 _Avoid_: scan area, search root
 
 **Index Status**:
-The classification of a record's index state: pending, current, stale, or deleted.
+The classification of a record's index state: New, Fresh, or Stale.
 _Avoid_: freshness flag, state label
 
 **Index Record**:
@@ -39,7 +39,7 @@ _Avoid_: scan function, walk helper
 ## Invariants
 
 - Index scope bounds are enforced by the FS context's path validation.
-- Index status transitions are deterministic: pending → current, current → stale (on content change), current → deleted (on removal).
+- Index status transitions are deterministic: New → Fresh (initial scan), Fresh → Stale (on metadata change), Stale → Fresh (on re-index). Deletion is tracked separately via DeletedNodes.
 
 ## Not Owned Here
 
@@ -48,6 +48,6 @@ _Avoid_: scan function, walk helper
 
 ## Interfaces
 
-- `ScannerPort` — trait for filesystem traversal, implemented by the FS context.
+- `ScannerPort` — trait for filesystem traversal, implemented by WalkdirAdapter (crate's own scanner submodule).
 
 ## Resources

@@ -99,12 +99,11 @@ pub(crate) struct EntryBuilder<S> {
 }
 
 impl<S> EntryBuilder<S> {
+    /// Borrows the wrapped typestate. Test-only: production code consumes the
+    /// builder via [`into_state`](Self::into_state).
+    #[cfg(test)]
     #[inline]
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "Internal state accessor used in tests in future issues"
-    )]
     pub(crate) fn state(&self) -> &S {
         &self.state
     }

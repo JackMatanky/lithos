@@ -30,11 +30,13 @@ use crate::{
     },
 };
 
+#[inline]
 fn deserialize_file(bytes: &[u8]) -> Result<FileRecord, DbError> {
     rkyv::from_bytes::<FileRecord, rkyv::rancor::Error>(bytes)
         .map_err(|e| DbError::Deserialization(e.to_string()))
 }
 
+#[inline]
 fn deserialize_dir(bytes: &[u8]) -> Result<DirRecord, DbError> {
     rkyv::from_bytes::<DirRecord, rkyv::rancor::Error>(bytes)
         .map_err(|e| DbError::Deserialization(e.to_string()))

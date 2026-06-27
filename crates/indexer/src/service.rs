@@ -5,11 +5,6 @@
 //! `EntryBuilder<IsDir, Scanned>`, deriving `parent_id` from the accumulated
 //! `dir_ids` map via `FilePath::parent()` / `DirPath::parent()`.
 
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "counter increments in report builders are bounded by file count"
-)]
-
 use std::collections::{HashMap, HashSet};
 
 use traces_fs::{DirPath, path::PathKey};
@@ -113,6 +108,10 @@ impl IndexerService {
             self.repo.delete_many_records(deleted.files(), deleted.dirs())?;
         }
 
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "scanned totals are bounded by the number of entries"
+        )]
         let scanned_count = ctx.indexed_files.len()
             + ctx.indexed_dirs.len()
             + ctx.skipped.len();
@@ -244,11 +243,7 @@ impl IndexCollector {
                 path_key,
             } => {
                 self.seen_paths.insert(path_key);
-                match entry.status() {
-                    IndexStatus::New => self.new_count += 1,
-                    IndexStatus::Fresh => self.fresh_count += 1,
-                    IndexStatus::Stale => self.stale_count += 1,
-                }
+                self.bump_status_counter(entry.status());
                 self.indexed_files.push(entry);
             }
             CompletionKind::Dir {
@@ -258,14 +253,22 @@ impl IndexCollector {
             } => {
                 self.seen_paths.insert(path_key.clone());
                 self.dir_ids.insert(path_key, id);
-                match entry.status() {
-                    IndexStatus::New => self.new_count += 1,
-                    IndexStatus::Fresh => self.fresh_count += 1,
-                    IndexStatus::Stale => self.stale_count += 1,
-                }
+                self.bump_status_counter(entry.status());
                 self.indexed_dirs.push(entry);
             }
             CompletionKind::Skipped(s) => self.skipped.push(s),
+        }
+    }
+
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "status counters are bounded by the number of scanned entries"
+    )]
+    fn bump_status_counter(&mut self, status: IndexStatus) {
+        match status {
+            IndexStatus::New => self.new_count += 1,
+            IndexStatus::Fresh => self.fresh_count += 1,
+            IndexStatus::Stale => self.stale_count += 1,
         }
     }
 }
@@ -339,26 +342,6 @@ mod tests {
             SystemTime::now(),
         );
         repo.save_file(&record).unwrap();
-        repo
-    }
-
-    #[allow(dead_code, reason = "Test helper currently uncalled")]
-    fn repo_with_dir(path: &PathKey) -> InMemoryRepository {
-        let repo = InMemoryRepository::new();
-        let id = FsRecordId::new();
-        let name = DirName::new(
-            path.as_str().rsplit('/').next().unwrap_or("dir").into(),
-        );
-        let meta = DirMetadata::new(FsTimes::new(None, None), false);
-        let record = DirRecord::new(
-            id,
-            FsParentId::Root,
-            path.clone(),
-            name,
-            meta.clone(),
-            SystemTime::now(),
-        );
-        repo.save_dir(&record).unwrap();
         repo
     }
 

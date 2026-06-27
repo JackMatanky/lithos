@@ -357,6 +357,8 @@ impl WriteRepository for RedbRepository {
 
     #[inline]
     fn clear(&self) -> Result<(), IndexerRepositoryError> {
+        // All delete+recreate pairs run within a single WriteTransaction; redb
+        // guarantees atomicity, so every deletion reverts together on rollback.
         self.store
             .write(|tx| {
                 tx.inner.delete_table(FILES.definition())?;
