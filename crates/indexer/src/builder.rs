@@ -445,13 +445,14 @@ mod tests {
     use super::*;
     use crate::storage::InMemoryRepository;
 
-    fn make_vault_root() -> DirPath {
-        std::fs::create_dir_all("/tmp/vault").unwrap();
-        DirPath::try_new("/tmp/vault".into()).unwrap()
+    fn make_vault_root() -> (tempfile::TempDir, DirPath) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vault = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+        (tmp, vault)
     }
 
-    fn make_file_entry(path: &str) -> ScanEntry {
-        let p = std::path::PathBuf::from(path);
+    fn make_file_entry(vault: &DirPath, rel: &str) -> ScanEntry {
+        let p = vault.as_path().join(rel);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
@@ -465,8 +466,8 @@ mod tests {
         ScanEntry::File(FileNode::new(fp, meta))
     }
 
-    fn make_dir_entry(path: &str) -> ScanEntry {
-        let p = std::path::PathBuf::from(path);
+    fn make_dir_entry(vault: &DirPath, rel: &str) -> ScanEntry {
+        let p = vault.as_path().join(rel);
         std::fs::create_dir_all(&p).unwrap();
         let dp = DirPath::try_new(p).unwrap();
         let meta = DirMetadata::new(FsTimes::new(None, None), false);
@@ -475,8 +476,8 @@ mod tests {
 
     #[test]
     fn test_init_to_comparison_file() {
-        let vault = make_vault_root();
-        let entry = make_file_entry("/tmp/vault/doc.md");
+        let (_tmp, vault) = make_vault_root();
+        let entry = make_file_entry(&vault, "doc.md");
 
         let builder = EntryBuilder::<Init>::from_scan_entry(entry);
         let branch = builder.into_branch(&vault).unwrap();
@@ -491,8 +492,8 @@ mod tests {
 
     #[test]
     fn test_init_to_comparison_dir() {
-        let vault = make_vault_root();
-        let entry = make_dir_entry("/tmp/vault/notes");
+        let (_tmp, vault) = make_vault_root();
+        let entry = make_dir_entry(&vault, "notes");
 
         let builder = EntryBuilder::<Init>::from_scan_entry(entry);
         let branch = builder.into_branch(&vault).unwrap();
@@ -507,10 +508,10 @@ mod tests {
 
     #[test]
     fn test_full_pipeline_file_new() {
-        let vault = make_vault_root();
+        let (_tmp, vault) = make_vault_root();
         let dir_ids = HashMap::new();
         let repo = InMemoryRepository::new();
-        let entry = make_file_entry("/tmp/vault/new.md");
+        let entry = make_file_entry(&vault, "new.md");
 
         let branch = EntryBuilder::<Init>::from_scan_entry(entry)
             .into_branch(&vault)
