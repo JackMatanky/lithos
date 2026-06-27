@@ -36,17 +36,25 @@ use crate::{
 /// Wires a `ScannerPort` and `Repository` into a single indexing run.
 /// Call `run()` with an `IndexScope` and `IndexOptions` to produce an
 /// `IndexResult`.
-pub struct IndexerService<S: ScannerPort, R: Repository> {
+///
+/// Uses trait-object dispatch: the two vtable calls per scan iteration are
+/// noise next to disk-bound work, and a single monomorphization keeps the
+/// binary smaller and compiles faster.
+pub struct IndexerService {
     vault_root: DirPath,
-    scanner: S,
-    repo: R,
+    scanner: Box<dyn ScannerPort>,
+    repo: Box<dyn Repository>,
 }
 
-impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
+impl IndexerService {
     /// Create a new indexer service.
     #[inline]
     #[must_use]
-    pub fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
+    pub fn new(
+        vault_root: DirPath,
+        scanner: Box<dyn ScannerPort>,
+        repo: Box<dyn Repository>,
+    ) -> Self {
         Self {
             vault_root,
             scanner,
@@ -66,7 +74,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// Returns `IndexerError` if traversal or database operations fail.
     #[inline]
     pub fn run(
-        &self,
+        &mut self,
         scope: &IndexScope,
         opts: IndexOptions,
     ) -> Result<IndexResult, IndexerError> {
@@ -142,29 +150,26 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
             .into_branch(&self.vault_root)?;
 
+        let repo = self.repo.as_ref();
         let completion = match branch {
-            EntryBranch::File(b) => {
-                match b.into_comparison_branch(&self.repo)? {
-                    FileComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
-                    }
-                    FileComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, dir_ids, dry_run)?
-                        .into_completion()
-                        .into_state(),
+            EntryBranch::File(b) => match b.into_comparison_branch(repo)? {
+                FileComparisonBranch::Match(b) => {
+                    b.into_completion().into_state()
                 }
-            }
-            EntryBranch::Dir(b) => {
-                match b.into_comparison_branch(&self.repo)? {
-                    DirComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
-                    }
-                    DirComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, dir_ids, dry_run)?
-                        .into_completion()
-                        .into_state(),
+                FileComparisonBranch::Mismatch(b) => b
+                    .into_indexed(repo, dir_ids, dry_run)?
+                    .into_completion()
+                    .into_state(),
+            },
+            EntryBranch::Dir(b) => match b.into_comparison_branch(repo)? {
+                DirComparisonBranch::Match(b) => {
+                    b.into_completion().into_state()
                 }
-            }
+                DirComparisonBranch::Mismatch(b) => b
+                    .into_indexed(repo, dir_ids, dry_run)?
+                    .into_completion()
+                    .into_state(),
+            },
             EntryBranch::Completion(b) => b.into_state(),
         };
 
@@ -549,7 +554,11 @@ mod tests {
             let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -568,7 +577,11 @@ mod tests {
             let file_node = make_file_node(&vault, "file.md");
             let scanner = MockScanner::single_file(file_node);
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -586,7 +599,11 @@ mod tests {
             let dir_node = make_dir_node(&vault, "notes");
             let scanner = MockScanner::single_dir(dir_node);
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -609,7 +626,11 @@ mod tests {
                 Ok(ScanEntry::Dir(dir_node)),
                 Ok(ScanEntry::File(file_node)),
             ]);
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -630,7 +651,11 @@ mod tests {
             )];
             let scanner = MockScanner::with_skipped(skipped_entries);
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -649,7 +674,11 @@ mod tests {
             };
             let scanner = MockScanner::new(vec![Err(err)]);
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -686,7 +715,11 @@ mod tests {
                 Ok(ScanEntry::File(good_node)),
             ]);
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -704,7 +737,11 @@ mod tests {
             let good_node = make_file_node(&vault, "ok.md");
             let scanner = MockScanner::single_file(good_node);
             let repo = FailingWriteRepository;
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -763,7 +800,11 @@ mod tests {
             let (scanner, captured_root, captured_filters) =
                 CapturingMockScanner::new();
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault.clone(),
                 filters: ScanFilters::default(),
@@ -783,7 +824,11 @@ mod tests {
             let (scanner, captured_root, captured_filters) =
                 CapturingMockScanner::new();
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Partial {
                 root: vault.clone(),
                 filters: ScanFilters::default(),
@@ -808,7 +853,8 @@ mod tests {
             let repo = empty_repo();
             let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
 
             let seen: HashSet<PathKey> =
                 [PathKey::try_new("doc.md").unwrap()].into();
@@ -822,7 +868,8 @@ mod tests {
             let repo = repo_with_file(&key);
             let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
 
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
@@ -834,7 +881,8 @@ mod tests {
             let repo = empty_repo();
             let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
             assert_eq!(deleted.count(), 0);
@@ -862,7 +910,8 @@ mod tests {
             };
             let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
             assert_eq!(deleted.count(), 2);
@@ -883,7 +932,11 @@ mod tests {
             let repo_check = repo.clone();
             let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -905,7 +958,11 @@ mod tests {
             let repo_check = repo.clone();
             let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -927,7 +984,11 @@ mod tests {
             let (_tmp, vault) = make_vault_root();
             let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -956,7 +1017,11 @@ mod tests {
             .unwrap();
             let repo_check = repo.clone();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault,
                 filters: ScanFilters::default(),
@@ -1015,7 +1080,8 @@ mod tests {
                 Ok(ScanEntry::File(file_c)),
             ]);
 
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -1042,7 +1108,8 @@ mod tests {
 
             let file_node = make_file_node_at(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -1068,7 +1135,8 @@ mod tests {
                 files.into_iter().map(|f| Ok(ScanEntry::File(f))).collect();
 
             let scanner = MockScanner::new(entries);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -1092,7 +1160,8 @@ mod tests {
                 Ok(ScanEntry::Dir(dir_node)),
                 Ok(ScanEntry::File(file_node)),
             ]);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Partial {
                 root: DirPath::try_new(tmp.path().join("sub")).unwrap(),
                 filters: ScanFilters::default(),
@@ -1123,7 +1192,8 @@ mod tests {
             ))
             .unwrap();
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),

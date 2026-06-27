@@ -16,7 +16,7 @@ use crate::{
     model::{DirRecord, FileRecord, FsParentId, FsRecordId},
     port::ScanEntry,
     report::SkippedEntry,
-    repository::{ReadRepository, WriteRepository},
+    repository::Repository,
 };
 
 // ─── State types ─────────────────────────────────────────────────────────────
@@ -185,7 +185,7 @@ impl EntryBuilder<Init> {
 impl EntryBuilder<FileComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &impl ReadRepository,
+        repo: &dyn Repository,
     ) -> Result<FileComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_file_by_path(&state.path_key)?;
@@ -233,7 +233,7 @@ impl EntryBuilder<FileComparison> {
 impl EntryBuilder<DirComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &impl ReadRepository,
+        repo: &dyn Repository,
     ) -> Result<DirComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_dir_by_path(&state.path_key)?;
@@ -280,7 +280,7 @@ impl EntryBuilder<DirComparison> {
 impl EntryBuilder<FilePersistence> {
     pub(crate) fn into_indexed(
         self,
-        repo: &impl WriteRepository,
+        repo: &dyn Repository,
         dir_ids: &HashMap<PathKey, FsRecordId>,
         dry_run: bool,
     ) -> Result<EntryBuilder<FileIndexed>, IndexerError> {
@@ -335,7 +335,7 @@ impl EntryBuilder<FilePersistence> {
 impl EntryBuilder<DirPersistence> {
     pub(crate) fn into_indexed(
         self,
-        repo: &impl WriteRepository,
+        repo: &dyn Repository,
         dir_ids: &HashMap<PathKey, FsRecordId>,
         dry_run: bool,
     ) -> Result<EntryBuilder<DirIndexed>, IndexerError> {
@@ -443,7 +443,7 @@ mod tests {
     use traces_fs::metadata::{DirMetadata, FileMetadata, FsTimes};
 
     use super::*;
-    use crate::storage::InMemoryRepository;
+    use crate::{repository::ReadRepository, storage::InMemoryRepository};
 
     fn make_vault_root() -> (tempfile::TempDir, DirPath) {
         let tmp = tempfile::TempDir::new().unwrap();

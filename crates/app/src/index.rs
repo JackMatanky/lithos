@@ -71,7 +71,11 @@ pub fn run_index(
         .map_err(|e| AppError::Indexer(IndexerError::Repository(e.into())))?;
     let repo = RedbRepository::try_new(Arc::new(store))
         .map_err(|e| AppError::Indexer(e.into()))?;
-    let service = IndexerService::new(root.clone(), WalkdirAdapter, repo);
+    let mut service = IndexerService::new(
+        root.clone(),
+        Box::new(WalkdirAdapter),
+        Box::new(repo),
+    );
     Ok(service.run(cmd.scope(), cmd.opts())?)
 }
 
