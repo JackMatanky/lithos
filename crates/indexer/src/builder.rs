@@ -277,6 +277,19 @@ impl EntryBuilder<DirComparison> {
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
+/// Resolve the parent record id for an entry from the accumulated `dir_ids`
+/// map: the entry's parent path, if already indexed, gives `FsParentId::Id`;
+/// otherwise the entry sits directly under the vault root (`FsParentId::Root`).
+fn resolve_parent_id(
+    path_key: &PathKey,
+    dir_ids: &HashMap<PathKey, FsRecordId>,
+) -> FsParentId {
+    path_key
+        .parent()
+        .and_then(|pk| dir_ids.get(&pk).copied())
+        .map_or(FsParentId::Root, FsParentId::Id)
+}
+
 impl EntryBuilder<FilePersistence> {
     pub(crate) fn into_indexed(
         self,
@@ -286,11 +299,7 @@ impl EntryBuilder<FilePersistence> {
     ) -> Result<EntryBuilder<FileIndexed>, IndexerError> {
         let state = self.state;
 
-        let parent_id = state
-            .path_key
-            .parent()
-            .and_then(|pk| dir_ids.get(&pk).copied())
-            .map_or(FsParentId::Root, FsParentId::Id);
+        let parent_id = resolve_parent_id(&state.path_key, dir_ids);
 
         let name = FileName::new(
             state
@@ -341,11 +350,7 @@ impl EntryBuilder<DirPersistence> {
     ) -> Result<EntryBuilder<DirIndexed>, IndexerError> {
         let state = self.state;
 
-        let parent_id = state
-            .path_key
-            .parent()
-            .and_then(|pk| dir_ids.get(&pk).copied())
-            .map_or(FsParentId::Root, FsParentId::Id);
+        let parent_id = resolve_parent_id(&state.path_key, dir_ids);
 
         let name = DirName::new(
             state
