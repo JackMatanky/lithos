@@ -5,24 +5,19 @@
 //! uses template names as lookup keys after `compile` registers supplied
 //! source.
 
-#![allow(dead_code, reason = "template service wiring lands in a later slice")]
-
 use std::collections::HashMap;
 
 use minijinja::{AutoEscape, Environment, UndefinedBehavior};
 
-use super::{TemplateEngine, TemplateEngineError};
-use crate::{
-    Template,
-    artifact::{Rendered, TemplateArtifact},
-};
+use super::{RenderedTemplate, TemplateEngine, TemplateEngineError};
+use crate::Template;
 
 /// MiniJinja-backed implementation of the template engine port.
 ///
 /// The environment is owned directly because foundation rendering is
 /// single-process and does not need shared mutable ownership or
 /// synchronization.
-pub(crate) struct MiniJinjaEngine {
+pub struct MiniJinjaEngine {
     env: Environment<'static>,
 }
 
@@ -33,7 +28,7 @@ impl MiniJinjaEngine {
     /// so Markdown characters render unchanged.
     #[inline]
     #[must_use]
-    pub(crate) fn configured() -> Self {
+    pub fn configured() -> Self {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_auto_escape_callback(|_| AutoEscape::None);
@@ -57,7 +52,7 @@ impl TemplateEngine for MiniJinjaEngine {
             )
             .map_err(|source| TemplateEngineError::Compile {
                 name: template.name().as_ref().to_owned(),
-                source,
+                source: Box::new(source),
             })
     }
 
@@ -66,21 +61,19 @@ impl TemplateEngine for MiniJinjaEngine {
         &self,
         template: &Template,
         context: &HashMap<String, String>,
-    ) -> Result<TemplateArtifact<Rendered>, TemplateEngineError> {
+    ) -> Result<RenderedTemplate, TemplateEngineError> {
         let loaded = self.env.get_template(template.name().as_ref()).map_err(
             |source| TemplateEngineError::Render {
                 name: template.name().as_ref().to_owned(),
-                source,
+                source: Box::new(source),
             },
         )?;
-        let rendered_text = loaded.render(context).map_err(|source| {
+        loaded.render(context).map(RenderedTemplate::new).map_err(|source| {
             TemplateEngineError::Render {
                 name: template.name().as_ref().to_owned(),
-                source,
+                source: Box::new(source),
             }
-        })?;
-
-        Ok(TemplateArtifact::rendered(template.name().clone(), rendered_text))
+        })
     }
 }
 
@@ -146,7 +139,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_rendered_artifact_when_context_provides_variable() {
+        fn returns_rendered_text_when_context_provides_variable() {
             let mut engine = MiniJinjaEngine::configured();
             let template = template("greeting", "Hello {{ name }}");
             engine
@@ -155,29 +148,11 @@ mod tests {
             let context =
                 HashMap::from([("name".to_owned(), "Alice".to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&template, &context)
                 .expect("expected template to render");
 
-            assert_eq!(artifact.content(), "Hello Alice");
-        }
-
-        #[test]
-        fn returns_artifact_with_template_name_when_context_provides_variable()
-        {
-            let mut engine = MiniJinjaEngine::configured();
-            let template = template("greeting", "Hello {{ name }}");
-            engine
-                .compile(&template)
-                .expect("expected template source to compile");
-            let context =
-                HashMap::from([("name".to_owned(), "Alice".to_owned())]);
-
-            let artifact = engine
-                .render(&template, &context)
-                .expect("expected template to render");
-
-            assert_eq!(artifact.template(), template.name());
+            assert_eq!(text.as_str(), "Hello Alice");
         }
 
         #[test]
@@ -209,11 +184,11 @@ mod tests {
             let context =
                 HashMap::from([("markdown".to_owned(), markdown.to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&template, &context)
                 .expect("expected markdown to render");
 
-            assert_eq!(artifact.content(), markdown);
+            assert_eq!(text.as_str(), markdown);
         }
 
         #[test]
@@ -227,11 +202,11 @@ mod tests {
             let context =
                 HashMap::from([("name".to_owned(), "Alice".to_owned())]);
 
-            let artifact = engine
+            let text = engine
                 .render(&changed, &context)
                 .expect("expected compiled source to render");
 
-            assert_eq!(artifact.content(), "Hello Alice");
+            assert_eq!(text.as_str(), "Hello Alice");
         }
 
         #[test]
@@ -247,6 +222,125 @@ mod tests {
                 std::error::Error::source(&err).is_some(),
                 "expected lookup error to preserve source error"
             );
+        }
+    }
+
+    mod template_engine_error {
+        use std::error::Error;
+
+        use minijinja::Environment;
+
+        use crate::engine::TemplateEngineError;
+
+        fn compile_source_error() -> minijinja::Error {
+            let mut env = Environment::new();
+            env.add_template_owned(
+                "invalid".to_owned(),
+                "Hello {{ name".to_owned(),
+            )
+            .expect_err("expected invalid template syntax to fail")
+        }
+
+        fn render_source_error() -> minijinja::Error {
+            let env = Environment::new();
+            env.get_template("missing")
+                .expect_err("expected missing template lookup to fail")
+        }
+
+        mod compile {
+            use pretty_assertions::assert_eq;
+
+            use super::*;
+
+            #[test]
+            fn displays_template_name() {
+                let source = compile_source_error();
+                let err = TemplateEngineError::Compile {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert_eq!(
+                    err.to_string(),
+                    "failed to compile template `daily`"
+                );
+            }
+
+            #[test]
+            fn preserves_source_error() {
+                let source = compile_source_error();
+                let err = TemplateEngineError::Compile {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert!(
+                    err.source().is_some(),
+                    "expected compile error to preserve MiniJinja source"
+                );
+            }
+
+            #[test]
+            fn stores_template_name() {
+                let source = compile_source_error();
+                let err = TemplateEngineError::Compile {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert!(matches!(
+                    err,
+                    TemplateEngineError::Compile { ref name, .. } if name == "daily"
+                ));
+            }
+        }
+
+        mod render {
+            use pretty_assertions::assert_eq;
+
+            use super::*;
+
+            #[test]
+            fn displays_template_name() {
+                let source = render_source_error();
+                let err = TemplateEngineError::Render {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert_eq!(
+                    err.to_string(),
+                    "failed to render template `daily`"
+                );
+            }
+
+            #[test]
+            fn preserves_source_error() {
+                let source = render_source_error();
+                let err = TemplateEngineError::Render {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert!(
+                    err.source().is_some(),
+                    "expected render error to preserve MiniJinja source"
+                );
+            }
+
+            #[test]
+            fn stores_template_name() {
+                let source = render_source_error();
+                let err = TemplateEngineError::Render {
+                    name: "daily".to_owned(),
+                    source: Box::new(source),
+                };
+
+                assert!(matches!(
+                    err,
+                    TemplateEngineError::Render { ref name, .. } if name == "daily"
+                ));
+            }
         }
     }
 }

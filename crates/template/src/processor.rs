@@ -13,7 +13,7 @@
 //!
 //! The dual-typestate design prevents invalid transitions at compile time and
 //! keeps orchestration in the
-//! [`Repository`](crate::repository::Repository).
+//! [`Repository`](crate::storage::Repository).
 //!
 //! # Flow
 //!
@@ -54,7 +54,7 @@ use crate::{
     aggregate::{Template, TemplateId, TemplateName},
     error::{TemplateError, TemplateReadError, TemplateRepositoryError},
     raw::RawTemplate,
-    repository::{ReadRepository, WriteRepository},
+    storage::{ReadRepository, WriteRepository},
     views::RawTemplateView,
 };
 
@@ -533,7 +533,7 @@ impl TemplateProcessor<Refresh, StaleMetadata> {
         let (file, path_key, mut status) = self.into_parts();
         status.view.update_metadata(file.metadata().clone());
         repository
-            .save_raw_template_view(&status.view)
+            .save_raw_template_view(status.id, &status.view)
             .map_err(TemplateError::Repository)?;
         Ok(Self::transition_from_parts(file, path_key, Fresh {
             id: status.id,
@@ -601,11 +601,12 @@ impl TemplateProcessor<Construction, New> {
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&view)
+            .save_raw_template_view(*template.id(), &view)
             .map_err(TemplateError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Created,
         }))
     }
 }
@@ -649,11 +650,12 @@ impl TemplateProcessor<Construction, Changed> {
             .save_template(&template)
             .map_err(TemplateError::Repository)?;
         repository
-            .save_raw_template_view(&view)
+            .save_raw_template_view(*template.id(), &view)
             .map_err(TemplateError::Repository)?;
 
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Updated,
         }))
     }
 }
@@ -681,6 +683,7 @@ impl TemplateProcessor<Construction, Fresh> {
             })?;
         Ok(Self::transition_from_parts(file, path_key, Completed {
             template,
+            outcome: ProcessOutcomeKind::Unchanged,
         }))
     }
 }
@@ -692,16 +695,46 @@ impl TemplateProcessor<Construction, Fresh> {
 /// Terminal phase after a template has been produced.
 pub(crate) struct CompletedPhase;
 
+/// Classifies how a completed template reached its terminal state.
+///
+/// Drives the per-template counts reported in
+/// [`ProcessSummary`](crate::ProcessSummary): a freshly created aggregate, an
+/// existing aggregate rebuilt from changed (or recovered) source, or a cached
+/// aggregate fetched unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessOutcomeKind {
+    /// A new template aggregate and raw view were created.
+    Created,
+    /// An existing template aggregate was rebuilt from changed source.
+    Updated,
+    /// A cached template aggregate was fetched without changes.
+    Unchanged,
+}
+
 #[derive(Debug)]
-/// Terminal status carrying the produced template aggregate.
+/// Terminal status carrying the produced template aggregate and how it was
+/// produced.
 pub(crate) struct Completed {
+    // Read by `into_template`, which is exercised only by the processor's own
+    // unit tests; production callers consume the outcome classification.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "template aggregate read only in tests")
+    )]
     template: Template,
+    outcome: ProcessOutcomeKind,
 }
 
 impl TemplateProcessor<CompletedPhase, Completed> {
     /// Consumes the completed processor and returns the template aggregate.
+    #[cfg(test)]
     pub(crate) fn into_template(self) -> Template {
         self.status.template
+    }
+
+    /// Returns how the completed template reached its terminal state.
+    pub(crate) const fn outcome(&self) -> ProcessOutcomeKind {
+        self.status.outcome
     }
 }
 
@@ -723,9 +756,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        repository::WriteRepository, storage::testing::InMemoryRepository,
-    };
+    use crate::storage::{WriteRepository, testing::InMemoryRepository};
 
     mod fixtures {
         use super::*;
@@ -964,6 +995,22 @@ mod tests {
             };
 
             let repo = InMemoryRepository::new();
+            // The StaleMetadata branch is only reached for a template already
+            // present in the repo; seed it so the path index resolves the
+            // view by id (path -> id -> view).
+            let template = Template::new(
+                id,
+                path_key.clone(),
+                TemplateName::try_new(
+                    std::path::Path::new("templates/test.md"),
+                    std::path::Path::new("templates"),
+                )
+                .unwrap(),
+                crate::aggregate::TemplateBody::try_new("content".to_owned())
+                    .unwrap(),
+            );
+            repo.save_template(&template).unwrap();
+
             let next = processor.sync_metadata(&repo).expect("sync metadata");
 
             assert_eq!(

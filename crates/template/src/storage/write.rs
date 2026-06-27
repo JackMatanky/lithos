@@ -11,8 +11,6 @@
 //! - **Multi-table coordination**: [`save_template`] atomically updates the
 //!   template aggregate, name index ([`TEMPLATE_ID_BY_NAME`]), and path index
 //!   ([`TEMPLATE_ID_BY_PATH`]).
-//! - **Batch operations**: [`save_many_raw_template_views`] wraps all saves in
-//!   a single transaction for atomicity.
 //!
 //! # Cross-Table Invariants
 //!
@@ -26,13 +24,12 @@
 //! If serialization or table write fails, the transaction is automatically
 //! rolled back by `redb`. No partial writes are visible to concurrent readers.
 //!
-//! [`WriteRepository`]: crate::repository::WriteRepository
+//! [`WriteRepository`]: crate::storage::WriteRepository
 //! [`RedbRepository`]: crate::storage::RedbRepository
 //! [`TEMPLATES`]: crate::storage::tables::TEMPLATES
 //! [`TEMPLATE_ID_BY_NAME`]: crate::storage::tables::TEMPLATE_ID_BY_NAME
 //! [`TEMPLATE_ID_BY_PATH`]: crate::storage::tables::TEMPLATE_ID_BY_PATH
 //! [`save_template`]: WriteRepository::save_template
-//! [`save_many_raw_template_views`]: WriteRepository::save_many_raw_template_views
 //! [`delete_template`]: WriteRepository::delete_template
 
 use redb::ReadableTable;
@@ -41,9 +38,8 @@ use trace_fs::PathKey;
 
 use crate::{
     aggregate::{Template, TemplateId},
-    repository::WriteRepository,
     storage::{
-        RedbRepository,
+        RedbRepository, WriteRepository,
         tables::{
             RAW_TEMPLATE_VIEWS, TEMPLATE_ID_BY_NAME, TEMPLATE_ID_BY_PATH,
             TEMPLATES,
@@ -93,8 +89,15 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         self.store
             .write(|tx| {
+                // Open all three tables once. `remove` is a no-op on absent
+                // keys, so unconditional opens are simpler than gating the
+                // index tables behind the aggregate lookup.
                 let mut templates_table =
                     tx.try_open_table(TEMPLATES.definition())?;
+                let mut name_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
+                let mut path_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
 
                 let template_indexes: Option<(String, PathKey)> =
                     templates_table
@@ -107,12 +110,7 @@ impl WriteRepository for RedbRepository {
                         .transpose()?;
 
                 if let Some((ref name, ref path)) = template_indexes {
-                    let mut name_index =
-                        tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
                     let _ = name_index.remove(name.as_str())?;
-
-                    let mut path_index =
-                        tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
                     let _ = path_index.remove(DbPathKey::from(path))?;
                 }
 
@@ -126,6 +124,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_raw_template_view(
         &self,
+        id: TemplateId,
         view: &RawTemplateView,
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         let bytes = view
@@ -136,7 +135,7 @@ impl WriteRepository for RedbRepository {
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
-                table.insert(DbPathKey::from(view.path()), bytes.as_slice())?;
+                table.insert(id, bytes.as_slice())?;
                 Ok(())
             })
             .map_err(crate::error::TemplateRepositoryError::from)
@@ -149,35 +148,71 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         self.store
             .write(|tx| {
+                // Resolve path -> id; a view is reachable only through its
+                // template's ID, so an absent path means an absent view.
+                let path_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
+                let Some(id) = path_index
+                    .get(DbPathKey::from(path))?
+                    .map(|guard| guard.value())
+                else {
+                    return Ok(());
+                };
+
                 let mut table =
                     tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
-                let _ = table.remove(DbPathKey::from(path))?;
+                let _ = table.remove(id)?;
                 Ok(())
             })
             .map_err(crate::error::TemplateRepositoryError::from)
     }
 
     #[inline]
-    fn save_many_raw_template_views(
+    fn delete_many_templates(
         &self,
-        views: &[RawTemplateView],
+        paths: &[PathKey],
     ) -> Result<(), crate::error::TemplateRepositoryError> {
-        let serialized: Vec<(PathKey, Vec<u8>)> = views
-            .iter()
-            .map(|view| {
-                view.to_bytes()
-                    .map(|bytes| (view.path().clone(), bytes.to_vec()))
-                    .map_err(crate::error::TemplateRepositoryError::from)
-            })
-            .collect::<Result<_, _>>()?;
+        // Nothing to delete: skip opening any tables.
+        if paths.is_empty() {
+            return Ok(());
+        }
 
         self.store
             .write(|tx| {
-                let mut table =
+                let mut path_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
+                let mut templates_table =
+                    tx.try_open_table(TEMPLATES.definition())?;
+                let mut name_index =
+                    tx.try_open_table(TEMPLATE_ID_BY_NAME.definition())?;
+                let mut views_table =
                     tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
 
-                for (path, bytes) in &serialized {
-                    table.insert(DbPathKey::from(path), bytes.as_slice())?;
+                for path in paths {
+                    // Resolve the template ID via the path index. A view is
+                    // keyed by its template's ID, so no ID means no view and
+                    // no aggregate to remove — skip silently.
+                    let Some(id) = path_index
+                        .remove(DbPathKey::from(path))?
+                        .map(|guard| guard.value())
+                    else {
+                        continue;
+                    };
+
+                    // Remove the view by ID (path -> id -> view).
+                    let _ = views_table.remove(id)?;
+
+                    let name = templates_table
+                        .get(id)?
+                        .map(|g| {
+                            Template::from_bytes(g.value())
+                                .map(|t| t.name().as_str().to_owned())
+                        })
+                        .transpose()?;
+                    if let Some(name) = name {
+                        let _ = name_index.remove(name.as_str())?;
+                    }
+                    let _ = templates_table.remove(id)?;
                 }
 
                 Ok(())
@@ -199,8 +234,9 @@ mod tests {
 
     use crate::{
         aggregate::{Template, TemplateId, TemplateName},
-        repository::{ReadRepository, WriteRepository},
-        storage::{RedbRepository, tables::TEMPLATES},
+        storage::{
+            ReadRepository, RedbRepository, WriteRepository, tables::TEMPLATES,
+        },
         views::RawTemplateView,
     };
 
@@ -382,24 +418,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn persists_view() {
-            let (_, repo) = setup_repo();
-            let view = test_view("templates/test.json");
-            let path = key("templates/test.json");
-
-            repo.save_raw_template_view(&view).unwrap();
-
-            let found = repo.find_raw_template_view(&path).unwrap();
-            assert!(found.is_some());
-        }
-
-        #[test]
         fn retrievable_by_path() {
             let (_, repo) = setup_repo();
-            let view = test_view("templates/hello.json");
-            let path = key("templates/hello.json");
+            let template = test_template("hello");
+            let path = template.path().clone();
+            let view = test_view(path.as_str());
 
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
 
             let found = repo.find_raw_template_view(&path).unwrap();
             assert!(found.is_some());
@@ -412,10 +438,12 @@ mod tests {
         #[test]
         fn removes_view() {
             let (_, repo) = setup_repo();
-            let view = test_view("templates/remove.json");
-            let path = key("templates/remove.json");
+            let template = test_template("remove");
+            let path = template.path().clone();
+            let view = test_view(path.as_str());
 
-            repo.save_raw_template_view(&view).unwrap();
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(*template.id(), &view).unwrap();
             repo.delete_raw_template_view(&path).unwrap();
 
             assert!(repo.find_raw_template_view(&path).unwrap().is_none());
@@ -424,32 +452,36 @@ mod tests {
         #[test]
         fn idempotent_on_missing() {
             let (_, repo) = setup_repo();
-            repo.delete_raw_template_view(&key("missing.json")).unwrap();
-            repo.delete_raw_template_view(&key("missing.json")).unwrap();
+            repo.delete_raw_template_view(&key("missing.md")).unwrap();
+            repo.delete_raw_template_view(&key("missing.md")).unwrap();
         }
     }
 
-    mod save_many_views {
+    mod delete_many_templates {
         use super::*;
-
-        #[test]
-        fn persists_all_views() {
-            let (_, repo) = setup_repo();
-            let v1 = test_view("templates/a.json");
-            let v2 = test_view("templates/b.json");
-            let path1 = key("templates/a.json");
-            let path2 = key("templates/b.json");
-
-            repo.save_many_raw_template_views(&[v1, v2]).unwrap();
-
-            assert!(repo.find_raw_template_view(&path1).unwrap().is_some());
-            assert!(repo.find_raw_template_view(&path2).unwrap().is_some());
-        }
 
         #[test]
         fn empty_slice_does_not_error() {
             let (_, repo) = setup_repo();
-            repo.save_many_raw_template_views(&[]).unwrap();
+            repo.delete_many_templates(&[]).unwrap();
+        }
+
+        #[test]
+        fn removes_template_and_view_for_each_path() {
+            let (_, repo) = setup_repo();
+            let template = test_template("delete-batch");
+            let path = template.path().clone();
+            repo.save_template(&template).unwrap();
+            repo.save_raw_template_view(
+                *template.id(),
+                &test_view(path.as_str()),
+            )
+            .unwrap();
+
+            repo.delete_many_templates(std::slice::from_ref(&path)).unwrap();
+
+            assert!(repo.find_template_by_path(&path).unwrap().is_none());
+            assert!(repo.find_raw_template_view(&path).unwrap().is_none());
         }
     }
 }

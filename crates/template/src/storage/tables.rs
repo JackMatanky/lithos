@@ -3,9 +3,9 @@
 //! These constants define the tables used by the `redb`-backed
 //! [`RedbRepository`] to persist template aggregates and raw template views.
 //!
-//! [`RedbRepository`]: super::RedbRepository
+//! [`RedbRepository`]: super::core::RedbRepository
 
-use trace_db::{PathTable, PathUuidTable, Table, UuidTable, impl_redb_uuid};
+use trace_db::{PathUuidTable, Table, UuidTable, impl_redb_uuid};
 
 use crate::aggregate::TemplateId;
 
@@ -44,13 +44,16 @@ pub(crate) const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
 pub(crate) const TEMPLATE_ID_BY_PATH: PathUuidTable<TemplateId> =
     PathUuidTable::new("template_id_by_path");
 
-/// Raw template views for staleness detection.
+/// Raw template views for staleness detection, indexed by template ID.
 ///
-/// Maps vault-relative paths to their raw template views, enabling change
-/// detection without re-parsing the full template content.
+/// Stores full `RawTemplateView` structures keyed by the owning template's ID
+/// (mirroring `RAW_SCHEMA_VIEWS` in the schema context). Path-based lookups
+/// resolve `path -> TemplateId` via [`TEMPLATE_ID_BY_PATH`] first, then
+/// `TemplateId -> RawTemplateView` here; a view therefore cannot exist without
+/// a matching template ID.
 ///
-/// Key: path string
+/// Key: `TemplateId`
 /// Value: serialized `RawTemplateView`
 #[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
-pub(crate) const RAW_TEMPLATE_VIEWS: PathTable<&[u8]> =
-    PathTable::new("raw_template_views");
+pub(crate) const RAW_TEMPLATE_VIEWS: UuidTable<TemplateId, &[u8]> =
+    UuidTable::new("raw_template_views");

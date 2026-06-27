@@ -16,10 +16,22 @@
 //!
 //! # Implementations
 //!
-//! - [`crate::storage::RedbRepository`] — `redb`-backed production adapter
+//! - [`crate::storage::core::RedbRepository`] — `redb`-backed production
+//!   adapter
 //! - [`crate::storage::testing::InMemoryRepository`] — in-memory test double
 //!
 //! Repository errors are reported via [`TemplateRepositoryError`].
+
+pub(crate) mod core;
+pub(crate) mod read;
+pub(crate) mod write;
+
+pub mod tables;
+
+#[cfg(any(test, feature = "testing"))]
+pub(crate) mod testing;
+
+pub use core::RedbRepository;
 
 use trace_fs::PathKey;
 
@@ -67,6 +79,26 @@ pub trait ReadRepository {
         path: &PathKey,
     ) -> Result<Option<TemplateId>, TemplateRepositoryError>;
 
+    /// Find template IDs for a set of vault-relative paths against a single
+    /// consistent view of the store.
+    ///
+    /// All paths are resolved atomically — every lookup observes the same
+    /// snapshot — so the result never mixes pre- and post-write states.
+    /// (Transactions are an adapter mechanism; the contract is the atomic
+    /// view, not the implementation.)
+    ///
+    /// Returns a vector with the same length and order as `paths`. Each entry
+    /// is `Some(id)` when a template exists at the corresponding path and
+    /// `None` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TemplateRepositoryError`] if the database read fails.
+    fn find_template_ids_by_paths(
+        &self,
+        paths: &[PathKey],
+    ) -> Result<Vec<Option<TemplateId>>, TemplateRepositoryError>;
+
     /// Find a template by its vault-relative path.
     ///
     /// Returns `None` if no template exists at the given path.
@@ -98,12 +130,17 @@ pub trait ReadRepository {
         path: &PathKey,
     ) -> Result<Option<RawTemplateView>, TemplateRepositoryError>;
 
-    /// List all raw template view paths currently cached.
+    /// List all template path keys currently cached.
+    ///
+    /// Returns the set of vault-relative path keys for every template the
+    /// repository knows about. Each entry corresponds to a persisted
+    /// [`super::aggregate::Template`] aggregate and its matching
+    /// [`super::views::RawTemplateView`].
     ///
     /// # Errors
     ///
     /// Returns [`TemplateRepositoryError`] if the database read fails.
-    fn list_raw_template_view_paths(
+    fn list_template_path_keys(
         &self,
     ) -> Result<Vec<PathKey>, TemplateRepositoryError>;
 
@@ -145,19 +182,28 @@ pub trait WriteRepository {
         id: TemplateId,
     ) -> Result<(), TemplateRepositoryError>;
 
-    /// Persist a raw template view to the store.
+    /// Persist a raw template view to the store, keyed by its template's ID.
+    ///
+    /// The view is indexed by `id` (its owning template's identity), mirroring
+    /// the template aggregate's own key. A view therefore always belongs to a
+    /// known template; it cannot exist on its own. The caller supplies the ID
+    /// alongside the view because the view value records only its path, not its
+    /// identity.
     ///
     /// # Errors
     ///
     /// Returns [`TemplateRepositoryError`] if the database write fails.
     fn save_raw_template_view(
         &self,
+        id: TemplateId,
         view: &RawTemplateView,
     ) -> Result<(), TemplateRepositoryError>;
 
     /// Delete a raw template view by vault-relative path.
     ///
-    /// Idempotent: returns `Ok(())` if the view does not exist.
+    /// Resolves the path to a template ID and removes the matching view.
+    /// Idempotent: returns `Ok(())` if no template (and hence no view) exists
+    /// for the path.
     ///
     /// # Errors
     ///
@@ -167,14 +213,27 @@ pub trait WriteRepository {
         path: &PathKey,
     ) -> Result<(), TemplateRepositoryError>;
 
-    /// Save multiple raw template views in a single transaction.
+    /// Delete templates for a set of vault-relative paths.
+    ///
+    /// For each path, removes both the [`Template`] aggregate (resolving the
+    /// ID from the path index) and the matching
+    /// [`RawTemplateView`]. Idempotent: paths
+    /// without a matching template aggregate or raw view are skipped without
+    /// error.
+    ///
+    /// # Atomicity
+    ///
+    /// All paths are processed against a single consistent view: either every
+    /// deletion commits or none do. Implementations must not leave a partial
+    /// deletion visible to concurrent readers — callers may rely on the batch
+    /// being all-or-nothing across adapters.
     ///
     /// # Errors
     ///
     /// Returns [`TemplateRepositoryError`] if the database write fails.
-    fn save_many_raw_template_views(
+    fn delete_many_templates(
         &self,
-        views: &[RawTemplateView],
+        paths: &[PathKey],
     ) -> Result<(), TemplateRepositoryError>;
 }
 
