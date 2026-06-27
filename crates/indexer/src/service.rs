@@ -641,6 +641,7 @@ mod tests {
         fn persists_indexed_entries() {
             let (_tmp, vault) = make_vault_root();
             let repo = empty_repo();
+            let repo_check = repo.clone();
             let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
             let service = IndexerService::new(vault.clone(), scanner, repo);
@@ -651,12 +652,18 @@ mod tests {
             let opts = IndexOptions::new(false, false);
             let result = service.run(&scope, opts).expect("run should succeed");
             assert_eq!(result.report().new_count(), 1);
+            let key = PathKey::try_new("doc.md").unwrap();
+            assert!(
+                repo_check.find_file_by_path(&key).unwrap().is_some(),
+                "New file should be persisted"
+            );
         }
 
         #[test]
         fn dry_run_skips_persistence() {
             let (_tmp, vault) = make_vault_root();
             let repo = empty_repo();
+            let repo_check = repo.clone();
             let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
             let service = IndexerService::new(vault.clone(), scanner, repo);
@@ -667,6 +674,11 @@ mod tests {
             let opts = IndexOptions::new(false, true);
             let result = service.run(&scope, opts).expect("run should succeed");
             assert_eq!(result.report().new_count(), 1);
+            let key = PathKey::try_new("doc.md").unwrap();
+            assert!(
+                repo_check.find_file_by_path(&key).unwrap().is_none(),
+                "dry_run must not persist"
+            );
         }
 
         #[test]
