@@ -4,6 +4,7 @@ category: enhancement
 label: ready-for-agent
 status: implemented
 branch: feat/07-template-service
+last_commit: fd10540a
 merge_commit:
 date_created: 2026-06-11
 date_completed:
@@ -375,16 +376,23 @@ Each cycle: write one failing test → implement minimum code to pass → move o
 
 Implemented on branch `feat/07-template-service` (worktree `.worktrees/07-template-service`). 2161/2161 workspace tests pass; `cargo clippy --all-targets --all-features --locked -- -D warnings` is clean.
 
-### Public API surface (lib.rs re-exports)
+### Public API surface (lib.rs re-exports) — current
 
 ```rust
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
-pub use engine::{TemplateEngine, TemplateEngineError, mini_jinja::MiniJinjaEngine};
-pub use error::{TemplateArtifactError, TemplateBodyError, TemplateError,
-                TemplateNameError, TemplateRepositoryError};
+pub use engine::{
+    RenderedTemplate, TemplateEngine, TemplateEngineError,
+    mini_jinja::MiniJinjaEngine,
+};
+pub use error::{
+    TemplateArtifactError, TemplateBodyError, TemplateError, TemplateNameError,
+    TemplateRepositoryError,
+};
 pub use raw::RawTemplate;
-pub use repository::{ReadRepository, Repository, WriteRepository};
-pub use service::{CreateInput, CreateTemplateOutcome, RenderedTemplate, TemplateService};
+pub use service::{
+    CreateInput, CreateTemplateOutcome, ProcessSummary, TemplateService,
+};
+pub use storage::{ReadRepository, Repository, WriteRepository};
 pub use views::RawTemplateView;
 ```
 
@@ -720,3 +728,44 @@ trace-template: 218/218; workspace: 2159/2159; verify green.
   `scan_templates`, processor). Whether to add a convenience `to_path`
   accessor is an open design question left for a separate change; not in
   scope for the raw-view re-key.
+
+### Structural cleanup — engine flattening and storage rename
+
+Post-review structural improvements to the template crate module hierarchy,
+removing two layers of unnecessary nesting. Implemented on
+`feat/07-template-service` after the raw-view re-key.
+
+- **Engine flattened** (`engine/mod.rs` → `engine.rs`, `engine/error.rs` deleted):
+  The engine port trait, `TemplateEngineError`, and module declarations now
+  live in a single flat `engine.rs`. `engine/error.rs` was absorbed into
+  `engine.rs`; `TemplateEngineError` uses `Box<dyn std::error::Error + Send +
+  Sync>` instead of importing `minijinja::Error` — the port never depends on
+  adapter types. Error-type tests moved to `engine/mini_jinja.rs`. The
+  `engine/` directory now contains only `mini_jinja.rs` (adapter) and
+  `rendered.rs` (return type). `lib.rs` module declaration changed from
+  `pub(crate) mod engine;` (implied `engine/mod.rs`) to the same line (now
+  resolves `engine.rs`).
+
+- **Storage renamed** (`repository.rs` → `storage.rs`, `storage/mod.rs` →
+  `storage/core.rs`):
+  The segregated repository traits (`ReadRepository`, `WriteRepository`,
+  `Repository`) moved from `repository.rs` to `storage.rs` (the module root).
+  The `RedbRepository` adapter moved from `storage/mod.rs` to
+  `storage/core.rs`. All imports and doc links updated across the crate.
+  `lib.rs` re-exports changed from `pub use repository::{...}` to `pub use
+  storage::{...}`.
+
+- **Deviation (storage `#[allow]` retained):** Six `#[allow(dead_code)]`
+  sites in `storage/tables.rs` and `storage/core.rs` are dead only in the lib
+  profile (live in the test profile), so `#[expect]` is unfulfillable across
+  cfgs. Retained as `#[allow(..., reason=...)]` per Apollo Ch.2 §2.4.
+
+trace-template: 221/221; workspace: 2167/2167; verify green (fd10540a).
+
+#### Deferred (not done)
+
+- **`TemplateConfigSpec::to_path`:** still open (unchanged from above).
+- **Audience questions from F23 (boxed error):** resolved by the engine
+  flattening — `TemplateEngineError` now uses boxed source, so the engine
+  port is adapter-free by construction. No separate CONTEXT.md exception
+  needed.
