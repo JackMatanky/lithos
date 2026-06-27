@@ -5,9 +5,9 @@ label: ready-for-agent
 status: implemented
 branch: feat/07-template-service
 last_commit: fd10540a
-merge_commit:
+merge_commit: 8f0edcc
 date_created: 2026-06-11
-date_completed:
+date_completed: 2026-06-27
 ---
 
 # Template Service
