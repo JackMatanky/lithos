@@ -22,8 +22,8 @@ use crate::{
     entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
     error::IndexerError,
     model::FsRecordId,
-    port::ScannerPort,
-    report::{IndexReport, SkippedEntry},
+    port::{ScanEntry, ScannerPort},
+    report::{IndexNodeFailure, IndexReport, SkippedEntry},
     repository::Repository,
     scan::{IndexOptions, IndexScope},
     summary::{DeletedNodes, IndexResult, IndexedNodes},
@@ -79,37 +79,25 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
 
         let mut ctx = IndexCollector::default();
         for result in self.scanner.walk(root, filters)? {
+            // Stream-level errors mean traversal itself broke → abort the run.
             let scan_entry = result?;
-            let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
-                .into_branch(&self.vault_root)?;
+            let entry_path = scan_entry_path(&scan_entry);
 
-            let completion = match branch {
-                EntryBranch::File(b) => match b
-                    .into_comparison_branch(&self.repo)?
-                {
-                    FileComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
-                    }
-                    FileComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
-                        .into_completion()
-                        .into_state(),
-                },
-                EntryBranch::Dir(b) => match b
-                    .into_comparison_branch(&self.repo)?
-                {
-                    DirComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
-                    }
-                    DirComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
-                        .into_completion()
-                        .into_state(),
-                },
-                EntryBranch::Completion(b) => b.into_state(),
-            };
-
-            ctx.record(completion);
+            match self.classify_entry(scan_entry, &ctx.dir_ids, opts.dry_run())
+            {
+                Ok(completion) => ctx.record(completion),
+                // Per-entry path errors are recoverable: record the failure
+                // and keep scanning ("scan as much as possible").
+                Err(IndexerError::Path(e)) => {
+                    ctx.failures.push(IndexNodeFailure::new(
+                        entry_path,
+                        e.to_string().into(),
+                    ));
+                }
+                // Repository/other errors are fatal — they will recur on every
+                // entry, so abort the whole run.
+                Err(other) => return Err(other),
+            }
         }
         let deleted = self.detect_deletions(&ctx.seen_paths)?;
 
@@ -127,7 +115,7 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             ctx.stale_count,
             deleted.count(),
             ctx.skipped.into_boxed_slice(),
-            Box::new([]),
+            ctx.failures.into_boxed_slice(),
         );
 
         Ok(IndexResult::new(
@@ -138,6 +126,49 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             deleted,
             report,
         ))
+    }
+
+    /// Drive one scan entry through the builder pipeline to a `Completion`.
+    ///
+    /// Returns `IndexerError::Path` for per-entry, recoverable failures (e.g.
+    /// an entry outside the vault root) and `IndexerError::Repository` for
+    /// fatal persistence failures; the caller decides soft-fail vs abort.
+    fn classify_entry(
+        &self,
+        scan_entry: crate::port::ScanEntry,
+        dir_ids: &HashMap<PathKey, FsRecordId>,
+        dry_run: bool,
+    ) -> Result<Completion, IndexerError> {
+        let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
+            .into_branch(&self.vault_root)?;
+
+        let completion = match branch {
+            EntryBranch::File(b) => {
+                match b.into_comparison_branch(&self.repo)? {
+                    FileComparisonBranch::Match(b) => {
+                        b.into_completion().into_state()
+                    }
+                    FileComparisonBranch::Mismatch(b) => b
+                        .into_indexed(&self.repo, dir_ids, dry_run)?
+                        .into_completion()
+                        .into_state(),
+                }
+            }
+            EntryBranch::Dir(b) => {
+                match b.into_comparison_branch(&self.repo)? {
+                    DirComparisonBranch::Match(b) => {
+                        b.into_completion().into_state()
+                    }
+                    DirComparisonBranch::Mismatch(b) => b
+                        .into_indexed(&self.repo, dir_ids, dry_run)?
+                        .into_completion()
+                        .into_state(),
+                }
+            }
+            EntryBranch::Completion(b) => b.into_state(),
+        };
+
+        Ok(completion)
     }
 
     /// Detect deleted nodes: paths that exist in the repository but were not
@@ -169,6 +200,18 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     }
 }
 
+/// Best-effort path of a scan entry, for failure reporting.
+///
+/// A skipped entry already carries its path; file/dir entries expose their
+/// runtime path. Used only to key an `IndexNodeFailure`.
+fn scan_entry_path(entry: &ScanEntry) -> std::path::PathBuf {
+    match entry {
+        ScanEntry::File(node) => node.path().as_path().to_path_buf(),
+        ScanEntry::Dir(node) => node.path().as_path().to_path_buf(),
+        ScanEntry::Skipped(s) => s.path.clone(),
+    }
+}
+
 // ─── Scan accumulator ──────────────────────────────────────────────
 
 /// Accumulates scan results during an indexer run.
@@ -182,6 +225,7 @@ pub(super) struct IndexCollector {
     pub(super) seen_paths: HashSet<PathKey>,
     pub(super) dir_ids: HashMap<PathKey, FsRecordId>,
     pub(super) skipped: Vec<SkippedEntry>,
+    pub(super) failures: Vec<IndexNodeFailure>,
     pub(super) new_count: usize,
     pub(super) fresh_count: usize,
     pub(super) stale_count: usize,
@@ -373,6 +417,128 @@ mod tests {
         }
     }
 
+    // ─── Repository double that fails on write ──────────────────
+
+    /// Reads succeed (returning empty), but every write fails with a
+    /// repository error — used to prove fatal errors abort the run.
+    struct FailingWriteRepository;
+
+    impl ReadRepository for FailingWriteRepository {
+        fn find_file(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_dir(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_file_by_path(
+            &self,
+            _path: &PathKey,
+        ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_dir_by_path(
+            &self,
+            _path: &PathKey,
+        ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn list_files_by_parent(
+            &self,
+            _parent_id: FsParentId,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_dirs_by_parent(
+            &self,
+            _parent_id: FsParentId,
+        ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_files_by_format(
+            &self,
+            _format: FileFormat,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_files_by_basename(
+            &self,
+            _basename: &str,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn all_paths(&self) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+    }
+
+    impl WriteRepository for FailingWriteRepository {
+        fn save_file(
+            &self,
+            _record: &FileRecord,
+        ) -> Result<(), IndexerRepositoryError> {
+            Err(IndexerRepositoryError::Storage(
+                traces_db::DbError::Serialization("write failed".into()),
+            ))
+        }
+
+        fn save_dir(
+            &self,
+            _record: &DirRecord,
+        ) -> Result<(), IndexerRepositoryError> {
+            Err(IndexerRepositoryError::Storage(
+                traces_db::DbError::Serialization("write failed".into()),
+            ))
+        }
+
+        fn delete_file(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn delete_dir(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn save_many_records(
+            &self,
+            _files: &[FileRecord],
+            _dirs: &[DirRecord],
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn delete_many_records(
+            &self,
+            _file_ids: &[FsRecordId],
+            _dir_ids: &[FsRecordId],
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn clear(&self) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+    }
+
     // ─── Cycle 2 — IndexerService::run() ────────────────────────
 
     mod service_run {
@@ -495,6 +661,56 @@ mod tests {
                     crate::error::ScannerError::Traversal { .. }
                 ))
             ));
+        }
+
+        #[test]
+        fn per_entry_path_error_records_failure_and_continues() {
+            let (_tmp, vault) = make_vault_root();
+            // A file outside the vault root fails `as_key` → IndexerError::Path
+            // (per-entry, recoverable). A valid in-vault file still indexes.
+            let outside = tempfile::TempDir::new().unwrap();
+            let bad_node = {
+                let p = outside.path().join("orphan.md");
+                std::fs::File::create(&p).unwrap();
+                let fp = FilePath::try_new(p).unwrap();
+                let meta = FileMetadata::new(
+                    FsTimes::new(Some(SystemTime::now()), None),
+                    0,
+                    false,
+                );
+                traces_fs::FileNode::new(fp, meta)
+            };
+            let good_node = make_file_node(&vault, "ok.md");
+            let scanner = MockScanner::new(vec![
+                Ok(ScanEntry::File(bad_node)),
+                Ok(ScanEntry::File(good_node)),
+            ]);
+            let repo = empty_repo();
+            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service
+                .run(&scope, IndexOptions::new(false, false))
+                .expect("path error must not abort the run");
+            assert_eq!(result.report().failures().len(), 1);
+            assert_eq!(result.report().new_count(), 1);
+        }
+
+        #[test]
+        fn repository_error_still_aborts() {
+            let (_tmp, vault) = make_vault_root();
+            let good_node = make_file_node(&vault, "ok.md");
+            let scanner = MockScanner::single_file(good_node);
+            let repo = FailingWriteRepository;
+            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service.run(&scope, IndexOptions::new(false, false));
+            assert!(matches!(result, Err(IndexerError::Repository(_))));
         }
 
         // ─── Capturing mock for scope delegation tests ──────

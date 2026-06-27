@@ -169,9 +169,7 @@ mod tests {
 
     use traces_app::index::{IndexOptions, IndexScope, ScanFilters};
     use traces_fs::DirPath;
-    use traces_indexer::{
-        FsRecordId, FsRecordType, IndexNodeFailure, IndexReport,
-    };
+    use traces_indexer::{IndexNodeFailure, IndexReport};
 
     use super::{build_index_command, write_report_human, write_report_json};
     use crate::{cli::IndexArgs, error::CliError};
@@ -191,8 +189,7 @@ mod tests {
         let failures: Vec<IndexNodeFailure> = (0..failed)
             .map(|i| {
                 IndexNodeFailure::new(
-                    FsRecordId::default(),
-                    FsRecordType::File,
+                    PathBuf::from(format!("failed-{i}.md")),
                     format!("err-{i}").into_boxed_str(),
                 )
             })

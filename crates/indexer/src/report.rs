@@ -6,8 +6,6 @@
 
 use std::path::PathBuf;
 
-use super::model::{FsRecordId, FsRecordType};
-
 /// A summary report containing metrics and failures from an indexer run.
 #[derive(Debug, Clone)]
 pub struct IndexReport {
@@ -99,10 +97,13 @@ impl IndexReport {
 }
 
 /// A failure record for a single filesystem node that could not be indexed.
+///
+/// A pre-classification failure has no assigned record id and no known
+/// file-vs-directory kind, so the failure is keyed by the entry's path plus
+/// the error message — mirroring [`SkippedEntry`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexNodeFailure {
-    id: FsRecordId,
-    kind: FsRecordType,
+    path: PathBuf,
     error: Box<str>,
 }
 
@@ -110,26 +111,18 @@ impl IndexNodeFailure {
     /// Creates a new failure record.
     #[inline]
     #[must_use]
-    pub fn new(id: FsRecordId, kind: FsRecordType, error: Box<str>) -> Self {
+    pub fn new(path: PathBuf, error: Box<str>) -> Self {
         Self {
-            id,
-            kind,
+            path,
             error,
         }
     }
 
-    /// Returns the node identifier.
+    /// Returns the path of the entry that failed to index.
     #[inline]
     #[must_use]
-    pub fn id(&self) -> FsRecordId {
-        self.id
-    }
-
-    /// Returns the node type (file or directory).
-    #[inline]
-    #[must_use]
-    pub fn kind(&self) -> FsRecordType {
-        self.kind
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
     }
 
     /// Returns the error message for this failure.
@@ -167,7 +160,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::model::FsRecordId;
 
     #[test]
     fn stores_counts_and_failures() {
@@ -206,15 +198,12 @@ mod tests {
     }
 
     #[test]
-    fn stores_id_kind_and_error() {
-        let id = FsRecordId::new();
+    fn stores_path_and_error() {
         let failure = IndexNodeFailure::new(
-            id,
-            FsRecordType::File,
+            PathBuf::from("notes/bad.md"),
             "permission denied".into(),
         );
-        assert_eq!(failure.id(), id);
-        assert_eq!(failure.kind(), FsRecordType::File);
+        assert_eq!(failure.path(), PathBuf::from("notes/bad.md"));
         assert_eq!(failure.error(), "permission denied");
     }
 }
