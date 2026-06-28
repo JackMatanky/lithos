@@ -22,3 +22,4 @@
 pub mod bootstrap;
 pub mod error;
 pub mod index;
+pub mod template;

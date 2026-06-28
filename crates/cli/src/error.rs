@@ -205,7 +205,8 @@ impl CliError {
             Self::Bootstrap(AppError::Discovery(discovery_err)) => {
                 exit_code_for_discovery(discovery_err)
             }
-            Self::Bootstrap(AppError::Config(_)) | Self::InvalidPath(_) => 2,
+            Self::Bootstrap(AppError::Config(_) | AppError::Template(_))
+            | Self::InvalidPath(_) => 2,
             Self::Bootstrap(AppError::Indexer(_))
             | Self::Write {
                 ..
@@ -549,6 +550,25 @@ mod tests {
                 err.exit_code(),
                 2,
                 "Config error must map to exit code 2"
+            );
+        }
+
+        #[test]
+        fn returns_2_when_template_error() {
+            let name = traces_template::TemplateName::try_new(
+                std::path::Path::new("templates/missing.md"),
+                std::path::Path::new("templates"),
+            )
+            .expect("expected template name");
+            let err = CliError::Bootstrap(AppError::Template(
+                traces_template::TemplateError::NotFound {
+                    name,
+                },
+            ));
+            assert_eq!(
+                err.exit_code(),
+                2,
+                "Template error must map to exit code 2"
             );
         }
 

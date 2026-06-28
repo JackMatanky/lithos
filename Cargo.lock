@@ -1660,6 +1660,7 @@ dependencies = [
  "traces-fs",
  "traces-indexer",
  "traces-settings",
+ "traces-template",
  "tracing",
  "uuid",
 ]
@@ -1681,6 +1682,7 @@ dependencies = [
  "traces-fs",
  "traces-indexer",
  "traces-settings",
+ "traces-template",
  "tracing",
 ]
 

@@ -18,7 +18,6 @@ impl_redb_uuid!(TemplateId);
 ///
 /// Key: `TemplateId`
 /// Value: rkyv-serialized `Template`
-#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
 pub(crate) const TEMPLATES: UuidTable<TemplateId, &[u8]> =
     UuidTable::new("templates");
 
@@ -29,7 +28,6 @@ pub(crate) const TEMPLATES: UuidTable<TemplateId, &[u8]> =
 ///
 /// Key: template name string
 /// Value: serialized `TemplateId`
-#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
 pub(crate) const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
     Table::new("template_id_by_name");
 
@@ -40,7 +38,6 @@ pub(crate) const TEMPLATE_ID_BY_NAME: Table<&str, &[u8]> =
 ///
 /// Key: path string
 /// Value: serialized `TemplateId`
-#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
 pub(crate) const TEMPLATE_ID_BY_PATH: PathUuidTable<TemplateId> =
     PathUuidTable::new("template_id_by_path");
 
@@ -54,6 +51,5 @@ pub(crate) const TEMPLATE_ID_BY_PATH: PathUuidTable<TemplateId> =
 ///
 /// Key: `TemplateId`
 /// Value: serialized `RawTemplateView`
-#[allow(dead_code, reason = "used by read.rs/write.rs trait impls")]
 pub(crate) const RAW_TEMPLATE_VIEWS: UuidTable<TemplateId, &[u8]> =
     UuidTable::new("raw_template_views");
