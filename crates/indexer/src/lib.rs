@@ -1,4 +1,7 @@
 #![feature(trivial_bounds)]
+// Enforce R15: fail the build if a direct dependency stops being used. Scoped
+// to this crate (the workspace-wide lint is too noisy across other crates).
+#![deny(unused_crate_dependencies)]
 //! Indexer bounded context for filesystem node scanning and indexing.
 //!
 //! This module owns the filesystem scanning and indexing pipeline. It sits
