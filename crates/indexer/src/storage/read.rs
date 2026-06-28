@@ -288,7 +288,6 @@ mod tests {
         use crate::storage::tables::FILE_IDS_BY_BASENAME;
 
         #[test]
-        #[inline]
         fn find_file_returns_none_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -296,7 +295,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_file_returns_record_when_present() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -331,7 +329,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_returns_none_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -339,7 +336,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_returns_record_when_present() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -371,7 +367,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_file_by_path_returns_record_when_path_exists() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -411,7 +406,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_by_path_returns_record_when_path_exists() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();

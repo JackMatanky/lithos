@@ -491,7 +491,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[inline]
         fn save_file_persists_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -542,7 +541,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn save_dir_persists_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -587,7 +585,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[inline]
         fn delete_file_removes_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -630,7 +627,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_file_is_idempotent_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -640,7 +636,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_dir_removes_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -676,7 +671,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_dir_is_idempotent_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -690,7 +684,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[inline]
         fn save_file_cleans_stale_indexes_when_record_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -757,7 +750,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn save_dir_cleans_stale_path_index_when_path_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -810,7 +802,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[inline]
         fn save_many_records_persists_files_and_dirs_together() {
             let (_tempdir, repo) = setup_repo();
 
@@ -853,7 +844,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_many_records_removes_files_and_dirs_together() {
             let (_tempdir, repo) = setup_repo();
 
