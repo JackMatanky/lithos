@@ -20,7 +20,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 4. **`TryFrom<RawConfig>`** replaces `ConfigFileProcessor` + `ConfigType` for domain conversion
 5. **Unified `RawConfig`** (all `Option` fields, serde Deserialize for TOML/JSON/YAML)
 6. **Symlink-based trust/ignore system** for security (mise-inspired)
-7. **Discovery is internal** — no `DiscoveryPort`, no `DiscoveryService`, no `DiscoveryProcessor`
+7. **Discovery is internal** — no `DiscoveryPort`, no `DiscoveryService`. Internal `DiscoveryProcessor` typestate pipeline is kept.
 8. **`DiscoveryEnv` → `SettingsEnvVars`** — internal, read by `SettingsService`
 9. **`BuildContext`** — the input DTO from CLI (flags + overrides, NOT env vars)
 10. **`BootstrapRunner`** — composition root between CLI and SettingsService
@@ -64,7 +64,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 │    ┌──────────────────────────────┐    │
 │    │  SettingsEnvVars (internal)  │    │
 │    │  Discovery (internal)        │    │
-│    │    - walk, probe, policy     │    │
+│  │    - walk, probe, policy     │    │
 │    │  ConfigBuilder (typestate)   │    │
 │    │    - Init→Tracked→Trusted    │    │
 │    │      →Loaded→Validated→Ready │    │
@@ -79,7 +79,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 - `build_config(&self, ctx: &BuildContext) → Result<AppConfig, SettingsError>` — full pipeline
 - `discover(&self, ctx: &BuildContext) → Result<DiscoveryResult, SettingsError>` — discovery subset (for commands that only need vault root)
 
-**No `DiscoveryPort`.** Discovery is an internal module with sub-modules: `walk`, `probe`, `policy`. No `DiscoveryService`, no `DiscoveryProcessor`.
+**No `DiscoveryPort`.** Discovery is an internal module. `DiscoveryService` and `DiscoveryPort` are removed, but the internal `DiscoveryProcessor` typestate pipeline is kept as the core discovery engine. Sub-modules: `walk`, `probe`, `processor`, `context`, `error`. Path definitions consolidate: `location.rs` holds all path constants (marker filenames, boundary markers, tracking/trust subdir names, cache subdirs); `os_dirs.rs` holds XDG + per-platform directory resolution. No more `policy.rs` or scattered path literals.
 
 **`BuildContext`** (input DTO, constructed by BootstrapRunner):
 ```rust
@@ -195,6 +195,23 @@ fn deserialize_config(path: &Path, content: &str) -> Result<RawConfig> {
 
 `serde_json` and `serde_yaml` are optional features (default: TOML only).
 
+### Path Definitions
+
+Path constants split across two files:
+
+**`discovery/location.rs`** — canonical path constants (flat `&[&str]` slices):
+- Config marker filenames: exact names like `"traces.toml"`, `"traces.json"`, `".traces/config.toml"` — no `MarkerPattern` struct or format-extension iteration. Probe just checks `path.exists()` for each name.
+- Boundary markers: `".git"`, `".workspace"`
+- Tracking/trust subdirectory names: `"TRACKED_CONFIGS"`, `"TRUSTED_CONFIGS"`, `"IGNORED_CONFIGS"`
+- Cache subdirectory: `".traces/cache"` (relative to vault root)
+
+**`discovery/os_dirs.rs`** — per-platform directory resolution:
+- `HOME` — user home, test- redirected to fixtures
+- `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` — per-OS `LazyLock` with platform fallbacks (macOS `~/Library/*`, Windows `%APPDATA%`, Linux `~/.config` etc.)
+- What was in `env.rs`'s static section, extracted out
+
+No other module defines filesystem path patterns.
+
 ### Removed Types
 
 - `VaultId` — ephemeral UUID, no value without persistence
@@ -220,8 +237,8 @@ fn deserialize_config(path: &Path, content: &str) -> Result<RawConfig> {
 - `config/events.rs` — `Events`, `ConfigUpdated` (no persistence means no event-driven updates)
 - `config/diagnostics.rs` — already unused
 - `discovery/service.rs` — `DiscoveryService` (replaced by internal module)
-- `discovery/processor.rs` — `DiscoveryProcessor` typestate (replaced by internal walk/probe/policy)
-- `discovery/mod.rs` — `DiscoveryPort` (removed, no port needed for internal function)
+- `discovery/port.rs` — `DiscoveryPort` (removed, no port needed for internal function)
+- `discovery/policy.rs` — `MarkerPattern` struct and constants (folded into `dirs.rs` as flat `&[&str]`)
 - `aggregate.rs` — `Version` removed, `Config` → `AppConfig`, `pending_events` removed
 - `vault.rs` — `VaultId`, `VaultVersion`, `VaultRoot`, `VaultName`, `AppVersion`, `Metadata` removed; `Vault` → `LocalConfig`
 - `global.rs` — `GlobalVersion` removed; `Global` → `GlobalConfig`
