@@ -16,7 +16,7 @@ use crate::{
     model::{DirRecord, FileRecord, FsParentId, FsRecordId},
     port::ScanEntry,
     report::SkippedEntry,
-    repository::Repository,
+    repository::{ReadRepository, Repository},
 };
 
 // ─── State types ─────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ impl EntryBuilder<Init> {
 impl EntryBuilder<FileComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &dyn Repository,
+        repo: &dyn ReadRepository,
     ) -> Result<FileComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_file_by_path(&state.path_key)?;
@@ -232,7 +232,7 @@ impl EntryBuilder<FileComparison> {
 impl EntryBuilder<DirComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &dyn Repository,
+        repo: &dyn ReadRepository,
     ) -> Result<DirComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_dir_by_path(&state.path_key)?;
