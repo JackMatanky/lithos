@@ -107,8 +107,13 @@ impl IndexerService {
                         e.to_string().into(),
                     ));
                 }
-                // Repository/other errors are fatal — they will recur on every
-                // entry, so abort the whole run.
+                // Repository errors are fatal — they will recur on every entry,
+                // so abort the whole run. `IndexerError` is
+                // `#[non_exhaustive]`; any future variant falls
+                // here and is classified fatal (fail-closed).
+                // `repository_error_still_aborts` pins this for
+                // the Repository arm; revisit this arm if a new *recoverable*
+                // variant is added.
                 Err(other) => return Err(other),
             }
         }
