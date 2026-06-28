@@ -197,8 +197,8 @@ impl IndexerService {
         seen: &HashSet<PathKey>,
     ) -> Result<DeletedNodes, IndexerError> {
         let all = self.repo.all_paths()?;
-        let mut file_ids: Vec<crate::model::FsRecordId> = Vec::new();
-        let mut dir_ids: Vec<crate::model::FsRecordId> = Vec::new();
+        let mut file_ids: Vec<FsRecordId> = Vec::new();
+        let mut dir_ids: Vec<FsRecordId> = Vec::new();
 
         for path in &all {
             if seen.contains(path) {

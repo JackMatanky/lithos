@@ -1,6 +1,6 @@
 //! Indexing pipeline wiring and composition.
 //!
-//! This module acts as the composition root for the `trace-indexer` bounded
+//! This module acts as the composition root for the `traces-indexer` bounded
 //! context. It is responsible for instantiating concrete adapters (like
 //! `WalkdirAdapter` and `RedbRepository`), injecting them into the
 //! `IndexerService` port boundary, and exposing a strictly-typed execution flow

@@ -39,16 +39,6 @@ pub use summary::{DeletedNodes, IndexResult, IndexedNodes};
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_indexer_exports() {
-        let _: Option<&dyn ReadRepository> = None;
-        let _: Option<&dyn WriteRepository> = None;
-        let _: Option<&dyn Repository> = None;
-        let _: Option<RedbRepository> = None;
-        let _: Option<InMemoryRepository> = None;
-        let _: Option<&dyn ScannerPort> = None;
-    }
-
     /// Compile-time guard that the crate's public surface stays exported.
     /// Naming any of these types fails to compile if a `pub use` is dropped.
     /// Never executed — it only needs to type-check.
