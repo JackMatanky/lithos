@@ -22,6 +22,8 @@ pub(crate) mod tables;
 pub(crate) mod write;
 
 #[cfg(test)]
+pub(crate) mod contract;
+#[cfg(test)]
 pub(crate) mod testing;
 
 use std::sync::Arc;

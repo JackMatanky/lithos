@@ -439,6 +439,17 @@ mod tests {
         )
     }
 
+    mod contract {
+        use super::setup_repo;
+        use crate::storage::contract::assert_repository_contract;
+
+        #[test]
+        fn redb_repository_satisfies_repository_contract() {
+            let (_tempdir, repo) = setup_repo();
+            assert_repository_contract(&repo);
+        }
+    }
+
     mod duplicate_path {
         use super::*;
 

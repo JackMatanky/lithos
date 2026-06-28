@@ -406,6 +406,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn in_memory_repository_satisfies_repository_contract() {
+        use crate::storage::contract::assert_repository_contract;
+        assert_repository_contract(&InMemoryRepository::new());
+    }
+
+    #[test]
     fn all_paths_deduplicates_across_file_and_dir_tables() {
         let repo = InMemoryRepository::new();
         let shared = PathKey::try_new("shared").unwrap();
