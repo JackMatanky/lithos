@@ -48,12 +48,9 @@ pub fn run_template_create(
             ),
         ))?;
     let repo = RedbRepository::new(Arc::new(store));
-    let writer = FsWriter::new(
-        config.vault_metadata().root().as_dir_path().as_path(),
-    );
+    let writer = FsWriter::new(spec.root().as_path());
     let engine = MiniJinjaEngine::configured();
     let mut service = TemplateService::new(repo, writer, engine, spec);
-    service.process_all().map_err(AppError::Template)?;
     service.create(input).map_err(AppError::Template)
 }
 ```
@@ -63,8 +60,7 @@ The function:
 - Opens a `Store` at `cache_dir / templates.db`
 - Constructs `RedbRepository`, `FsWriter`, `MiniJinjaEngine`
 - Constructs `TemplateService`
-- Runs `process_all()` to sync templates from disk into the repo
-- Runs `create()` and returns the outcome
+- Runs `create()` — `verify_path` handles per-template freshness without a full tree walk
 
 ### Error mapping
 
@@ -94,55 +90,42 @@ No `Template`-specific exit codes or user-facing message formatting belongs here
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Add `traces-app` composition root wiring for `TemplateService` so the CLI command issue can invoke template rendering without adapter construction knowledge.
+**Summary:** Wire `TemplateService` into the `traces-app` composition root so CLI commands can invoke template rendering without knowing adapter construction.
 
 **Current behavior:**
-`traces-app` has no dependency on `traces-template`, no `template` module, and no `AppError::Template` variant. `RedbRepository` in `traces-template` carries `#[allow(dead_code)]` because it has no production caller.
+`traces-app` has no dependency on the template context, no `template` module, no `Template` error variant. `RedbRepository` in the template crate carries `#[allow(dead_code)]` on its struct and constructor because no production caller exists.
 
 **Desired behavior:**
-`traces-app` composes the template service from concrete adapters — same pattern as `index.rs`/`run_index`:
-
-```rust
-// wires Store → RedbRepository → FsWriter → MiniJinjaEngine → TemplateService
-// then calls process_all + create
-pub fn run_template_create(
-    config: &Config,
-    cache_dir: &DirPath,
-    input: &CreateTemplateInput,
-) -> Result<CreateTemplateOutcome, AppError>
-```
+`traces-app` exposes `run_template_create(config, cache_dir, input) -> Result<CreateTemplateOutcome, AppError>` — the single execution flow that wires concrete adapters (`Store`, `RedbRepository`, `FsWriter`, `MiniJinjaEngine`) into `TemplateService` and calls `create()`. No `process_all()` call: `create()` self-heals stale entries via internal `verify_path()`. The writer root comes from `TemplateConfigSpec::root()` (validated during spec construction), not a long config chain.
 
 **Key interfaces:**
-- `traces_app::template::run_template_create` — the sole execution flow
 - `Config::to_template_spec()` — derives `TemplateConfigSpec` from resolved config
-- `traces_template::storage::RedbRepository::new(Arc<Store>)` — production repo
-- `traces_template::storage::TEMPLATE_DB_FILENAME` — `"templates.db"`
-- `traces_template::MiniJinjaEngine::configured()` — production engine
-- `traces_fs::FsWriter::new(&Path)` — filesystem writer
-- `traces_template::TemplateService::new(repo, writer, engine, spec)` — service
-- `traces_template::CreateTemplateInput` — input DTO
-- `traces_template::CreateTemplateOutcome` — result enum (Preview | Created)
-- `traces_app::error::AppError::Template(TemplateError)` — error variant
+- `RedbRepository::new(Arc<Store>)` — production repository adapter
+- `FsWriter::new(&Path)` — filesystem writer for rendered output
+- `MiniJinjaEngine::configured()` — production rendering engine
+- `TemplateService::new(repo, writer, engine, spec)` — orchestrator
+- `CreateTemplateInput` — input DTO (name, output path, context, dry_run flag)
+- `CreateTemplateOutcome` — result enum (Preview | Created)
+- `AppError::Template(TemplateError)` — error variant with `#[from]` conversion
 
 **Key design decisions:**
-- `run_template_create` runs `process_all()` before every `create()` — the repository is the source of truth and `verify_path` handles per-template freshness. A single `process_all` call at composition-root startup was considered but rejected per AR-1 option 3 in issue 07: `create()` self-heals stale entries without walking the full tree.
-- DB path is `cache_dir / "templates.db"` — same cache convention used by `run_index` (`index.redb`).
-- No `TemplateCommand` wrapper struct — `CreateTemplateInput` is the input type directly, keeping the surface thin per the index pattern where `IndexCommand` exists only because it has multiple fields beyond the service input.
-- `Config` (not `TemplateConfigSpec`) is the parameter to keep the app module decoupled from settings internals.
+- No `process_all()` — `create()` calls `verify_path()` per-template (AR-1 option 3)
+- DB path follows `cache_dir / "templates.db"` convention (same as index)
+- `Config` is the parameter (not `TemplateConfigSpec`) — keeps app decoupled from settings internals
+- No `TemplateCommand` wrapper — `CreateTemplateInput` is the input type directly
 
 **Acceptance criteria:**
-- [ ] `traces-template` dep in `crates/app/Cargo.toml`
-- [ ] `crates/app/src/template.rs` with `run_template_create()`
-- [ ] `AppError::Template(TemplateError)` with `#[from]`
-- [ ] `#[allow(dead_code)]` removed from `RedbRepository`
+- [ ] `traces-template` dependency added to `crates/app/Cargo.toml`
+- [ ] `pub fn run_template_create` exported from the `template` module with the correct signature
+- [ ] `AppError::Template(TemplateError)` variant with `#[from]` conversion
 - [ ] `crates/app/src/lib.rs` registers `pub mod template`
-- [ ] No panics or unwraps in production
-- [ ] `TEMPLATE_DB_FILENAME` const exported from `traces_template::storage` and consumed by app wiring (no dead_code warning)
+- [ ] `RedbRepository` struct and `new()` have `#[allow(dead_code)]` removed
+- [ ] `TEMPLATE_DB_FILENAME` const consumed by app wiring (remove dead_code annotation)
 - [ ] Tests cover: happy path, `Store::open` failure → `AppError::Template`, `Config::to_template_spec` failure → `AppError::Config`
+- [ ] No `unwrap()` or `panic!()` in production code
 - [ ] `mise run test` passes
 
 **Out of scope:**
 - CLI command handler (deferred to issue 09)
-- Error-to-exit-code mapping (belongs in CLI)
-- `Template` variant on `CliError` (belongs in CLI)
-- User-facing error message formatting (belongs in CLI)
+- Error-to-exit-code mapping (belongs in CLI handler)
+- User-facing error message formatting (belongs in CLI handler)
