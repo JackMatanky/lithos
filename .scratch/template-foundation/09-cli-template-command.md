@@ -24,14 +24,14 @@ Add the `traces template` command to the CLI as a thin orchestration adapter ove
 Command shape:
 ```
 traces template --input <template-name> --output <vault-relative-path> [--var key=value]...
-traces template --input <template-name> --dry-run [--var key=value]...
+traces template --input <template-name> (-n | --dry-run) [--var key=value]...
 ```
 
 Short forms `-i`, `-o` are accepted. `--var` may be repeated; values containing `=` are split on the first `=` only (e.g. `--var url=https://example.com/foo=bar` → key `url`, value `https://example.com/foo=bar`).
 
 Behavior:
-- Normal render: calls `TemplateService::create()`, prints the created vault-relative path to stdout on success.
-- Dry-run: calls the dry-run variant, prints the rendered output to stdout without writing any file.
+- Normal render: calls `traces_app::template::run_template_create()`, prints the created vault-relative path to stdout on success.
+- Dry-run: calls `traces_app::template::run_template_create()` with `dry_run: true`, prints the rendered output to stdout without writing any file.
 - The CLI adapter maps `TemplateError` variants to explicit user-facing messages — it does not forward raw `TemplateError::to_string()` output.
 
 Deferred (out of scope for this slice):
@@ -44,15 +44,15 @@ Deferred (out of scope for this slice):
 ## Acceptance criteria
 
 - [ ] `traces template --input <name> --output <path>` renders a template and prints the created path
-- [ ] `traces template --input <name> --dry-run` prints the rendered content without creating a file
-- [ ] `-i` and `-o` short flags are accepted
+- [ ] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content without creating a file
+- [ ] `-i`, `-o`, and `-n` short flags are accepted
 - [ ] `--var key=value` is accepted and repeated flags build the context map
 - [ ] `--var` values containing `=` are correctly split on the first `=` only
 - [ ] Missing `--input` or conflicting `--output`/`--dry-run` flags produce a clear usage error
 - [ ] `TemplateError` variants are mapped to user-facing messages (not raw `Display` forwarding)
 - [ ] Success output prints the vault-relative path of the created file
 - [ ] No `unwrap()` or `panic!` in CLI code
-- [ ] Tests cover: render command (normal path), dry-run command, repeated `--var` flags including values with `=`, output path reporting, structured failure paths (missing template, engine error, path validation error, destination exists)
+- [ ] Tests cover: render command (normal path), dry-run command (`--dry-run` and `-n`), repeated `--var` flags including values with `=`, output path reporting, structured failure paths (missing template, engine error, path validation error, destination exists)
 
 ## Blocked by
 
@@ -77,42 +77,41 @@ A `traces template` subcommand is added to the CLI (in `traces-cli` or wherever 
 **Command shapes:**
 ```
 traces template --input <template-name> --output <vault-relative-path> [--var key=value]...
-traces template --input <template-name> --dry-run [--var key=value]...
+traces template --input <template-name> (-n | --dry-run) [--var key=value]...
 ```
 
-Short forms: `-i` for `--input`, `-o` for `--output`.
+Short forms: `-i` for `--input`, `-o` for `--output`, `-n` for `--dry-run`.
 
 `--var key=value` may be repeated. Values containing `=` are split on the **first** `=` only: `--var url=https://example.com/foo=bar` produces key `url`, value `https://example.com/foo=bar`.
 
 **Normal render behavior:**
-1. Run `TemplateService::load()` to ensure templates are indexed
-2. Call `TemplateService::create(input)` with the parsed `CreateTemplateInput`
-3. On success: print the created vault-relative path to stdout
-4. On error: print a user-facing message mapped explicitly from `TemplateError` variants (not raw `to_string()`)
+1. Call `traces_app::template::run_template_create(config, cache_dir, input)` which internally verifies freshness via `verify_path`, renders, and commits
+2. On success: print the created vault-relative path to stdout
+3. On error: print a user-facing message mapped explicitly from `TemplateError` variants (not raw `to_string()`)
 
 **Dry-run behavior:**
-1. Run `TemplateService::load()`
-2. Call `TemplateService::create_dry_run(input)`
-3. Print the rendered string to stdout; no file is written
+1. Call `traces_app::template::run_template_create(config, cache_dir, input)` with `input.dry_run == true`
+2. On success: print the rendered string to stdout; no file is written
+3. On error: user-facing message mapped from `TemplateError` variants
 
-**Error mapping (explicit, not `Display` forwarding):**
-- `TemplateError::NotFound` → `"Template '<name>' not found. Run 'traces template list' to see available templates."` (or equivalent)
-- `TemplateError::Engine` → `"Template rendering failed: <human-readable description>"` (source chain may be included)
-- `TemplateError::PathValidation` → `"Output path is invalid: <reason>"`
-- `TemplateError::AlreadyExists` → `"Output file already exists: <path>. Choose a different output path."`
-- `TemplateError::Write` → `"Failed to write output: <reason>"`
+**Error mapping (explicit, not `Display` forwarding) — map `TemplateError` variants in the CLI adapter:**
+- `TemplateError::NotFound { name }` → `"Template '{name}' not found. Run 'traces index' to re-index available templates."` (or equivalent)
+- `TemplateError::Engine(TemplateEngineError)` → `"Template rendering failed: <human-readable description>"` (source chain may be included)
+- `TemplateError::Path(TemplatePathError)` → `"Output path is invalid: <reason>"`
+- `TemplateError::Artifact(TemplateArtifactError::Write(WriteError::AlreadyExists { path }))` → `"Output file already exists: {path}. Choose a different output path."`
+- `TemplateError::Artifact(TemplateArtifactError::Write(WriteError::Io { source, .. }))` → `"Failed to write output: {source}"`
 
 **Key interfaces:**
 - Inspect the existing CLI command structure (likely `clap`-based) to determine how to add a new subcommand; mirror the pattern used by existing commands
 - `TemplateService` from issue-07 — the only service called
-- `CreateTemplateInput` / `DryRunInput` from issue-07 — built from parsed CLI args
+- `CreateTemplateInput` from issue-07 — built from parsed CLI args; `dry_run: bool` field distinguishes render from dry-run
 - `TemplateError` from issue-07 — mapped to user messages in the CLI handler
 - `--var` parsing: split each value on the first `=` only; collect into `HashMap<String, String>`; a value with no `=` is a parse error
 
 **Acceptance criteria:**
 - [ ] `traces template --input <name> --output <path>` renders the named template and prints the created vault-relative path
-- [ ] `traces template --input <name> --dry-run` prints the rendered content to stdout without creating any file
-- [ ] `-i` short flag is accepted for `--input`; `-o` short flag for `--output`
+- [ ] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content to stdout without creating any file
+- [ ] `-i` short flag is accepted for `--input`; `-o` short flag for `--output`; `-n` short flag for `--dry-run`
 - [ ] `--var key=value` is accepted; repeated flags accumulate into the context map
 - [ ] `--var url=https://example.com/foo=bar` correctly produces key `url`, value `https://example.com/foo=bar`
 - [ ] Missing `--input` produces a clear usage/parse error
