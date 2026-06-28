@@ -129,3 +129,91 @@ No `Template`-specific exit codes or user-facing message formatting belongs here
 - CLI command handler (deferred to issue 09)
 - Error-to-exit-code mapping (belongs in CLI handler)
 - User-facing error message formatting (belongs in CLI handler)
+
+---
+
+## TDD Plan
+
+### ⚠️ Critical Gap Found During Triage
+
+Adding `AppError::Template(TemplateError)` breaks the exhaustive `exit_code()` match in `crates/cli/src/error.rs:203-208`. The match destructures `AppError::Discovery`, `Config`, and `Indexer` explicitly — the new variant causes a **compilation error**.
+
+**Fix** (required for AC `mise run test` to pass — deferred error-to-exit-code refinement stays in issue 09):
+
+```rust
+// Add to exit_code() match after the Indexer arm:
+Self::Bootstrap(_) => 2,
+```
+
+### Blast Radius (Impact Analysis)
+
+| Symbol | Change | Risk | Dependents |
+|---|---|---|---|
+| `AppError` enum (`crates/app/src/error.rs:13`) | Add `Template(TemplateError)` variant | LOW | Consumed by `crates/cli/src/error.rs:21` (exit code match) |
+| `RedbRepository` struct + `new()` (`crates/template/src/storage/core.rs:56,83`) | Remove `#[allow(dead_code)]` | LOW | None yet |
+| `TEMPLATE_DB_FILENAME` (`crates/template/src/storage.rs:41`) | Remove `#[allow(dead_code)]` | LOW | Cosmetic (pub item) |
+| `crates/app/src/lib.rs:24` | Add `pub mod template;` | LOW | — |
+| `crates/app/Cargo.toml` | Add `traces-template` dep | LOW | — |
+| NEW `crates/app/src/template.rs` | Create `run_template_create` | LOW | — |
+
+### Phase 0 — Compiler-level Changes
+
+1. **`crates/app/Cargo.toml`** — Add `traces-template = { path = "../template" }`
+2. **`crates/app/src/error.rs`** — Add variant:
+   ```rust
+   /// Template pipeline failed.
+   #[error(transparent)]
+   Template(#[from] traces_template::TemplateError),
+   ```
+3. **`crates/app/src/lib.rs`** — Add `pub mod template;`
+4. **`crates/template/src/storage/core.rs`** — Remove both `#[allow(dead_code)]` annotations
+5. **`crates/template/src/storage.rs`** — Remove `#[allow(dead_code)]` on `TEMPLATE_DB_FILENAME`
+6. **`crates/cli/src/error.rs:227`** — Add `Self::Bootstrap(_) => 2` to `exit_code()` match
+
+### Phase 1 — Implement `run_template_create`
+
+7. **NEW `crates/app/src/template.rs`** — Function matching the shape in § What to build. Re-exports:
+   ```rust
+   pub use traces_template::storage::TEMPLATE_DB_FILENAME;
+   pub use traces_template::{CreateTemplateInput, CreateTemplateOutcome};
+   ```
+
+### Phase 2 — RED → GREEN: Tests
+
+**8. In-module tests (`crates/app/src/template.rs`):**
+
+| Test | How | Module |
+|---|---|---|
+| `returns_created_outcome_for_valid_input` | Integration w/ `TestDb` + temp vault + `Config` | `run_template_create` |
+| `returns_app_error_when_store_fails` | Dir where DB file should be (same trick as `run_index` test) | `run_template_create` |
+| `returns_app_error_when_config_is_invalid` | `Config` with no template dir → `to_template_spec()` fails | `run_template_create` |
+
+**9. Conversion test (`crates/app/src/error.rs`):**
+```rust
+mod conversions {
+    fn converts_template_error_to_app_error()
+}
+```
+
+Following the existing pattern (`converts_indexer_error_to_app_error`).
+
+**10. Integration test (optional):**
+`crates/app/tests/template.rs` — full end-to-end happy path using `TestDb` + temp vault.
+
+### Phase 3 — Verify
+
+- `mise run lint` — clippy passes
+- `mise run test` — all tests pass
+
+### Files to Create/Modify
+
+| Action | File |
+|---|---|
+| MODIFY | `crates/app/Cargo.toml` |
+| CREATE | `crates/app/src/template.rs` |
+| MODIFY | `crates/app/src/error.rs` |
+| MODIFY | `crates/app/src/lib.rs` |
+| MODIFY | `crates/template/src/storage/core.rs` |
+| MODIFY | `crates/template/src/storage.rs` |
+| MODIFY | `crates/cli/src/error.rs` |
+| CREATE (optional) | `crates/app/tests/template.rs` |
