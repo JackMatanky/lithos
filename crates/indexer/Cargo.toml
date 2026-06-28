@@ -33,5 +33,6 @@ workspace = true
 
 [dev-dependencies]
 mockall.workspace = true
+pretty_assertions.workspace = true
 tempfile.workspace = true
 traces-db = { path = "../db", features = ["testing"] }

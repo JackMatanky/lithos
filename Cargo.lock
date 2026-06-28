@@ -1738,6 +1738,7 @@ dependencies = [
  "dirs",
  "miette",
  "mockall",
+ "pretty_assertions",
  "redb",
  "rkyv",
  "serde",
