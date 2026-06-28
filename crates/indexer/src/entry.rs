@@ -150,7 +150,14 @@ mod tests {
                 assert_ne!(IndexStatus::New, IndexStatus::Stale);
                 assert_ne!(IndexStatus::Fresh, IndexStatus::Stale);
             }
+        }
 
+        mod traits {
+            use crate::entry::IndexStatus;
+
+            // ponytail: near-tautological Clone check on a Copy enum; kept as a
+            // low-value smoke test (flag-and-leave per R19), just re-homed out
+            // of `constructor`.
             #[test]
             fn clones_correctly() {
                 let s = IndexStatus::New;

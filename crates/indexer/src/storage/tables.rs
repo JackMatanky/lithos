@@ -45,7 +45,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_table_definitions() {
+    fn opens_all_index_tables() {
         let (_tempdir, store) = Store::open_temp().unwrap();
 
         store

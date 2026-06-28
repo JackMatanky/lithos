@@ -98,7 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_redb_repository_construction() {
+    fn constructs_from_store() {
         let tmp_file = NamedTempFile::new().unwrap();
         let store = Arc::new(
             Store::open(tmp_file.path()).expect("failed to open database"),

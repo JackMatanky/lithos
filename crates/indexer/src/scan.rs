@@ -209,9 +209,14 @@ mod tests {
             }
 
             #[test]
-            fn options_can_be_set() {
-                let opts = IndexOptions::new(true, true);
+            fn stores_rebuild_flag() {
+                let opts = IndexOptions::new(true, false);
                 assert!(opts.rebuild());
+            }
+
+            #[test]
+            fn stores_dry_run_flag() {
+                let opts = IndexOptions::new(false, true);
                 assert!(opts.dry_run());
             }
         }

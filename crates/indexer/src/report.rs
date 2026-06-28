@@ -198,53 +198,71 @@ pub enum SkipReason {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    mod index_report {
+        use std::path::PathBuf;
 
-    use super::*;
+        use pretty_assertions::assert_eq;
 
-    #[test]
-    fn stores_counts_and_failures() {
-        let report =
-            IndexReport::new(10, 2, 5, 3, 1, Box::new([]), Box::new([]));
-        assert_eq!(report.scanned(), 10);
-        assert_eq!(report.new_count(), 2);
-        assert_eq!(report.fresh_count(), 5);
-        assert_eq!(report.stale_count(), 3);
-        assert_eq!(report.deleted_count(), 1);
-        assert_eq!(report.skipped().len(), 0);
-        assert_eq!(report.failures().len(), 0);
+        use super::super::*;
+
+        #[test]
+        fn stores_summary_counts() {
+            let report =
+                IndexReport::new(10, 2, 5, 3, 1, Box::new([]), Box::new([]));
+            assert_eq!(report.scanned(), 10);
+            assert_eq!(report.new_count(), 2);
+            assert_eq!(report.fresh_count(), 5);
+            assert_eq!(report.stale_count(), 3);
+            assert_eq!(report.deleted_count(), 1);
+        }
+
+        #[test]
+        fn is_empty_when_no_skipped_or_failures() {
+            let report =
+                IndexReport::new(10, 2, 5, 3, 1, Box::new([]), Box::new([]));
+            assert_eq!(report.skipped().len(), 0);
+            assert_eq!(report.failures().len(), 0);
+        }
+
+        #[test]
+        fn stores_skipped_entries() {
+            let skipped = vec![SkippedEntry {
+                path: PathBuf::from("restricted"),
+                reason: SkipReason::PermissionDenied,
+            }];
+            let report = IndexReport::new(
+                1,
+                0,
+                0,
+                0,
+                0,
+                skipped.into_boxed_slice(),
+                Box::new([]),
+            );
+
+            assert_eq!(report.skipped().len(), 1);
+            assert_eq!(
+                report.skipped().first().unwrap().path,
+                PathBuf::from("restricted")
+            );
+        }
     }
 
-    #[test]
-    fn stores_skipped_entries() {
-        let skipped = vec![SkippedEntry {
-            path: PathBuf::from("restricted"),
-            reason: SkipReason::PermissionDenied,
-        }];
-        let report = IndexReport::new(
-            1,
-            0,
-            0,
-            0,
-            0,
-            skipped.into_boxed_slice(),
-            Box::new([]),
-        );
+    mod index_node_failure {
+        use std::path::PathBuf;
 
-        assert_eq!(report.skipped().len(), 1);
-        assert_eq!(
-            report.skipped().first().unwrap().path,
-            PathBuf::from("restricted")
-        );
-    }
+        use pretty_assertions::assert_eq;
 
-    #[test]
-    fn stores_path_and_error() {
-        let failure = IndexNodeFailure::new(
-            PathBuf::from("notes/bad.md"),
-            "permission denied".into(),
-        );
-        assert_eq!(failure.path(), PathBuf::from("notes/bad.md"));
-        assert_eq!(failure.error(), "permission denied");
+        use super::super::*;
+
+        #[test]
+        fn stores_path_and_error() {
+            let failure = IndexNodeFailure::new(
+                PathBuf::from("notes/bad.md"),
+                "permission denied".into(),
+            );
+            assert_eq!(failure.path(), PathBuf::from("notes/bad.md"));
+            assert_eq!(failure.error(), "permission denied");
+        }
     }
 }

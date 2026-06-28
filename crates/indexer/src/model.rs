@@ -281,7 +281,7 @@ impl FsParentId {
 
 #[cfg(test)]
 mod tests {
-    mod id {
+    mod fs_record_id {
         mod constructor {
             use crate::model::FsRecordId;
 
@@ -319,7 +319,7 @@ mod tests {
             }
         }
 
-        mod display {
+        mod formatting {
             use crate::model::FsRecordId;
 
             #[test]
@@ -331,7 +331,7 @@ mod tests {
         }
     }
 
-    mod file {
+    mod file_record {
         mod constructor {
             use std::time::SystemTime;
 
@@ -401,7 +401,7 @@ mod tests {
         }
     }
 
-    mod dir {
+    mod dir_record {
         mod constructor {
             use std::time::SystemTime;
 
