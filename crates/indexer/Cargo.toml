@@ -12,6 +12,7 @@ categories.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+tracing.workspace = true
 redb.workspace = true
 rkyv.workspace = true
 traces-db = { path = "../db" }

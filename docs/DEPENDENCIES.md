@@ -66,10 +66,12 @@ Legend:
 - `dhat` when doing dedicated heap profiling work
 
 ### Done
-- `traces-indexer` direct deps pruned (06.7): dropped unused
-  `tracing, miette, serde, serde_json, toml, base64, dirs, chrono` and the
-  direct `uuid` (used only transitively via `traces-utils`). Kept `thiserror,
-  redb, rkyv, walkdir` + path deps. Guarded by `unused_crate_dependencies`.
+- `traces-indexer` direct deps pruned (06.7): dropped genuinely-unused
+  `miette, serde, serde_json, toml, base64, dirs, chrono` and the direct `uuid`
+  (used only transitively via `traces-utils`). Kept `thiserror, tracing, redb,
+  rkyv, walkdir` + path deps — `tracing` instruments `IndexerService::run`
+  (the prior "unused" reading was a missing-instrumentation gap, not a dead
+  dep). Guarded by `#![deny(unused_crate_dependencies)]` in the crate.
 
 ---
 

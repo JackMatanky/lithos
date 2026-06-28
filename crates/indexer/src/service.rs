@@ -70,6 +70,15 @@ impl IndexerService {
     /// # Errors
     /// Returns `IndexerError` if traversal or database operations fail.
     #[inline]
+    #[tracing::instrument(
+        level = "info",
+        skip(self, scope, opts),
+        fields(
+            root = %scope.root().as_path().display(),
+            rebuild = opts.rebuild(),
+            dry_run = opts.dry_run(),
+        )
+    )]
     pub fn run(
         &mut self,
         scope: &IndexScope,
@@ -79,6 +88,7 @@ impl IndexerService {
         let filters = scope.filters();
 
         if opts.rebuild() {
+            tracing::debug!("rebuild requested: clearing persisted state");
             self.repo.clear()?;
         }
 
@@ -95,6 +105,11 @@ impl IndexerService {
                 // Per-entry path errors are recoverable: record the failure
                 // and keep scanning ("scan as much as possible").
                 Err(IndexerError::Path(e)) => {
+                    tracing::warn!(
+                        path = %entry_path.display(),
+                        error = %e,
+                        "soft-failing entry; continuing scan"
+                    );
                     // Mark a soft-failed entry as seen so a transient failure
                     // never causes detect_deletions to delete its existing
                     // record. `None` means the entry has no storage key, so no
@@ -138,6 +153,17 @@ impl IndexerService {
             deleted.count(),
             ctx.skipped.into_boxed_slice(),
             ctx.failures.into_boxed_slice(),
+        );
+
+        tracing::info!(
+            scanned = report.scanned(),
+            new = report.new_count(),
+            fresh = report.fresh_count(),
+            stale = report.stale_count(),
+            deleted = report.deleted_count(),
+            skipped = report.skipped().len(),
+            failures = report.failures().len(),
+            "index pass complete"
         );
 
         Ok(IndexResult::new(

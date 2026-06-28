@@ -1742,6 +1742,7 @@ dependencies = [
  "traces-db",
  "traces-fs",
  "traces-utils",
+ "tracing",
  "walkdir",
 ]
 
