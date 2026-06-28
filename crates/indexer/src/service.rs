@@ -186,14 +186,18 @@ impl IndexerService {
         let mut dir_ids: Vec<crate::model::FsRecordId> = Vec::new();
 
         for path in &all {
-            if !seen.contains(path) {
-                if let Ok(Some(file)) = self.repo.find_file_by_path(path) {
-                    file_ids.push(file.id());
-                } else if let Ok(Some(dir)) = self.repo.find_dir_by_path(path) {
-                    dir_ids.push(dir.id());
-                } else {
-                    // Neither file nor dir — stale path, skip
-                }
+            if seen.contains(path) {
+                continue;
+            }
+            // A repository error here is fatal: it will recur and may mask DB
+            // corruption, so propagate it instead of treating the path as
+            // absent (which would silently miss a deletion).
+            if let Some(file) = self.repo.find_file_by_path(path)? {
+                file_ids.push(file.id());
+            } else if let Some(dir) = self.repo.find_dir_by_path(path)? {
+                dir_ids.push(dir.id());
+            } else {
+                // Neither file nor dir — genuinely stale path, skip.
             }
         }
 
@@ -830,6 +834,172 @@ mod tests {
 
     mod detect_deletions {
         use super::*;
+
+        /// Reads of `find_*_by_path` fail; `all_paths` yields one stored path
+        /// so the failing lookup is actually reached. Proves a
+        /// repository error during deletion detection aborts the run
+        /// instead of being swallowed.
+        struct FailingReadRepository {
+            path: PathKey,
+        }
+
+        impl ReadRepository for FailingReadRepository {
+            fn find_file(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<Option<FileRecord>, IndexerRepositoryError>
+            {
+                Ok(None)
+            }
+
+            fn find_dir(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+                Ok(None)
+            }
+
+            fn find_file_by_path(
+                &self,
+                _path: &PathKey,
+            ) -> Result<Option<FileRecord>, IndexerRepositoryError>
+            {
+                Err(IndexerRepositoryError::Storage(
+                    traces_db::DbError::Deserialization(
+                        "corrupt record".into(),
+                    ),
+                ))
+            }
+
+            fn find_dir_by_path(
+                &self,
+                _path: &PathKey,
+            ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+                Err(IndexerRepositoryError::Storage(
+                    traces_db::DbError::Deserialization(
+                        "corrupt record".into(),
+                    ),
+                ))
+            }
+
+            fn list_files_by_parent(
+                &self,
+                _parent_id: FsParentId,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_dirs_by_parent(
+                &self,
+                _parent_id: FsParentId,
+            ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_files_by_format(
+                &self,
+                _format: FileFormat,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_files_by_basename(
+                &self,
+                _basename: &str,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn all_paths(
+                &self,
+            ) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
+                Ok(Box::new([self.path.clone()]))
+            }
+        }
+
+        impl WriteRepository for FailingReadRepository {
+            fn save_file(
+                &self,
+                _record: &FileRecord,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn save_dir(
+                &self,
+                _record: &DirRecord,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_file(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_dir(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn save_many_records(
+                &self,
+                _files: &[FileRecord],
+                _dirs: &[DirRecord],
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_many_records(
+                &self,
+                _file_ids: &[FsRecordId],
+                _dir_ids: &[FsRecordId],
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn clear(&self) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn propagates_repository_error() {
+            let path = PathKey::try_new("corrupt.md").unwrap();
+            let repo = FailingReadRepository {
+                path,
+            };
+            let (_tmp, vault) = make_vault_root();
+            let scanner = MockScanner::empty();
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
+
+            // The stored path is not in `seen`, so detection looks it up — and
+            // the lookup fails. That error must abort, not be swallowed.
+            let seen: HashSet<PathKey> = HashSet::new();
+            let result = service.detect_deletions(&seen);
+            assert!(matches!(result, Err(IndexerError::Repository(_))));
+        }
+
+        #[test]
+        fn skips_path_present_in_neither_table() {
+            // `all_paths` returns a path that resolves to neither a file nor a
+            // dir record (both `Ok(None)`): it is genuinely stale and skipped,
+            // not treated as an error.
+            let repo = empty_repo();
+            let (_tmp, vault) = make_vault_root();
+            let scanner = MockScanner::empty();
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
+
+            let seen: HashSet<PathKey> = HashSet::new();
+            let deleted = service.detect_deletions(&seen).unwrap();
+            assert_eq!(deleted.count(), 0);
+        }
 
         #[test]
         fn no_deletions_when_all_seen() {
