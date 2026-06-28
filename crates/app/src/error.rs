@@ -2,7 +2,8 @@
 //!
 //! This module defines the top-level error boundaries for the application's
 //! composition root. It aggregates errors from various bounded contexts
-//! (like discovery, config, and indexing) into a unified `AppError` type,
+//! (like discovery, config, indexing, and template rendering) into a unified
+//! `AppError` type,
 //! which is subsequently wrapped and surfaced by executable adapters (e.g.,
 //! CLI).
 
@@ -26,6 +27,10 @@ pub enum AppError {
     /// Indexing pipeline failed.
     #[error(transparent)]
     Indexer(#[from] traces_indexer::IndexerError),
+
+    /// Template pipeline failed.
+    #[error(transparent)]
+    Template(#[from] traces_template::TemplateError),
 }
 
 // ----------------------------------------------------------- //
@@ -68,6 +73,20 @@ mod tests {
             };
             let app_err = AppError::from(inner);
             assert!(matches!(app_err, AppError::Config(_)));
+        }
+
+        #[test]
+        fn converts_template_error_to_app_error() {
+            let name = traces_template::TemplateName::try_new(
+                std::path::Path::new("templates/missing.md"),
+                std::path::Path::new("templates"),
+            )
+            .expect("expected template name");
+            let inner = traces_template::TemplateError::NotFound {
+                name,
+            };
+            let app_err = AppError::from(inner);
+            assert!(matches!(app_err, AppError::Template(_)));
         }
     }
 }

@@ -27,6 +27,7 @@ traces-settings = { path = "../settings" }
 traces-fs = { path = "../fs" }
 traces-indexer = { version = "0.1.0", path = "../indexer" }
 traces-db = { version = "0.1.0", path = "../db" }
+traces-template = { path = "../template" }
 
 [lints]
 workspace = true

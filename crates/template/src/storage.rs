@@ -26,7 +26,7 @@ pub(crate) mod core;
 pub(crate) mod read;
 pub(crate) mod write;
 
-pub mod tables;
+pub(crate) mod tables;
 
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
@@ -34,10 +34,6 @@ pub(crate) mod testing;
 pub use core::RedbRepository;
 
 /// Filename for the template database within the configured cache directory.
-#[allow(
-    dead_code,
-    reason = "used by traces-app composition root — wired in issue 08"
-)]
 pub const TEMPLATE_DB_FILENAME: &str = "templates.db";
 
 use traces_fs::PathKey;

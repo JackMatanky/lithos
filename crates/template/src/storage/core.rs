@@ -53,7 +53,6 @@ use traces_db::Store;
 /// (requires `Arc<Store>`). Multiple repository instances can safely share
 /// the same `Store`.
 #[derive(Debug)]
-#[allow(dead_code, reason = "redb adapter is wired by integration callers")]
 pub struct RedbRepository {
     pub(crate) store: Arc<Store>,
 }
@@ -79,7 +78,6 @@ impl RedbRepository {
     /// ```
     #[inline]
     #[must_use]
-    #[allow(dead_code, reason = "redb adapter is wired by integration callers")]
     pub fn new(store: Arc<Store>) -> Self {
         Self {
             store,

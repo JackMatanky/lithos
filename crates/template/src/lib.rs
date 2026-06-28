@@ -32,7 +32,7 @@ pub(crate) mod error;
 pub(crate) mod processor;
 pub(crate) mod raw;
 pub(crate) mod service;
-pub(crate) mod storage;
+pub mod storage;
 pub(crate) mod views;
 
 pub use aggregate::{Template, TemplateBody, TemplateId, TemplateName};
