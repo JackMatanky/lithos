@@ -28,6 +28,11 @@ traces-fs = { path = "../fs" }
 traces-utils = { path = "../utils" }
 walkdir.workspace = true
 
+[features]
+# Exposes test-only constructors (e.g. `IndexReport::new_for_test`) for
+# consumer-crate tests without widening the production API.
+testing = []
+
 [lints]
 workspace = true
 

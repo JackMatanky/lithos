@@ -20,13 +20,17 @@ pub struct IndexReport {
 
 impl IndexReport {
     /// Creates a new index report.
+    ///
+    /// `pub(crate)`: only the indexer service constructs reports, so consumers
+    /// cannot fabricate inconsistent counts. Tests outside the crate use
+    /// [`IndexReport::new_for_test`] behind the `testing` feature.
     #[expect(
         clippy::too_many_arguments,
         reason = "Domain report encapsulates all summary counters"
     )]
     #[inline]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         scanned: usize,
         new: usize,
         fresh: usize,
@@ -44,6 +48,29 @@ impl IndexReport {
             skipped,
             failures,
         }
+    }
+
+    /// Test-only constructor for building reports in consumer-crate tests.
+    ///
+    /// Available only under the `testing` feature so production code cannot
+    /// fabricate inconsistent reports through the public API.
+    #[cfg(feature = "testing")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Domain report encapsulates all summary counters"
+    )]
+    #[inline]
+    #[must_use]
+    pub fn new_for_test(
+        scanned: usize,
+        new: usize,
+        fresh: usize,
+        stale: usize,
+        deleted: usize,
+        skipped: Box<[SkippedEntry]>,
+        failures: Box<[IndexNodeFailure]>,
+    ) -> Self {
+        Self::new(scanned, new, fresh, stale, deleted, skipped, failures)
     }
 
     /// Returns the total number of nodes scanned.
@@ -109,13 +136,27 @@ pub struct IndexNodeFailure {
 
 impl IndexNodeFailure {
     /// Creates a new failure record.
+    ///
+    /// `pub(crate)`: only the indexer service records failures. Consumer-crate
+    /// tests use [`IndexNodeFailure::new_for_test`] behind the `testing`
+    /// feature.
     #[inline]
     #[must_use]
-    pub fn new(path: PathBuf, error: Box<str>) -> Self {
+    pub(crate) fn new(path: PathBuf, error: Box<str>) -> Self {
         Self {
             path,
             error,
         }
+    }
+
+    /// Test-only constructor for building failures in consumer-crate tests.
+    ///
+    /// Available only under the `testing` feature.
+    #[cfg(feature = "testing")]
+    #[inline]
+    #[must_use]
+    pub fn new_for_test(path: PathBuf, error: Box<str>) -> Self {
+        Self::new(path, error)
     }
 
     /// Returns the path of the entry that failed to index.

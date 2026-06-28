@@ -188,13 +188,13 @@ mod tests {
     ) -> IndexReport {
         let failures: Vec<IndexNodeFailure> = (0..failed)
             .map(|i| {
-                IndexNodeFailure::new(
+                IndexNodeFailure::new_for_test(
                     PathBuf::from(format!("failed-{i}.md")),
                     format!("err-{i}").into_boxed_str(),
                 )
             })
             .collect();
-        IndexReport::new(
+        IndexReport::new_for_test(
             scanned,
             new,
             fresh,
