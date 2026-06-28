@@ -85,6 +85,7 @@ impl IndexerService {
             // Stream-level errors mean traversal itself broke → abort the run.
             let scan_entry = result?;
             let entry_path = scan_entry_path(&scan_entry);
+            let entry_key = scan_entry_path_key(&scan_entry, &self.vault_root);
 
             match self.classify_entry(scan_entry, &ctx.dir_ids, opts.dry_run())
             {
@@ -92,6 +93,13 @@ impl IndexerService {
                 // Per-entry path errors are recoverable: record the failure
                 // and keep scanning ("scan as much as possible").
                 Err(IndexerError::Path(e)) => {
+                    // Mark a soft-failed entry as seen so a transient failure
+                    // never causes detect_deletions to delete its existing
+                    // record. `None` means the entry has no storage key, so no
+                    // record can match it and there is nothing to protect.
+                    if let Some(key) = entry_key {
+                        ctx.seen_paths.insert(key);
+                    }
                     ctx.failures.push(IndexNodeFailure::new(
                         entry_path,
                         e.to_string().into(),
@@ -217,6 +225,25 @@ fn scan_entry_path(entry: &ScanEntry) -> std::path::PathBuf {
         ScanEntry::File(node) => node.path().as_path().to_path_buf(),
         ScanEntry::Dir(node) => node.path().as_path().to_path_buf(),
         ScanEntry::Skipped(s) => s.path.clone(),
+    }
+}
+
+/// Best-effort vault-relative key of a scan entry.
+///
+/// Returns `Some` for file/dir entries whose path resolves under `vault_root`,
+/// `None` for skipped entries or paths outside the root (which have no storage
+/// key). Used so a *soft-failed* entry can still be marked "seen": a transient
+/// per-entry failure must never let `detect_deletions` delete the entry's
+/// previously-indexed record. When the key is `None` no stored record can match
+/// the entry, so there is nothing to protect.
+fn scan_entry_path_key(
+    entry: &ScanEntry,
+    vault_root: &DirPath,
+) -> Option<PathKey> {
+    match entry {
+        ScanEntry::File(node) => node.path().as_key(vault_root).ok(),
+        ScanEntry::Dir(node) => node.path().as_key(vault_root).ok(),
+        ScanEntry::Skipped(_) => None,
     }
 }
 
@@ -827,6 +854,52 @@ mod tests {
                 captured_filters.borrow().as_ref(),
                 Some(&ScanFilters::default())
             );
+        }
+    }
+
+    // ─── scan_entry_path_key ────────────────────────────────────
+
+    mod scan_entry_path_key {
+        use super::*;
+        use crate::service::scan_entry_path_key;
+
+        #[test]
+        fn returns_vault_relative_key_for_in_vault_file() {
+            let (_tmp, vault) = make_vault_root();
+            let node = make_file_node(&vault, "notes/doc.md");
+            let entry = ScanEntry::File(node);
+
+            let key = scan_entry_path_key(&entry, &vault);
+
+            assert_eq!(key, Some(PathKey::try_new("notes/doc.md").unwrap()));
+        }
+
+        #[test]
+        fn returns_none_for_path_outside_vault_root() {
+            let (_tmp, vault) = make_vault_root();
+            let outside = tempfile::TempDir::new().unwrap();
+            let p = outside.path().join("orphan.md");
+            std::fs::File::create(&p).unwrap();
+            let fp = FilePath::try_new(p).unwrap();
+            let meta = FileMetadata::new(
+                FsTimes::new(Some(SystemTime::now()), None),
+                0,
+                false,
+            );
+            let entry = ScanEntry::File(traces_fs::FileNode::new(fp, meta));
+
+            assert_eq!(scan_entry_path_key(&entry, &vault), None);
+        }
+
+        #[test]
+        fn returns_none_for_skipped_entry() {
+            let (_tmp, vault) = make_vault_root();
+            let entry = ScanEntry::Skipped(SkippedEntry {
+                path: std::path::PathBuf::from("restricted"),
+                reason: SkipReason::PermissionDenied,
+            });
+
+            assert_eq!(scan_entry_path_key(&entry, &vault), None);
         }
     }
 
