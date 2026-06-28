@@ -26,7 +26,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 10. **`BootstrapRunner`** — composition root between CLI and SettingsService
 11. **Simplified domain types** — no `VaultId`, `VaultVersion`, `GlobalVersion`, `Version`, `Metadata`, `AppVersion`
 12. **Forbidden-field errors** on GlobalConfig/LocalConfig construction — error now, warn later
-13. **Cache dir** `<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns, not by `DiscoveryProcessor` or `DiscoveryResult`.
+13. **Cache dir** `<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns, not by `DiscoveryProcessor` or `DiscoveryOutcome`.
 14. **Config file format** — TOML (default), JSON, YAML — all via serde
 
 ## User Stories
@@ -77,11 +77,11 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 
 **Methods on `SettingsService`:**
 - `build_config(&self, ctx: &BuildContext) → Result<AppConfig, SettingsError>` — full pipeline
-- `discover(&self, ctx: &BuildContext) → Result<DiscoveryResult, SettingsError>` — discovery subset (for commands that only need vault root)
+- `discover(&self, ctx: &BuildContext) → Result<DiscoveryOutcome, SettingsError>` — discovery subset (for commands that only need vault root/config paths)
 
-**No `DiscoveryPort`.** Discovery is an internal module. `DiscoveryService` and `DiscoveryPort` are removed, but the internal `DiscoveryProcessor` typestate pipeline is kept as the core discovery engine. Sub-modules: `walk`, `probe`, `processor`, `context`, `error`. Path definitions consolidate: `location.rs` holds all path constants (marker filenames, boundary markers, tracking/trust subdir names, cache subdirs); `os_dirs.rs` holds XDG + per-platform directory resolution. No more `policy.rs` or scattered path literals.
+**No `DiscoveryPort`.** Discovery is an internal module. `DiscoveryService` and `DiscoveryPort` are removed, but the internal `DiscoveryProcessor` typestate pipeline is kept as the core discovery engine. Sub-modules: `input`, `walk`, `probe`, `global`, `filter`, `processor`, `outcome`, `error`. Path definitions consolidate: `location.rs` holds all path constants (marker filenames, boundary markers, tracking/trust subdir names, cache subdirs); `os_dirs.rs` holds XDG + per-platform directory resolution. No more `policy.rs` or scattered path literals.
 
-**`DiscoveryProcessor` uses `transition()` methods** (PropertyBankProcessor pattern), not `impl From`. Branch enums carry the next processor state — `match` arms return the next processor directly. The `Init` phase has a `run()` method orchestrating the full pipeline internally. `SettingsService::discover()` just calls `processor.run(flags, env)`.
+**`DiscoveryProcessor` is a linear typestate orchestrator.** It uses `transition()` methods (PropertyBankProcessor pattern), not `impl From`, but does not need branch enums. Filesystem work lives in collector components; the processor sequences input scan → local collection → global collection → done.
 
 **`BuildContext`** (input DTO, constructed by BootstrapRunner):
 ```rust
@@ -97,7 +97,7 @@ struct BuildContext {
 **`SettingsEnvVars`** (internal, read by SettingsService):
 - Formerly `DiscoveryEnv`
 - Read from the environment inside `SettingsService::build_config()` and `discover()`
-- Includes: `TRACES_VAULT` override, ceiling paths, cache root, etc.
+- Includes: `TRACES_DEFAULT_VAULT` fallback directory, `TRACES_GLOBAL_CONFIG` explicit global config file, ceiling paths, etc.
 
 **`BootstrapRunner`** (renamed from `Bootstrapper`):
 - Lives in `crates/app/`
@@ -112,15 +112,12 @@ CLI invocation
     → constructs BuildContext from flags
     → SettingsService::build_config(&ctx)
       → reads SettingsEnvVars (env vars)
-      → DiscoveryProcessor::run(flags, env)    // internal orchestration
-        → FlagOverride phase
-          → flag_branch() → branch enum carries next processor
-        → EnvOverride phase (only if flags insufficient)
-          → branch_strategy() → branch enum carries next processor
-        → AscendingTraversal phase (only if no vault override)
-        → GlobalResolution phase
-        → Finalized → .finalize()
-        → DiscoveryResult { vault_candidates, global_candidates, report }
+      → DiscoveryProcessor::run(ctx, env)      // internal orchestration
+        → InputScan phase                      // normalize flags + env
+        → LocalCollect phase                   // mise-style ancestor stack
+        → GlobalCollect phase                  // explicit/global config
+        → Done → .finish()
+        → DiscoveryOutcome { local, global, report }
       → BootstrapRunner::ensure_cache_dir(vault_root)  // create <vault_root>/.traces/cache/
       → ConfigBuilder::new(result)  // Init state
         → .track()                  // Tracked state — checks tracking symlinks
@@ -133,62 +130,69 @@ CLI invocation
 
 ### DiscoveryProcessor Transition Pattern
 
-`DiscoveryProcessor` follows the `PropertyBankProcessor` pattern — transitions via methods returning branch enums, not `impl From`:
+`DiscoveryProcessor` follows the `PropertyBankProcessor` transition-method pattern, but the approved flow is linear and branch-free:
 
 ```rust
-// Init phase orchestrates the full pipeline
-impl DiscoveryProcessor<'_, Init> {
-    fn run(
-        self,
-        flags: &DiscoveryFlags,
-        env: &SettingsEnvVars,
-    ) -> Result<DiscoveryResult, DiscoveryError> {
-        let flag = self.transition(FlagOverride, ...);
-        match flag.flag_branch() {
-            FlagBranch::VaultAndConfigSet(p) => p.finalize(),
-            FlagBranch::VaultOnlySet(p) => {
-                p.transition_to_global().finalize()
-            }
-            FlagBranch::ConsultEnv(p) => {
-                let env = p.transition(EnvOverride, ...);
-                match env.branch_strategy() {
-                    ExplicitOverrideBranch::VaultProbedSkipGlobal(p) => p.finalize(),
-                    ExplicitOverrideBranch::VaultProbedRunGlobal(p) => {
-                        p.transition_to_global().finalize()
-                    }
-                    ExplicitOverrideBranch::AscendSkipGlobal(p) => {
-                        p.transition_to_ascend().finalize()
-                    }
-                    ExplicitOverrideBranch::AscendThenGlobal(p) => {
-                        p.transition_to_ascend()
-                         .transition_to_global()
-                         .finalize()
-                    }
-                }
-            }
-        }
-    }
+DiscoveryProcessor::<Init>::new(ctx)
+    .scan_inputs()?      // BuildContext + SettingsEnvVars → DiscoveryInput
+    .collect_local()?    // local stack, outer ancestor → nearest ancestor
+    .collect_global()?   // explicit/global config unless suppressed
+    .finish()            // DiscoveryOutcome
+
+pub(crate) struct DiscoveryInput {
+    anchor: DirPath,
+    flag_global: Option<FilePath>,
+    flag_vault: Option<DirPath>,
+    env_global: Option<FilePath>,        // TRACES_GLOBAL_CONFIG
+    env_default_vault: Option<DirPath>,  // TRACES_DEFAULT_VAULT fallback dir
+    ceiling_dirs: Box<[DirPath]>,
+    suppress_global: bool,
 }
 
-// Branch enums carry the next processor state — no From impls
-enum FlagBranch<'ctx> {
-    VaultAndConfigSet(DiscoveryProcessor<'ctx, Finalized>),
-    VaultOnlySet(DiscoveryProcessor<'ctx, FlagOverride>),
-    ConsultEnv(DiscoveryProcessor<'ctx, EnvOverride>),
+pub struct DiscoveryOutcome {
+    local: Box<[CandidatePath]>,
+    global: Box<[CandidatePath]>,
+    report: DiscoveryReport,
 }
 ```
 
 Key points:
 - **`transition()`** method (private) constructs the next processor, same as `PropertyBankProcessor::transition()`.
-- **Branch enums** contain the already-transitioned processor — no external `From` calls.
-- **`SettingsService::discover()`** calls `processor.run(flags, env)` — it does not drive individual transitions.
+- **No branch enums** unless a real second path appears; env values are normalized inputs, not control-flow states.
+- **`SettingsService::discover()`** calls the linear processor; it does not drive individual transitions.
 - Phase marker types remain zero-sized (no data carried between phases — data lives in the processor struct fields).
+
+### Discovery Collection Rules
+
+Local collection is mise-style layered discovery with Traces constraints:
+- Starting anchor is `flag_vault` when set; otherwise `anchor`.
+- Enumerate ancestors from the starting anchor to configured ceilings.
+- Probe each directory for exact local marker filenames from `location.rs`.
+- If ancestor collection finds no local config, probe `env_default_vault` as a fallback.
+- Return local config candidates in outer-ancestor → nearest-ancestor order.
+- Dedupe canonical/desymlinked paths and filter ignored paths before returning the outcome.
+
+Global collection:
+- If `suppress_global`, return empty.
+- Else include `flag_global` when set.
+- Else include `env_global` when set.
+- Else probe platform global config directories from `os_dirs.rs`.
+- Dedupe canonical/desymlinked paths and filter ignored paths before returning the outcome.
+
+Component boundaries:
+- `processor.rs`: linear typestate orchestration only.
+- `input.rs`: `DiscoveryInput` construction and env var names.
+- `walk.rs`: ancestor enumeration + local collection.
+- `probe.rs`: one-directory exact filename probing.
+- `global.rs`: global config collection.
+- `filter.rs`: dedupe + ignored filtering.
+- `outcome.rs`: `DiscoveryOutcome`, `CandidatePath`, `DiscoveryReport`.
 
 ### ConfigBuilder Typestate
 
 | State      | Holds                                    | Transition                              |
 | ---------- | ---------------------------------------- | --------------------------------------- |
-| `Init`       | `DiscoveryResult`                          | → `track()` → `Tracked`                   |
+| `Init`       | `DiscoveryOutcome`                         | → `track()` → `Tracked`                   |
 | `Tracked`    | + tracking status per path                 | → `trust_check()` → `Trusted`              |
 | `Trusted`    | + trust/ignore status per path             | → `load_files()` → `Loaded`                |
 | `Loaded`     | + `RawConfig` (global + local)              | → `TryFrom` → `Validated`                  |
@@ -347,7 +351,7 @@ The crate defaults to `pub(crate)` and exports only:
 | `GlobalConfig`          | `pub`      | Domain type                   |
 | `LocalConfig`           | `pub`      | Domain type                   |
 | `Trust`                 | `pub`      | For CLI trust commands        |
-| `DiscoveryResult`       | `pub`      | Returned by `discover()`        |
+| `DiscoveryOutcome`      | `pub`      | Returned by `discover()`        |
 | `ConfigError`           | `pub`      | Error type                    |
 | `ConfigBuilder`         | `pub(crate)` | Typestate builder           |
 | `Tracker`               | `pub(crate)` | Internal tracking           |
@@ -356,7 +360,7 @@ The crate defaults to `pub(crate)` and exports only:
 
 ### Cache Dir
 
-`<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns — it calls `std::fs::create_dir_all()` on the vault root's cache subdirectory. This is not a discovery concern; `DiscoveryResult` has no `cache_root` field and `DiscoveryProcessor` has no `CacheResolution` phase. The `Tracker` module separately creates its `TRACKED_CONFIGS/` subdirectory on first use.
+`<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns — it calls `std::fs::create_dir_all()` on the vault root's cache subdirectory. This is not a discovery concern; `DiscoveryOutcome` has no `cache_root` field and `DiscoveryProcessor` has no cache phase. The `Tracker` module separately creates its `TRACKED_CONFIGS/` subdirectory on first use.
 
 ### Trust CLI Commands
 
