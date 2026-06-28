@@ -32,9 +32,11 @@ use crate::{
 /// Call `run()` with an `IndexScope` and `IndexOptions` to produce an
 /// `IndexResult`.
 ///
-/// Uses trait-object dispatch: the two vtable calls per scan iteration are
-/// noise next to disk-bound work, and a single monomorphization keeps the
-/// binary smaller and compiles faster.
+/// Uses trait-object dispatch: the handful of vtable calls per entry (one
+/// scanner `walk` per run, then one or two repository lookups per entry — a
+/// comparison read plus, on a mismatch, a write) are noise next to disk-bound
+/// work, and a single monomorphization keeps the binary smaller and compiles
+/// faster.
 pub struct IndexerService {
     vault_root: DirPath,
     scanner: Box<dyn ScannerPort>,

@@ -23,7 +23,7 @@ impl IndexReport {
     ///
     /// `pub(crate)`: only the indexer service constructs reports, so consumers
     /// cannot fabricate inconsistent counts. Tests outside the crate use
-    /// [`IndexReport::new_for_test`] behind the `testing` feature.
+    /// `IndexReport::new_for_test` behind the `testing` feature.
     #[expect(
         clippy::too_many_arguments,
         reason = "Domain report encapsulates all summary counters"
@@ -138,7 +138,7 @@ impl IndexNodeFailure {
     /// Creates a new failure record.
     ///
     /// `pub(crate)`: only the indexer service records failures. Consumer-crate
-    /// tests use [`IndexNodeFailure::new_for_test`] behind the `testing`
+    /// tests use `IndexNodeFailure::new_for_test` behind the `testing`
     /// feature.
     #[inline]
     #[must_use]
