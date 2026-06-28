@@ -19,12 +19,12 @@ Status: ready-for-agent
 
 ## What to build
 
-Add the `lithos template` command to the CLI as a thin orchestration adapter over `TemplateService`. This is the end-to-end proof that the whole vertical slice works.
+Add the `traces template` command to the CLI as a thin orchestration adapter over `TemplateService`. This is the end-to-end proof that the whole vertical slice works.
 
 Command shape:
 ```
-lithos template --input <template-name> --output <vault-relative-path> [--var key=value]...
-lithos template --input <template-name> --dry-run [--var key=value]...
+traces template --input <template-name> --output <vault-relative-path> [--var key=value]...
+traces template --input <template-name> --dry-run [--var key=value]...
 ```
 
 Short forms `-i`, `-o` are accepted. `--var` may be repeated; values containing `=` are split on the first `=` only (e.g. `--var url=https://example.com/foo=bar` → key `url`, value `https://example.com/foo=bar`).
@@ -43,8 +43,8 @@ Deferred (out of scope for this slice):
 
 ## Acceptance criteria
 
-- [ ] `lithos template --input <name> --output <path>` renders a template and prints the created path
-- [ ] `lithos template --input <name> --dry-run` prints the rendered content without creating a file
+- [ ] `traces template --input <name> --output <path>` renders a template and prints the created path
+- [ ] `traces template --input <name> --dry-run` prints the rendered content without creating a file
 - [ ] `-i` and `-o` short flags are accepted
 - [ ] `--var key=value` is accepted and repeated flags build the context map
 - [ ] `--var` values containing `=` are correctly split on the first `=` only
@@ -66,18 +66,18 @@ Deferred (out of scope for this slice):
 ## Agent Brief
 
 **Category:** enhancement
-**Summary:** Add `lithos template` CLI command as a thin adapter over `TemplateService` proving end-to-end vertical slice
+**Summary:** Add `traces template` CLI command as a thin adapter over `TemplateService` proving end-to-end vertical slice
 
 **Current behavior:**
-No `template` subcommand exists in the `lithos` CLI. Users have no way to invoke template rendering from the command line.
+No `template` subcommand exists in the `traces` CLI. Users have no way to invoke template rendering from the command line.
 
 **Desired behavior:**
-A `lithos template` subcommand is added to the CLI (in `lithos-cli` or wherever the existing CLI commands live). The command is a thin adapter — it parses arguments, calls `TemplateService`, and formats output. No business logic lives here.
+A `traces template` subcommand is added to the CLI (in `traces-cli` or wherever the existing CLI commands live). The command is a thin adapter — it parses arguments, calls `TemplateService`, and formats output. No business logic lives here.
 
 **Command shapes:**
 ```
-lithos template --input <template-name> --output <vault-relative-path> [--var key=value]...
-lithos template --input <template-name> --dry-run [--var key=value]...
+traces template --input <template-name> --output <vault-relative-path> [--var key=value]...
+traces template --input <template-name> --dry-run [--var key=value]...
 ```
 
 Short forms: `-i` for `--input`, `-o` for `--output`.
@@ -96,7 +96,7 @@ Short forms: `-i` for `--input`, `-o` for `--output`.
 3. Print the rendered string to stdout; no file is written
 
 **Error mapping (explicit, not `Display` forwarding):**
-- `TemplateError::NotFound` → `"Template '<name>' not found. Run 'lithos template list' to see available templates."` (or equivalent)
+- `TemplateError::NotFound` → `"Template '<name>' not found. Run 'traces template list' to see available templates."` (or equivalent)
 - `TemplateError::Engine` → `"Template rendering failed: <human-readable description>"` (source chain may be included)
 - `TemplateError::PathValidation` → `"Output path is invalid: <reason>"`
 - `TemplateError::AlreadyExists` → `"Output file already exists: <path>. Choose a different output path."`
@@ -110,8 +110,8 @@ Short forms: `-i` for `--input`, `-o` for `--output`.
 - `--var` parsing: split each value on the first `=` only; collect into `HashMap<String, String>`; a value with no `=` is a parse error
 
 **Acceptance criteria:**
-- [ ] `lithos template --input <name> --output <path>` renders the named template and prints the created vault-relative path
-- [ ] `lithos template --input <name> --dry-run` prints the rendered content to stdout without creating any file
+- [ ] `traces template --input <name> --output <path>` renders the named template and prints the created vault-relative path
+- [ ] `traces template --input <name> --dry-run` prints the rendered content to stdout without creating any file
 - [ ] `-i` short flag is accepted for `--input`; `-o` short flag for `--output`
 - [ ] `--var key=value` is accepted; repeated flags accumulate into the context map
 - [ ] `--var url=https://example.com/foo=bar` correctly produces key `url`, value `https://example.com/foo=bar`
@@ -129,4 +129,4 @@ Short forms: `-i` for `--input`, `-o` for `--output`.
 - Namespaces, query helpers, custom MiniJinja extensions
 - Multi-file template pack output
 - Rich conflict policies (overwrite, skip, rename, merge)
-- `lithos template list` command (deferred)
+- `traces template list` command (deferred)
