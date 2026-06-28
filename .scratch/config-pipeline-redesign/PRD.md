@@ -22,11 +22,11 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 6. **Symlink-based trust/ignore system** for security (mise-inspired)
 7. **Discovery is internal** — no `DiscoveryPort`, no `DiscoveryService`. Internal `DiscoveryProcessor` typestate pipeline is kept.
 8. **`DiscoveryEnv` → `SettingsEnvVars`** — internal, read by `SettingsService`
-9. **`BuildContext`** — the input DTO from CLI (flags + overrides, NOT env vars)
+9. **`DiscoveryOptions` + `ConfigBuilderOptions`** — split input DTOs from CLI (flags + overrides, NOT env vars)
 10. **`BootstrapRunner`** — composition root between CLI and SettingsService
 11. **Simplified domain types** — no `VaultId`, `VaultVersion`, `GlobalVersion`, `Version`, `Metadata`, `AppVersion`
 12. **Forbidden-field errors** on GlobalConfig/LocalConfig construction — error now, warn later
-13. **Cache dir** `<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns, not by `DiscoveryProcessor` or `DiscoveryOutcome`.
+13. **Cache dir** `<base>/.traces/cache/` is created by `SettingsService::setup_cache_dir(&AppConfig)` after config construction, not by `DiscoveryProcessor` or `DiscoveryOutcome`.
 14. **Config file format** — TOML (default), JSON, YAML — all via serde
 
 ## User Stories
@@ -41,7 +41,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 8. As a developer using `trace-settings` as a library, I want a single `SettingsService` entry point that handles discovery, parsing, and building, so that I don't orchestrate three different components.
 9. As a developer contributing to `traces`, I want the settings pipeline to have fewer files and types, so that I can understand the full flow without bouncing between 10+ modules.
 10. As a developer testing `trace-settings`, I want to construct `AppConfig` from inline data without filesystem I/O, so that tests are fast and deterministic.
-11. As a user running `traces sync` across many vaults, I want config files that don't change between runs to parse quickly, so that repeated operations don't stall.
+11. As a user running `traces sync` across many vaults, I want config file tracking to avoid database overhead and support cleanup/diagnostics, while config itself remains ephemeral and re-parsed each invocation.
 12. As a security-conscious user, I want paranoid mode that verifies content hashes of trusted configs, so that I can detect tampering.
 13. As a user, I want global config files (system-level) to be automatically trusted, so that I don't get prompted for OS-managed config.
 14. As a user, I want config files to be writable in TOML, JSON, or YAML, so that I can use whatever format I prefer.
@@ -54,7 +54,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 ```
 ┌─ CLI layer ────────────────────────────┐
 │  BootstrapRunner                        │
-│    maps CLI flags → BuildContext         │
+│    maps CLI flags → option DTOs          │
 │    calls SettingsService                 │
 └────────────────────────────────────────┘
          │
@@ -63,8 +63,8 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 │  SettingsService (inbound port)        │
 │    ┌──────────────────────────────┐    │
 │    │  SettingsEnvVars (internal)  │    │
-│    │  Discovery (internal)        │    │
-│  │    - walk, probe             │    │
+│    │  DiscoveryProcessor          │    │
+│    │    + collectors              │    │
 │    │  ConfigBuilder (typestate)   │    │
 │    │    - Init→Tracked→Trusted    │    │
 │    │      →Loaded→Validated→Ready │    │
@@ -76,21 +76,29 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 ```
 
 **Methods on `SettingsService`:**
-- `build_config(&self, ctx: &BuildContext) → Result<AppConfig, SettingsError>` — full pipeline
-- `discover(&self, ctx: &BuildContext) → Result<DiscoveryOutcome, SettingsError>` — discovery subset (for commands that only need vault root/config paths)
+- `build_config(&self, outcome: DiscoveryOutcome, builder: ConfigBuilderOptions) → Result<AppConfig, SettingsError>` — build config from a discovery outcome
+- `discover(&self, options: DiscoveryOptions) → Result<DiscoveryOutcome, SettingsError>` — discovery subset (for commands that only need vault root/config paths)
+- `setup_cache_dir(&self, config: &AppConfig) → Result<DirPath, SettingsError>` — creates `<base>/.traces/cache/` after `AppConfig` has been constructed
 
 **No `DiscoveryPort`.** Discovery is an internal module. `DiscoveryService` and `DiscoveryPort` are removed, but the internal `DiscoveryProcessor` typestate pipeline is kept as the core discovery engine. Sub-modules: `input`, `walk`, `probe`, `global`, `filter`, `processor`, `outcome`, `error`. Path definitions consolidate: `location.rs` holds all path constants (marker filenames, boundary markers, tracking/trust subdir names, cache subdirs); `os_dirs.rs` holds XDG + per-platform directory resolution. No more `policy.rs` or scattered path literals.
 
-**`DiscoveryProcessor` is a linear typestate orchestrator.** It uses `transition()` methods (PropertyBankProcessor pattern), not `impl From`, but does not need branch enums. Filesystem work lives in collector components; the processor sequences input scan → local collection → global collection → done.
+**`DiscoveryProcessor` is a linear typestate orchestrator.** It uses `transition()` methods (PropertyBankProcessor pattern), not `impl From`, but does not need branch enums. Input normalization happens before the processor starts; filesystem work lives in collector components; the processor sequences local collection → global collection → done.
 
-**`BuildContext`** (input DTO, constructed by BootstrapRunner):
+**`DiscoveryOptions`** (input DTO, constructed by BootstrapRunner for discovery only):
 ```rust
-struct BuildContext {
+struct DiscoveryOptions {
     anchor: DirPath,
-    override_vault: Option<DirPath>,
-    trust_mode: TrustMode,    // normal | paranoid | ci
-    auto_confirm: bool,       // --yes
-    suppress_global: bool,    // --no-global
+    flag_vault: Option<DirPath>,
+    flag_global: Option<FilePath>,
+    suppress_global: bool,      // --no-global
+}
+```
+
+**`ConfigBuilderOptions`** (input DTO, constructed by BootstrapRunner for config building only):
+```rust
+struct ConfigBuilderOptions {
+    trust_mode: TrustMode,      // normal | paranoid | ci
+    auto_confirm: bool,         // --yes
 }
 ```
 
@@ -101,7 +109,7 @@ struct BuildContext {
 
 **`BootstrapRunner`** (renamed from `Bootstrapper`):
 - Lives in `crates/app/`
-- Composition root: maps CLI flags to `BuildContext`, calls `SettingsService`
+- Composition root: maps CLI flags to `DiscoveryOptions` and `ConfigBuilderOptions`, calls `SettingsService`
 - No longer takes a `Repository` or `DiscoveryPort`
 
 ### Pipeline Flow
@@ -109,23 +117,24 @@ struct BuildContext {
 ```
 CLI invocation
   → BootstrapRunner::run()
-    → constructs BuildContext from flags
-    → SettingsService::build_config(&ctx)
+    → constructs DiscoveryOptions + ConfigBuilderOptions from flags
+    → SettingsService::discover(discovery_options)
       → reads SettingsEnvVars (env vars)
-      → DiscoveryProcessor::run(ctx, env)      // internal orchestration
-        → InputScan phase                      // normalize flags + env
+      → DiscoveryInput::from_options(discovery_options, env)
+      → DiscoveryProcessor::run(input)         // internal orchestration
         → LocalCollect phase                   // mise-style ancestor stack
         → GlobalCollect phase                  // explicit/global config
         → Done → .finish()
         → DiscoveryOutcome { local, global, report }
-      → BootstrapRunner::ensure_cache_dir(vault_root)  // create <vault_root>/.traces/cache/
-      → ConfigBuilder::new(result)  // Init state
+    → SettingsService::build_config(outcome, builder_options)
+      → ConfigBuilder::new(outcome, builder_options)  // Init state
         → .track()                  // Tracked state — checks tracking symlinks
         → .trust()                  // Trusted state — trust_check per candidate
         → .load_files(reader)       // Loaded state — reads + parses RawConfig
         → .validate()              // Validated state — TryFrom<RawConfig>
         → .merge()                 // Ready state — precedence merge
         → .finalize()              // AppConfig
+    → SettingsService::setup_cache_dir(&app_config)
 ```
 
 ### DiscoveryProcessor Transition Pattern
@@ -133,8 +142,9 @@ CLI invocation
 `DiscoveryProcessor` follows the `PropertyBankProcessor` transition-method pattern, but the approved flow is linear and branch-free:
 
 ```rust
-DiscoveryProcessor::<Init>::new(ctx)
-    .scan_inputs()?      // BuildContext + SettingsEnvVars → DiscoveryInput
+let input = DiscoveryInput::from_options(discovery_options, env)?;
+
+DiscoveryProcessor::<Init>::new(input)
     .collect_local()?    // local stack, outer ancestor → nearest ancestor
     .collect_global()?   // explicit/global config unless suppressed
     .finish()            // DiscoveryOutcome
@@ -160,7 +170,8 @@ Key points:
 - **`transition()`** method (private) constructs the next processor, same as `PropertyBankProcessor::transition()`.
 - **No branch enums** unless a real second path appears; env values are normalized inputs, not control-flow states.
 - **`SettingsService::discover()`** calls the linear processor; it does not drive individual transitions.
-- Phase marker types remain zero-sized (no data carried between phases — data lives in the processor struct fields).
+- `Init` owns `DiscoveryInput`; option/env normalization happens before the typestate processor starts.
+- Phase marker types remain zero-sized (data lives in the processor struct fields).
 
 ### Discovery Collection Rules
 
@@ -195,14 +206,16 @@ Component boundaries:
 | `Init`       | `DiscoveryOutcome`                         | → `track()` → `Tracked`                   |
 | `Tracked`    | + tracking status per path                 | → `trust_check()` → `Trusted`              |
 | `Trusted`    | + trust/ignore status per path             | → `load_files()` → `Loaded`                |
-| `Loaded`     | + `RawConfig` (global + local)              | → `TryFrom` → `Validated`                  |
-| `Validated`  | + `GlobalConfig` + `LocalConfig`             | → `merge()` → `Ready`                      |
+| `Loaded`     | + `RawConfig` values for global + local stack | → `TryFrom` → `Validated`               |
+| `Validated`  | + optional `GlobalConfig` + ordered `LocalConfig` stack | → `merge()` → `Ready`       |
 | `Ready`      | `AppConfig`                                 | `.finalize() -> AppConfig`                |
 
 - `Tracked` state checks existing tracking symlinks for each candidate path.
 - `Trusted` state calls `trust_check()` per candidate — prompts for untrusted, skips ignored.
 - `Loaded` state reads and deserializes each TOML/JSON/YAML file into `RawConfig`.
-- `Validated` state runs `TryFrom<RawConfig>` → `GlobalConfig`/`LocalConfig`.
+- `Validated` state runs `TryFrom<RawConfig>` → one optional `GlobalConfig` plus an ordered stack of `LocalConfig` values.
+- `Ready` merges global first, then local configs in discovery order (outer ancestor → nearest ancestor), so nearest local config wins.
+- `merge()` errors when no local candidate exists and a command requires an `AppConfig` with a concrete base. Commands that only need global config should use `discover()`/global-specific handling rather than `build_config()`.
 - `Finalize` tracks discovered paths via `Tracker::track()`.
 
 ### Types
@@ -236,8 +249,8 @@ Component boundaries:
 - `TryFrom<RawConfig>` errors if `trusted_vaults` is Some (forbidden field)
 
 **`AppConfig`** (was `Config`):
-- `base: DirPath` (the vault root, always present)
-- `path: Option<FilePath>` (the local config file, None when only global exists)
+- `base: DirPath` (from the nearest local `CandidatePath::base`, used for relative path resolution)
+- `path: FilePath` (the nearest local config file)
 - `logging: Logging`
 - `cache: CacheConfig`
 - `template: TemplateConfig`
@@ -245,7 +258,7 @@ Component boundaries:
 - `frontmatter: Frontmatter`
 - `task: Task`
 - `to_template_spec()`, `to_schema_spec()` etc. use `self.base` for path resolution
-- Built via merge function from `(Option<GlobalConfig>, Option<LocalConfig>)`
+- Built via merge function from `(Option<GlobalConfig>, Box<[LocalConfig]>)`
 
 ### Config File Format
 
@@ -305,10 +318,10 @@ No other module defines filesystem path patterns.
 - `config/diagnostics.rs` — already unused
 - `discovery/service.rs` — `DiscoveryService` (orchestration logic moves into `DiscoveryProcessor::run()`)
 - `discovery/port.rs` — `DiscoveryPort` (removed, no port needed for internal function)
-- `discovery/policy.rs` — `MarkerPattern` struct and constants (folded into `dirs.rs` as flat `&[&str]`)
+- `discovery/policy.rs` — `MarkerPattern` struct and constants (folded into `location.rs` as flat `&[&str]`)
 - `aggregate.rs` — `Version` removed, `Config` → `AppConfig`, `pending_events` removed
 - `vault.rs` — `VaultId`, `VaultVersion`, `VaultRoot`, `VaultName`, `AppVersion`, `Metadata` removed; `Vault` → `LocalConfig`
-- `global.rs` — `GlobalVersion` removed; `Global` → `GlobalConfig`
+- `config/global.rs` — `GlobalVersion` removed; `Global` → `GlobalConfig`
 - `raw.rs` — `RawGlobalConfig` + `RawVaultConfig` unified into `RawConfig`
 - `rkyv` dependency — no persistence means no archive types needed
 - `trace-db` dependency — removed from settings crate
@@ -346,7 +359,8 @@ The crate defaults to `pub(crate)` and exports only:
 | ---------------------- | ---------- | ----------------------------- |
 | `SettingsService` trait | `pub`      | Inbound port                  |
 | `Service` (impl)        | `pub`      | Concrete implementation       |
-| `BuildContext`          | `pub`      | Input DTO                     |
+| `DiscoveryOptions`      | `pub`      | Discovery input DTO           |
+| `ConfigBuilderOptions`  | `pub`      | Config-building input DTO     |
 | `AppConfig`             | `pub`      | Domain output + spec types    |
 | `GlobalConfig`          | `pub`      | Domain type                   |
 | `LocalConfig`           | `pub`      | Domain type                   |
@@ -356,11 +370,12 @@ The crate defaults to `pub(crate)` and exports only:
 | `ConfigBuilder`         | `pub(crate)` | Typestate builder           |
 | `Tracker`               | `pub(crate)` | Internal tracking           |
 | `SettingsEnvVars`       | `pub(crate)` | Internal env var reading    |
+| `DiscoveryInput`        | `pub(crate)` | Normalized discovery input   |
 | `RawConfig`             | `pub(crate)` | Pure DTO                     |
 
 ### Cache Dir
 
-`<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns — it calls `std::fs::create_dir_all()` on the vault root's cache subdirectory. This is not a discovery concern; `DiscoveryOutcome` has no `cache_root` field and `DiscoveryProcessor` has no cache phase. The `Tracker` module separately creates its `TRACKED_CONFIGS/` subdirectory on first use.
+`<base>/.traces/cache/` is created by `SettingsService::setup_cache_dir(&AppConfig)` after `AppConfig` is constructed. It uses `AppConfig.base`, not `DiscoveryOutcome`, because the final config owns the path-resolution base. This is not a discovery concern; `DiscoveryOutcome` has no `cache_root` field and `DiscoveryProcessor` has no cache phase. The `Tracker` module separately creates its `TRACKED_CONFIGS/` subdirectory on first use.
 
 ### Trust CLI Commands
 
@@ -383,7 +398,12 @@ Good tests:
 - **Unit**: `deserialize_config` with `.toml`, `.json`, `.yaml` → all produce same `RawConfig`
 - **Unit**: Trust module tests with tempdir (create/check/untrust/ignore symlinks)
 - **Unit**: Tracker module tests with tempdir (track/list/clean symlinks)
-- **Unit**: `SettingsService` with mock reader → assert `build_config()` calls discovery + builder
+- **Unit**: `DiscoveryOutcome` preserves `local` and `global` order with boxed slices
+- **Unit**: Local collection returns outer-ancestor → nearest-ancestor ordering
+- **Unit**: `TRACES_DEFAULT_VAULT` is used only when normal local collection finds nothing
+- **Unit**: Global collection precedence is `flag_global` → `env_global` → platform global dirs, unless suppressed
+- **Unit**: `SettingsService::setup_cache_dir()` creates cache from `AppConfig.base`
+- **Unit**: `SettingsService` with mock reader → assert `discover()` returns `DiscoveryOutcome` and `build_config()` consumes it
 - **Integration**: Full pipeline from tempdir (write TOML files → BootstrapRunner → SettingsService → AppConfig → assert merged values)
 
 Not tested:
