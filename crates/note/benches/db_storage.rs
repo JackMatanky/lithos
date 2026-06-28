@@ -245,7 +245,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {
     let mut note_ids = Vec::with_capacity(count);
 
     store
-        .write(|tx| {
+        .write(|tx| -> Result<(), traces_db::DbError> {
             let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
             for i in 0..count {
                 let note = create_test_note(i);
@@ -452,7 +452,7 @@ fn bench_single_write(c: &mut Criterion) {
             counter = counter.wrapping_add(1);
             let id_str = Uuid::from(note.id()).to_string();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
                     let bytes = note.to_bytes()?;
                     table.insert(id_str.as_str(), bytes.as_ref())?;
@@ -514,7 +514,7 @@ fn bench_batch_write(c: &mut Criterion) {
                     let store = Store::open(&db_path).expect("open database");
 
                     store
-                        .write(|tx| {
+                        .write(|tx| -> Result<(), traces_db::DbError> {
                             let mut table =
                                 tx.try_open_table(NOTES_BY_ID_TABLE)?;
                             for i in 0..size {
@@ -569,7 +569,7 @@ fn bench_delete(c: &mut Criterion) {
             let id_str = Uuid::from(id).to_string();
 
             let existed = store
-                .write(|tx| {
+                .write(|tx| -> Result<bool, traces_db::DbError> {
                     let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
                     let prev = table.remove(id_str.as_str())?;
                     Ok(prev.is_some())
@@ -705,7 +705,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                 let note = create_test_note(i as usize);
                 let id_str = Uuid::from(note.id()).to_string();
                 store
-                    .write(|tx| {
+                    .write(|tx| -> Result<(), traces_db::DbError> {
                         let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
                         let bytes = note.to_bytes()?;
                         table.insert(id_str.as_str(), bytes.as_ref())?;
@@ -726,7 +726,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
             let store = Store::open(&db_path).expect("open database");
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
                     for i in 0..batch_size {
                         let note = create_test_note(i as usize);
@@ -793,7 +793,7 @@ fn bench_scan_range(c: &mut Criterion) {
     let notes: Vec<Note> = (0..TOTAL_NOTES).map(create_test_note).collect();
 
     store
-        .write(|tx| {
+        .write(|tx| -> Result<(), traces_db::DbError> {
             let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
             for (i, note) in notes.iter().enumerate() {
                 let key = format!("notes/test-{i:04}");

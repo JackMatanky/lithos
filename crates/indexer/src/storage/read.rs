@@ -319,7 +319,7 @@ mod tests {
             );
             // Need to insert record using write tx
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     table.insert(id, file_bytes(&record).as_slice()).unwrap();
@@ -359,7 +359,7 @@ mod tests {
             );
             // Need to insert record using write tx
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     table.insert(id, dir_bytes(&record).as_slice()).unwrap();
@@ -394,7 +394,7 @@ mod tests {
             );
             // Seed both primary and secondary tables
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table.insert(id, file_bytes(&record).as_slice()).unwrap();
@@ -432,7 +432,7 @@ mod tests {
 
             // Seed both primary and secondary tables
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     d_table.insert(id, dir_bytes(&record).as_slice()).unwrap();
@@ -476,7 +476,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table
@@ -547,7 +547,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table
@@ -613,7 +613,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     d_table
@@ -650,7 +650,7 @@ mod tests {
             let dir_path = PathKey::try_new("dir").unwrap();
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_p_table = tx
                         .inner
                         .open_table(FILE_ID_BY_PATH.definition())
@@ -704,7 +704,7 @@ mod tests {
             let shared = PathKey::try_new("shared").unwrap();
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_p_table = tx
                         .inner
                         .open_table(FILE_ID_BY_PATH.definition())
@@ -763,7 +763,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table

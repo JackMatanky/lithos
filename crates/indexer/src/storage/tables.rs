@@ -40,7 +40,7 @@ pub(crate) const FILE_IDS_BY_FORMAT: MultimapTableDefinition<&str, FsRecordId> =
 
 #[cfg(test)]
 mod tests {
-    use traces_db::Store;
+    use traces_db::{DbError, Store};
 
     use super::*;
 
@@ -49,7 +49,7 @@ mod tests {
         let (_tempdir, store) = Store::open_temp().unwrap();
 
         store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 tx.inner.open_table(FILES.definition())?;
                 tx.inner.open_table(DIRS.definition())?;
                 tx.inner.open_table(FILE_ID_BY_PATH.definition())?;

@@ -26,16 +26,6 @@ use crate::{
     },
 };
 
-/// Map a captured duplicate-path rejection into the public error type.
-fn reject_if_duplicate(
-    rejected: Option<traces_fs::path::PathKey>,
-) -> Result<(), IndexerRepositoryError> {
-    match rejected {
-        Some(path) => Err(IndexerRepositoryError::DuplicatePath(path)),
-        None => Ok(()),
-    }
-}
-
 impl RedbRepository {
     fn load_file_delete_context(
         tx: &traces_db::WriteTx,
@@ -243,17 +233,17 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), IndexerRepositoryError> {
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
-        let mut rejected = None;
-        self.store.write(|tx| {
-            // Check before writing: on conflict, capture and write nothing so
-            // the committed transaction leaves state unchanged.
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
+            // Reject before writing: returning Err rolls the transaction back,
+            // so a conflict changes nothing (no no-op commit).
             if Self::file_path_taken_by_other(tx, record.path(), record.id())? {
-                rejected = Some(record.path().clone());
-                return Ok(());
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    record.path().clone(),
+                ));
             }
-            Self::save_file_in_tx(tx, record, bytes.as_slice())
-        })?;
-        reject_if_duplicate(rejected)
+            Self::save_file_in_tx(tx, record, bytes.as_slice())?;
+            Ok(())
+        })
     }
 
     #[inline]
@@ -263,15 +253,15 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), IndexerRepositoryError> {
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
-        let mut rejected = None;
-        self.store.write(|tx| {
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             if Self::dir_path_taken_by_other(tx, record.path(), record.id())? {
-                rejected = Some(record.path().clone());
-                return Ok(());
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    record.path().clone(),
+                ));
             }
-            Self::save_dir_in_tx(tx, record, bytes.as_slice())
-        })?;
-        reject_if_duplicate(rejected)
+            Self::save_dir_in_tx(tx, record, bytes.as_slice())?;
+            Ok(())
+        })
     }
 
     #[inline]
@@ -308,20 +298,21 @@ impl WriteRepository for RedbRepository {
             .collect::<Result<_, _>>()
             .map_err(|e| DbError::Serialization(e.to_string()))?;
 
-        let mut rejected = None;
-        self.store.write(|tx| {
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             // Validate every path before writing any record so a conflict
-            // rejects the whole batch with no partial writes.
+            // rejects the whole batch (Err rolls back) with no partial writes.
             for file in files {
                 if Self::file_path_taken_by_other(tx, file.path(), file.id())? {
-                    rejected = Some(file.path().clone());
-                    return Ok(());
+                    return Err(IndexerRepositoryError::DuplicatePath(
+                        file.path().clone(),
+                    ));
                 }
             }
             for dir in dirs {
                 if Self::dir_path_taken_by_other(tx, dir.path(), dir.id())? {
-                    rejected = Some(dir.path().clone());
-                    return Ok(());
+                    return Err(IndexerRepositoryError::DuplicatePath(
+                        dir.path().clone(),
+                    ));
                 }
             }
 
@@ -332,8 +323,7 @@ impl WriteRepository for RedbRepository {
                 Self::save_dir_in_tx(tx, dir, archive.as_slice())?;
             }
             Ok(())
-        })?;
-        reject_if_duplicate(rejected)
+        })
     }
 
     #[inline]
@@ -343,7 +333,7 @@ impl WriteRepository for RedbRepository {
         dir_ids: &[FsRecordId],
     ) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for id in file_ids {
                     Self::delete_file_in_tx(tx, *id)?;
                 }
@@ -360,7 +350,7 @@ impl WriteRepository for RedbRepository {
         // All delete+recreate pairs run within a single WriteTransaction; redb
         // guarantees atomicity, so every deletion reverts together on rollback.
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 tx.inner.delete_table(FILES.definition())?;
                 tx.inner.delete_table(DIRS.definition())?;
                 tx.inner.delete_table(FILE_ID_BY_PATH.definition())?;

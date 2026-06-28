@@ -66,7 +66,7 @@ impl RedbRepository {
         store: Arc<traces_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), traces_db::DbError> {
             tx.inner.open_table(FILES.definition())?;
             tx.inner.open_table(DIRS.definition())?;
             tx.inner.open_table(FILE_ID_BY_PATH.definition())?;

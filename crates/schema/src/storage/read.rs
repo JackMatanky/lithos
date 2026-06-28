@@ -891,7 +891,7 @@ mod tests {
             let path2 = PathKey::try_new("schemas/task.json").unwrap();
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut name_table =
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
                     let mut path_table =
@@ -952,7 +952,7 @@ mod tests {
             let store = Arc::new(Store::open(&db_path).unwrap());
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut name_table =
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
                     name_table.insert(
@@ -1025,7 +1025,7 @@ mod tests {
             let id = SchemaId::new();
             let path = PathKey::try_new("schemas/orphan.json").unwrap();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
                     path_table.insert(

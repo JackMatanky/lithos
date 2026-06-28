@@ -284,7 +284,7 @@ mod tests {
         let id2 = TestId(UuidV7::new());
         let id3 = TestId(UuidV7::new());
 
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), DbError> {
             let mut table = tx.inner.open_table(TEST_TABLE)?;
             table.insert(id1, "val1")?;
             table.insert(id3, "val3")?;
@@ -328,7 +328,7 @@ mod tests {
         let id1 = TestId(UuidV7::new());
         let id2 = TestId(UuidV7::new());
 
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), DbError> {
             let mut table = tx.inner.open_table(TEST_TABLE)?;
             table.save_many(&[(id1, "val1"), (id2, "val2")])?;
             Ok(())
@@ -370,7 +370,7 @@ mod tests {
         let id1 = TestId(UuidV7::new());
         let id2 = TestId(UuidV7::new());
 
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), DbError> {
             let mut table = tx.inner.open_multimap_table(TEST_TABLE)?;
             table.insert(id1, "val1a")?;
             table.insert(id1, "val1b")?;

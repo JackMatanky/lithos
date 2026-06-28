@@ -65,7 +65,7 @@ impl WriteRepository for RedbRepository {
             })?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 Self::remove_file_graph(tx, file.id())?;
 
                 let mut file_table =
@@ -102,7 +102,7 @@ impl WriteRepository for RedbRepository {
         let dir_bytes = dir.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 Self::remove_dir_graph(tx, dir.id())?;
 
                 let mut dir_table =
@@ -153,7 +153,7 @@ impl WriteRepository for RedbRepository {
         let prepared = prepared?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for (path, file, bytes, basename) in &prepared {
                     Self::remove_file_graph(tx, file.id())?;
 
@@ -193,7 +193,7 @@ impl WriteRepository for RedbRepository {
         let prepared = prepared?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for (path, dir, bytes) in &prepared {
                     Self::remove_dir_graph(tx, dir.id())?;
 
@@ -215,7 +215,7 @@ impl WriteRepository for RedbRepository {
         ids: &[FileId],
     ) -> Result<(), VaultRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for id in ids {
                     Self::remove_file_graph(tx, *id)?;
                 }
@@ -230,7 +230,7 @@ impl WriteRepository for RedbRepository {
         ids: &[DirId],
     ) -> Result<(), VaultRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for id in ids {
                     Self::remove_dir_graph(tx, *id)?;
                 }

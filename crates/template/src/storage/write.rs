@@ -63,7 +63,7 @@ impl WriteRepository for RedbRepository {
             .map_err(crate::error::TemplateRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(TEMPLATES.definition())?;
                 table.insert(*template.id(), bytes.as_slice())?;
 
@@ -88,7 +88,7 @@ impl WriteRepository for RedbRepository {
         id: TemplateId,
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 // Open all three tables once. `remove` is a no-op on absent
                 // keys, so unconditional opens are simpler than gating the
                 // index tables behind the aggregate lookup.
@@ -132,7 +132,7 @@ impl WriteRepository for RedbRepository {
             .map_err(crate::error::TemplateRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_TEMPLATE_VIEWS.definition())?;
                 table.insert(id, bytes.as_slice())?;
@@ -147,7 +147,7 @@ impl WriteRepository for RedbRepository {
         path: &PathKey,
     ) -> Result<(), crate::error::TemplateRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 // Resolve path -> id; a view is reachable only through its
                 // template's ID, so an absent path means an absent view.
                 let path_index =
@@ -178,7 +178,7 @@ impl WriteRepository for RedbRepository {
         }
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut path_index =
                     tx.try_open_table(TEMPLATE_ID_BY_PATH.definition())?;
                 let mut templates_table =

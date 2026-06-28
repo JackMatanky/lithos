@@ -99,7 +99,7 @@ impl WriteRepository for RedbRepository {
         let note_bytes = note.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<NoteId, traces_db::DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
@@ -121,7 +121,7 @@ impl WriteRepository for RedbRepository {
         }
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<Vec<NoteId>, traces_db::DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
@@ -146,7 +146,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn delete(&self, id: NoteId) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
@@ -165,7 +165,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn delete_many(&self, ids: &[NoteId]) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
@@ -197,7 +197,7 @@ impl WriteRepository for RedbRepository {
         let note_id = view.note_id();
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(super::LIST_VIEWS.definition())?;
                 table.insert(&note_id, bytes.as_slice())?;
@@ -212,7 +212,7 @@ impl WriteRepository for RedbRepository {
         note_id: NoteId,
     ) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(super::LIST_VIEWS.definition())?;
                 let _ = table.remove(&note_id)?;
