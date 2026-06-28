@@ -9,10 +9,10 @@
 //!
 //! | Module | Purpose |
 //! |--------|---------|
-//! | [`tables`] | Database table definitions (constants + type wrappers) |
-//! | [`read`]   | Read-only query implementation |
-//! | [`write`]  | Write (create/update/delete) implementation |
-//! | [`testing`] | In-memory repository for tests (cfg test only) |
+//! | `tables` | Database table definitions (constants + type wrappers) |
+//! | `read`   | Read-only query implementation |
+//! | `write`  | Write (create/update/delete) implementation |
+//! | `testing` | In-memory repository for tests (cfg test only) |
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
 //! [`WriteRepository`]: crate::repository::WriteRepository
