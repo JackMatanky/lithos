@@ -13,8 +13,8 @@
 //!
 //! Service and engine surface:
 //! - [`TemplateService`] — use-case orchestrator for ingestion and rendering
-//! - [`CreateInput`], [`CreateTemplateOutcome`] — render-to-commit request and
-//!   outcome
+//! - [`CreateTemplateInput`], [`CreateTemplateOutcome`] — render-to-commit
+//!   request and outcome
 //! - [`ProcessSummary`] — counts returned by [`TemplateService::process_all`]
 //! - [`TemplateEngine`], [`MiniJinjaEngine`] — rendering port and adapter
 //! - [`RenderedTemplate`] — load-bearing rendered-output newtype
@@ -46,7 +46,7 @@ pub use error::{
 };
 pub use raw::RawTemplate;
 pub use service::{
-    CreateInput, CreateTemplateOutcome, ProcessSummary, TemplateService,
+    CreateTemplateInput, CreateTemplateOutcome, ProcessSummary, TemplateService,
 };
 pub use storage::{ReadRepository, Repository, WriteRepository};
 pub use views::RawTemplateView;

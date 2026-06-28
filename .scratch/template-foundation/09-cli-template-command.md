@@ -1,5 +1,5 @@
 ---
-title: 08-cli-template-command
+title: 09-cli-template-command
 category: enhancement
 label: ready-for-agent
 status: open
@@ -57,6 +57,7 @@ Deferred (out of scope for this slice):
 ## Blocked by
 
 - `issue-07-template-service.md`
+- `issue-08-app-wiring.md`
 
 ---
 

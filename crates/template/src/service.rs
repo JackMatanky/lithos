@@ -47,7 +47,7 @@ type BatchExistence = (Vec<DiscoveredTemplate>, Vec<PathKey>);
 /// render context, and a `dry_run` flag that selects between rendering-only
 /// preview and full render-and-commit.
 #[derive(Debug, Clone)]
-pub struct CreateInput {
+pub struct CreateTemplateInput {
     /// Name of the template to render.
     pub name: TemplateName,
     /// Vault-relative path where the rendered artifact should be written.
@@ -189,7 +189,7 @@ where
     }
 
     /// Renders the requested template and either writes it to the vault or
-    /// returns a preview when [`CreateInput::dry_run`] is set.
+    /// returns a preview when [`CreateTemplateInput::dry_run`] is set.
     ///
     /// The repository is the source of truth: `create` fetches the requested
     /// [`Template`] from the repository by name rather than accepting a
@@ -233,7 +233,7 @@ where
     ///
     /// ```no_run
     /// # use std::collections::HashMap;
-    /// # use traces_template::{CreateInput, TemplateName, TemplateService};
+    /// # use traces_template::{CreateTemplateInput, TemplateName, TemplateService};
     /// # fn run<R, W, E>(
     /// #     mut service: TemplateService<R, W, E>,
     /// #     name: TemplateName,
@@ -243,7 +243,7 @@ where
     /// #     W: traces_fs::FileWriter,
     /// #     E: traces_template::TemplateEngine,
     /// # {
-    /// let input = CreateInput {
+    /// let input = CreateTemplateInput {
     ///     name,
     ///     output_path: "notes/out.md".to_owned(),
     ///     context: HashMap::new(),
@@ -256,7 +256,7 @@ where
     #[inline]
     pub fn create(
         &mut self,
-        input: &CreateInput,
+        input: &CreateTemplateInput,
     ) -> Result<CreateTemplateOutcome, TemplateError> {
         self.verify_path(&input.name)?;
 
@@ -1392,8 +1392,8 @@ mod tests {
             name: &str,
             output_path: &str,
             dry_run: bool,
-        ) -> CreateInput {
-            CreateInput {
+        ) -> CreateTemplateInput {
+            CreateTemplateInput {
                 name: fixtures::template_name(&format!("{name}.md")),
                 output_path: output_path.to_owned(),
                 context: HashMap::new(),
@@ -1434,7 +1434,7 @@ mod tests {
             context.insert("name".to_owned(), "Alice".to_owned());
 
             let outcome = service
-                .create(&CreateInput {
+                .create(&CreateTemplateInput {
                     name: fixtures::template_name("greeting.md"),
                     output_path: "notes/out.md".to_owned(),
                     context,
@@ -1469,7 +1469,7 @@ mod tests {
             context.insert("name".to_owned(), "Alice".to_owned());
 
             service
-                .create(&CreateInput {
+                .create(&CreateTemplateInput {
                     name: fixtures::template_name("greeting.md"),
                     output_path: "notes/out.md".to_owned(),
                     context,
@@ -1497,7 +1497,7 @@ mod tests {
             context.insert("name".to_owned(), "Alice".to_owned());
 
             let outcome = service
-                .create(&CreateInput {
+                .create(&CreateTemplateInput {
                     name: fixtures::template_name("greeting.md"),
                     output_path: "notes/preview.md".to_owned(),
                     context,
