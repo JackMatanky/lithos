@@ -104,7 +104,7 @@ struct ConfigBuilderOptions {
 
 **`SettingsEnvVars`** (internal, read by SettingsService):
 - Formerly `DiscoveryEnv`
-- Read from the environment inside `SettingsService::build_config()` and `discover()`
+- Read from the environment inside `SettingsService::discover()`
 - Includes: `TRACES_DEFAULT_VAULT` fallback directory, `TRACES_GLOBAL_CONFIG` explicit global config file, ceiling paths, etc.
 
 **`BootstrapRunner`** (renamed from `Bootstrapper`):
@@ -155,7 +155,7 @@ pub(crate) struct DiscoveryInput {
     flag_vault: Option<DirPath>,
     env_global: Option<FilePath>,        // TRACES_GLOBAL_CONFIG
     env_default_vault: Option<DirPath>,  // TRACES_DEFAULT_VAULT fallback dir
-    ceiling_dirs: Box<[DirPath]>,
+    ceiling_dirs: Box<[PathBuf]>,        // parsed path-list, not existence-validated
     suppress_global: bool,
 }
 
@@ -178,6 +178,7 @@ Key points:
 Local collection is mise-style layered discovery with Traces constraints:
 - Starting anchor is `flag_vault` when set; otherwise `anchor`.
 - Enumerate ancestors from the starting anchor to configured ceilings.
+- Ceiling paths are parsed from the env path-list, empty segments are dropped, and non-existent paths are kept as raw path boundaries; they simply never match traversal ancestors.
 - Probe each directory for exact local marker filenames from `location.rs`.
 - If ancestor collection finds no local config, probe `env_default_vault` as a fallback.
 - Return local config candidates in outer-ancestor → nearest-ancestor order.
