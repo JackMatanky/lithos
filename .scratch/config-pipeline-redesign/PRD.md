@@ -26,7 +26,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 10. **`BootstrapRunner`** — composition root between CLI and SettingsService
 11. **Simplified domain types** — no `VaultId`, `VaultVersion`, `GlobalVersion`, `Version`, `Metadata`, `AppVersion`
 12. **Forbidden-field errors** on GlobalConfig/LocalConfig construction — error now, warn later
-13. **Cache root** flows from `DiscoveryResult::cache_root()` (already implemented)
+13. **Cache dir** `<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns, not by `DiscoveryProcessor` or `DiscoveryResult`.
 14. **Config file format** — TOML (default), JSON, YAML — all via serde
 
 ## User Stories
@@ -64,7 +64,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 │    ┌──────────────────────────────┐    │
 │    │  SettingsEnvVars (internal)  │    │
 │    │  Discovery (internal)        │    │
-│  │    - walk, probe, policy     │    │
+│  │    - walk, probe             │    │
 │    │  ConfigBuilder (typestate)   │    │
 │    │    - Init→Tracked→Trusted    │    │
 │    │      →Loaded→Validated→Ready │    │
@@ -80,6 +80,8 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 - `discover(&self, ctx: &BuildContext) → Result<DiscoveryResult, SettingsError>` — discovery subset (for commands that only need vault root)
 
 **No `DiscoveryPort`.** Discovery is an internal module. `DiscoveryService` and `DiscoveryPort` are removed, but the internal `DiscoveryProcessor` typestate pipeline is kept as the core discovery engine. Sub-modules: `walk`, `probe`, `processor`, `context`, `error`. Path definitions consolidate: `location.rs` holds all path constants (marker filenames, boundary markers, tracking/trust subdir names, cache subdirs); `os_dirs.rs` holds XDG + per-platform directory resolution. No more `policy.rs` or scattered path literals.
+
+**`DiscoveryProcessor` uses `transition()` methods** (PropertyBankProcessor pattern), not `impl From`. Branch enums carry the next processor state — `match` arms return the next processor directly. The `Init` phase has a `run()` method orchestrating the full pipeline internally. `SettingsService::discover()` just calls `processor.run(flags, env)`.
 
 **`BuildContext`** (input DTO, constructed by BootstrapRunner):
 ```rust
@@ -110,8 +112,16 @@ CLI invocation
     → constructs BuildContext from flags
     → SettingsService::build_config(&ctx)
       → reads SettingsEnvVars (env vars)
-      → Discovery (internal ascending walk)
-        → DiscoveryResult { vault_candidates, global_candidates, cache_root, report }
+      → DiscoveryProcessor::run(flags, env)    // internal orchestration
+        → FlagOverride phase
+          → flag_branch() → branch enum carries next processor
+        → EnvOverride phase (only if flags insufficient)
+          → branch_strategy() → branch enum carries next processor
+        → AscendingTraversal phase (only if no vault override)
+        → GlobalResolution phase
+        → Finalized → .finalize()
+        → DiscoveryResult { vault_candidates, global_candidates, report }
+      → BootstrapRunner::ensure_cache_dir(vault_root)  // create <vault_root>/.traces/cache/
       → ConfigBuilder::new(result)  // Init state
         → .track()                  // Tracked state — checks tracking symlinks
         → .trust()                  // Trusted state — trust_check per candidate
@@ -120,6 +130,59 @@ CLI invocation
         → .merge()                 // Ready state — precedence merge
         → .finalize()              // AppConfig
 ```
+
+### DiscoveryProcessor Transition Pattern
+
+`DiscoveryProcessor` follows the `PropertyBankProcessor` pattern — transitions via methods returning branch enums, not `impl From`:
+
+```rust
+// Init phase orchestrates the full pipeline
+impl DiscoveryProcessor<'_, Init> {
+    fn run(
+        self,
+        flags: &DiscoveryFlags,
+        env: &SettingsEnvVars,
+    ) -> Result<DiscoveryResult, DiscoveryError> {
+        let flag = self.transition(FlagOverride, ...);
+        match flag.flag_branch() {
+            FlagBranch::VaultAndConfigSet(p) => p.finalize(),
+            FlagBranch::VaultOnlySet(p) => {
+                p.transition_to_global().finalize()
+            }
+            FlagBranch::ConsultEnv(p) => {
+                let env = p.transition(EnvOverride, ...);
+                match env.branch_strategy() {
+                    ExplicitOverrideBranch::VaultProbedSkipGlobal(p) => p.finalize(),
+                    ExplicitOverrideBranch::VaultProbedRunGlobal(p) => {
+                        p.transition_to_global().finalize()
+                    }
+                    ExplicitOverrideBranch::AscendSkipGlobal(p) => {
+                        p.transition_to_ascend().finalize()
+                    }
+                    ExplicitOverrideBranch::AscendThenGlobal(p) => {
+                        p.transition_to_ascend()
+                         .transition_to_global()
+                         .finalize()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Branch enums carry the next processor state — no From impls
+enum FlagBranch<'ctx> {
+    VaultAndConfigSet(DiscoveryProcessor<'ctx, Finalized>),
+    VaultOnlySet(DiscoveryProcessor<'ctx, FlagOverride>),
+    ConsultEnv(DiscoveryProcessor<'ctx, EnvOverride>),
+}
+```
+
+Key points:
+- **`transition()`** method (private) constructs the next processor, same as `PropertyBankProcessor::transition()`.
+- **Branch enums** contain the already-transitioned processor — no external `From` calls.
+- **`SettingsService::discover()`** calls `processor.run(flags, env)` — it does not drive individual transitions.
+- Phase marker types remain zero-sized (no data carried between phases — data lives in the processor struct fields).
 
 ### ConfigBuilder Typestate
 
@@ -236,7 +299,7 @@ No other module defines filesystem path patterns.
 - `config/merger.rs` — `ConfigResolver`, `ResolutionPlan`
 - `config/events.rs` — `Events`, `ConfigUpdated` (no persistence means no event-driven updates)
 - `config/diagnostics.rs` — already unused
-- `discovery/service.rs` — `DiscoveryService` (replaced by internal module)
+- `discovery/service.rs` — `DiscoveryService` (orchestration logic moves into `DiscoveryProcessor::run()`)
 - `discovery/port.rs` — `DiscoveryPort` (removed, no port needed for internal function)
 - `discovery/policy.rs` — `MarkerPattern` struct and constants (folded into `dirs.rs` as flat `&[&str]`)
 - `aggregate.rs` — `Version` removed, `Config` → `AppConfig`, `pending_events` removed
@@ -291,9 +354,9 @@ The crate defaults to `pub(crate)` and exports only:
 | `SettingsEnvVars`       | `pub(crate)` | Internal env var reading    |
 | `RawConfig`             | `pub(crate)` | Pure DTO                     |
 
-### Cache Root
+### Cache Dir
 
-Config no longer provides a cache directory. Cache root is already available via `DiscoveryResult::cache_root()`. Local cache directory creation is the responsibility of the component that first needs it (e.g., the `Tracker` module creates `TRACKED_CONFIGS/` when first tracking a path).
+`<vault_root>/.traces/cache/` is created by `BootstrapRunner` after discovery returns — it calls `std::fs::create_dir_all()` on the vault root's cache subdirectory. This is not a discovery concern; `DiscoveryResult` has no `cache_root` field and `DiscoveryProcessor` has no `CacheResolution` phase. The `Tracker` module separately creates its `TRACKED_CONFIGS/` subdirectory on first use.
 
 ### Trust CLI Commands
 
