@@ -281,9 +281,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn blanket_repository_impl_accepts_read_write_type() {
-        let repo = MockRepository;
-        let _: &dyn Repository = &repo;
-    }
+    /// Compile-time guard: any `ReadRepository + WriteRepository` type is a
+    /// `Repository` via the blanket impl. Never executed; only type-checked.
+    const _: fn() = || {
+        fn assert_blanket_impl<T: ReadRepository + WriteRepository>() {
+            fn is_repository<R: Repository>() {}
+            is_repository::<T>();
+        }
+        assert_blanket_impl::<MockRepository>();
+    };
 }
