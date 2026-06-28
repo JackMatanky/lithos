@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use traces_db::Store;
 use traces_fs::{DirPath, FsWriter};
-use traces_settings::{Config, config::error::ConfigError};
+use traces_settings::Config;
 pub use traces_template::{
     CreateTemplateInput, CreateTemplateOutcome, storage::TEMPLATE_DB_FILENAME,
 };
@@ -27,12 +27,6 @@ pub fn run_template_create(
     input: &CreateTemplateInput,
 ) -> Result<CreateTemplateOutcome, AppError> {
     let spec = config.to_template_spec()?;
-    spec.to_dir_path().map_err(|error| {
-        AppError::Config(ConfigError::ValidationFailed {
-            field: "template.directory".into(),
-            message: format!("invalid template directory: {error}").into(),
-        })
-    })?;
     let db_path = cache_dir.as_path().join(TEMPLATE_DB_FILENAME);
     let store = Store::open(&db_path).map_err(|e| {
         AppError::Template(TemplateError::Repository(
@@ -95,6 +89,8 @@ mod tests {
     }
 
     mod run_template_create {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -112,14 +108,44 @@ mod tests {
                 .expect("expected cache dir");
             let config = config(&root);
 
-            let outcome = crate::template::run_template_create(
+            let result = crate::template::run_template_create(
                 &config,
                 &cache_dir,
                 &input(template_name(vault.path()), false),
-            )
-            .expect("expected create to succeed");
+            );
 
-            assert!(matches!(outcome, CreateTemplateOutcome::Created { .. }));
+            assert!(
+                matches!(result, Ok(CreateTemplateOutcome::Created { .. })),
+                "expected created outcome, got: {result:?}"
+            );
+        }
+
+        #[test]
+        fn writes_rendered_content_to_vault_root_for_valid_input() {
+            let vault = tempfile::tempdir().expect("expected vault tempdir");
+            let cache = tempfile::tempdir().expect("expected cache tempdir");
+            let templates = vault.path().join("templates");
+            std::fs::create_dir_all(&templates)
+                .expect("expected templates dir");
+            std::fs::write(templates.join("greeting.md"), "Hello {{ name }}")
+                .expect("expected template write");
+            let root = DirPath::try_new(vault.path().to_path_buf())
+                .expect("expected vault dir");
+            let cache_dir = DirPath::try_new(cache.path().to_path_buf())
+                .expect("expected cache dir");
+            let config = config(&root);
+
+            let result = crate::template::run_template_create(
+                &config,
+                &cache_dir,
+                &input(template_name(vault.path()), false),
+            );
+            assert!(result.is_ok(), "expected create to succeed: {result:?}");
+
+            let rendered =
+                std::fs::read_to_string(vault.path().join("notes/out.md"))
+                    .expect("expected rendered file");
+            assert_eq!(rendered, "Hello Alice");
         }
 
         #[test]
@@ -147,7 +173,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_config_error_when_config_is_invalid_for_template_spec() {
+        fn returns_template_error_when_template_directory_is_missing() {
             let cache = tempfile::tempdir().expect("expected cache tempdir");
             let cache_dir = DirPath::try_new(cache.path().to_path_buf())
                 .expect("expected cache dir");
@@ -167,7 +193,7 @@ mod tests {
             )
             .expect_err("expected invalid config to fail");
 
-            assert!(matches!(err, AppError::Config(_)));
+            assert!(matches!(err, AppError::Template(_)));
         }
     }
 }

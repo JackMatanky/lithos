@@ -34,7 +34,8 @@ use traces_settings::DiscoveryError;
 /// (`clippy::exit = "deny"`); the runner in Slice 8 handles the actual exit.
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub(crate) enum CliError {
-    /// Application pipeline failed (discovery, config, or indexing error).
+    /// Application pipeline failed (discovery, config, indexing, or template
+    /// error).
     #[error(transparent)]
     Bootstrap(#[from] AppError),
 

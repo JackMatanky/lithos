@@ -26,7 +26,7 @@ pub(crate) mod core;
 pub(crate) mod read;
 pub(crate) mod write;
 
-pub mod tables;
+pub(crate) mod tables;
 
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
