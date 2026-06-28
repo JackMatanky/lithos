@@ -70,14 +70,14 @@ No `Template`-specific exit codes or user-facing message formatting belongs here
 
 ## Acceptance criteria
 
-- [ ] `traces-template` added to `crates/app/Cargo.toml` dependencies
-- [ ] `crates/app/src/template.rs` exists with `run_template_create()` matching the shape above
-- [ ] Module tests cover: `run_template_create` constructs service and returns outcome for valid inputs, propagates `TemplateError` as `AppError::Template`
-- [ ] `AppError::Template(TemplateError)` variant added in `crates/app/src/error.rs` with `#[from]` conversion
-- [ ] `crates/template/src/storage/core.rs` `#[allow(dead_code)]` removed from `RedbRepository` struct definition and `new()` method
-- [ ] No `unwrap()` or `panic!` in production code
-- [ ] `crate::storage::TEMPLATE_DB_FILENAME` is exported and used by the app wiring (no dead_code warning on the const)
-- [ ] `mise run test` passes
+- [x] `traces-template` added to `crates/app/Cargo.toml` dependencies
+- [x] `crates/app/src/template.rs` exists with `run_template_create()` matching the shape above
+- [x] Module tests cover: `run_template_create` constructs service and returns outcome for valid inputs, propagates `TemplateError` as `AppError::Template`
+- [x] `AppError::Template(TemplateError)` variant added in `crates/app/src/error.rs` with `#[from]` conversion
+- [x] `crates/template/src/storage/core.rs` `#[allow(dead_code)]` removed from `RedbRepository` struct definition and `new()` method
+- [x] No `unwrap()` or `panic!` in production code
+- [x] `crate::storage::TEMPLATE_DB_FILENAME` is exported and used by the app wiring (no dead_code warning on the const)
+- [x] `mise run test` passes
 
 ## Blocked by
 
