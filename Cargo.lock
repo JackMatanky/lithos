@@ -1733,24 +1733,15 @@ dependencies = [
 name = "traces-indexer"
 version = "0.1.0"
 dependencies = [
- "base64",
- "chrono",
- "dirs",
- "miette",
  "mockall",
  "pretty_assertions",
  "redb",
  "rkyv",
- "serde",
- "serde_json",
  "tempfile",
  "thiserror",
- "toml",
  "traces-db",
  "traces-fs",
  "traces-utils",
- "tracing",
- "uuid",
  "walkdir",
 ]
 

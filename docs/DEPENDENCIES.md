@@ -65,6 +65,12 @@ Legend:
 - `assert_cmd` + `predicates` when CLI integration/e2e test suite begins
 - `dhat` when doing dedicated heap profiling work
 
+### Done
+- `traces-indexer` direct deps pruned (06.7): dropped unused
+  `tracing, miette, serde, serde_json, toml, base64, dirs, chrono` and the
+  direct `uuid` (used only transitively via `traces-utils`). Kept `thiserror,
+  redb, rkyv, walkdir` + path deps. Guarded by `unused_crate_dependencies`.
+
 ---
 
 ## Core Architecture Dependencies
