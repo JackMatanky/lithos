@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use traces_db::Store;
 use traces_fs::{DirPath, FsWriter};
-use traces_settings::Config;
+use traces_settings::AppConfig;
 pub use traces_template::{
     CreateTemplateInput, CreateTemplateOutcome, storage::TEMPLATE_DB_FILENAME,
 };
@@ -18,11 +18,11 @@ use crate::error::AppError;
 /// Run the template create pipeline.
 ///
 /// # Errors
-/// Returns [`AppError::Config`] when config projection fails, or
+/// Returns [`AppError::AppConfig`] when config projection fails, or
 /// [`AppError::Template`] when storage, rendering, or writing fails.
 #[inline]
 pub fn run_template_create(
-    config: &Config,
+    config: &AppConfig,
     cache_dir: &DirPath,
     input: &CreateTemplateInput,
 ) -> Result<CreateTemplateOutcome, AppError> {
@@ -60,7 +60,7 @@ mod tests {
     use super::*;
     use crate::error::AppError;
 
-    fn config(root: &DirPath) -> traces_settings::Config {
+    fn config(root: &DirPath) -> traces_settings::AppConfig {
         build_from_layers(
             None,
             None,

@@ -30,12 +30,12 @@ use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 use traces_fs::metadata::FileMetadata;
 use traces_support::{Blake3Hash, HasContentHash, HasContentHashMut};
 
-fn hash_raw_global(raw: &crate::config::raw::RawGlobalConfig) -> Blake3Hash {
+fn hash_raw_global(raw: &crate::config::raw::RawConfig) -> Blake3Hash {
     let serialized = toml::to_string(raw).unwrap_or_default();
     Blake3Hash::compute(serialized.as_bytes())
 }
 
-fn hash_raw_vault(raw: &crate::config::raw::RawVaultConfig) -> Blake3Hash {
+fn hash_raw_vault(raw: &crate::config::raw::RawConfig) -> Blake3Hash {
     let serialized = toml::to_string(raw).unwrap_or_default();
     Blake3Hash::compute(serialized.as_bytes())
 }
@@ -150,7 +150,7 @@ impl RawGlobalConfigView {
     )]
     #[inline]
     #[must_use]
-    pub fn is_fresh(&self, raw: &crate::raw::RawGlobalConfig) -> bool {
+    pub fn is_fresh(&self, raw: &crate::raw::RawConfig) -> bool {
         self.latest_version().is_some_and(|latest| {
             let timestamp_match = raw.metadata.as_ref().is_some_and(|meta| {
                 latest.is_timestamp_match(
@@ -175,10 +175,7 @@ impl RawGlobalConfigView {
     /// - Content hash differs
     #[inline]
     #[must_use]
-    pub fn content_hash_matches(
-        &self,
-        raw: &crate::raw::RawGlobalConfig,
-    ) -> bool {
+    pub fn content_hash_matches(&self, raw: &crate::raw::RawConfig) -> bool {
         self.latest_version().is_some_and(|latest| {
             latest.content_hash() == &hash_raw_global(raw)
         })
@@ -198,7 +195,7 @@ impl RawGlobalConfigView {
     /// - Content hash differs (file content changed)
     #[inline]
     #[must_use]
-    pub fn matches_raw(&self, raw: &crate::raw::RawGlobalConfig) -> bool {
+    pub fn matches_raw(&self, raw: &crate::raw::RawConfig) -> bool {
         self.is_fresh(raw)
     }
 }
@@ -308,7 +305,7 @@ impl RawVaultConfigView {
     )]
     #[inline]
     #[must_use]
-    pub fn is_fresh(&self, raw: &crate::raw::RawVaultConfig) -> bool {
+    pub fn is_fresh(&self, raw: &crate::raw::RawConfig) -> bool {
         self.latest_version().is_some_and(|latest| {
             let timestamp_match = raw.metadata.as_ref().is_some_and(|meta| {
                 latest.is_timestamp_match(
@@ -333,10 +330,7 @@ impl RawVaultConfigView {
     /// - Content hash differs
     #[inline]
     #[must_use]
-    pub fn content_hash_matches(
-        &self,
-        raw: &crate::raw::RawVaultConfig,
-    ) -> bool {
+    pub fn content_hash_matches(&self, raw: &crate::raw::RawConfig) -> bool {
         self.latest_version()
             .is_some_and(|latest| latest.content_hash() == &hash_raw_vault(raw))
     }
@@ -355,7 +349,7 @@ impl RawVaultConfigView {
     /// - Content hash differs (file content changed)
     #[inline]
     #[must_use]
-    pub fn matches_raw(&self, raw: &crate::raw::RawVaultConfig) -> bool {
+    pub fn matches_raw(&self, raw: &crate::raw::RawConfig) -> bool {
         self.is_fresh(raw)
     }
 }

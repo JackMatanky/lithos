@@ -56,7 +56,7 @@ use traces_schema::{
     builder::Builder, property::PropertyName, repository::ReadRepository as _,
 };
 use traces_settings::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     builder,
     vault::{VaultId, VaultRoot},
 };
@@ -72,7 +72,7 @@ fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
 }
 
 /// Create a test config for a vault root.
-fn test_config(root: &Path) -> TestResult<Config> {
+fn test_config(root: &Path) -> TestResult<AppConfig> {
     let root = VaultRoot::try_new(root.to_path_buf())?;
     let config = builder::build_from_layers(
         None,

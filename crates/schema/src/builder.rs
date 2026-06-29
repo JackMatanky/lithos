@@ -4,7 +4,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use traces_fs::FileReader;
-use traces_settings::aggregate::Config;
+use traces_settings::aggregate::AppConfig;
 
 use crate::{
     aggregate::Schema,
@@ -18,7 +18,7 @@ use crate::{
 
 /// Schema loader — orchestrates the full schema ingestion pipeline.
 pub struct Builder<'config, R> {
-    config: &'config Config,
+    config: &'config AppConfig,
     source: FileReader,
     repository: R,
     property_bank_delta: Option<HashSet<PropertyName>>,
@@ -34,7 +34,7 @@ where
     pub fn new(
         repository: R,
         source: FileReader,
-        config: &'config Config,
+        config: &'config AppConfig,
     ) -> Self {
         Self {
             config,
@@ -179,7 +179,7 @@ mod tests {
         FileNode, FileReader,
         path::{DirPath, RelativeDirPath, RelativeFilePath},
     };
-    use traces_settings::{aggregate::Config, schema::SchemaConfigSpec};
+    use traces_settings::{aggregate::AppConfig, schema::SchemaConfigSpec};
 
     use super::*;
     use crate::{
@@ -192,7 +192,7 @@ mod tests {
     }
 
     /// Helper to setup test config for a given temp directory.
-    fn setup_test_config(temp: &TempDir) -> Config {
+    fn setup_test_config(temp: &TempDir) -> AppConfig {
         traces_settings::builder::build_from_layers(
             None,
             None,
@@ -256,8 +256,11 @@ description = "Test schema"
 
     #[test]
     fn builder_new_accepts_repository_trait() {
-        fn assert_builder_new<R>(repo: R, source: FileReader, config: &Config)
-        where
+        fn assert_builder_new<R>(
+            repo: R,
+            source: FileReader,
+            config: &AppConfig,
+        ) where
             R: Repository,
         {
             let _ = Builder::new(repo, source, config);

@@ -133,7 +133,7 @@ fn write_json(
 #[cfg(test)]
 mod config_files_handler {
     use traces_app::bootstrap::Bootstrapper;
-    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_settings::{DiscoveryFlags, DiscoveryService};
 
     use super::run_config_files;
     use crate::cli::OutputFormat;

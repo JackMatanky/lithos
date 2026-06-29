@@ -23,7 +23,7 @@ use traces_note::{
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository as note_repository, storage as note_storage,
 };
-use traces_settings::aggregate::Config;
+use traces_settings::aggregate::AppConfig;
 
 use super::error::{VaultFileError, VaultProcessError};
 use crate::{
@@ -304,7 +304,7 @@ impl VaultProcessor<Discovery, Unknown> {
     pub fn process_full(
         self,
         store: Arc<Store>,
-        config: &Config,
+        config: &AppConfig,
     ) -> Result<VaultProcessReport, VaultProcessError> {
         let scanner = DirScanner::new(config.vault_metadata().root().as_path());
         let source = FileReader::new(config.vault_metadata().root().as_path());
@@ -545,7 +545,7 @@ impl VaultProcessor<Routing, Compared> {
     fn route(
         self,
         note_repository: &impl note_repository::Repository,
-        config: &Config,
+        config: &AppConfig,
         source: &FileReader,
     ) -> Result<VaultProcessor<Prune, Routed>, VaultProcessError> {
         let mut report = self.status.report;

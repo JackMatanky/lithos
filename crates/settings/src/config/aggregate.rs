@@ -1,6 +1,6 @@
-//! Config aggregate root and versioning.
+//! AppConfig aggregate root and versioning.
 //!
-//! This module provides the [`Config`] aggregate, which represents the
+//! This module provides the [`AppConfig`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
 
@@ -26,7 +26,7 @@ use super::{
 )]
 #[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
-pub struct Config {
+pub struct AppConfig {
     /// Version number for this merged config snapshot.
     version: Version,
     /// Vault metadata with versioning and naming.
@@ -48,8 +48,8 @@ pub struct Config {
     pending_events: Vec<Events>,
 }
 
-impl Config {
-    /// Construct a validated Config aggregate from validated parts.
+impl AppConfig {
+    /// Construct a validated `AppConfig` aggregate from validated parts.
     #[expect(
         clippy::too_many_arguments,
         reason = "Constructor collects validated domain components"
@@ -238,8 +238,8 @@ impl Config {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use traces_settings::config::aggregate::Config;
-    /// # fn example(config: &Config) {
+    /// # use traces_settings::config::aggregate::AppConfig;
+    /// # fn example(config: &AppConfig) {
     /// let spec = config.to_schema_spec().expect("schema spec should build");
     /// // spec.root() returns vault root
     /// // spec.schema_directory_path() resolves absolute schemas directory
@@ -307,8 +307,8 @@ impl Config {
         Ok(CacheConfigSpec::new(root, directory))
     }
 
-    /// Create a new Config with the specified version, keeping all other fields
-    /// unchanged.
+    /// Create a new `AppConfig` with the specified version, keeping all other
+    /// fields unchanged.
     ///
     /// This is used when atomically allocating a version number during
     /// persistence.
@@ -340,9 +340,9 @@ impl Config {
     }
 }
 
-impl From<&Config> for TemplateConfigSpec {
+impl From<&AppConfig> for TemplateConfigSpec {
     #[inline]
-    fn from(config: &Config) -> Self {
+    fn from(config: &AppConfig) -> Self {
         Self::new(
             config.vault_metadata.root().as_dir_path().clone(),
             config.template.template_dir().as_relative_dir().clone(),
@@ -459,14 +459,14 @@ pub(crate) mod fixtures {
         VaultRoot::try_new(dir).expect("vault_root")
     }
 
-    /// Create a Config with test values. Only available in tests.
-    pub fn test_config() -> Config {
+    /// Create an `AppConfig` with test values. Only available in tests.
+    pub fn test_config() -> AppConfig {
         let test_root = vault_root("/test-vault");
         let test_name = VaultName::from_root(&test_root);
         let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
             .expect("package version is non-empty");
 
-        Config {
+        AppConfig {
             version: Version::initial(),
             vault_metadata: Metadata::new(
                 VaultId::new(),
@@ -485,8 +485,8 @@ pub(crate) mod fixtures {
         }
     }
 
-    pub fn merged_config_with_sample_overrides() -> Config {
-        let vault = crate::config::raw::RawVaultConfig {
+    pub fn merged_config_with_sample_overrides() -> AppConfig {
+        let vault = crate::config::raw::RawConfig {
             logging: Some(RawLogging {
                 log_level: Some("debug".to_owned()),
             }),
@@ -517,10 +517,10 @@ pub(crate) mod fixtures {
             vault_root("/vault"),
             Version::initial(),
         )
-        .expect("Config build should succeed with sample data")
+        .expect("AppConfig build should succeed with sample data")
     }
 
-    pub fn merged_config_with_empty_inputs() -> Config {
+    pub fn merged_config_with_empty_inputs() -> AppConfig {
         crate::config::builder::build_from_layers(
             None,
             None,
@@ -531,7 +531,7 @@ pub(crate) mod fixtures {
         .expect("Merge with empty values should succeed")
     }
 
-    pub fn config_with_cleared_events() -> Config {
+    pub fn config_with_cleared_events() -> AppConfig {
         let mut config = test_config();
         let _events: Vec<Events> = config.take_events();
         config
@@ -594,7 +594,7 @@ mod tests {
         #[test]
         fn root_resolution_comes_from_vault_root_param_not_config() {
             let vault_root = fixtures::vault_root("/vault-param-root");
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -729,7 +729,7 @@ mod tests {
         #[test]
         #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn applies_paths_fields_from_raw() {
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
                     directory: Some("my-schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
@@ -774,7 +774,7 @@ mod tests {
             std::fs::write(&property_bank, "{}")
                 .expect("property bank should be writable");
 
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -831,7 +831,7 @@ mod tests {
             std::fs::write(&custom_bank, "{}")
                 .expect("custom property bank should be writable");
 
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
                     directory: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
@@ -878,7 +878,7 @@ mod tests {
             std::fs::write(&property_bank, "{}")
                 .expect("property bank should be writable");
 
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 ..Default::default()
             };
             let config = crate::config::builder::build_from_layers(
@@ -941,7 +941,7 @@ mod tests {
         #[test]
         #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn applies_path_fields_from_raw_to_split_configs() {
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
                     directory: Some("my-schemas".to_owned()),
                     property_bank_file: Some("bank.json".to_owned()),
@@ -998,7 +998,7 @@ mod tests {
             let custom_bank = custom_schemas.join("custom-bank.json");
             std::fs::write(&custom_bank, "{}")
                 .expect("custom property bank should be writable");
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 schema: Some(crate::config::raw::RawSchemaConfig {
                     directory: Some("custom-schemas".to_owned()),
                     property_bank_file: Some("custom-bank.json".to_owned()),
@@ -1044,7 +1044,7 @@ mod tests {
             let templates = root.path().join("custom-templates");
             std::fs::create_dir_all(&templates)
                 .expect("templates dir should be created");
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
                     directory: Some("custom-templates".to_owned()),
                 }),
@@ -1086,7 +1086,7 @@ mod tests {
             let cache = root.path().join(".traces-cache");
             std::fs::create_dir_all(&cache)
                 .expect("cache dir should be created");
-            let vault = crate::config::raw::RawVaultConfig {
+            let vault = crate::config::raw::RawConfig {
                 cache: Some(crate::config::raw::RawCacheConfig {
                     directory: Some(".traces-cache".to_owned()),
                 }),

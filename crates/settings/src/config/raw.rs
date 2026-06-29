@@ -12,12 +12,21 @@ use std::collections::HashMap;
 
 use traces_fs::metadata::FileMetadata;
 
-/// Raw config parsed from the global config file.
+/// Raw config parsed from a config file.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawGlobalConfig {
+pub struct RawConfig {
+    /// `LocalConfig` name override (vault-only).
+    pub name: Option<String>,
+
+    /// Version override.
+    pub version: Option<String>,
+
     /// Logging configuration.
     pub logging: Option<RawLogging>,
+
+    /// Cache configuration (vault-only).
+    pub cache: Option<RawCacheConfig>,
 
     /// Template configuration.
     pub template: Option<RawTemplateConfig>,
@@ -28,41 +37,6 @@ pub struct RawGlobalConfig {
     /// Trusted vaults (global-only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trusted_vaults: Option<RawTrustedVaults>,
-
-    /// Frontmatter configuration.
-    pub frontmatter: Option<RawFrontmatter>,
-
-    /// Task configuration.
-    pub task: Option<RawTaskConfig>,
-
-    /// File metadata for staleness detection.
-    ///
-    /// Populated during discovery/parsing. Not serialized to TOML.
-    #[serde(skip)]
-    pub metadata: Option<FileMetadata>,
-}
-
-/// Raw config parsed from a vault config file.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawVaultConfig {
-    /// Vault name override.
-    pub name: Option<String>,
-
-    /// Version override.
-    pub version: Option<String>,
-
-    /// Logging configuration.
-    pub logging: Option<RawLogging>,
-
-    /// Cache configuration.
-    pub cache: Option<RawCacheConfig>,
-
-    /// Template configuration.
-    pub template: Option<RawTemplateConfig>,
-
-    /// Schema configuration.
-    pub schema: Option<RawSchemaConfig>,
 
     /// Frontmatter configuration.
     pub frontmatter: Option<RawFrontmatter>,
@@ -288,7 +262,7 @@ mod tests {
                 log_level = "info"
             "#;
 
-            let parsed: Result<RawGlobalConfig, _> = toml::from_str(toml);
+            let parsed: Result<RawConfig, _> = toml::from_str(toml);
             assert!(parsed.is_ok(), "Unknown keys should be ignored");
         }
     }
@@ -302,7 +276,7 @@ mod tests {
                 [cache]
                 directory = ".cache"
             "#;
-            let result: Result<RawVaultConfig, _> = toml::from_str(toml);
+            let result: Result<RawConfig, _> = toml::from_str(toml);
             assert!(result.is_ok(), "Should deserialize without vault_path");
         }
 
@@ -321,7 +295,7 @@ mod tests {
                 log_level = "debug"
             "#;
 
-            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
+            let raw: RawConfig = toml::from_str(toml).unwrap();
             assert_eq!(
                 raw.schema.unwrap().directory.as_deref(),
                 Some("custom-schemas")
@@ -346,14 +320,14 @@ mod tests {
                 # schema omitted - will merge from lower layer
             "#;
 
-            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
+            let raw: RawConfig = toml::from_str(toml).unwrap();
             assert_eq!(raw.cache.unwrap().directory.as_deref(), Some(".cache"));
             assert!(raw.schema.is_none());
         }
 
         #[test]
         fn raw_global_config_defaults_to_empty() {
-            let raw = RawGlobalConfig::default();
+            let raw = RawConfig::default();
 
             assert!(raw.schema.is_none());
             assert!(raw.template.is_none());
@@ -370,7 +344,7 @@ mod tests {
                 # All fields omitted - should deserialize successfully
             ";
 
-            let raw: RawGlobalConfig = toml::from_str(toml).unwrap();
+            let raw: RawConfig = toml::from_str(toml).unwrap();
 
             assert!(raw.schema.is_none());
             assert!(raw.template.unwrap().directory.is_none());
@@ -394,7 +368,7 @@ mod tests {
                 title_key = "title"
             "#;
 
-            let raw: RawVaultConfig = toml::from_str(toml).unwrap();
+            let raw: RawConfig = toml::from_str(toml).unwrap();
             assert_eq!(
                 raw.schema.unwrap().directory.as_deref(),
                 Some("schemas")
@@ -406,7 +380,7 @@ mod tests {
 
         #[test]
         fn raw_vault_config_serializes_and_roundtrips() {
-            let original = RawVaultConfig {
+            let original = RawConfig {
                 cache: Some(RawCacheConfig {
                     directory: Some(".cache".to_owned()),
                 }),
@@ -423,11 +397,11 @@ mod tests {
                 logging: None,
                 task: None,
                 metadata: None,
+                trusted_vaults: None,
             };
 
             let toml_string = toml::to_string(&original).unwrap();
-            let deserialized: RawVaultConfig =
-                toml::from_str(&toml_string).unwrap();
+            let deserialized: RawConfig = toml::from_str(&toml_string).unwrap();
 
             assert_eq!(
                 deserialized.cache.unwrap().directory,

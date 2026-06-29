@@ -6,7 +6,7 @@
 use crate::config::{
     error::ConfigError,
     processor::{GlobalConfig, ProcessorOutcome, VaultConfig},
-    raw::{RawGlobalConfig, RawVaultConfig},
+    raw::RawConfig,
 };
 
 /// Action plan emitted by [`ConfigResolver`].
@@ -17,16 +17,16 @@ pub enum ResolutionPlan {
     /// Raw content is unchanged but views must be updated.
     UpdateViews {
         /// Environment config raw layer when view sync is required.
-        global: Option<RawGlobalConfig>,
+        global: Option<RawConfig>,
         /// Local config raw layer when view sync is required.
-        vault: Option<RawVaultConfig>,
+        vault: Option<RawConfig>,
     },
     /// At least one source changed semantically; rebuild final config.
     Rebuild {
         /// Environment config raw layer for rebuild.
-        global: Option<RawGlobalConfig>,
+        global: Option<RawConfig>,
         /// Local config raw layer for rebuild.
-        vault: Option<RawVaultConfig>,
+        vault: Option<RawConfig>,
     },
 }
 
@@ -157,13 +157,10 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::config::{
-        processor::ProcessorOutcome,
-        raw::{RawGlobalConfig, RawVaultConfig},
-    };
+    use crate::config::{processor::ProcessorOutcome, raw::RawConfig};
 
-    fn create_test_global_config() -> RawGlobalConfig {
-        RawGlobalConfig {
+    fn create_test_global_config() -> RawConfig {
+        RawConfig {
             logging: None,
             template: Some(crate::config::raw::RawTemplateConfig {
                 directory: Some("global-templates".into()),
@@ -176,11 +173,12 @@ mod tests {
             frontmatter: None,
             task: None,
             metadata: None,
+            ..Default::default()
         }
     }
 
-    fn create_test_vault_config() -> RawVaultConfig {
-        RawVaultConfig {
+    fn create_test_vault_config() -> RawConfig {
+        RawConfig {
             name: None,
             version: None,
             logging: None,
@@ -194,6 +192,7 @@ mod tests {
             frontmatter: None,
             task: None,
             metadata: None,
+            ..Default::default()
         }
     }
 

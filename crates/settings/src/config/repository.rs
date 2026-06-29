@@ -1,7 +1,7 @@
 //! Configuration storage traits.
 
 use crate::config::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
     global::Global,
     vault::{Vault, VaultId, VaultRoot},
@@ -45,7 +45,7 @@ pub trait ReadRepository: Send + Sync {
         &self,
         vault_id: VaultId,
         version: Version,
-    ) -> Result<Option<Config>, ConfigRepositoryError>;
+    ) -> Result<Option<AppConfig>, ConfigRepositoryError>;
 
     /// Fetches the active (latest) configuration version for a vault.
     ///
@@ -73,7 +73,7 @@ pub trait ReadRepository: Send + Sync {
         f: F,
     ) -> Result<Option<R>, ConfigRepositoryError>
     where
-        F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R;
+        F: for<'archived> FnOnce(&'archived rkyv::Archived<AppConfig>) -> R;
 
     /// Finds a vault ID by its root path.
     ///
@@ -142,7 +142,7 @@ pub trait WriteRepository: Send + Sync {
     fn save_config(
         &self,
         vault_id: VaultId,
-        config: &Config,
+        config: &AppConfig,
     ) -> Result<Version, ConfigRepositoryError>;
 
     /// Saves the bidirectional vault ID ↔ path mapping.

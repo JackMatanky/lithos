@@ -22,7 +22,7 @@
 use std::marker::PhantomData;
 
 use traces_fs::{FileReader, metadata::FileMetadata};
-use traces_settings::aggregate::Config;
+use traces_settings::aggregate::AppConfig;
 
 use crate::{
     aggregate::{Note, NoteId},
@@ -294,7 +294,7 @@ impl NoteProcessor<Discovery, Unknown> {
     pub fn process_file<R: Repository>(
         self,
         repository: &R,
-        config: &Config,
+        config: &AppConfig,
         source: &FileReader,
         info: NoteFileInfo,
     ) -> Result<NoteProcessReport, NoteProcessError> {

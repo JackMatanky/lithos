@@ -16,7 +16,7 @@ use super::{
     },
 };
 use crate::config::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
     global::Global,
     repository::WriteRepository,
@@ -65,7 +65,7 @@ impl WriteRepository for RedbRepository {
     fn save_config(
         &self,
         vault_id: VaultId,
-        config: &Config,
+        config: &AppConfig,
     ) -> Result<Version, ConfigRepositoryError> {
         // Atomically allocate version and save config
         self.store

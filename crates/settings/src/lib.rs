@@ -4,9 +4,15 @@
 //! This crate unifies discovery (locating configuration files) and config
 //! (parsing, validating, and merging them) into a single inbound adapter.
 
+pub mod candidate;
 pub mod config;
 pub mod discovery;
+pub mod env_var;
+pub mod location;
+pub mod os_dirs;
+pub mod service;
 
+pub use candidate::CandidatePath;
 // To satisfy the mechanical `crate::xxx -> crate::xxx`
 // and `crate::xxx -> crate::xxx` import rewrites:
 #[cfg(any(test, feature = "testing"))]
@@ -18,7 +24,7 @@ pub use config::{
 };
 // Re-export specific boundary APIs as requested
 pub use config::{
-    aggregate::Config,
+    aggregate::AppConfig,
     builder::Builder,
     repository::{ReadRepository, Repository, WriteRepository},
     storage::{RedbRepository, RedbStorage},
@@ -26,18 +32,13 @@ pub use config::{
 pub use discovery::{
     context,
     context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
-    dirs, env,
-    env::EnvVars,
+    dirs,
     error::DiscoveryError,
-    location,
     location::{
         CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
     },
     port, report,
     report::DiscoveryReport,
-    service,
-    service::{
-        CandidatePath, DiscoveryResult, DiscoveryService,
-        DiscoveryServiceConfig,
-    },
+    service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
+pub use env_var::SettingsEnvVars;

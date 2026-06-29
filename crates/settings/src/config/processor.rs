@@ -18,7 +18,7 @@
 //! // Define config type
 //! pub struct GlobalConfig;
 //! impl ConfigType for GlobalConfig {
-//!     type Raw = RawGlobalConfig;
+//!     type Raw = RawConfig;
 //!     type View = RawGlobalConfigView;
 //!     // ...
 //! }
@@ -45,11 +45,11 @@
 //!         ConfigFileProcessor, GlobalConfig, ProcessorOutcome,
 //!         ComparisonBranch, AnalysisBranch,
 //!     },
-//!     raw::RawGlobalConfig,
+//!     raw::RawConfig,
 //!     views::RawGlobalConfigView,
 //! };
 //!
-//! # fn example(raw: Option<RawGlobalConfig>, view: Option<RawGlobalConfigView>) -> Result<(), Box<dyn std::error::Error>> {
+//! # fn example(raw: Option<RawConfig>, view: Option<RawGlobalConfigView>) -> Result<(), Box<dyn std::error::Error>> {
 //! let processor = ConfigFileProcessor::<GlobalConfig, _, _>::new(raw, view);
 //!
 //! match processor.compare()? {
@@ -79,7 +79,7 @@ use traces_support::{Blake3HashIndex, HasHashIndex, HasHashIndexMut};
 
 use crate::config::{
     error::ConfigError,
-    raw::{RawGlobalConfig, RawVaultConfig},
+    raw::RawConfig,
     views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
@@ -114,7 +114,7 @@ pub trait ConfigType {
 pub struct GlobalConfig;
 
 impl ConfigType for GlobalConfig {
-    type Raw = RawGlobalConfig;
+    type Raw = RawConfig;
     type View = RawGlobalConfigView;
 
     #[inline]
@@ -193,7 +193,7 @@ impl ConfigType for GlobalConfig {
 pub struct VaultConfig;
 
 impl ConfigType for VaultConfig {
-    type Raw = RawVaultConfig;
+    type Raw = RawConfig;
     type View = RawVaultConfigView;
 
     #[inline]
@@ -662,18 +662,18 @@ pub trait IsConfigViewFresh<R> {
 }
 
 // Implement trait for global config view
-impl IsConfigViewFresh<RawGlobalConfig> for RawGlobalConfigView {
+impl IsConfigViewFresh<RawConfig> for RawGlobalConfigView {
     #[inline]
-    fn is_fresh(&self, raw: &RawGlobalConfig) -> bool {
+    fn is_fresh(&self, raw: &RawConfig) -> bool {
         // Delegate to the view's existing is_fresh method
         self.is_fresh(raw)
     }
 }
 
 // Implement trait for vault config view
-impl IsConfigViewFresh<RawVaultConfig> for RawVaultConfigView {
+impl IsConfigViewFresh<RawConfig> for RawVaultConfigView {
     #[inline]
-    fn is_fresh(&self, raw: &RawVaultConfig) -> bool {
+    fn is_fresh(&self, raw: &RawConfig) -> bool {
         // Delegate to the view's existing is_fresh method
         self.is_fresh(raw)
     }
@@ -787,12 +787,15 @@ mod tests {
     //  Test Fixtures
     // ─────────────────────────────────────────────────────────────────────────────
 
-    fn create_raw_global_config() -> RawGlobalConfig {
+    fn create_raw_global_config() -> RawConfig {
         let now = SystemTime::now();
-        RawGlobalConfig {
+        RawConfig {
             logging: Some(RawLogging::default()),
             template: None,
             schema: None,
+            cache: None,
+            name: None,
+            version: None,
             trusted_vaults: None,
             frontmatter: None,
             task: None,
@@ -804,9 +807,10 @@ mod tests {
         }
     }
 
-    fn create_raw_vault_config() -> RawVaultConfig {
+    fn create_raw_vault_config() -> RawConfig {
         let now = SystemTime::now();
-        RawVaultConfig {
+        RawConfig {
+            trusted_vaults: None,
             name: Some("Test Vault".to_owned()),
             version: None,
             logging: None,
@@ -823,7 +827,7 @@ mod tests {
         }
     }
 
-    fn global_view_for(raw: &RawGlobalConfig) -> RawGlobalConfigView {
+    fn global_view_for(raw: &RawConfig) -> RawGlobalConfigView {
         let mut view = RawGlobalConfigView::new("/tmp/global.toml".into());
         let content =
             toml::to_string(raw).expect("raw global should serialize");

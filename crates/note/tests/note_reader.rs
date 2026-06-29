@@ -35,7 +35,7 @@ mod tests {
         storage::RedbRepository, tag::Tag as NoteTag, task::Task,
     };
     use traces_settings::{
-        aggregate::{Config, Version},
+        aggregate::{AppConfig, Version},
         builder,
         task::StatusSymbol,
         vault::{VaultId, VaultRoot},
@@ -47,10 +47,10 @@ mod tests {
     struct Fixture {
         db: TestDb,
         note: Note,
-        config: Config,
+        config: AppConfig,
     }
 
-    fn test_config(root: PathBuf) -> TestResult<Config> {
+    fn test_config(root: PathBuf) -> TestResult<AppConfig> {
         let root = VaultRoot::try_new(root)?;
         Ok(builder::build_from_layers(
             None,
@@ -96,7 +96,7 @@ mod tests {
         })
     }
 
-    fn build_environment(markdown: &str) -> TestResult<(TestDb, Config)> {
+    fn build_environment(markdown: &str) -> TestResult<(TestDb, AppConfig)> {
         let db = TestDb::new()?;
         let note_path = Path::new("notes/note.md");
         let absolute_path = db.dir_path().join(note_path);

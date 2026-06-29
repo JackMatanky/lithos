@@ -362,7 +362,7 @@ mod tests {
 
         use tempfile::tempdir;
         use traces_app::bootstrap::Bootstrapper;
-        use traces_settings::{DiscoveryFlags, service::DiscoveryService};
+        use traces_settings::{DiscoveryFlags, DiscoveryService};
 
         use super::super::run_index;
         use crate::cli::{IndexArgs, OutputFormat};

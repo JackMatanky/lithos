@@ -278,7 +278,7 @@ fn write_json_failure(
 mod doctor_handler {
     use clap::Parser;
     use traces_app::bootstrap::Bootstrapper;
-    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_settings::{DiscoveryFlags, DiscoveryService};
 
     use super::run_doctor;
     use crate::{

@@ -25,7 +25,7 @@ use traces_fs::{
 use tracing::instrument;
 
 use crate::config::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     error::{ConfigError, ConfigIngestError},
     frontmatter::Frontmatter,
     logging::Logging,
@@ -34,7 +34,7 @@ use crate::config::{
         AnalysisBranch, ComparisonBranch, ConfigFileProcessor, GlobalConfig,
         VaultConfig,
     },
-    raw::{RawGlobalConfig, RawVaultConfig},
+    raw::RawConfig,
     repository::Repository,
     task::Task,
     vault::{VaultId, VaultRoot},
@@ -60,12 +60,12 @@ use crate::discovery::service::{CandidatePath, DiscoveryResult};
               construction"
 )]
 pub fn build_from_layers(
-    global: Option<&RawGlobalConfig>,
-    vault: Option<&RawVaultConfig>,
+    global: Option<&RawConfig>,
+    vault: Option<&RawConfig>,
     vault_id: VaultId,
     vault_root: VaultRoot,
     version: Version,
-) -> Result<Config, ConfigError> {
+) -> Result<AppConfig, ConfigError> {
     let vault_metadata =
         super::vault::Metadata::new(vault_id, vault_root, None, None)?;
 
@@ -169,7 +169,7 @@ pub fn build_from_layers(
     let schema =
         super::schema::SchemaConfig::new(schema_dir, property_bank_file);
 
-    Ok(Config::new(
+    Ok(AppConfig::new(
         version,
         vault_metadata,
         logging,
@@ -186,7 +186,7 @@ pub fn build_from_layers(
 /// Coordinates the full configuration loading pipeline:
 /// - Vault and global candidate paths (from `DiscoveryResult`)
 /// - Staleness detection (timestamps + content hash)
-/// - Config merging (global + vault precedence)
+/// - `AppConfig` merging (global + vault precedence)
 /// - Domain validation
 /// - Database persistence
 ///
@@ -204,7 +204,7 @@ pub fn build_from_layers(
 /// Each call to [`Builder::build`] performs a full staleness check. If the
 /// on-disk files match the cached views stored in the repository (same
 /// timestamps and content hashes), the builder follows the `UseCached` plan
-/// and loads the previously-built [`Config`] from the database without
+/// and loads the previously-built [`AppConfig`] from the database without
 /// re-parsing or re-merging. If any file has changed, the builder rebuilds
 /// from scratch and persists the updated views and config.
 pub struct Builder<R> {
@@ -221,12 +221,12 @@ pub struct Builder<R> {
 ///
 /// `(VaultId, VaultRoot, raw config, cached view)`
 type VaultBuildResult =
-    (VaultId, VaultRoot, Option<RawVaultConfig>, Option<RawVaultConfigView>);
+    (VaultId, VaultRoot, Option<RawConfig>, Option<RawVaultConfigView>);
 
 /// Return type of [`Builder::build_global`].
 ///
 /// `(raw config, cached view)`
-type GlobalBuildResult = (Option<RawGlobalConfig>, Option<RawGlobalConfigView>);
+type GlobalBuildResult = (Option<RawConfig>, Option<RawGlobalConfigView>);
 
 impl<R> Builder<R>
 where
@@ -264,7 +264,7 @@ where
     /// - Database operations fail
     #[inline]
     #[instrument(skip(self), level = "debug")]
-    pub fn build(&self) -> Result<Config, ConfigError> {
+    pub fn build(&self) -> Result<AppConfig, ConfigError> {
         let (vault_id, vault_root, vault_raw, vault_view) =
             self.build_vault()?;
 
@@ -303,7 +303,7 @@ where
 
     /// Read, classify, and fetch cached view for the primary vault candidate.
     ///
-    /// Returns `(VaultId, VaultRoot, Option<RawVaultConfig>,
+    /// Returns `(VaultId, VaultRoot, Option<RawConfig>,
     /// Option<RawVaultConfigView>)`. Always called because the vault
     /// candidate list is guaranteed non-empty by `DiscoveryService`.
     ///
@@ -338,7 +338,7 @@ where
         // Parse the raw vault config.
         let reader = FileReader::from_system_root();
         let mut raw = reader
-            .parse_structured::<RawVaultConfig>(candidate.path().as_path())
+            .parse_structured::<RawConfig>(candidate.path().as_path())
             .map_err(ConfigIngestError::from)
             .map_err(ConfigError::from)?;
         raw.metadata = file_metadata;
@@ -354,7 +354,7 @@ where
 
     /// Read, classify, and fetch cached view for the primary global candidate.
     ///
-    /// Returns `(Option<RawGlobalConfig>, Option<RawGlobalConfigView>)`.
+    /// Returns `(Option<RawConfig>, Option<RawGlobalConfigView>)`.
     /// Returns `(None, None)` when no global candidate is present.
     ///
     /// # Errors
@@ -374,7 +374,7 @@ where
         // Parse the raw global config.
         let reader = FileReader::from_system_root();
         let mut raw = reader
-            .parse_structured::<RawGlobalConfig>(candidate.path().as_path())
+            .parse_structured::<RawConfig>(candidate.path().as_path())
             .map_err(ConfigIngestError::from)
             .map_err(ConfigError::from)?;
         raw.metadata = file_metadata;
@@ -393,7 +393,7 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
         plan: ResolutionPlan,
-    ) -> Result<Config, ConfigError> {
+    ) -> Result<AppConfig, ConfigError> {
         match plan {
             ResolutionPlan::UseCached => self.load_cached_config(vault_id),
             ResolutionPlan::UpdateViews {
@@ -445,7 +445,7 @@ where
     fn load_cached_config(
         &self,
         vault_id: VaultId,
-    ) -> Result<Config, ConfigError> {
+    ) -> Result<AppConfig, ConfigError> {
         let version = self
             .repository
             .get_active_version(vault_id)
@@ -460,13 +460,13 @@ where
             .map_err(Into::<ConfigError>::into)?
             .ok_or(ConfigError::ValidationFailed {
                 field: "config".into(),
-                message: "Config not found in database".into(),
+                message: "AppConfig not found in database".into(),
             })
     }
 
     fn update_global_view(
         &self,
-        raw: &RawGlobalConfig,
+        raw: &RawConfig,
         file_path: &str,
     ) -> Result<(), ConfigError> {
         let mut view = self
@@ -485,7 +485,7 @@ where
     fn update_vault_view(
         &self,
         vault_id: VaultId,
-        raw: &RawVaultConfig,
+        raw: &RawConfig,
         file_path: &str,
     ) -> Result<(), ConfigError> {
         let mut view = self
@@ -505,9 +505,9 @@ where
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
-        global: Option<&RawGlobalConfig>,
-        vault: Option<&RawVaultConfig>,
-    ) -> Result<Config, ConfigError> {
+        global: Option<&RawConfig>,
+        vault: Option<&RawConfig>,
+    ) -> Result<AppConfig, ConfigError> {
         let next_version = self
             .repository
             .get_active_version(vault_id)
@@ -559,7 +559,7 @@ where
     }
 
     fn raw_global_to_version(
-        raw: &RawGlobalConfig,
+        raw: &RawConfig,
     ) -> Result<RawFileVersion, ConfigError> {
         let file_info =
             raw.metadata.clone().ok_or(ConfigError::ValidationFailed {
@@ -588,7 +588,7 @@ where
     }
 
     fn raw_vault_to_version(
-        raw: &RawVaultConfig,
+        raw: &RawConfig,
     ) -> Result<RawFileVersion, ConfigError> {
         let file_info =
             raw.metadata.clone().ok_or(ConfigError::ValidationFailed {
@@ -676,10 +676,10 @@ mod tests {
         )
     }
 
-    fn placeholder_cache_root() -> crate::location::CacheRoot {
-        crate::location::CacheRoot::new(
-            crate::location::CacheLocation::Global(
-                crate::location::GlobalCacheLocation::PlatformUserCache,
+    fn placeholder_cache_root() -> crate::CacheRoot {
+        crate::CacheRoot::new(
+            crate::CacheLocation::Global(
+                crate::GlobalCacheLocation::PlatformUserCache,
             ),
             std::path::PathBuf::from("/tmp/placeholder-cache"),
         )
@@ -1062,13 +1062,13 @@ mod tests {
             let vault_root = test_vault_root(&dir);
             let vault_id = VaultId::new();
 
-            let global = RawGlobalConfig {
+            let global = RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
                     directory: Some("global-tpl".to_owned()),
                 }),
                 ..Default::default()
             };
-            let vault = RawVaultConfig {
+            let vault = RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
                     directory: Some("vault-tpl".to_owned()),
                 }),
@@ -1097,7 +1097,7 @@ mod tests {
             let vault_root = test_vault_root(&dir);
             let vault_id = VaultId::new();
 
-            let global = RawGlobalConfig {
+            let global = RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
                     directory: Some("global-tpl".to_owned()),
                 }),

@@ -746,8 +746,8 @@ impl<'source>
 mod tests {
     use chrono::NaiveDate;
     use traces_settings::{
-        aggregate::Config,
-        raw::RawVaultConfig,
+        aggregate::AppConfig,
+        raw::RawConfig,
         task::TaskConfigSpec,
         vault::{VaultId, VaultRoot},
     };
@@ -960,8 +960,8 @@ mod tests {
         ListItem::from_raw(&raw, spec).expect("valid list item")
     }
 
-    fn test_config_with_task_tag() -> Config {
-        let raw: RawVaultConfig = toml::from_str(
+    fn test_config_with_task_tag() -> AppConfig {
+        let raw: RawConfig = toml::from_str(
             r##"
                 [task]
                 use_emoji = true
@@ -995,8 +995,8 @@ mod tests {
         .expect("failed to build test config")
     }
 
-    fn config_with_fields() -> Config {
-        let raw: RawVaultConfig = toml::from_str(
+    fn config_with_fields() -> AppConfig {
+        let raw: RawConfig = toml::from_str(
             r##"
                 [task]
                 enabled = true

@@ -146,3 +146,6 @@ pub mod views;
 
 // Removed legacy db_table definitions. Use
 // traces_settings::config::storage::tables instead.
+pub mod options;
+pub mod tracker;
+pub mod trust;

@@ -16,7 +16,7 @@ use super::{
     },
 };
 use crate::config::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
     global::Global,
     repository::ReadRepository,
@@ -102,7 +102,7 @@ impl ReadRepository for RedbRepository {
         &self,
         vault_id: VaultId,
         version: Version,
-    ) -> Result<Option<Config>, ConfigRepositoryError> {
+    ) -> Result<Option<AppConfig>, ConfigRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -114,7 +114,7 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{}:{}", vault_id, version.value());
                 table
                     .get(key.as_str())?
-                    .map(|g| Config::from_bytes(g.value()))
+                    .map(|g| AppConfig::from_bytes(g.value()))
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -167,7 +167,7 @@ impl ReadRepository for RedbRepository {
         f: F,
     ) -> Result<Option<R>, ConfigRepositoryError>
     where
-        F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
+        F: for<'archived> FnOnce(&'archived rkyv::Archived<AppConfig>) -> R,
     {
         self.store
             .read(|tx| {
@@ -180,7 +180,7 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{}:{}", vault_id, version.value());
                 table
                     .get(key.as_str())?
-                    .map(|g| Config::with_archived(g.value(), f))
+                    .map(|g| AppConfig::with_archived(g.value(), f))
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)

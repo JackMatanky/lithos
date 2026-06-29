@@ -4,26 +4,29 @@ use std::path::PathBuf;
 
 use traces_fs::DirPath;
 use traces_settings::{
-    DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags, EnvVars,
-    aggregate::Config,
+    DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags,
+    SettingsEnvVars,
+    aggregate::AppConfig,
     builder::Builder,
     dirs::AppDirs,
+    discovery::service::{
+        DiscoveryResult, DiscoveryService, DiscoveryServiceConfig,
+    },
     port::DiscoveryPort,
     report::DiscoveryReport,
     repository::Repository,
-    service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
 
 pub use crate::error::AppError;
 
 /// The outcome of a successful full bootstrap run.
 ///
-/// Returned by [`Bootstrapper::run()`]. Contains the resolved [`Config`] and
+/// Returned by [`Bootstrapper::run()`]. Contains the resolved [`AppConfig`] and
 /// the [`DiscoveryReport`] produced during the discovery phase.
 #[derive(Debug)]
 pub struct BootstrapResult {
     /// The fully resolved and merged configuration.
-    pub config: Config,
+    pub config: AppConfig,
     /// Non-fatal diagnostic information from the discovery phase.
     pub report: DiscoveryReport,
 }
@@ -123,7 +126,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
     ) -> Result<DiscoveryResult, AppError> {
-        let cache_dir = EnvVars::capture().cache_dir().cloned();
+        let cache_dir = SettingsEnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
     }
@@ -131,7 +134,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     /// Runs the full bootstrap pipeline: discovery → config build.
     ///
     /// Builds the [`DiscoveryContext`] from the provided runtime inputs, runs
-    /// discovery through the port, then builds a [`Config`] from the
+    /// discovery through the port, then builds a [`AppConfig`] from the
     /// discovered candidate paths using the given `repository`.
     ///
     /// # Parameters
@@ -161,7 +164,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
         anchor: &std::path::Path,
         repository: R,
     ) -> Result<BootstrapResult, AppError> {
-        let cache_dir = EnvVars::capture().cache_dir().cloned();
+        let cache_dir = SettingsEnvVars::capture().cache_dir().cloned();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         let discovery = self.discover(&context)?;
         let report = discovery.report().clone();
@@ -180,7 +183,7 @@ impl Bootstrapper<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
     /// Resolves global config directories via [`AppDirs`], using
-    /// [`EnvVars::capture()`] to read the process environment.
+    /// [`SettingsEnvVars::capture()`] to read the process environment.
     ///
     /// # Errors
     ///
@@ -188,7 +191,7 @@ impl Bootstrapper<DiscoveryService> {
     /// its stable configuration.
     #[inline]
     pub fn from_platform() -> Result<Self, AppError> {
-        let app = AppDirs::new(&EnvVars::capture());
+        let app = AppDirs::new(&SettingsEnvVars::capture());
         let mut global_dirs: Vec<DirPath> = Vec::new();
         if let Ok(dir) = DirPath::try_new(app.config().clone()) {
             global_dirs.push(dir);
@@ -233,11 +236,13 @@ mod tests {
     use traces_fs::{DirPath, FilePath, PathError};
     use traces_settings::{
         DiscoveryContext, DiscoveryError,
+        discovery::service::{
+            CandidatePath, DiscoveryResult, DiscoveryService,
+        },
         report::{
             DiscoveryReport, GlobalResolutionSkipReason,
             LocalTraversalStopReason, SkippedCeiling, SkippedCeilingReason,
         },
-        service::{CandidatePath, DiscoveryResult, DiscoveryService},
     };
 
     use super::*;
@@ -312,8 +317,8 @@ mod tests {
         }
     }
 
-    fn placeholder_cache_root() -> traces_settings::location::CacheRoot {
-        use traces_settings::location::{
+    fn placeholder_cache_root() -> traces_settings::CacheRoot {
+        use traces_settings::discovery::location::{
             CacheLocation, CacheRoot, GlobalCacheLocation,
         };
         CacheRoot::new(
@@ -622,7 +627,7 @@ mod tests {
         use mockall::predicate::always;
         use traces_fs::{DirPath, FilePath};
         use traces_settings::{
-            service::{CandidatePath, DiscoveryResult},
+            discovery::service::{CandidatePath, DiscoveryResult},
             storage::testing::InMemoryRepository,
         };
 
@@ -760,7 +765,7 @@ mod tests {
 
             assert!(
                 matches!(err, AppError::Config(_)),
-                "expected Config error, got: {err:?}"
+                "expected AppConfig error, got: {err:?}"
             );
         }
 

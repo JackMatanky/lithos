@@ -1,6 +1,6 @@
 //! Resolved platform and application directories for Traces.
 //!
-//! [`AppDirs`] merges [`EnvVars`](crate::discovery::EnvVars) overrides with XDG
+//! [`AppDirs`] merges [`EnvVars`](crate::SettingsEnvVars) overrides with XDG
 //! platform defaults from [`crate`].
 //!
 //! # Example
@@ -24,7 +24,7 @@ use crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
 /// Resolved Traces application directories.
 ///
-/// Merges [`EnvVars`](crate::discovery::EnvVars) overrides with XDG platform
+/// Merges [`EnvVars`](crate::SettingsEnvVars) overrides with XDG platform
 /// defaults, applying the `"traces"` suffix to platform base directories.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppDirs {
@@ -43,7 +43,7 @@ impl AppDirs {
     ///   (win)
     #[inline]
     #[must_use]
-    pub fn new(vars: &crate::discovery::EnvVars) -> Self {
+    pub fn new(vars: &crate::SettingsEnvVars) -> Self {
         let cache = vars
             .cache_dir()
             .cloned()
@@ -112,14 +112,14 @@ fn platform_system_config() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::EnvVars;
+    use crate::SettingsEnvVars;
 
     mod app_dirs {
         use super::*;
 
         #[test]
         fn uses_xdg_config_home_plus_traces_when_no_env_overrides() {
-            let vars = EnvVars::new(None, None, None, None, false);
+            let vars = SettingsEnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
             let expected = XDG_CONFIG_HOME.join("traces");
@@ -129,7 +129,7 @@ mod tests {
 
         #[test]
         fn cache_uses_env_override_when_set() {
-            let vars = EnvVars::new(
+            let vars = SettingsEnvVars::new(
                 None,
                 None,
                 Some(PathBuf::from("/override/cache")),
@@ -143,7 +143,7 @@ mod tests {
 
         #[test]
         fn cache_falls_back_to_xdg_cache_home_plus_traces() {
-            let vars = EnvVars::new(None, None, None, None, false);
+            let vars = SettingsEnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
             let expected = XDG_CACHE_HOME.join("traces");
@@ -153,7 +153,7 @@ mod tests {
         #[cfg(unix)]
         #[test]
         fn system_config_is_etc_traces_on_unix() {
-            let vars = EnvVars::new(None, None, None, None, false);
+            let vars = SettingsEnvVars::new(None, None, None, None, false);
             let dirs = AppDirs::new(&vars);
 
             assert_eq!(

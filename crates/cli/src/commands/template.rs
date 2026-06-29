@@ -243,7 +243,7 @@ mod tests {
 
     use traces_app::{bootstrap::Bootstrapper, error::AppError};
     use traces_fs::error::{WriteError, WriteTargetError};
-    use traces_settings::{DiscoveryFlags, service::DiscoveryService};
+    use traces_settings::{DiscoveryFlags, DiscoveryService};
     use traces_template::{
         TemplateArtifactError, TemplateBodyError, TemplateDirScanError,
         TemplateEngineError, TemplateError, TemplateName, TemplateNameError,

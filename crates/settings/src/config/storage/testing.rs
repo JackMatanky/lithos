@@ -42,7 +42,7 @@ use traces_db::testing::{
 };
 
 use crate::config::{
-    aggregate::{Config, Version},
+    aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
     global::Global,
     repository::{ReadRepository, WriteRepository},
@@ -62,7 +62,7 @@ use crate::config::{
 pub struct InMemoryRepository {
     globals: RwLock<Option<Global>>,
     vaults: RwLock<HashMap<VaultId, Vault>>,
-    configs: RwLock<HashMap<(VaultId, Version), Config>>,
+    configs: RwLock<HashMap<(VaultId, Version), AppConfig>>,
     active_versions: RwLock<HashMap<VaultId, Version>>,
     global_views: RwLock<Option<RawGlobalConfigView>>,
     vault_views: RwLock<HashMap<VaultId, RawVaultConfigView>>,
@@ -132,9 +132,9 @@ impl ReadRepository for InMemoryRepository {
         &self,
         vault_id: VaultId,
         version: Version,
-    ) -> Result<Option<Config>, ConfigRepositoryError> {
+    ) -> Result<Option<AppConfig>, ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
-        let configs = read_lock::<HashMap<(VaultId, Version), Config>>(
+        let configs = read_lock::<HashMap<(VaultId, Version), AppConfig>>(
             &self.configs,
             "get_config",
         )?;
@@ -165,7 +165,7 @@ impl ReadRepository for InMemoryRepository {
     ) -> Result<Option<R>, ConfigRepositoryError>
     where
         F: for<'archived> FnOnce(
-            &'archived rkyv::Archived<crate::config::aggregate::Config>,
+            &'archived rkyv::Archived<crate::config::aggregate::AppConfig>,
         ) -> R,
     {
         Ok(None)
@@ -245,10 +245,10 @@ impl WriteRepository for InMemoryRepository {
     fn save_config(
         &self,
         vault_id: VaultId,
-        config: &Config,
+        config: &AppConfig,
     ) -> Result<Version, ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
-        let mut configs = write_lock::<HashMap<(VaultId, Version), Config>>(
+        let mut configs = write_lock::<HashMap<(VaultId, Version), AppConfig>>(
             &self.configs,
             "save_config",
         )?;
