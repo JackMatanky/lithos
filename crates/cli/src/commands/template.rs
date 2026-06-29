@@ -64,8 +64,8 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         .to_template_spec()
         .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
     let template_root = spec.to_dir_path().map_err(|e| {
-        TemplateCommandError::OutputPathInvalid {
-            detail: format!("spec: {e}"),
+        TemplateCommandError::ConfigInvalid {
+            detail: format!("Template directory from config is invalid: {e}"),
         }
     })?;
     let template_input = normalize_template_input(&args.input);
@@ -113,7 +113,7 @@ pub(crate) fn run_template<D: DiscoveryPort>(
             OutputFormat::Json => writeln!(
                 out,
                 "{}",
-                serde_json::json!({ "created": created_path.as_path().display().to_string() })
+                serde_json::json!({ "output": created_path.as_path().display().to_string() })
             )
             .map_err(crate::output::stdout_err)?,
         },
@@ -158,7 +158,7 @@ fn map_template_error(err: AppError) -> CliError {
             .into()
         }
         AppError::Template(TemplateError::Path(e)) => {
-            TemplateCommandError::OutputPathInvalid {
+            TemplateCommandError::ConfigInvalid {
                 detail: format!("path: {e}"),
             }
             .into()
@@ -166,7 +166,7 @@ fn map_template_error(err: AppError) -> CliError {
         AppError::Template(TemplateError::Artifact(
             TemplateArtifactError::Path(e),
         )) => TemplateCommandError::OutputPathInvalid {
-            detail: format!("artifact: {e}"),
+            detail: e.to_string(),
         }
         .into(),
         AppError::Template(TemplateError::Artifact(
@@ -189,8 +189,8 @@ fn map_template_error(err: AppError) -> CliError {
         }
         .into(),
         AppError::Template(TemplateError::Name(e)) => {
-            TemplateCommandError::OutputPathInvalid {
-                detail: format!("name: {e}"),
+            TemplateCommandError::RenderFailed {
+                detail: format!("Name derivation failed: {e}"),
             }
             .into()
         }
@@ -216,10 +216,10 @@ fn map_template_error(err: AppError) -> CliError {
             .into()
         }
         AppError::Template(TemplateError::Scan(e)) => {
-            TemplateCommandError::RenderFailed {
+            TemplateCommandError::ConfigInvalid {
                 detail: format!(
-                    "Could not scan template directory: {e}. Check template \
-                     directory permissions and retry."
+                    "Template directory scan failed: {e}. Check directory \
+                     permissions and retry."
                 ),
             }
             .into()
@@ -345,6 +345,15 @@ mod tests {
             assert!(
                 matches!(err, TemplateCommandError::InvalidVarFormat { value } if value == "missing")
             );
+        }
+
+        #[test]
+        fn duplicate_var_last_wins() {
+            let result =
+                parse_vars(["name=Alice".to_owned(), "name=Bob".to_owned()]);
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.get("name"), Some(&"Bob".to_owned()));
         }
     }
 
@@ -521,6 +530,62 @@ mod tests {
                 "got: {cli_err}"
             );
         }
+
+        #[test]
+        fn json_dry_run_prints_preview() {
+            let (dir, bootstrapper, flags) = make_vault();
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+
+            let result = run_template(
+                &bootstrapper,
+                Some(flags),
+                dir.path(),
+                args(true),
+                OutputFormat::Json,
+                0,
+                &mut out,
+                &mut err,
+            );
+
+            assert!(result.is_ok(), "run_template failed: {result:?}");
+            let stdout = String::from_utf8(out)
+                .expect("valid utf-8 json output from template command");
+            let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+                .expect("stdout should be valid JSON");
+            assert_eq!(
+                parsed.get("preview"),
+                Some(&serde_json::json!("Hello Alice"))
+            );
+        }
+
+        #[test]
+        fn json_created_prints_path() {
+            let (dir, bootstrapper, flags) = make_vault();
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+
+            let result = run_template(
+                &bootstrapper,
+                Some(flags),
+                dir.path(),
+                args(false),
+                OutputFormat::Json,
+                0,
+                &mut out,
+                &mut err,
+            );
+
+            assert!(result.is_ok(), "run_template failed: {result:?}");
+            let stdout = String::from_utf8(out)
+                .expect("valid utf-8 json output from template command");
+            let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+                .expect("stdout should be valid JSON");
+            assert_eq!(
+                parsed.get("output"),
+                Some(&serde_json::json!("notes/out.md"))
+            );
+        }
     }
 
     mod error_mapping {
@@ -604,7 +669,7 @@ mod tests {
             ));
 
             assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::OutputPathInvalid { detail })                 if detail.starts_with("name: "))
+                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail })                 if detail.starts_with("Name derivation failed:"))
             );
         }
 
@@ -656,7 +721,7 @@ mod tests {
             );
             let err = AppError::Template(TemplateError::Scan(scan_err));
             assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Check template directory permissions"))
+                matches!(template_command_error(err), Some(TemplateCommandError::ConfigInvalid { detail }) if detail.contains("Template directory scan failed:"))
             );
         }
 
