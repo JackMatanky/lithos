@@ -3,8 +3,8 @@
 use crate::config::{
     aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
-    global::Global,
-    vault::{Vault, VaultId, VaultRoot},
+    global::GlobalConfig,
+    vault::{LocalConfig, VaultId, VaultRoot},
     views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
@@ -18,7 +18,8 @@ pub trait ReadRepository: Send + Sync {
     ///
     /// Returns [`ConfigRepositoryError`] if the lookup or deserialization
     /// fails.
-    fn get_global(&self) -> Result<Option<Global>, ConfigRepositoryError>;
+    fn get_global(&self)
+    -> Result<Option<GlobalConfig>, ConfigRepositoryError>;
 
     /// Fetches the persisted vault configuration for a specific vault.
     ///
@@ -31,7 +32,7 @@ pub trait ReadRepository: Send + Sync {
     fn get_vault(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<Vault>, ConfigRepositoryError>;
+    ) -> Result<Option<LocalConfig>, ConfigRepositoryError>;
 
     /// Fetches a specific configuration snapshot (merged global + vault).
     ///
@@ -118,8 +119,10 @@ pub trait WriteRepository: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ConfigRepositoryError`] if serialization or storage fails.
-    fn save_global(&self, config: &Global)
-    -> Result<(), ConfigRepositoryError>;
+    fn save_global(
+        &self,
+        config: &GlobalConfig,
+    ) -> Result<(), ConfigRepositoryError>;
 
     /// Saves a vault-specific configuration.
     ///
@@ -129,7 +132,7 @@ pub trait WriteRepository: Send + Sync {
     fn save_vault(
         &self,
         vault_id: VaultId,
-        config: &Vault,
+        config: &LocalConfig,
     ) -> Result<(), ConfigRepositoryError>;
 
     /// Saves a final merged configuration snapshot.

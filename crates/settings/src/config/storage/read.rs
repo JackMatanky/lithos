@@ -18,15 +18,17 @@ use super::{
 use crate::config::{
     aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
-    global::Global,
+    global::GlobalConfig,
     repository::ReadRepository,
-    vault::{Vault, VaultId, VaultRoot},
+    vault::{LocalConfig, VaultId, VaultRoot},
     views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
 impl ReadRepository for RedbRepository {
     #[inline]
-    fn get_global(&self) -> Result<Option<Global>, ConfigRepositoryError> {
+    fn get_global(
+        &self,
+    ) -> Result<Option<GlobalConfig>, ConfigRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -48,7 +50,7 @@ impl ReadRepository for RedbRepository {
 
                 table
                     .get(max.to_string().as_str())?
-                    .map(|g| Global::from_bytes(g.value()))
+                    .map(|g| GlobalConfig::from_bytes(g.value()))
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -58,7 +60,7 @@ impl ReadRepository for RedbRepository {
     fn get_vault(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<Vault>, ConfigRepositoryError> {
+    ) -> Result<Option<LocalConfig>, ConfigRepositoryError> {
         self.store
             .read(|tx| {
                 let Some(table) =
@@ -91,7 +93,7 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{prefix}{max}");
                 table
                     .get(key.as_str())?
-                    .map(|g| Vault::from_bytes(g.value()))
+                    .map(|g| LocalConfig::from_bytes(g.value()))
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -278,8 +280,8 @@ mod tests {
     #[test]
     fn get_global_returns_latest_version() {
         let (_temp, repo) = temp_repo();
-        let global1 = Global::default();
-        let global2 = Global::new(
+        let global1 = GlobalConfig::default();
+        let global2 = GlobalConfig::new(
             global1.version().next().unwrap(),
             global1.logging().clone(),
             global1.template().cloned(),
@@ -310,7 +312,7 @@ mod tests {
     fn get_vault_returns_latest_for_id() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = Vault::default();
+        let vault = LocalConfig::default();
         let bytes = vault.to_bytes().unwrap();
 
         repo.store

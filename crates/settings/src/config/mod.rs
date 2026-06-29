@@ -55,7 +55,7 @@
 //! ## Core Domain
 //! - [`aggregate`] - The [`Config`] aggregate root with versioning
 //! - [`cache`] - Cache configuration settings
-//! - [`global`] - Global-level configuration settings
+//! - [`global`] - GlobalConfig-level configuration settings
 //! - [`schema`] - Schema configuration settings
 //! - [`template`] - Template configuration settings
 //! - [`vault`] - Vault-specific overrides and metadata
@@ -87,7 +87,7 @@
 pub mod aggregate;
 /// Cache configuration types.
 pub mod cache;
-/// Global configuration types and validation.
+/// GlobalConfig configuration types and validation.
 pub mod global;
 /// Schema configuration types.
 pub mod schema;
@@ -95,6 +95,10 @@ pub mod schema;
 pub mod template;
 /// Vault-scoped configuration types.
 pub mod vault;
+
+pub use aggregate::AppConfig;
+pub use global::GlobalConfig;
+pub use vault::LocalConfig;
 
 // ----------------------------------------------------------- //
 //               Logic & Infrastructure Modules                //

@@ -1,7 +1,7 @@
 //! Global-level configuration settings.
 //!
-//! This module defines the [`Global`] configuration, which contains settings
-//! that apply across all vaults (e.g., trusted vault paths).
+//! This module defines the [`GlobalConfig`] configuration, which contains
+//! settings that apply across all vaults (e.g., trusted vault paths).
 
 #![expect(
     clippy::exhaustive_enums,
@@ -132,20 +132,20 @@ impl TryFrom<u64> for GlobalVersion {
 
 /// System-wide configuration settings.
 ///
-/// `Global` contains settings that are defined at the system level and
+/// `GlobalConfig` contains settings that are defined at the system level and
 /// shared across all vaults, such as the list of trusted vault paths.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use traces_settings::config::global::Global;
+/// use traces_settings::config::global::GlobalConfig;
 ///
-/// let global = Global::default();
+/// let global = GlobalConfig::default();
 /// assert!(global.trusted_vaults().is_none());
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct Global {
+pub struct GlobalConfig {
     /// Version number for this global config.
     version: GlobalVersion,
     /// Logging configuration for global defaults.
@@ -162,7 +162,7 @@ pub struct Global {
     task: Option<Task>,
 }
 
-impl Default for Global {
+impl Default for GlobalConfig {
     #[inline]
     fn default() -> Self {
         Self {
@@ -177,7 +177,7 @@ impl Default for Global {
     }
 }
 
-impl Global {
+impl GlobalConfig {
     #[inline]
     #[must_use]
     #[expect(
@@ -642,7 +642,7 @@ mod tests {
 
         #[test]
         fn global_defaults_have_no_trusted_vaults() {
-            let global = Global::default();
+            let global = GlobalConfig::default();
 
             assert!(
                 global.trusted_vaults().is_none(),
@@ -652,7 +652,7 @@ mod tests {
 
         #[test]
         fn global_defaults_have_no_task_config() {
-            let global = Global::default();
+            let global = GlobalConfig::default();
 
             assert!(
                 global.task().is_none(),
@@ -662,7 +662,7 @@ mod tests {
 
         #[test]
         fn global_defaults_use_info_log_level() {
-            let global = Global::default();
+            let global = GlobalConfig::default();
 
             assert_eq!(
                 global.logging().level_str(),
@@ -685,7 +685,7 @@ mod tests {
                 property_bank_file: Some("global-bank.json".to_owned()),
             };
 
-            let global = Global::try_from_components(
+            let global = GlobalConfig::try_from_components(
                 Some(&raw_template),
                 Some(&raw_schema),
             )

@@ -44,9 +44,9 @@ use traces_db::testing::{
 use crate::config::{
     aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
-    global::Global,
+    global::GlobalConfig,
     repository::{ReadRepository, WriteRepository},
-    vault::{Vault, VaultId, VaultRoot},
+    vault::{LocalConfig, VaultId, VaultRoot},
     views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
@@ -60,8 +60,8 @@ use crate::config::{
 /// the full config pipeline without touching the filesystem.
 #[allow(clippy::type_complexity, reason = "Internal state uses nested maps")]
 pub struct InMemoryRepository {
-    globals: RwLock<Option<Global>>,
-    vaults: RwLock<HashMap<VaultId, Vault>>,
+    globals: RwLock<Option<GlobalConfig>>,
+    vaults: RwLock<HashMap<VaultId, LocalConfig>>,
     configs: RwLock<HashMap<(VaultId, Version), AppConfig>>,
     active_versions: RwLock<HashMap<VaultId, Version>>,
     global_views: RwLock<Option<RawGlobalConfigView>>,
@@ -108,9 +108,12 @@ impl InMemoryRepository {
 
 impl ReadRepository for InMemoryRepository {
     #[inline]
-    fn get_global(&self) -> Result<Option<Global>, ConfigRepositoryError> {
+    fn get_global(
+        &self,
+    ) -> Result<Option<GlobalConfig>, ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
-        let globals = read_lock::<Option<Global>>(&self.globals, "get_global")?;
+        let globals =
+            read_lock::<Option<GlobalConfig>>(&self.globals, "get_global")?;
         self.harness.counters().inc_read();
         Ok(globals.clone())
     }
@@ -119,10 +122,12 @@ impl ReadRepository for InMemoryRepository {
     fn get_vault(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<Vault>, ConfigRepositoryError> {
+    ) -> Result<Option<LocalConfig>, ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeRead)?;
-        let vaults =
-            read_lock::<HashMap<VaultId, Vault>>(&self.vaults, "get_vault")?;
+        let vaults = read_lock::<HashMap<VaultId, LocalConfig>>(
+            &self.vaults,
+            "get_vault",
+        )?;
         self.harness.counters().inc_read();
         Ok(vaults.get(&vault_id).cloned())
     }
@@ -217,11 +222,11 @@ impl WriteRepository for InMemoryRepository {
     #[inline]
     fn save_global(
         &self,
-        config: &Global,
+        config: &GlobalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
         let mut globals =
-            write_lock::<Option<Global>>(&self.globals, "save_global")?;
+            write_lock::<Option<GlobalConfig>>(&self.globals, "save_global")?;
         self.harness.counters().inc_write();
         *globals = Some(config.clone());
         Ok(())
@@ -231,11 +236,13 @@ impl WriteRepository for InMemoryRepository {
     fn save_vault(
         &self,
         vault_id: VaultId,
-        config: &Vault,
+        config: &LocalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         self.harness.fail_at(FailurePoint::BeforeWrite)?;
-        let mut vaults =
-            write_lock::<HashMap<VaultId, Vault>>(&self.vaults, "save_vault")?;
+        let mut vaults = write_lock::<HashMap<VaultId, LocalConfig>>(
+            &self.vaults,
+            "save_vault",
+        )?;
         self.harness.counters().inc_write();
         vaults.insert(vault_id, config.clone());
         Ok(())
@@ -334,7 +341,7 @@ mod tests {
         #[test]
         fn global_roundtrip() {
             let repo = InMemoryRepository::new();
-            let global = Global::default();
+            let global = GlobalConfig::default();
 
             repo.save_global(&global).expect("Save global failed");
             let retrieved = repo.get_global().expect("Get global failed");
@@ -346,7 +353,7 @@ mod tests {
         fn vault_roundtrip() {
             let repo = InMemoryRepository::new();
             let vault_id = VaultId::new();
-            let vault = Vault::default();
+            let vault = LocalConfig::default();
 
             repo.save_vault(vault_id, &vault).expect("Save vault failed");
             let retrieved = repo.get_vault(vault_id).expect("Get vault failed");
@@ -400,9 +407,9 @@ mod tests {
             let vault_id = VaultId::new();
 
             repo.get_global().unwrap();
-            repo.save_global(&Global::default()).unwrap();
+            repo.save_global(&GlobalConfig::default()).unwrap();
             repo.get_vault(vault_id).unwrap();
-            repo.save_vault(vault_id, &Vault::default()).unwrap();
+            repo.save_vault(vault_id, &LocalConfig::default()).unwrap();
 
             let snapshot = repo.counters().snapshot();
             assert_eq!(snapshot.reads, 2);
@@ -433,7 +440,7 @@ mod tests {
             let res = repo.get_global();
             assert!(res.is_err());
 
-            let res_save = repo.save_global(&Global::default());
+            let res_save = repo.save_global(&GlobalConfig::default());
             assert!(res_save.is_err());
         }
     }

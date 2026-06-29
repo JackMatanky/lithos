@@ -14,7 +14,7 @@
 
 use std::{io::Write, path::PathBuf};
 
-use traces_app::bootstrap::Bootstrapper;
+use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::{DiscoveryFlags, port::DiscoveryPort};
 
 use crate::{cli::OutputFormat, error::CliError, output};
@@ -36,7 +36,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
 /// always exit 0 so that shell completion scripts and other tooling that
 /// pipes its output are never blocked.
 pub(crate) fn run_config_files<D: DiscoveryPort>(
-    bootstrapper: &Bootstrapper<D>,
+    bootstrapper: &BootstrapRunner<D>,
     flags: Option<DiscoveryFlags>,
     anchor: &std::path::Path,
     format: OutputFormat,
@@ -132,16 +132,17 @@ fn write_json(
 
 #[cfg(test)]
 mod config_files_handler {
-    use traces_app::bootstrap::Bootstrapper;
+    use traces_app::bootstrap::BootstrapRunner;
     use traces_settings::{DiscoveryFlags, DiscoveryService};
 
     use super::run_config_files;
     use crate::cli::OutputFormat;
 
     /// Creates a temp directory with a minimal vault and returns a
-    /// `Bootstrapper` plus `DiscoveryFlags` that point at it explicitly.
+    /// `BootstrapRunner` plus `DiscoveryFlags` that point at it explicitly.
     fn make_vault()
-    -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
+    -> (tempfile::TempDir, BootstrapRunner<DiscoveryService>, DiscoveryFlags)
+    {
         let dir = tempfile::tempdir().expect("vault dir");
         let config_path = dir.path().join("traces.toml");
         std::fs::write(&config_path, "").expect("write traces.toml");
@@ -151,21 +152,21 @@ mod config_files_handler {
             true, // suppress global — no accidental global reads in tests
         )
         .expect("valid flags");
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         (dir, bootstrapper, flags)
     }
 
-    /// Creates an empty temp directory (no vault) and a `Bootstrapper`.
-    fn make_empty() -> (tempfile::TempDir, Bootstrapper<DiscoveryService>) {
+    /// Creates an empty temp directory (no vault) and a `BootstrapRunner`.
+    fn make_empty() -> (tempfile::TempDir, BootstrapRunner<DiscoveryService>) {
         let dir = tempfile::tempdir().expect("temp dir");
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         (dir, bootstrapper)
     }
 
     fn run_human(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> String {
@@ -182,7 +183,7 @@ mod config_files_handler {
     }
 
     fn run_json(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> String {
@@ -271,7 +272,7 @@ mod config_files_handler {
     #[test]
     fn always_returns_ok_when_discovery_error_occurs() {
         // Use a non-existent anchor to force a discovery error.
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         let bad_anchor =
             std::path::Path::new("/this/path/does/not/exist/at/all");

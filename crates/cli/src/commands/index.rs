@@ -3,7 +3,7 @@
 use std::{io::Write, path::Path};
 
 use traces_app::{
-    bootstrap::Bootstrapper,
+    bootstrap::BootstrapRunner,
     index::{
         IndexOptions, IndexScope, ScanFilters, run_index as app_run_index,
     },
@@ -65,7 +65,7 @@ pub(crate) fn build_index_command(
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_index(
-    bootstrapper: &Bootstrapper<impl traces_settings::port::DiscoveryPort>,
+    bootstrapper: &BootstrapRunner<impl traces_settings::port::DiscoveryPort>,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     args: IndexArgs,
@@ -361,15 +361,17 @@ mod tests {
         use std::fs;
 
         use tempfile::tempdir;
-        use traces_app::bootstrap::Bootstrapper;
+        use traces_app::bootstrap::BootstrapRunner;
         use traces_settings::{DiscoveryFlags, DiscoveryService};
 
         use super::super::run_index;
         use crate::cli::{IndexArgs, OutputFormat};
 
-        fn make_vault()
-        -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags)
-        {
+        fn make_vault() -> (
+            tempfile::TempDir,
+            BootstrapRunner<DiscoveryService>,
+            DiscoveryFlags,
+        ) {
             let dir = tempdir().expect("vault dir");
             let config_path = dir.path().join("traces.toml");
             fs::write(&config_path, "[template]\ndirectory = \"templates\"")
@@ -395,7 +397,7 @@ mod tests {
                 true, // suppress global
             )
             .expect("valid flags");
-            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+            let bootstrapper = BootstrapRunner::with_global_directories(vec![])
                 .expect("bootstrapper");
             (dir, bootstrapper, flags)
         }

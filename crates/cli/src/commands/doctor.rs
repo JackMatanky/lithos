@@ -12,7 +12,7 @@
 
 use std::{io::Write, path::Path};
 
-use traces_app::bootstrap::Bootstrapper;
+use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::{
     DiscoveryFlags, InMemoryRepository, port::DiscoveryPort,
 };
@@ -41,7 +41,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_doctor<D: DiscoveryPort>(
-    bootstrapper: &Bootstrapper<D>,
+    bootstrapper: &BootstrapRunner<D>,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     format: OutputFormat,
@@ -277,7 +277,7 @@ fn write_json_failure(
 #[cfg(test)]
 mod doctor_handler {
     use clap::Parser;
-    use traces_app::bootstrap::Bootstrapper;
+    use traces_app::bootstrap::BootstrapRunner;
     use traces_settings::{DiscoveryFlags, DiscoveryService};
 
     use super::run_doctor;
@@ -289,7 +289,8 @@ mod doctor_handler {
     /// Creates a temp vault dir with `traces.toml` and returns bootstrapper
     /// plus flags pointing at it.
     fn make_vault()
-    -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
+    -> (tempfile::TempDir, BootstrapRunner<DiscoveryService>, DiscoveryFlags)
+    {
         let dir = tempfile::tempdir().expect("vault dir");
         let config_path = dir.path().join("traces.toml");
         // Must contain a non-default field so `InMemoryRepository` takes the
@@ -303,13 +304,13 @@ mod doctor_handler {
             true, // suppress global
         )
         .expect("valid flags");
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         (dir, bootstrapper, flags)
     }
 
     fn run_human(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> (String, String, Result<(), CliError>) {
@@ -332,7 +333,7 @@ mod doctor_handler {
     }
 
     fn run_json(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> (String, String, Result<(), CliError>) {
@@ -401,7 +402,7 @@ mod doctor_handler {
     #[test]
     fn reports_failed_when_no_vault_found() {
         // Use a non-existent anchor to force discovery failure.
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         let bad_anchor =
             std::path::Path::new("/this/path/does/not/exist/at/all");

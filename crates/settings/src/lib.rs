@@ -26,8 +26,10 @@ pub use config::{
 pub use config::{
     aggregate::AppConfig,
     builder::Builder,
+    global::GlobalConfig,
     repository::{ReadRepository, Repository, WriteRepository},
     storage::{RedbRepository, RedbStorage},
+    vault::LocalConfig,
 };
 pub use discovery::{
     context,

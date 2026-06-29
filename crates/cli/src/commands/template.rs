@@ -10,7 +10,7 @@
 use std::{collections::HashMap, io::Write, path::Path};
 
 use traces_app::{
-    bootstrap::Bootstrapper,
+    bootstrap::BootstrapRunner,
     error::AppError,
     template::{
         CreateTemplateInput, CreateTemplateOutcome,
@@ -38,7 +38,7 @@ use crate::{
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_template<D: DiscoveryPort>(
-    bootstrapper: &Bootstrapper<D>,
+    bootstrapper: &BootstrapRunner<D>,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     args: TemplateArgs,
@@ -241,7 +241,7 @@ fn map_template_error(err: AppError) -> CliError {
 mod tests {
     use std::{collections::HashMap, fs, path::PathBuf};
 
-    use traces_app::{bootstrap::Bootstrapper, error::AppError};
+    use traces_app::{bootstrap::BootstrapRunner, error::AppError};
     use traces_fs::error::{WriteError, WriteTargetError};
     use traces_settings::{DiscoveryFlags, DiscoveryService};
     use traces_template::{
@@ -265,7 +265,8 @@ mod tests {
     }
 
     fn make_vault()
-    -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
+    -> (tempfile::TempDir, BootstrapRunner<DiscoveryService>, DiscoveryFlags)
+    {
         let dir = tempfile::tempdir().expect("vault dir");
         let config_path = dir.path().join("traces.toml");
         fs::write(&config_path, "[template]\ndirectory = \"templates\"")
@@ -284,7 +285,7 @@ mod tests {
             true,
         )
         .expect("valid flags");
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         (dir, bootstrapper, flags)
     }

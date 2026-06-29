@@ -37,7 +37,7 @@ mod output;
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use traces_app::bootstrap::Bootstrapper;
+use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::DiscoveryFlags;
 
 use crate::{
@@ -106,7 +106,8 @@ fn run_main() -> Result<(), CliError> {
     })?;
 
     // Create the bootstrapper from platform-specific global config directories.
-    let bootstrapper = Bootstrapper::from_platform().map_err(CliError::from)?;
+    let bootstrapper =
+        BootstrapRunner::from_platform().map_err(CliError::from)?;
 
     // Build discovery flags from top-level CLI overrides (if any were set).
     let flags = build_discovery_flags(&cli)?;

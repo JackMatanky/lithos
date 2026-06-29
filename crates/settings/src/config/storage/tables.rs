@@ -8,8 +8,8 @@ impl_redb_uuid!(VaultId);
 
 /// Versioned global configuration.
 ///
-/// Keys: `"{version}"` → `Global`.
-/// Example: `"1"` → `Global { ... }`.
+/// Keys: `"{version}"` → `GlobalConfig`.
+/// Example: `"1"` → `GlobalConfig { ... }`.
 pub const GLOBAL_CONFIG: Table<&str, &[u8]> = Table::new("global_config");
 
 /// Versioned vault-specific configuration.

@@ -21,8 +21,8 @@ pub use crate::error::AppError;
 
 /// The outcome of a successful full bootstrap run.
 ///
-/// Returned by [`Bootstrapper::run()`]. Contains the resolved [`AppConfig`] and
-/// the [`DiscoveryReport`] produced during the discovery phase.
+/// Returned by [`BootstrapRunner::run()`]. Contains the resolved [`AppConfig`]
+/// and the [`DiscoveryReport`] produced during the discovery phase.
 #[derive(Debug)]
 pub struct BootstrapResult {
     /// The fully resolved and merged configuration.
@@ -33,15 +33,15 @@ pub struct BootstrapResult {
 
 /// Application-owned bootstrap orchestration entry point.
 ///
-/// `Bootstrapper` is generic over `D: DiscoveryPort` so that the discovery
+/// `BootstrapRunner` is generic over `D: DiscoveryPort` so that the discovery
 /// implementation can be swapped out in tests without touching the
 /// orchestration logic.
 #[derive(Debug, Default)]
-pub struct Bootstrapper<D: DiscoveryPort> {
+pub struct BootstrapRunner<D: DiscoveryPort> {
     port: D,
 }
 
-impl<D: DiscoveryPort> Bootstrapper<D> {
+impl<D: DiscoveryPort> BootstrapRunner<D> {
     /// Creates a bootstrapper backed by the given discovery port.
     #[inline]
     pub fn new(port: D) -> Self {
@@ -177,7 +177,7 @@ impl<D: DiscoveryPort> Bootstrapper<D> {
     }
 }
 
-impl Bootstrapper<DiscoveryService> {
+impl BootstrapRunner<DiscoveryService> {
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
     /// Creates the concrete discovery bootstrapper from platform config dirs.
@@ -307,7 +307,7 @@ mod tests {
                     None,
                 )
                 .expect("valid env");
-                Bootstrapper::<MockDiscoveryPort>::build_context(
+                BootstrapRunner::<MockDiscoveryPort>::build_context(
                     Some(flags),
                     Some(env),
                     self.cwd.path(),
@@ -417,13 +417,14 @@ mod tests {
             #[test]
             fn returns_context_with_default_flags_when_none_given() {
                 let cwd = tempfile::tempdir().expect("cwd dir");
-                let context = Bootstrapper::<MockDiscoveryPort>::build_context(
-                    None,
-                    None,
-                    cwd.path(),
-                    None,
-                )
-                .expect("valid context");
+                let context =
+                    BootstrapRunner::<MockDiscoveryPort>::build_context(
+                        None,
+                        None,
+                        cwd.path(),
+                        None,
+                    )
+                    .expect("valid context");
                 assert_eq!(
                     context.flags(),
                     &DiscoveryFlags::default(),
@@ -441,13 +442,14 @@ mod tests {
                 let cwd = tempfile::tempdir().expect("cwd dir");
                 let explicit_env = DiscoveryEnv::new(None, None, None, None)
                     .expect("valid env");
-                let context = Bootstrapper::<MockDiscoveryPort>::build_context(
-                    None,
-                    Some(explicit_env),
-                    cwd.path(),
-                    None,
-                )
-                .expect("valid context");
+                let context =
+                    BootstrapRunner::<MockDiscoveryPort>::build_context(
+                        None,
+                        Some(explicit_env),
+                        cwd.path(),
+                        None,
+                    )
+                    .expect("valid context");
                 assert!(
                     context.env().cache_dir().is_none(),
                     "cache_dir should be None when explicitly not provided"
@@ -459,7 +461,7 @@ mod tests {
                 let cache_path = std::path::PathBuf::from("/custom/cache/dir");
                 let anchor = tempfile::tempdir().expect("anchor");
 
-                let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
+                let ctx = BootstrapRunner::<MockDiscoveryPort>::build_context(
                     None,
                     None,
                     anchor.path(),
@@ -478,7 +480,7 @@ mod tests {
             fn returns_context_with_none_cache_dir_when_parameter_is_none() {
                 let anchor = tempfile::tempdir().expect("anchor");
 
-                let ctx = Bootstrapper::<MockDiscoveryPort>::build_context(
+                let ctx = BootstrapRunner::<MockDiscoveryPort>::build_context(
                     None,
                     None,
                     anchor.path(),
@@ -526,7 +528,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(ret.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let result =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
@@ -549,7 +551,7 @@ mod tests {
                     )),
                 })
             });
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let err =
                 bootstrapper.discover(&ctx).expect_err("discover should fail");
@@ -602,7 +604,7 @@ mod tests {
                     expected.clone(),
                 ))
             });
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let result =
                 bootstrapper.discover(&ctx).expect("discover should succeed");
@@ -675,7 +677,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(disc.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let result = bootstrapper.run::<InMemoryRepository>(
@@ -699,7 +701,7 @@ mod tests {
                     ),
                 })
             });
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let err = bootstrapper
@@ -751,7 +753,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(disc.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let err = bootstrapper
@@ -818,7 +820,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(disc.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let result = bootstrapper.run::<InMemoryRepository>(
@@ -844,7 +846,7 @@ mod tests {
             let _ = std::fs::remove_dir_all(&non_existent);
 
             let mock = MockDiscoveryPort::new();
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let err = bootstrapper
                 .run::<InMemoryRepository>(
@@ -896,7 +898,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(disc.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let result = bootstrapper
@@ -943,7 +945,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(ret.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let result = bootstrapper
                 .run_discovery_only(None, None, anchor.path())
@@ -986,7 +988,7 @@ mod tests {
                     expected.clone(),
                 ))
             });
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let result = bootstrapper
                 .run_discovery_only(None, None, anchor.path())
@@ -1007,7 +1009,7 @@ mod tests {
                     )),
                 })
             });
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let err = bootstrapper
                 .run_discovery_only(None, None, anchor.path())
@@ -1032,7 +1034,7 @@ mod tests {
             let _ = std::fs::remove_dir_all(&non_existent);
 
             let mock = MockDiscoveryPort::new();
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
 
             let err = bootstrapper
                 .run_discovery_only(None, None, &non_existent)
@@ -1079,7 +1081,7 @@ mod tests {
                 .with(always())
                 .once()
                 .returning(move |_| Ok(disc.clone()));
-            let bootstrapper = Bootstrapper::new(mock);
+            let bootstrapper = BootstrapRunner::new(mock);
             let anchor = tempfile::tempdir().expect("anchor");
 
             let result =
@@ -1109,7 +1111,7 @@ mod tests {
                 true,
             )
             .expect("valid flags");
-            let context = Bootstrapper::<DiscoveryService>::build_context(
+            let context = BootstrapRunner::<DiscoveryService>::build_context(
                 Some(flags),
                 None,
                 root.path(),
@@ -1121,7 +1123,7 @@ mod tests {
                     .expect("valid base dir"),
                 FilePath::try_new(config_path).expect("valid config file"),
             );
-            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+            let bootstrapper = BootstrapRunner::with_global_directories(vec![])
                 .expect("valid bootstrapper");
 
             let result = bootstrapper
@@ -1133,7 +1135,7 @@ mod tests {
 
         #[test]
         fn constructs_concrete_service_from_platform_directories() {
-            let result = Bootstrapper::from_platform();
+            let result = BootstrapRunner::from_platform();
 
             assert!(result.is_ok());
         }
@@ -1155,7 +1157,7 @@ mod tests {
                 true,
             )
             .expect("valid flags");
-            let bootstrapper = Bootstrapper::with_global_directories(vec![])
+            let bootstrapper = BootstrapRunner::with_global_directories(vec![])
                 .expect("valid bootstrapper");
 
             let result = bootstrapper.run(

@@ -1,6 +1,6 @@
 //! Vault-specific overrides and metadata.
 //!
-//! This module defines the [`Vault`] configuration, which contains
+//! This module defines the [`LocalConfig`] configuration, which contains
 //! vault-specific settings and overrides for global defaults. It also
 //! manages [`VaultId`] and [`VaultRoot`].
 
@@ -160,22 +160,22 @@ impl Default for VaultRoot {
 
 /// Vault-specific configuration overrides.
 ///
-/// `Vault` contains settings that are specific to a single vault and
+/// `LocalConfig` contains settings that are specific to a single vault and
 /// override the global defaults. It covers paths, frontmatter, and
 /// logging settings.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use traces_settings::config::vault::Vault;
+/// use traces_settings::config::vault::LocalConfig;
 ///
-/// let vault = Vault::default();
+/// let vault = LocalConfig::default();
 /// assert!(vault.logging().is_none());
 /// ```
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct Vault {
+pub struct LocalConfig {
     /// Version number for this vault config.
     version: VaultVersion,
     /// Overridden logging settings.
@@ -192,7 +192,7 @@ pub struct Vault {
     task: Option<Task>,
 }
 
-impl Default for Vault {
+impl Default for LocalConfig {
     #[inline]
     fn default() -> Self {
         Self {
@@ -207,7 +207,7 @@ impl Default for Vault {
     }
 }
 
-impl Vault {
+impl LocalConfig {
     /// Create vault-specific configuration.
     #[inline]
     #[must_use]
@@ -776,7 +776,7 @@ mod tests {
             let template = TemplateConfig::default();
             let schema = SchemaConfig::default();
             let logging = Logging::new(LogLevel::Debug);
-            let vault = Vault::new(
+            let vault = LocalConfig::new(
                 version,
                 Some(logging.clone()),
                 Some(cache.clone()),
@@ -872,7 +872,7 @@ mod tests {
                 property_bank_file: Some("vault-bank.json".to_owned()),
             };
 
-            let vault = Vault::try_from_components(
+            let vault = LocalConfig::try_from_components(
                 Some(&raw_cache),
                 Some(&raw_template),
                 Some(&raw_schema),

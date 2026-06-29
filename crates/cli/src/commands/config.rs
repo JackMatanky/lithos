@@ -12,7 +12,7 @@
 
 use std::{io::Write, path::Path};
 
-use traces_app::bootstrap::Bootstrapper;
+use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::{
     DiscoveryFlags, InMemoryRepository,
     port::DiscoveryPort,
@@ -44,7 +44,7 @@ use crate::{cli::OutputFormat, error::CliError, output};
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_config<D: DiscoveryPort>(
-    bootstrapper: &Bootstrapper<D>,
+    bootstrapper: &BootstrapRunner<D>,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     format: OutputFormat,
@@ -237,7 +237,7 @@ fn write_json(
 
 #[cfg(test)]
 mod config_handler {
-    use traces_app::bootstrap::Bootstrapper;
+    use traces_app::bootstrap::BootstrapRunner;
     use traces_settings::{DiscoveryFlags, DiscoveryService};
 
     use super::run_config;
@@ -246,9 +246,10 @@ mod config_handler {
     // ----- helpers -----
 
     /// Creates a temp directory with a minimal vault (`traces.toml`) and
-    /// returns a `Bootstrapper` wired to discover it via explicit flags.
+    /// returns a `BootstrapRunner` wired to discover it via explicit flags.
     fn make_vault()
-    -> (tempfile::TempDir, Bootstrapper<DiscoveryService>, DiscoveryFlags) {
+    -> (tempfile::TempDir, BootstrapRunner<DiscoveryService>, DiscoveryFlags)
+    {
         let dir = tempfile::tempdir().expect("vault dir");
         let config_path = dir.path().join("traces.toml");
         // Must contain a non-default field so `InMemoryRepository` takes the
@@ -263,13 +264,13 @@ mod config_handler {
                    * tests */
         )
         .expect("valid flags");
-        let bootstrapper = Bootstrapper::with_global_directories(vec![])
+        let bootstrapper = BootstrapRunner::with_global_directories(vec![])
             .expect("bootstrapper");
         (dir, bootstrapper, flags)
     }
 
     fn run_human(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> (String, String) {
@@ -292,7 +293,7 @@ mod config_handler {
     }
 
     fn run_json(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> (String, String) {
@@ -315,7 +316,7 @@ mod config_handler {
     }
 
     fn run_verbose(
-        bootstrapper: &Bootstrapper<DiscoveryService>,
+        bootstrapper: &BootstrapRunner<DiscoveryService>,
         flags: Option<DiscoveryFlags>,
         anchor: &std::path::Path,
     ) -> (String, String) {

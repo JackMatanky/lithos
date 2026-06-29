@@ -18,9 +18,9 @@ use super::{
 use crate::config::{
     aggregate::{AppConfig, Version},
     error::ConfigRepositoryError,
-    global::Global,
+    global::GlobalConfig,
     repository::WriteRepository,
-    vault::{Vault, VaultId, VaultRoot},
+    vault::{LocalConfig, VaultId, VaultRoot},
     views::{RawGlobalConfigView, RawVaultConfigView},
 };
 
@@ -28,7 +28,7 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn save_global(
         &self,
-        config: &Global,
+        config: &GlobalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         let version_key = config.version().value().to_string();
         let bytes = config.to_bytes()?;
@@ -47,7 +47,7 @@ impl WriteRepository for RedbRepository {
     fn save_vault(
         &self,
         vault_id: VaultId,
-        config: &Vault,
+        config: &LocalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         let version_key = format!("{}:{}", vault_id, config.version().value());
         let bytes = config.to_bytes()?;
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn save_global_persists_config() {
         let (_temp, repo) = temp_repo();
-        let global = Global::default();
+        let global = GlobalConfig::default();
 
         repo.save_global(&global).unwrap();
 
@@ -210,7 +210,7 @@ mod tests {
     fn save_vault_persists_config() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = Vault::default();
+        let vault = LocalConfig::default();
 
         repo.save_vault(vault_id, &vault).unwrap();
 
