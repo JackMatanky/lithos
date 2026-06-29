@@ -314,7 +314,7 @@ mod tests {
             }
         }
 
-        mod default {
+        mod defaults {
             #[allow(unused_imports, reason = "added globally for ease")]
             use pretty_assertions::{assert_eq, assert_ne};
 
@@ -501,7 +501,7 @@ mod tests {
         }
     }
 
-    mod path_conversions {
+    mod conversions {
         #[allow(unused_imports, reason = "added globally for ease")]
         use pretty_assertions::{assert_eq, assert_ne};
         use traces_fs::{DirPath, FilePath};
