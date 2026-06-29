@@ -17,7 +17,6 @@ use traces_app::{
         run_template_create as app_run_template_create,
     },
 };
-use traces_fs::DirPath;
 use traces_settings::{DiscoveryFlags, port::DiscoveryPort};
 use traces_template::{TemplateArtifactError, TemplateError, TemplateName};
 
@@ -50,15 +49,25 @@ pub(crate) fn run_template<D: DiscoveryPort>(
 ) -> Result<(), CliError> {
     let context = parse_vars(args.vars)?;
     let bootstrap = bootstrapper.run(
-        flags.clone(),
+        flags,
         None,
         anchor,
         traces_settings::InMemoryRepository::new(),
     )?;
-    let discovery = bootstrapper.run_discovery_only(flags, None, anchor)?;
-    let cache_dir =
-        DirPath::try_from(discovery.cache_root().path().to_path_buf())
-            .map_err(|e| CliError::InvalidPath(e.to_string()))?;
+    #[expect(
+        deprecated,
+        reason = "Currently migrating to new cache_root extraction method, \
+                  but tests rely on Config::to_cache_spec()"
+    )]
+    let cache_spec = bootstrap
+        .config
+        .to_cache_spec()
+        .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
+    let cache_dir = cache_spec.to_dir_path().map_err(|e| {
+        TemplateCommandError::ConfigInvalid {
+            detail: format!("Cache directory from config is invalid: {e}"),
+        }
+    })?;
     let spec = bootstrap
         .config
         .to_template_spec()
@@ -266,7 +275,8 @@ mod tests {
         fs::write(dir.path().join("templates/greeting.md"), "Hello {{ name }}")
             .expect("write template");
         fs::create_dir_all(dir.path().join(".traces/cache"))
-            .expect("create cache");
+            .expect("create .traces/cache");
+        fs::create_dir_all(dir.path().join(".cache")).expect("create .cache");
 
         let flags = DiscoveryFlags::new(
             Some(config_path.as_path()),
