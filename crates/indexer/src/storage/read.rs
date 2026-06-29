@@ -255,6 +255,8 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_db::{DbPathKey, Store};
     use traces_fs::{
         FileFormat,
@@ -284,6 +286,9 @@ mod tests {
     }
 
     mod lookup {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::FILE_IDS_BY_BASENAME;
 
@@ -498,6 +503,9 @@ mod tests {
     }
 
     mod list {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::{DIR_IDS_BY_PARENT, FILE_IDS_BY_PARENT};
 
@@ -725,6 +733,9 @@ mod tests {
     }
 
     mod filter {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::FILE_IDS_BY_FORMAT;
 

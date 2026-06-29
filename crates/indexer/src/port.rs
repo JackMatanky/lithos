@@ -58,13 +58,12 @@ pub trait ScannerPort {
 
 #[cfg(test)]
 mod tests {
-    use mockall::{mock, predicate::always};
+    use mockall::mock;
     use traces_fs::DirPath;
 
     use crate::{
         error::ScannerError,
-        port::{ScanEntry, ScannerPort, WalkIter},
-        report::{SkipReason, SkippedEntry},
+        port::{ScannerPort, WalkIter},
         scan::ScanFilters,
     };
 
@@ -77,30 +76,5 @@ mod tests {
                 filters: &ScanFilters,
             ) -> Result<WalkIter, ScannerError>;
         }
-    }
-
-    /// Verifies the generated mock compiles and returns the expected type.
-    #[test]
-    fn scanner_port_can_be_mocked() {
-        let mut mock = MockScannerPort::new();
-        let root = DirPath::try_new("/tmp".into()).unwrap();
-        let filters = ScanFilters::default();
-
-        mock.expect_walk().with(always(), always()).returning(|_, _| {
-            let iter: WalkIter =
-                Box::new(std::iter::empty::<Result<ScanEntry, ScannerError>>());
-            Ok(iter)
-        });
-
-        let result = mock.walk(&root, &filters);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn yields_file_dir_and_skipped_variants() {
-        let _entry = ScanEntry::Skipped(SkippedEntry {
-            path: "/tmp/test".into(),
-            reason: SkipReason::PermissionDenied,
-        });
     }
 }

@@ -397,6 +397,8 @@ impl InMemoryRepository {
 mod tests {
     use std::time::SystemTime;
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_fs::{
         DirMetadata, FileMetadata,
         metadata::FsTimes,
@@ -488,7 +490,27 @@ mod tests {
     }
 
     #[test]
-    fn repository_double_supports_save_and_find() {
+    fn repository_double_supports_save_and_find_file_by_id() {
+        let repo = InMemoryRepository::new();
+        let id = FsRecordId::new();
+        let path = PathKey::try_new("test.txt").unwrap();
+        let record = FileRecord::new(
+            id,
+            FsParentId::Root,
+            path,
+            FileName::new("test.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 123, false),
+            SystemTime::now(),
+        );
+
+        repo.save_file(&record).unwrap();
+        let found = repo.find_file(id).unwrap().unwrap();
+        assert_eq!(found, record);
+    }
+
+    #[test]
+    fn repository_double_supports_find_file_by_path() {
         let repo = InMemoryRepository::new();
         let id = FsRecordId::new();
         let path = PathKey::try_new("test.txt").unwrap();
@@ -503,12 +525,26 @@ mod tests {
         );
 
         repo.save_file(&record).unwrap();
-        let found = repo.find_file(id).unwrap().unwrap();
-        assert_eq!(found, record);
-
         let found_by_path = repo.find_file_by_path(&path).unwrap().unwrap();
         assert_eq!(found_by_path, record);
+    }
 
+    #[test]
+    fn repository_double_supports_delete_file() {
+        let repo = InMemoryRepository::new();
+        let id = FsRecordId::new();
+        let path = PathKey::try_new("test.txt").unwrap();
+        let record = FileRecord::new(
+            id,
+            FsParentId::Root,
+            path.clone(),
+            FileName::new("test.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 123, false),
+            SystemTime::now(),
+        );
+
+        repo.save_file(&record).unwrap();
         repo.delete_file(id).unwrap();
         assert!(repo.find_file(id).unwrap().is_none());
         assert!(repo.find_file_by_path(&path).unwrap().is_none());

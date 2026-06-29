@@ -122,13 +122,13 @@ impl IndexerService {
                         e.to_string().into(),
                     ));
                 }
-                // Repository errors are fatal — they will recur on every entry,
-                // so abort the whole run. `IndexerError` is
-                // `#[non_exhaustive]`; any future variant falls
-                // here and is classified fatal (fail-closed).
-                // `repository_error_still_aborts` pins this for
-                // the Repository arm; revisit this arm if a new *recoverable*
-                // variant is added.
+                // only pre-persistence (`Path`) errors are recoverable; any
+                // error that may have already mutated the repo
+                // must abort, because marking a
+                // partially-written entry 'seen' would hide a needed deletion.
+                // `IndexerError` is `#[non_exhaustive]`; any future variant
+                // falls here and is classified fatal
+                // (fail-closed).
                 Err(other) => return Err(other),
             }
         }
@@ -343,6 +343,8 @@ impl IndexCollector {
 mod tests {
     use std::{cell::RefCell, collections::HashSet, rc::Rc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_fs::{
         FileFormat,
         metadata::{DirMetadata, FileMetadata, FsTimes},
@@ -594,6 +596,9 @@ mod tests {
     // ─── Cycle 2 — IndexerService::run() ────────────────────────
 
     mod service_run {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -893,6 +898,9 @@ mod tests {
     // ─── scan_entry_path_key ────────────────────────────────────
 
     mod scan_entry_path_key {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::service::scan_entry_path_key;
 
@@ -939,6 +947,9 @@ mod tests {
     // ─── Cycle 3 — detect_deletions ─────────────────────────────
 
     mod detect_deletions {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         /// Reads of `find_*_by_path` fail; `all_paths` yields one stored path
@@ -1182,6 +1193,9 @@ mod tests {
     // ─── Cycle 4 — persist ──────────────────────────────────────
 
     mod persist {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -1297,6 +1311,9 @@ mod tests {
     // ─── Cycle 5 — Integration ──────────────────────────────────
 
     mod integration {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         fn make_file_node_at(

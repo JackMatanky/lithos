@@ -281,8 +281,15 @@ impl FsParentId {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     mod fs_record_id {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -294,6 +301,9 @@ mod tests {
         }
 
         mod ordering {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -305,6 +315,9 @@ mod tests {
         }
 
         mod default {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -320,6 +333,9 @@ mod tests {
         }
 
         mod formatting {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -332,9 +348,13 @@ mod tests {
     }
 
     mod file_record {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 FileFormat,
                 metadata::{FileMetadata, FsTimes},
@@ -402,9 +422,13 @@ mod tests {
     }
 
     mod dir_record {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 metadata::{DirMetadata, FsTimes},
                 name::DirName,
@@ -456,6 +480,9 @@ mod tests {
     }
 
     mod fs_parent_id {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use crate::model::{FsParentId, FsRecordId};
 
         #[test]
@@ -475,7 +502,8 @@ mod tests {
     }
 
     mod path_conversions {
-
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         use traces_fs::{DirPath, FilePath};
 
         #[test]

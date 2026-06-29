@@ -231,12 +231,14 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %record.id(), path = %record.path(), "saving file record");
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
         self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             // Reject before writing: returning Err rolls the transaction back,
             // so a conflict changes nothing (no no-op commit).
             if Self::file_path_taken_by_other(tx, record.path(), record.id())? {
+                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate file path detected");
                 return Err(IndexerRepositoryError::DuplicatePath(
                     record.path().clone(),
                 ));
@@ -251,10 +253,12 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %record.id(), path = %record.path(), "saving dir record");
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
         self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             if Self::dir_path_taken_by_other(tx, record.path(), record.id())? {
+                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate dir path detected");
                 return Err(IndexerRepositoryError::DuplicatePath(
                     record.path().clone(),
                 ));
@@ -269,6 +273,7 @@ impl WriteRepository for RedbRepository {
         &self,
         id: FsRecordId,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %id, "deleting file record");
         self.store
             .write(|tx| Self::delete_file_in_tx(tx, id))
             .map_err(Into::into)
@@ -276,6 +281,7 @@ impl WriteRepository for RedbRepository {
 
     #[inline]
     fn delete_dir(&self, id: FsRecordId) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %id, "deleting dir record");
         self.store
             .write(|tx| Self::delete_dir_in_tx(tx, id))
             .map_err(Into::into)
@@ -287,6 +293,11 @@ impl WriteRepository for RedbRepository {
         files: &[FileRecord],
         dirs: &[DirRecord],
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(
+            files = files.len(),
+            dirs = dirs.len(),
+            "saving many records"
+        );
         let file_archives: Vec<_> = files
             .iter()
             .map(rkyv::to_bytes::<rkyv::rancor::Error>)
@@ -303,6 +314,7 @@ impl WriteRepository for RedbRepository {
             // rejects the whole batch (Err rolls back) with no partial writes.
             for file in files {
                 if Self::file_path_taken_by_other(tx, file.path(), file.id())? {
+                    tracing::warn!(id = %file.id(), path = %file.path(), "duplicate file path detected in batch");
                     return Err(IndexerRepositoryError::DuplicatePath(
                         file.path().clone(),
                     ));
@@ -310,6 +322,7 @@ impl WriteRepository for RedbRepository {
             }
             for dir in dirs {
                 if Self::dir_path_taken_by_other(tx, dir.path(), dir.id())? {
+                    tracing::warn!(id = %dir.id(), path = %dir.path(), "duplicate dir path detected in batch");
                     return Err(IndexerRepositoryError::DuplicatePath(
                         dir.path().clone(),
                     ));
@@ -347,6 +360,7 @@ impl WriteRepository for RedbRepository {
 
     #[inline]
     fn clear(&self) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!("clearing indexer repository");
         // All delete+recreate pairs run within a single WriteTransaction; redb
         // guarantees atomicity, so every deletion reverts together on rollback.
         self.store
@@ -386,6 +400,8 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_db::Store;
     use traces_fs::{
         FileFormat,
@@ -430,6 +446,9 @@ mod tests {
     }
 
     mod contract {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::setup_repo;
         use crate::storage::contract::assert_repository_contract;
 
@@ -441,6 +460,9 @@ mod tests {
     }
 
     mod duplicate_path {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -488,6 +510,9 @@ mod tests {
     }
 
     mod create {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -582,6 +607,9 @@ mod tests {
     }
 
     mod delete {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -681,6 +709,9 @@ mod tests {
     }
 
     mod update {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
@@ -799,6 +830,9 @@ mod tests {
     }
 
     mod transactions {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
