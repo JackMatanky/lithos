@@ -628,3 +628,20 @@ Expected: intended changed files include:
 - No production `unwrap()` or `panic!` is introduced.
 - Tests exercise public CLI parsing and handler behavior through existing public functions.
 - All subagents must verify they are only working in `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command` before acting.
+
+## Implementation Notes
+
+During an adversarial code review of the initial implementation, several issues were identified and successfully remediated:
+
+1. **`TemplateCommandError` Redesign**:
+   - Split `InvalidOutputPath` cleanly into `OutputPathInvalid` (for artifact path traversal/resolution issues) and `ConfigInvalid` (for config, root directory, and scan errors) to avoid misclassifying directory errors as output path errors.
+   - Upgraded all variants with `#[diagnostic(help(...))]` to provide actionable guidance via `miette`, matching the standard set by `IndexCommandError`.
+   - Updated `exit_code()` so that `WriteFailed` correctly produces an exit code `3` (matching the filesystem I/O error convention), while user errors remain `2`.
+
+2. **Performance Optimization**:
+   - Removed a redundant `run_discovery_only` call in the handler. The `cache_dir` is now dynamically extracted via `bootstrap.config.to_cache_spec()` to eliminate unnecessary filesystem directory walks.
+
+3. **Behavior Consistency**:
+   - JSON format is correctly tested for both dry-run (`preview`) and actual run (`output`).
+   - Duplicate `--var` flags are properly handled (last-wins) and explicitly tested.
+   - All tests pass (102 in total), clippy is clean, and the formatting is strictly enforced.
