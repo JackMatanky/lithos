@@ -13,7 +13,6 @@ categories.workspace = true
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
-miette.workspace = true
 serde.workspace = true
 redb.workspace = true
 rkyv.workspace = true

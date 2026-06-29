@@ -39,7 +39,6 @@ toml = "1.1"
 uuid = { version = "1.23", features = ["v7", "v5", "serde"] }
 
 # Error Handling
-miette = "7.6"
 thiserror = "2.0"
 
 # CLI and Observability

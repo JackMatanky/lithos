@@ -23,7 +23,8 @@ traces-fs.workspace = true
 traces-template.workspace = true
 
 clap = { version = "4.6", features = ["env", "derive"] }
-miette = { workspace = true, features = ["fancy"] }
+miette = { version = "7.6", features = ["fancy"] }
+
 thiserror.workspace = true
 tracing.workspace = true
 rkyv.workspace = true
