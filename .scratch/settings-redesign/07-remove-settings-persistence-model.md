@@ -28,6 +28,7 @@ If any component still imports the old repository, storage, version, view, event
 - [ ] Old config snapshot views, version counters, events, stale-analysis processor, and resolver plan are removed or made unreachable only in tests if temporarily necessary.
 - [ ] Settings crate no longer depends on `traces-db`, `redb`, or `rkyv` for config persistence.
 - [ ] Public exports no longer expose old `Config`, `Vault`, `Global`, repository, storage, or discovery-port names.
+- [ ] Remaining crate structure matches the PRD layout: `candidate.rs` at `src/`, tracker/trust under `config/`, `location.rs`/`env.rs`/`os_dirs.rs` flat at `src/`.
 - [ ] Compile errors from removed components are fixed by using the new SettingsService and AppConfig path, not by adding compatibility wrappers.
 - [ ] Architecture tests assert the persistence model is gone.
 

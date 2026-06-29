@@ -17,9 +17,18 @@ date_completed: null
 
 ## What to build
 
-Migrate the app composition root from the old generic discovery-port/repository bootstrapper to `BootstrapRunner` backed by SettingsService. The runner maps CLI flags into settings DTOs, runs discovery/config build through SettingsService, and creates the cache directory from the final AppConfig.
+Migrate the app composition root from the old generic discovery-port/repository bootstrapper to `BootstrapRunner` backed by SettingsService. The runner maps CLI flags into settings DTOs, runs discovery/config build through SettingsService, and calls `AppConfig::create_cache_dir()` from the final config.
 
 Do this migration before any old Bootstrapper-facing settings components are removed.
+
+### Renaming Directives
+
+| New Name | Old Name | Action |
+|----------|----------|--------|
+| `BootstrapRunner` (in `crates/app/`) | `Bootstrapper` (same file) | **Rename** struct. Remove generic `D: DiscoveryPort` parameter, replace with `SettingsService` |
+| `BootstrapRunner::run()` | `Bootstrapper::run()` | **Rename**. Signature changes: no `Repository`, no `DiscoveryPort` |
+| Discovery flow via `SettingsService::discover()` | `Bootstrapper::run_discovery_only()` | **Replace** — delegate to service instead |
+| `AppConfig::create_cache_dir()` | (was inline in bootstrap) | **Delegate** — call on `AppConfig` after build |
 
 ## Acceptance criteria
 
@@ -27,8 +36,8 @@ Do this migration before any old Bootstrapper-facing settings components are rem
 - [ ] BootstrapRunner maps CLI discovery flags into `DiscoveryOptions`.
 - [ ] BootstrapRunner maps build flags into `ConfigBuilderOptions`.
 - [ ] BootstrapRunner calls `SettingsService::discover` for discovery-only flows.
-- [ ] BootstrapRunner calls `SettingsService::build_config` for full config flows.
-- [ ] BootstrapRunner calls `SettingsService::setup_cache_dir` after AppConfig construction.
+- [ ] BootstrapRunner calls `SettingsService::build_config` for full config flows, passing `(vault: Box<[CandidatePath]>, global: Box<[CandidatePath]>, options: ConfigBuilderOptions)`.
+- [ ] BootstrapRunner calls `AppConfig::create_cache_dir()` after AppConfig construction — not a SettingsService method.
 - [ ] No repository argument is required to run bootstrap.
 - [ ] Existing app-level bootstrap tests are migrated to the new runner.
 

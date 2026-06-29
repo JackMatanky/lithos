@@ -21,6 +21,18 @@ Move discovery behind the Settings boundary and implement the linear discovery f
 
 Migrate discovery consumers to the new SettingsService API before marking old discovery service/port types unused. Do not delete old components here if any caller still needs them.
 
+### Renaming Directives
+
+| New Name | Old Name | Action |
+|----------|----------|--------|
+| `DiscoveryProcessor` (typestate, internal) | `DiscoveryService` + `DiscoveryPort` | New internal orchestrator replaces both. Delete old port/service in issue 07 |
+| `SettingsEnvVars` (in `src/env.rs`) | `DiscoveryEnv` (in `discovery/env.rs`) | **Rename and move** — internal struct, env var names unchanged |
+| `DiscoveryInput` (in `discovery/input.rs`) | (new — no old equivalent) | Normalized input from options + env |
+| `src/os_dirs.rs` | `discovery/dirs.rs` + static helpers in `discovery/env.rs` | **Consolidate and move** — platform dirs extracted out |
+| `src/location.rs` | `discovery/location.rs` + `discovery/policy.rs` | **Consolidate and move** — `MarkerPattern` replaced by flat `&[&str]` slices |
+| `CandidatePath` (in `src/candidate.rs`) | Was inline in old discovery outcome | **Extract** — standalone bridge type |
+| `DiscoveryOutcome` (in `discovery/outcome.rs`) | Replaces old `DiscoveryResult` | **Rename** — now holds `Box<[CandidatePath]>` slices, not old candidate types |
+
 ## Acceptance criteria
 
 - [ ] `DiscoveryInput` is internal and constructed from `DiscoveryOptions` plus internally-read settings environment variables.
@@ -29,7 +41,8 @@ Migrate discovery consumers to the new SettingsService API before marking old di
 - [ ] Local collection returns candidates in outer-ancestor to nearest-ancestor order.
 - [ ] `TRACES_DEFAULT_VAULT` is only used as fallback when normal local collection finds no local candidate.
 - [ ] Global collection follows suppress, flag, env, platform-dir precedence.
-- [ ] Exact filename slices in path constants replace marker-pattern/extension iteration for new discovery code.
+- [ ] Exact filename slices in `src/location.rs` replace marker-pattern/extension iteration for new discovery code.
+- [ ] `CandidatePath` lives at `src/candidate.rs`, not in `discovery/outcome.rs` — discovery produces them, config consumes them.
 - [ ] Dedupe/desymlink and ignored-path filtering happen before returning `DiscoveryOutcome`.
 
 ## Blocked by

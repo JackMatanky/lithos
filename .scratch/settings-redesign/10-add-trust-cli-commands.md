@@ -45,7 +45,7 @@ This remains AFK-ready because trust UX is specified enough by the PRD. It shoul
 ### Agent Brief
 
 - Add clap routes for trust/untrust command intents.
-- Delegate trust storage and status rules to `traces-settings::Trust`.
+- Delegate trust storage and status rules to `traces-settings::Trust` (in `config/trust.rs`, re-exported at crate root).
 - Use SettingsService discovery for `--all` and `--show` so command behavior matches config resolution.
 - Preserve human/JSON output conventions already used by config commands.
 - Keep interactive prompting out of command handlers unless Trust exposes it as an operation.

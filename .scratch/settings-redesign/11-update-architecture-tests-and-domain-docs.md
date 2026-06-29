@@ -21,9 +21,10 @@ Bring architecture tests and domain documentation in line with the completed set
 
 ## Acceptance criteria
 
-- [ ] Settings context docs use the final domain language: SettingsService, AppConfig, GlobalConfig, LocalConfig, RawConfig, DiscoveryOutcome, Tracker, Trust.
+- [ ] Settings context docs use the final domain language: SettingsService, AppConfig, GlobalConfig, LocalConfig, RawConfig, CandidatePath, DiscoveryOutcome, Tracker, Trust.
 - [ ] Stale terms from the removed persistence model are deleted or explicitly marked historical where needed.
 - [ ] Architecture tests assert discovery is internal and settings has one inbound service boundary.
+- [ ] Architecture tests assert the final crate module layout: `CandidatePath` at `src/candidate.rs`, `Tracker` and `Trust` under `config/`, `service.rs`/`location.rs`/`env.rs`/`os_dirs.rs` flat at `src/`.
 - [ ] Architecture tests assert settings no longer exposes repository/storage/snapshot/version APIs.
 - [ ] ADR supersession notes from the PRD are reflected in the relevant docs.
 - [ ] Documentation matches public exports and tested behavior.

@@ -21,13 +21,31 @@ Define the new public Settings boundary without changing the full implementation
 
 Do not remove old discovery/config components in this slice. They stay until later slices migrate consumers away from them.
 
+### Renaming Directives
+
+This slice introduces the new boundary types. Some are new, others are renames of existing types — migrate callers, don't create parallel copies:
+
+| New Name | Old Name | Action |
+|----------|----------|--------|
+| `AppConfig` (in `config/app.rs`) | `Config` (in `config/aggregate.rs`) | **Rename**. Move aggregation content into `app.rs`, delete `aggregate.rs` later |
+| `SettingsService` | (new — no direct rename) | New boundary that owns discovery + config building |
+| `DiscoveryOptions` | Replaces `DiscoveryFlags`/`DiscoveryContext` | New DTO, no old struct to rename |
+| `ConfigBuilderOptions` | (new) | New DTO, no old equivalent |
+| `DiscoveryOutcome` | Replaces old `DiscoveryResult` | New type, similar role |
+| `CandidatePath` | Was inside old discovery outcome | Extract to standalone `src/candidate.rs` |
+
+Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). Downstream slices will flesh out its fields; here you only need the name to exist for the cache-dir method signature.
+
 ## Acceptance criteria
 
 - [ ] `SettingsService` is the documented public inbound boundary for settings.
 - [ ] Public DTOs exist for `DiscoveryOptions`, `ConfigBuilderOptions`, and `DiscoveryOutcome`.
 - [ ] `DiscoveryOptions` contains CLI/runtime discovery inputs, not environment variables.
 - [ ] `ConfigBuilderOptions` contains config-build inputs such as trust mode and auto-confirm.
-- [ ] `SettingsService` exposes `discover`, `build_config`, and `setup_cache_dir` with the PRD semantics, even if implementation delegates internally for now.
+- [ ] `SettingsService` exposes `discover` and `build_config` with the PRD semantics, even if implementation delegates internally for now.
+- [ ] `build_config` receives `(vault: Box<[CandidatePath]>, global: Box<[CandidatePath]>, options: ConfigBuilderOptions)` directly, not a `DiscoveryOutcome` — the ConfigBuilder only needs candidates.
+- [ ] `CandidatePath` is a public type in `src/candidate.rs`, shared between discovery and config.
+- [ ] Cache dir creation is on `AppConfig::create_cache_dir()`, not on `SettingsService`.
 - [ ] Existing public callers continue to compile.
 - [ ] Tests or compile-time checks cover the new API shape.
 

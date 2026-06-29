@@ -21,12 +21,26 @@ Migrate existing CLI commands to the new BootstrapRunner/SettingsService path wh
 
 This slice removes CLI usage of old components before the components are deleted.
 
+### Renaming Directives
+
+These are consumer-side changes — CLI handlers reference old types in their imports and calls:
+
+| Old Import | New Import | Action |
+|------------|------------|--------|
+| `Bootstrapper` | `BootstrapRunner` | **Rename** — composition root |
+| `Config` (old aggregate) | `AppConfig` | **Rename** — returned config type |
+| `Vault` | `LocalConfig` | **Rename** — used in display/output |
+| `Global` | `GlobalConfig` | **Rename** — used in display/output |
+| `DiscoveryFlags` / `DiscoveryContext` / `DiscoveryEnv` | `DiscoveryOptions` + `SettingsEnvVars` (internal) | **Replace** — CLI only constructs `DiscoveryOptions` |
+| `DiscoveryService` / `DiscoveryPort` | (internal — no CLI import) | **Remove** — CLI calls `SettingsService` instead |
+| `InMemoryRepository` | (removed) | **Remove** — CLI tests use tempdirs instead |
+
 ## Acceptance criteria
 
 - [ ] `traces config` uses BootstrapRunner/SettingsService and preserves human and JSON output semantics.
 - [ ] `traces config files` uses discovery-only SettingsService flow and still exits successfully when discovery fails.
 - [ ] `traces doctor` uses the new full config and discovery-only flows.
-- [ ] `traces index` obtains AppConfig and cache setup through BootstrapRunner without pre-creating settings repository state.
+- [ ] `traces index` obtains AppConfig and calls `AppConfig::create_cache_dir()` through BootstrapRunner without pre-creating settings repository state.
 - [ ] CLI tests are updated away from `DiscoveryService`, `DiscoveryFlags`, and `InMemoryRepository`.
 - [ ] User-facing diagnostics remain actionable and avoid leaking internal pipeline names unless already part of CLI contract.
 

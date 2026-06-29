@@ -21,6 +21,18 @@ Replace the persisted config-domain shape with ephemeral domain types. Config fi
 
 Keep compatibility shims only where required for current callers; remove those shims later after callers migrate.
 
+### Renaming Directives
+
+| New Name | Old Name | Action |
+|----------|----------|--------|
+| `RawConfig` (in `config/raw.rs`) | `RawGlobalConfig` + `RawVaultConfig` | **Unify** — one all-Option DTO replaces both |
+| `GlobalConfig` (in `config/global.rs`) | `Global` (same file) | **Rename** struct, keep file |
+| `LocalConfig` (in `config/local.rs`) | `Vault` (in `config/vault.rs`) | **Rename and move file** — `vault.rs` → `local.rs` |
+| `AppConfig` (in `config/app.rs`) | `Config` (in `config/aggregate.rs`) | **Rename and move file** — `aggregate.rs` → `app.rs`. Aggregation logic moves with it |
+| `ConfigError` (in `config/error.rs`) | Old `SettingsError` variants | **Consolidate** — keep only config-related variants, remove persistence errors |
+
+Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs` — these are domain types whose structure is not changing.
+
 ## Acceptance criteria
 
 - [ ] A unified `RawConfig` can deserialize config fields used by both global and local files.
@@ -29,6 +41,7 @@ Keep compatibility shims only where required for current callers; remove those s
 - [ ] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
 - [ ] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
 - [ ] `LocalConfig` carries `base`, `path`, and a derived/defaultable name.
+- [ ] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/local.rs` (LocalConfig), `config/app.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
 - [ ] `AppConfig` is constructable without a repository or database.
 - [ ] Inline-data tests cover raw parsing, forbidden fields, and default construction.
 

@@ -21,9 +21,19 @@ Implement the new ConfigBuilder as an ephemeral typestate pipeline that consumes
 
 Migrate SettingsService build behavior to this builder, but leave old repository-backed builder code in place until all callers have moved off it.
 
+### Renaming Directives
+
+| New Name | Old Name | Action |
+|----------|----------|--------|
+| `ConfigBuilder` (typestate, `config/builder.rs`) | `Builder<R>` (same file) | **Replace** — typestate states replace generic `R: Repository`. Old file is deleted in issue 07 |
+| `Init` state holds `(Box<[CandidatePath]>, Box<[CandidatePath]>)` | `Builder::new()` took `(Vault, Global, R: Repository)` | **Signature change** |
+| `AppConfig::create_cache_dir()` | (was `SettingsService::setup_cache_dir()`) | **Move** — cache dir is a method on `AppConfig`, not on the service |
+| `Tracker::track()` (in `config/tracker.rs`) | Old `Repository::write()` for config snapshots | **Replace** — symlink tracking, not persistence |
+| `Trust::trust_check()` (in `config/trust.rs`) | (new — no old equivalent) | Interactive trust prompt replaces silent acceptance |
+
 ## Acceptance criteria
 
-- [ ] `ConfigBuilder` consumes `DiscoveryOutcome` and `ConfigBuilderOptions`.
+- [ ] `ConfigBuilder::new` receives `(vault: Box<[CandidatePath]>, global: Box<[CandidatePath]>, options: ConfigBuilderOptions)` — not a `DiscoveryOutcome`, as the builder only needs the candidate slices.
 - [ ] Builder states follow the approved sequence: tracked, trusted, loaded, validated, ready.
 - [ ] Loaded state reads TOML/JSON/YAML files into `RawConfig`.
 - [ ] Validated state constructs optional `GlobalConfig` and ordered `LocalConfig` stack.

@@ -23,6 +23,7 @@ This slice creates the new trust path before old security/persistence assumption
 
 ## Acceptance criteria
 
+- [ ] `Trust` lives in `config/trust.rs` and is `pub` (re-exported at crate root for CLI commands). Called internally by `ConfigBuilder` during the trust phase.
 - [ ] Public `Trust` API supports trust, untrust, ignore, trusted check, ignored check, and status/listing needed by CLI.
 - [ ] Trust and ignore entries use stable path-hash symlinks.
 - [ ] Global config candidates are treated as trusted.

@@ -24,6 +24,7 @@ This slice adds the replacement mechanism before the old repository storage is r
 ## Acceptance criteria
 
 - [ ] Internal `Tracker` provides `track`, `list_all`, and `clean` operations.
+- [ ] Lives in `config/tracker.rs` as a `pub(crate)` module — called by `ConfigBuilder`, not by `SettingsService` directly.
 - [ ] Tracking uses a stable hash of canonicalized config file paths.
 - [ ] Tracking creates symlinks from `TRACKED_CONFIGS/<path-hash>` to the canonical file path.
 - [ ] Tracking is idempotent when called repeatedly for the same path.
