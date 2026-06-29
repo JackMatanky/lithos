@@ -5,11 +5,6 @@
 //! `EntryBuilder<IsDir, Scanned>`, deriving `parent_id` from the accumulated
 //! `dir_ids` map via `FilePath::parent()` / `DirPath::parent()`.
 
-#![expect(
-    clippy::arithmetic_side_effects,
-    reason = "counter increments in report builders are bounded by file count"
-)]
-
 use std::collections::{HashMap, HashSet};
 
 use traces_fs::{DirPath, path::PathKey};
@@ -22,8 +17,8 @@ use crate::{
     entry::{DirIndexEntry, FileIndexEntry, IndexStatus},
     error::IndexerError,
     model::FsRecordId,
-    port::ScannerPort,
-    report::{IndexReport, SkippedEntry},
+    port::{ScanEntry, ScannerPort},
+    report::{IndexNodeFailure, IndexReport, SkippedEntry},
     repository::Repository,
     scan::{IndexOptions, IndexScope},
     summary::{DeletedNodes, IndexResult, IndexedNodes},
@@ -36,17 +31,27 @@ use crate::{
 /// Wires a `ScannerPort` and `Repository` into a single indexing run.
 /// Call `run()` with an `IndexScope` and `IndexOptions` to produce an
 /// `IndexResult`.
-pub struct IndexerService<S: ScannerPort, R: Repository> {
+///
+/// Uses trait-object dispatch: the handful of vtable calls per entry (one
+/// scanner `walk` per run, then one or two repository lookups per entry — a
+/// comparison read plus, on a mismatch, a write) are noise next to disk-bound
+/// work, and a single monomorphization keeps the binary smaller and compiles
+/// faster.
+pub struct IndexerService {
     vault_root: DirPath,
-    scanner: S,
-    repo: R,
+    scanner: Box<dyn ScannerPort>,
+    repo: Box<dyn Repository>,
 }
 
-impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
+impl IndexerService {
     /// Create a new indexer service.
     #[inline]
     #[must_use]
-    pub fn new(vault_root: DirPath, scanner: S, repo: R) -> Self {
+    pub fn new(
+        vault_root: DirPath,
+        scanner: Box<dyn ScannerPort>,
+        repo: Box<dyn Repository>,
+    ) -> Self {
         Self {
             vault_root,
             scanner,
@@ -65,8 +70,17 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
     /// # Errors
     /// Returns `IndexerError` if traversal or database operations fail.
     #[inline]
+    #[tracing::instrument(
+        level = "info",
+        skip(self, scope, opts),
+        fields(
+            root = %scope.root().as_path().display(),
+            rebuild = opts.rebuild(),
+            dry_run = opts.dry_run(),
+        )
+    )]
     pub fn run(
-        &self,
+        &mut self,
         scope: &IndexScope,
         opts: IndexOptions,
     ) -> Result<IndexResult, IndexerError> {
@@ -74,42 +88,49 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         let filters = scope.filters();
 
         if opts.rebuild() {
+            tracing::debug!("rebuild requested: clearing persisted state");
             self.repo.clear()?;
         }
 
         let mut ctx = IndexCollector::default();
         for result in self.scanner.walk(root, filters)? {
+            // Stream-level errors mean traversal itself broke → abort the run.
             let scan_entry = result?;
-            let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
-                .into_branch(&self.vault_root)?;
+            let entry_path = scan_entry_path(&scan_entry);
+            let entry_key = scan_entry_path_key(&scan_entry, &self.vault_root);
 
-            let completion = match branch {
-                EntryBranch::File(b) => match b
-                    .into_comparison_branch(&self.repo)?
-                {
-                    FileComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
+            match self.classify_entry(scan_entry, &ctx.dir_ids, opts.dry_run())
+            {
+                Ok(completion) => ctx.record(completion),
+                // Per-entry path errors are recoverable: record the failure
+                // and keep scanning ("scan as much as possible").
+                Err(IndexerError::Path(e)) => {
+                    tracing::warn!(
+                        path = %entry_path.display(),
+                        error = %e,
+                        "soft-failing entry; continuing scan"
+                    );
+                    // Mark a soft-failed entry as seen so a transient failure
+                    // never causes detect_deletions to delete its existing
+                    // record. `None` means the entry has no storage key, so no
+                    // record can match it and there is nothing to protect.
+                    if let Some(key) = entry_key {
+                        ctx.seen_paths.insert(key);
                     }
-                    FileComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
-                        .into_completion()
-                        .into_state(),
-                },
-                EntryBranch::Dir(b) => match b
-                    .into_comparison_branch(&self.repo)?
-                {
-                    DirComparisonBranch::Match(b) => {
-                        b.into_completion().into_state()
-                    }
-                    DirComparisonBranch::Mismatch(b) => b
-                        .into_indexed(&self.repo, &ctx.dir_ids, opts.dry_run())?
-                        .into_completion()
-                        .into_state(),
-                },
-                EntryBranch::Completion(b) => b.into_state(),
-            };
-
-            ctx.record(completion);
+                    ctx.failures.push(IndexNodeFailure::new(
+                        entry_path,
+                        e.to_string().into(),
+                    ));
+                }
+                // only pre-persistence (`Path`) errors are recoverable; any
+                // error that may have already mutated the repo
+                // must abort, because marking a
+                // partially-written entry 'seen' would hide a needed deletion.
+                // `IndexerError` is `#[non_exhaustive]`; any future variant
+                // falls here and is classified fatal
+                // (fail-closed).
+                Err(other) => return Err(other),
+            }
         }
         let deleted = self.detect_deletions(&ctx.seen_paths)?;
 
@@ -117,6 +138,10 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             self.repo.delete_many_records(deleted.files(), deleted.dirs())?;
         }
 
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "scanned totals are bounded by the number of entries"
+        )]
         let scanned_count = ctx.indexed_files.len()
             + ctx.indexed_dirs.len()
             + ctx.skipped.len();
@@ -127,7 +152,18 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             ctx.stale_count,
             deleted.count(),
             ctx.skipped.into_boxed_slice(),
-            Box::new([]),
+            ctx.failures.into_boxed_slice(),
+        );
+
+        tracing::info!(
+            scanned = report.scanned(),
+            new = report.new_count(),
+            fresh = report.fresh_count(),
+            stale = report.stale_count(),
+            deleted = report.deleted_count(),
+            skipped = report.skipped().len(),
+            failures = report.failures().len(),
+            "index pass complete"
         );
 
         Ok(IndexResult::new(
@@ -140,6 +176,46 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         ))
     }
 
+    /// Drive one scan entry through the builder pipeline to a `Completion`.
+    ///
+    /// Returns `IndexerError::Path` for per-entry, recoverable failures (e.g.
+    /// an entry outside the vault root) and `IndexerError::Repository` for
+    /// fatal persistence failures; the caller decides soft-fail vs abort.
+    fn classify_entry(
+        &self,
+        scan_entry: crate::port::ScanEntry,
+        dir_ids: &HashMap<PathKey, FsRecordId>,
+        dry_run: bool,
+    ) -> Result<Completion, IndexerError> {
+        let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
+            .into_branch(&self.vault_root)?;
+
+        let repo = self.repo.as_ref();
+        let completion = match branch {
+            EntryBranch::File(b) => match b.into_comparison_branch(repo)? {
+                FileComparisonBranch::Match(b) => {
+                    b.into_completion().into_state()
+                }
+                FileComparisonBranch::Mismatch(b) => b
+                    .into_indexed(repo, dir_ids, dry_run)?
+                    .into_completion()
+                    .into_state(),
+            },
+            EntryBranch::Dir(b) => match b.into_comparison_branch(repo)? {
+                DirComparisonBranch::Match(b) => {
+                    b.into_completion().into_state()
+                }
+                DirComparisonBranch::Mismatch(b) => b
+                    .into_indexed(repo, dir_ids, dry_run)?
+                    .into_completion()
+                    .into_state(),
+            },
+            EntryBranch::Completion(b) => b.into_state(),
+        };
+
+        Ok(completion)
+    }
+
     /// Detect deleted nodes: paths that exist in the repository but were not
     /// encountered during the scan.
     fn detect_deletions(
@@ -147,18 +223,22 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
         seen: &HashSet<PathKey>,
     ) -> Result<DeletedNodes, IndexerError> {
         let all = self.repo.all_paths()?;
-        let mut file_ids: Vec<crate::model::FsRecordId> = Vec::new();
-        let mut dir_ids: Vec<crate::model::FsRecordId> = Vec::new();
+        let mut file_ids: Vec<FsRecordId> = Vec::new();
+        let mut dir_ids: Vec<FsRecordId> = Vec::new();
 
         for path in &all {
-            if !seen.contains(path) {
-                if let Ok(Some(file)) = self.repo.find_file_by_path(path) {
-                    file_ids.push(file.id());
-                } else if let Ok(Some(dir)) = self.repo.find_dir_by_path(path) {
-                    dir_ids.push(dir.id());
-                } else {
-                    // Neither file nor dir — stale path, skip
-                }
+            if seen.contains(path) {
+                continue;
+            }
+            // A repository error here is fatal: it will recur and may mask DB
+            // corruption, so propagate it instead of treating the path as
+            // absent (which would silently miss a deletion).
+            if let Some(file) = self.repo.find_file_by_path(path)? {
+                file_ids.push(file.id());
+            } else if let Some(dir) = self.repo.find_dir_by_path(path)? {
+                dir_ids.push(dir.id());
+            } else {
+                // Neither file nor dir — genuinely stale path, skip.
             }
         }
 
@@ -166,6 +246,37 @@ impl<S: ScannerPort, R: Repository> IndexerService<S, R> {
             file_ids.into_boxed_slice(),
             dir_ids.into_boxed_slice(),
         ))
+    }
+}
+
+/// Best-effort path of a scan entry, for failure reporting.
+///
+/// A skipped entry already carries its path; file/dir entries expose their
+/// runtime path. Used only to key an `IndexNodeFailure`.
+fn scan_entry_path(entry: &ScanEntry) -> std::path::PathBuf {
+    match entry {
+        ScanEntry::File(node) => node.path().as_path().to_path_buf(),
+        ScanEntry::Dir(node) => node.path().as_path().to_path_buf(),
+        ScanEntry::Skipped(s) => s.path.clone(),
+    }
+}
+
+/// Best-effort vault-relative key of a scan entry.
+///
+/// Returns `Some` for file/dir entries whose path resolves under `vault_root`,
+/// `None` for skipped entries or paths outside the root (which have no storage
+/// key). Used so a *soft-failed* entry can still be marked "seen": a transient
+/// per-entry failure must never let `detect_deletions` delete the entry's
+/// previously-indexed record. When the key is `None` no stored record can match
+/// the entry, so there is nothing to protect.
+fn scan_entry_path_key(
+    entry: &ScanEntry,
+    vault_root: &DirPath,
+) -> Option<PathKey> {
+    match entry {
+        ScanEntry::File(node) => node.path().as_key(vault_root).ok(),
+        ScanEntry::Dir(node) => node.path().as_key(vault_root).ok(),
+        ScanEntry::Skipped(_) => None,
     }
 }
 
@@ -182,6 +293,7 @@ pub(super) struct IndexCollector {
     pub(super) seen_paths: HashSet<PathKey>,
     pub(super) dir_ids: HashMap<PathKey, FsRecordId>,
     pub(super) skipped: Vec<SkippedEntry>,
+    pub(super) failures: Vec<IndexNodeFailure>,
     pub(super) new_count: usize,
     pub(super) fresh_count: usize,
     pub(super) stale_count: usize,
@@ -195,11 +307,7 @@ impl IndexCollector {
                 path_key,
             } => {
                 self.seen_paths.insert(path_key);
-                match entry.status() {
-                    IndexStatus::New => self.new_count += 1,
-                    IndexStatus::Fresh => self.fresh_count += 1,
-                    IndexStatus::Stale => self.stale_count += 1,
-                }
+                self.bump_status_counter(entry.status());
                 self.indexed_files.push(entry);
             }
             CompletionKind::Dir {
@@ -209,14 +317,22 @@ impl IndexCollector {
             } => {
                 self.seen_paths.insert(path_key.clone());
                 self.dir_ids.insert(path_key, id);
-                match entry.status() {
-                    IndexStatus::New => self.new_count += 1,
-                    IndexStatus::Fresh => self.fresh_count += 1,
-                    IndexStatus::Stale => self.stale_count += 1,
-                }
+                self.bump_status_counter(entry.status());
                 self.indexed_dirs.push(entry);
             }
             CompletionKind::Skipped(s) => self.skipped.push(s),
+        }
+    }
+
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "status counters are bounded by the number of scanned entries"
+    )]
+    fn bump_status_counter(&mut self, status: IndexStatus) {
+        match status {
+            IndexStatus::New => self.new_count += 1,
+            IndexStatus::Fresh => self.fresh_count += 1,
+            IndexStatus::Stale => self.stale_count += 1,
         }
     }
 }
@@ -225,10 +341,10 @@ impl IndexCollector {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        cell::RefCell, collections::HashSet, sync::Arc, time::SystemTime,
-    };
+    use std::{cell::RefCell, collections::HashSet, rc::Rc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_fs::{
         FileFormat,
         metadata::{DirMetadata, FileMetadata, FsTimes},
@@ -241,13 +357,14 @@ mod tests {
 
     // ─── Helpers ────────────────────────────────────────────────
 
-    fn make_vault_root() -> DirPath {
-        std::fs::create_dir_all("/tmp/vault").unwrap();
-        DirPath::try_new("/tmp/vault".into()).unwrap()
+    fn make_vault_root() -> (tempfile::TempDir, DirPath) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vault = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+        (tmp, vault)
     }
 
-    fn make_file_node(path: &str) -> traces_fs::FileNode {
-        let p = std::path::PathBuf::from(path);
+    fn make_file_node(vault: &DirPath, rel: &str) -> traces_fs::FileNode {
+        let p = vault.as_path().join(rel);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
@@ -261,8 +378,8 @@ mod tests {
         traces_fs::FileNode::new(fp, meta)
     }
 
-    fn make_dir_node(path: &str) -> traces_fs::DirNode {
-        let p = std::path::PathBuf::from(path);
+    fn make_dir_node(vault: &DirPath, rel: &str) -> traces_fs::DirNode {
+        let p = vault.as_path().join(rel);
         std::fs::create_dir_all(&p).unwrap();
         let dp = DirPath::try_new(p).unwrap();
         let meta = DirMetadata::new(FsTimes::new(None, None), false);
@@ -291,26 +408,6 @@ mod tests {
             SystemTime::now(),
         );
         repo.save_file(&record).unwrap();
-        repo
-    }
-
-    #[allow(dead_code, reason = "Test helper currently uncalled")]
-    fn repo_with_dir(path: &PathKey) -> InMemoryRepository {
-        let repo = InMemoryRepository::new();
-        let id = FsRecordId::new();
-        let name = DirName::new(
-            path.as_str().rsplit('/').next().unwrap_or("dir").into(),
-        );
-        let meta = DirMetadata::new(FsTimes::new(None, None), false);
-        let record = DirRecord::new(
-            id,
-            FsParentId::Root,
-            path.clone(),
-            name,
-            meta.clone(),
-            SystemTime::now(),
-        );
-        repo.save_dir(&record).unwrap();
         repo
     }
 
@@ -374,19 +471,148 @@ mod tests {
         }
     }
 
+    // ─── Repository double that fails on write ──────────────────
+
+    /// Reads succeed (returning empty), but every write fails with a
+    /// repository error — used to prove fatal errors abort the run.
+    struct FailingWriteRepository;
+
+    impl ReadRepository for FailingWriteRepository {
+        fn find_file(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_dir(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_file_by_path(
+            &self,
+            _path: &PathKey,
+        ) -> Result<Option<FileRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_dir_by_path(
+            &self,
+            _path: &PathKey,
+        ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+            Ok(None)
+        }
+
+        fn list_files_by_parent(
+            &self,
+            _parent_id: FsParentId,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_dirs_by_parent(
+            &self,
+            _parent_id: FsParentId,
+        ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_files_by_format(
+            &self,
+            _format: FileFormat,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn list_files_by_basename(
+            &self,
+            _basename: &str,
+        ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+
+        fn all_paths(&self) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
+            Ok(Box::new([]))
+        }
+    }
+
+    impl WriteRepository for FailingWriteRepository {
+        fn save_file(
+            &self,
+            _record: &FileRecord,
+        ) -> Result<(), IndexerRepositoryError> {
+            Err(IndexerRepositoryError::Storage(
+                traces_db::DbError::Serialization("write failed".into()),
+            ))
+        }
+
+        fn save_dir(
+            &self,
+            _record: &DirRecord,
+        ) -> Result<(), IndexerRepositoryError> {
+            Err(IndexerRepositoryError::Storage(
+                traces_db::DbError::Serialization("write failed".into()),
+            ))
+        }
+
+        fn delete_file(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn delete_dir(
+            &self,
+            _id: FsRecordId,
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn save_many_records(
+            &self,
+            _files: &[FileRecord],
+            _dirs: &[DirRecord],
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn delete_many_records(
+            &self,
+            _file_ids: &[FsRecordId],
+            _dir_ids: &[FsRecordId],
+        ) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+
+        fn clear(&self) -> Result<(), IndexerRepositoryError> {
+            Ok(())
+        }
+    }
+
     // ─── Cycle 2 — IndexerService::run() ────────────────────────
 
     mod service_run {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
         fn empty_scan() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
             let repo = empty_repo();
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
@@ -399,13 +625,17 @@ mod tests {
 
         #[test]
         fn single_file() {
-            let vault = make_vault_root();
-            let file_node = make_file_node("/tmp/vault/file.md");
+            let (_tmp, vault) = make_vault_root();
+            let file_node = make_file_node(&vault, "file.md");
             let scanner = MockScanner::single_file(file_node);
             let repo = empty_repo();
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
@@ -417,13 +647,17 @@ mod tests {
 
         #[test]
         fn single_dir() {
-            let vault = make_vault_root();
-            let dir_node = make_dir_node("/tmp/vault/notes");
+            let (_tmp, vault) = make_vault_root();
+            let dir_node = make_dir_node(&vault, "notes");
             let scanner = MockScanner::single_dir(dir_node);
             let repo = empty_repo();
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
@@ -435,18 +669,22 @@ mod tests {
 
         #[test]
         fn rebuild_clears_repo_before_scan() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let key = PathKey::try_new("notes/doc.md").unwrap();
             let repo = repo_with_file(&key);
-            let dir_node = make_dir_node("/tmp/vault/notes");
-            let file_node = make_file_node("/tmp/vault/notes/doc.md");
+            let dir_node = make_dir_node(&vault, "notes");
+            let file_node = make_file_node(&vault, "notes/doc.md");
             let scanner = MockScanner::new(vec![
                 Ok(ScanEntry::Dir(dir_node)),
                 Ok(ScanEntry::File(file_node)),
             ]);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(true, false);
@@ -458,16 +696,20 @@ mod tests {
 
         #[test]
         fn skipped_entries_do_not_abort() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let skipped_entries = vec![(
                 std::path::PathBuf::from("restricted"),
                 SkipReason::PermissionDenied,
             )];
             let scanner = MockScanner::with_skipped(skipped_entries);
             let repo = empty_repo();
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
@@ -475,29 +717,114 @@ mod tests {
             assert_eq!(result.report().skipped().len(), 1);
         }
 
+        #[test]
+        fn scanner_error_aborts_run() {
+            let (_tmp, vault) = make_vault_root();
+            let err = crate::error::ScannerError::Traversal {
+                path: "/bad".into(),
+                source: std::io::Error::other("test"),
+            };
+            let scanner = MockScanner::new(vec![Err(err)]);
+            let repo = empty_repo();
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service.run(&scope, IndexOptions::new(false, false));
+            assert!(matches!(
+                result,
+                Err(IndexerError::Scanner(
+                    crate::error::ScannerError::Traversal { .. }
+                ))
+            ));
+        }
+
+        #[test]
+        fn per_entry_path_error_records_failure_and_continues() {
+            let (_tmp, vault) = make_vault_root();
+            // A file outside the vault root fails `as_key` → IndexerError::Path
+            // (per-entry, recoverable). A valid in-vault file still indexes.
+            let outside = tempfile::TempDir::new().unwrap();
+            let bad_node = {
+                let p = outside.path().join("orphan.md");
+                std::fs::File::create(&p).unwrap();
+                let fp = FilePath::try_new(p).unwrap();
+                let meta = FileMetadata::new(
+                    FsTimes::new(Some(SystemTime::now()), None),
+                    0,
+                    false,
+                );
+                traces_fs::FileNode::new(fp, meta)
+            };
+            let good_node = make_file_node(&vault, "ok.md");
+            let scanner = MockScanner::new(vec![
+                Ok(ScanEntry::File(bad_node)),
+                Ok(ScanEntry::File(good_node)),
+            ]);
+            let repo = empty_repo();
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service
+                .run(&scope, IndexOptions::new(false, false))
+                .expect("path error must not abort the run");
+            assert_eq!(result.report().failures().len(), 1);
+            assert_eq!(result.report().new_count(), 1);
+        }
+
+        #[test]
+        fn repository_error_still_aborts() {
+            let (_tmp, vault) = make_vault_root();
+            let good_node = make_file_node(&vault, "ok.md");
+            let scanner = MockScanner::single_file(good_node);
+            let repo = FailingWriteRepository;
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
+            let scope = IndexScope::Full {
+                root: vault,
+                filters: ScanFilters::default(),
+            };
+            let result = service.run(&scope, IndexOptions::new(false, false));
+            assert!(matches!(result, Err(IndexerError::Repository(_))));
+        }
+
         // ─── Capturing mock for scope delegation tests ──────
 
         struct CapturingMockScanner {
-            root: Arc<std::sync::Mutex<Option<DirPath>>>,
-            filters: Arc<std::sync::Mutex<Option<ScanFilters>>>,
+            root: Rc<RefCell<Option<DirPath>>>,
+            filters: Rc<RefCell<Option<ScanFilters>>>,
         }
 
         impl CapturingMockScanner {
             #[allow(
                 clippy::type_complexity,
-                reason = "test helper returns shared-arc pairs"
+                reason = "test helper returns shared-rc pairs"
             )]
             fn new() -> (
                 Self,
-                Arc<std::sync::Mutex<Option<DirPath>>>,
-                Arc<std::sync::Mutex<Option<ScanFilters>>>,
+                Rc<RefCell<Option<DirPath>>>,
+                Rc<RefCell<Option<ScanFilters>>>,
             ) {
-                let root = Arc::new(std::sync::Mutex::new(None));
-                let filters = Arc::new(std::sync::Mutex::new(None));
+                let root = Rc::new(RefCell::new(None));
+                let filters = Rc::new(RefCell::new(None));
                 (
                     Self {
-                        root: Arc::clone(&root),
-                        filters: Arc::clone(&filters),
+                        root: Rc::clone(&root),
+                        filters: Rc::clone(&filters),
                     },
                     root,
                     filters,
@@ -511,8 +838,8 @@ mod tests {
                 root: &DirPath,
                 filters: &ScanFilters,
             ) -> Result<WalkIter, crate::error::ScannerError> {
-                *self.root.lock().unwrap() = Some(root.clone());
-                *self.filters.lock().unwrap() = Some(filters.clone());
+                *self.root.borrow_mut() = Some(root.clone());
+                *self.filters.borrow_mut() = Some(filters.clone());
                 Ok(Box::new(std::iter::empty::<
                     Result<ScanEntry, crate::error::ScannerError>,
                 >()))
@@ -521,56 +848,283 @@ mod tests {
 
         #[test]
         fn full_scope_delegates_root_and_filters() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let (scanner, captured_root, captured_filters) =
                 CapturingMockScanner::new();
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
                 root: vault.clone(),
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
             let _ = service.run(&scope, opts).expect("run should succeed");
-            assert_eq!(captured_root.lock().unwrap().as_ref(), Some(&vault));
+            assert_eq!(captured_root.borrow().as_ref(), Some(&vault));
             assert_eq!(
-                captured_filters.lock().unwrap().as_ref(),
+                captured_filters.borrow().as_ref(),
                 Some(&ScanFilters::default())
             );
         }
 
         #[test]
         fn partial_scope_delegates_root_and_filters() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let (scanner, captured_root, captured_filters) =
                 CapturingMockScanner::new();
             let repo = empty_repo();
-            let service = IndexerService::new(vault.clone(), scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Partial {
                 root: vault.clone(),
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
             let _ = service.run(&scope, opts).expect("run should succeed");
-            assert_eq!(captured_root.lock().unwrap().as_ref(), Some(&vault));
+            assert_eq!(captured_root.borrow().as_ref(), Some(&vault));
             assert_eq!(
-                captured_filters.lock().unwrap().as_ref(),
+                captured_filters.borrow().as_ref(),
                 Some(&ScanFilters::default())
             );
+        }
+    }
+
+    // ─── scan_entry_path_key ────────────────────────────────────
+
+    mod scan_entry_path_key {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
+        use super::*;
+        use crate::service::scan_entry_path_key;
+
+        #[test]
+        fn returns_vault_relative_key_for_in_vault_file() {
+            let (_tmp, vault) = make_vault_root();
+            let node = make_file_node(&vault, "notes/doc.md");
+            let entry = ScanEntry::File(node);
+
+            let key = scan_entry_path_key(&entry, &vault);
+
+            assert_eq!(key, Some(PathKey::try_new("notes/doc.md").unwrap()));
+        }
+
+        #[test]
+        fn returns_none_for_path_outside_vault_root() {
+            let (_tmp, vault) = make_vault_root();
+            let outside = tempfile::TempDir::new().unwrap();
+            let p = outside.path().join("orphan.md");
+            std::fs::File::create(&p).unwrap();
+            let fp = FilePath::try_new(p).unwrap();
+            let meta = FileMetadata::new(
+                FsTimes::new(Some(SystemTime::now()), None),
+                0,
+                false,
+            );
+            let entry = ScanEntry::File(traces_fs::FileNode::new(fp, meta));
+
+            assert_eq!(scan_entry_path_key(&entry, &vault), None);
+        }
+
+        #[test]
+        fn returns_none_for_skipped_entry() {
+            let (_tmp, vault) = make_vault_root();
+            let entry = ScanEntry::Skipped(SkippedEntry {
+                path: std::path::PathBuf::from("restricted"),
+                reason: SkipReason::PermissionDenied,
+            });
+
+            assert_eq!(scan_entry_path_key(&entry, &vault), None);
         }
     }
 
     // ─── Cycle 3 — detect_deletions ─────────────────────────────
 
     mod detect_deletions {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
+
+        /// Reads of `find_*_by_path` fail; `all_paths` yields one stored path
+        /// so the failing lookup is actually reached. Proves a
+        /// repository error during deletion detection aborts the run
+        /// instead of being swallowed.
+        struct FailingReadRepository {
+            path: PathKey,
+        }
+
+        impl ReadRepository for FailingReadRepository {
+            fn find_file(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<Option<FileRecord>, IndexerRepositoryError>
+            {
+                Ok(None)
+            }
+
+            fn find_dir(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+                Ok(None)
+            }
+
+            fn find_file_by_path(
+                &self,
+                _path: &PathKey,
+            ) -> Result<Option<FileRecord>, IndexerRepositoryError>
+            {
+                Err(IndexerRepositoryError::Storage(
+                    traces_db::DbError::Deserialization(
+                        "corrupt record".into(),
+                    ),
+                ))
+            }
+
+            fn find_dir_by_path(
+                &self,
+                _path: &PathKey,
+            ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
+                Err(IndexerRepositoryError::Storage(
+                    traces_db::DbError::Deserialization(
+                        "corrupt record".into(),
+                    ),
+                ))
+            }
+
+            fn list_files_by_parent(
+                &self,
+                _parent_id: FsParentId,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_dirs_by_parent(
+                &self,
+                _parent_id: FsParentId,
+            ) -> Result<Box<[DirRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_files_by_format(
+                &self,
+                _format: FileFormat,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn list_files_by_basename(
+                &self,
+                _basename: &str,
+            ) -> Result<Box<[FileRecord]>, IndexerRepositoryError> {
+                Ok(Box::new([]))
+            }
+
+            fn all_paths(
+                &self,
+            ) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
+                Ok(Box::new([self.path.clone()]))
+            }
+        }
+
+        impl WriteRepository for FailingReadRepository {
+            fn save_file(
+                &self,
+                _record: &FileRecord,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn save_dir(
+                &self,
+                _record: &DirRecord,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_file(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_dir(
+                &self,
+                _id: FsRecordId,
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn save_many_records(
+                &self,
+                _files: &[FileRecord],
+                _dirs: &[DirRecord],
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn delete_many_records(
+                &self,
+                _file_ids: &[FsRecordId],
+                _dir_ids: &[FsRecordId],
+            ) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+
+            fn clear(&self) -> Result<(), IndexerRepositoryError> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn propagates_repository_error() {
+            let path = PathKey::try_new("corrupt.md").unwrap();
+            let repo = FailingReadRepository {
+                path,
+            };
+            let (_tmp, vault) = make_vault_root();
+            let scanner = MockScanner::empty();
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
+
+            // The stored path is not in `seen`, so detection looks it up — and
+            // the lookup fails. That error must abort, not be swallowed.
+            let seen: HashSet<PathKey> = HashSet::new();
+            let result = service.detect_deletions(&seen);
+            assert!(matches!(result, Err(IndexerError::Repository(_))));
+        }
+
+        #[test]
+        fn skips_path_present_in_neither_table() {
+            // `all_paths` returns a path that resolves to neither a file nor a
+            // dir record (both `Ok(None)`): it is genuinely stale and skipped,
+            // not treated as an error.
+            let repo = empty_repo();
+            let (_tmp, vault) = make_vault_root();
+            let scanner = MockScanner::empty();
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
+
+            let seen: HashSet<PathKey> = HashSet::new();
+            let deleted = service.detect_deletions(&seen).unwrap();
+            assert_eq!(deleted.count(), 0);
+        }
 
         #[test]
         fn no_deletions_when_all_seen() {
             let repo = empty_repo();
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
 
             let seen: HashSet<PathKey> =
                 [PathKey::try_new("doc.md").unwrap()].into();
@@ -582,9 +1136,10 @@ mod tests {
         fn detects_missing_paths() {
             let key = PathKey::try_new("stale.md").unwrap();
             let repo = repo_with_file(&key);
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
 
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
@@ -594,9 +1149,10 @@ mod tests {
         #[test]
         fn empty_repo_no_deletions() {
             let repo = empty_repo();
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
             assert_eq!(deleted.count(), 0);
@@ -622,9 +1178,10 @@ mod tests {
                 r.save_dir(&record).unwrap();
                 r
             };
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let seen: HashSet<PathKey> = HashSet::new();
             let deleted = service.detect_deletions(&seen).unwrap();
             assert_eq!(deleted.count(), 2);
@@ -636,50 +1193,77 @@ mod tests {
     // ─── Cycle 4 — persist ──────────────────────────────────────
 
     mod persist {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
         fn persists_indexed_entries() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/doc.md");
+            let repo_check = repo.clone();
+            let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
             let result = service.run(&scope, opts).expect("run should succeed");
             assert_eq!(result.report().new_count(), 1);
+            let key = PathKey::try_new("doc.md").unwrap();
+            assert!(
+                repo_check.find_file_by_path(&key).unwrap().is_some(),
+                "New file should be persisted"
+            );
         }
 
         #[test]
         fn dry_run_skips_persistence() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let repo = empty_repo();
-            let file_node = make_file_node("/tmp/vault/doc.md");
+            let repo_check = repo.clone();
+            let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, true);
             let result = service.run(&scope, opts).expect("run should succeed");
             assert_eq!(result.report().new_count(), 1);
+            let key = PathKey::try_new("doc.md").unwrap();
+            assert!(
+                repo_check.find_file_by_path(&key).unwrap().is_none(),
+                "dry_run must not persist"
+            );
         }
 
         #[test]
         fn rebuild_no_deletions() {
             let key = PathKey::try_new("doc.md").unwrap();
             let repo = repo_with_file(&key);
-            let vault = make_vault_root();
-            let file_node = make_file_node("/tmp/vault/doc.md");
+            let (_tmp, vault) = make_vault_root();
+            let file_node = make_file_node(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             // Reindex clears repo before scan, so there's nothing to detect
@@ -691,7 +1275,7 @@ mod tests {
 
         #[test]
         fn deletes_deleted_entries() {
-            let vault = make_vault_root();
+            let (_tmp, vault) = make_vault_root();
             let file_key = PathKey::try_new("doc.md").unwrap();
             let dir_key = PathKey::try_new("sub").unwrap();
             let repo = repo_with_file(&file_key);
@@ -706,9 +1290,13 @@ mod tests {
             .unwrap();
             let repo_check = repo.clone();
             let scanner = MockScanner::empty();
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service = IndexerService::new(
+                vault.clone(),
+                Box::new(scanner),
+                Box::new(repo),
+            );
             let scope = IndexScope::Full {
-                root: make_vault_root(),
+                root: vault,
                 filters: ScanFilters::default(),
             };
             let opts = IndexOptions::new(false, false);
@@ -723,6 +1311,9 @@ mod tests {
     // ─── Cycle 5 — Integration ──────────────────────────────────
 
     mod integration {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         fn make_file_node_at(
@@ -765,7 +1356,8 @@ mod tests {
                 Ok(ScanEntry::File(file_c)),
             ]);
 
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -777,6 +1369,11 @@ mod tests {
             assert_eq!(result.indexed().dirs().len(), 1);
             assert_eq!(result.report().new_count(), 3);
             assert_eq!(result.report().scanned(), 3);
+
+            // sub/c.md (files[1]) must be parented to the sub dir record.
+            let sub_id = result.indexed().dirs().first().unwrap().id();
+            let child = result.indexed().files().get(1).unwrap();
+            assert_eq!(child.node().parent_id(), FsParentId::Id(sub_id));
         }
 
         #[test]
@@ -787,7 +1384,8 @@ mod tests {
 
             let file_node = make_file_node_at(&vault, "doc.md");
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -813,7 +1411,8 @@ mod tests {
                 files.into_iter().map(|f| Ok(ScanEntry::File(f))).collect();
 
             let scanner = MockScanner::new(entries);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),
@@ -837,7 +1436,8 @@ mod tests {
                 Ok(ScanEntry::Dir(dir_node)),
                 Ok(ScanEntry::File(file_node)),
             ]);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Partial {
                 root: DirPath::try_new(tmp.path().join("sub")).unwrap(),
                 filters: ScanFilters::default(),
@@ -868,7 +1468,8 @@ mod tests {
             ))
             .unwrap();
             let scanner = MockScanner::single_file(file_node);
-            let service = IndexerService::new(vault, scanner, repo);
+            let mut service =
+                IndexerService::new(vault, Box::new(scanner), Box::new(repo));
             let scope = IndexScope::Full {
                 root: DirPath::try_new(tmp.path().to_path_buf()).unwrap(),
                 filters: ScanFilters::default(),

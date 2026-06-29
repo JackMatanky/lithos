@@ -67,7 +67,7 @@ mod tests {
     use tempfile::tempdir;
 
     // use super::*;
-    use crate::Store;
+    use crate::{DbError, Store};
 
     const TEST_TABLE: TableDefinition<&str, &str> =
         TableDefinition::new("test");
@@ -84,7 +84,7 @@ mod tests {
         let store = Store::open(&db_path)?;
 
         // Open table (should create it)
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), DbError> {
             let _ = tx.try_open_table(TEST_TABLE)?;
             Ok(())
         })?;

@@ -239,7 +239,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
     let test_uuid = Uuid::now_v7();
     let test_key = test_uuid.to_string();
     store
-        .write(|tx| {
+        .write(|tx| -> Result<(), traces_db::DbError> {
             let uuid_bytes = *test_uuid.as_bytes();
             let value_bytes = "test_value".to_owned().to_bytes()?;
             let mut table_uuid = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
@@ -299,7 +299,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let uuid_bytes = *uuid.as_bytes();
                     let value_bytes =
                         "benchmark_value".to_owned().to_bytes()?;
@@ -317,7 +317,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let value_bytes =
                         "benchmark_value".to_owned().to_bytes()?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
@@ -333,7 +333,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let uuid_bytes = *uuid.as_bytes();
                     let value_bytes = "temp".to_owned().to_bytes()?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
@@ -343,7 +343,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
                 .expect("setup");
 
             let existed = store
-                .write(|tx| {
+                .write(|tx| -> Result<bool, traces_db::DbError> {
                     let uuid_bytes = *uuid.as_bytes();
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
                     let prev = table.remove(uuid_bytes)?;
@@ -360,7 +360,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let value_bytes = "temp".to_owned().to_bytes()?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
                     table.insert(id_str.as_str(), value_bytes.as_ref())?;
@@ -369,7 +369,7 @@ fn bench_uuid_handling(c: &mut Criterion) {
                 .expect("setup");
 
             let existed = store
-                .write(|tx| {
+                .write(|tx| -> Result<bool, traces_db::DbError> {
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
                     let prev = table.remove(id_str.as_str())?;
                     Ok(prev.is_some())
@@ -428,7 +428,7 @@ fn bench_key_formatting(c: &mut Criterion) {
 
     // Pre-populate with some data
     store
-        .write(|tx| {
+        .write(|tx| -> Result<(), traces_db::DbError> {
             let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
             for i in 0..100u32 {
                 let key = format!("key-{i:04}");
@@ -467,7 +467,7 @@ fn bench_key_formatting(c: &mut Criterion) {
             let key = format!("key-{counter:04}");
             counter += 1;
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let value_bytes = "test_value".to_owned().to_bytes()?;
                     let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
                     table.insert(

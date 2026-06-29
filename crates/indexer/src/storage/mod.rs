@@ -9,10 +9,10 @@
 //!
 //! | Module | Purpose |
 //! |--------|---------|
-//! | [`tables`] | Database table definitions (constants + type wrappers) |
-//! | [`read`]   | Read-only query implementation |
-//! | [`write`]  | Write (create/update/delete) implementation |
-//! | [`testing`] | In-memory repository for tests (cfg test only) |
+//! | `tables` | Database table definitions (constants + type wrappers) |
+//! | `read`   | Read-only query implementation |
+//! | `write`  | Write (create/update/delete) implementation |
+//! | `testing` | In-memory repository for tests (cfg test only) |
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
 //! [`WriteRepository`]: crate::repository::WriteRepository
@@ -21,6 +21,8 @@ pub(crate) mod read;
 pub(crate) mod tables;
 pub(crate) mod write;
 
+#[cfg(test)]
+pub(crate) mod contract;
 #[cfg(test)]
 pub(crate) mod testing;
 
@@ -64,7 +66,7 @@ impl RedbRepository {
         store: Arc<traces_db::Store>,
     ) -> Result<Self, IndexerRepositoryError> {
         // Ensure all tables are created
-        store.write(|tx| {
+        store.write(|tx| -> Result<(), traces_db::DbError> {
             tx.inner.open_table(FILES.definition())?;
             tx.inner.open_table(DIRS.definition())?;
             tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
@@ -96,7 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_redb_repository_construction() {
+    fn constructs_from_store() {
         let tmp_file = NamedTempFile::new().unwrap();
         let store = Arc::new(
             Store::open(tmp_file.path()).expect("failed to open database"),

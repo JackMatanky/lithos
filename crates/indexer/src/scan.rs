@@ -175,7 +175,7 @@ mod tests {
         mod constructor {
             use traces_fs::DirPath;
 
-            use crate::scan::{IndexOptions, IndexScope, ScanFilters};
+            use crate::scan::{IndexScope, ScanFilters};
 
             #[test]
             fn full_scope_wraps_root_and_filters() {
@@ -200,20 +200,29 @@ mod tests {
                 };
                 assert!(matches!(scope, IndexScope::Partial { .. }));
             }
+        }
+    }
 
-            #[test]
-            fn options_defaults_are_false() {
-                let opts = IndexOptions::default();
-                assert!(!opts.rebuild());
-                assert!(!opts.dry_run());
-            }
+    mod index_options {
+        use crate::scan::IndexOptions;
 
-            #[test]
-            fn options_can_be_set() {
-                let opts = IndexOptions::new(true, true);
-                assert!(opts.rebuild());
-                assert!(opts.dry_run());
-            }
+        #[test]
+        fn options_defaults_are_false() {
+            let opts = IndexOptions::default();
+            assert!(!opts.rebuild());
+            assert!(!opts.dry_run());
+        }
+
+        #[test]
+        fn stores_rebuild_flag() {
+            let opts = IndexOptions::new(true, false);
+            assert!(opts.rebuild());
+        }
+
+        #[test]
+        fn stores_dry_run_flag() {
+            let opts = IndexOptions::new(false, true);
+            assert!(opts.dry_run());
         }
     }
 }

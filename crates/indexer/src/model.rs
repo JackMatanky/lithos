@@ -59,29 +59,6 @@ impl fmt::Display for FsRecordId {
     }
 }
 
-/// Classification of an indexed filesystem record as either file or directory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(
-    dead_code,
-    reason = "Model structure implemented ahead of next execution flow"
-)]
-pub enum FsRecordType {
-    /// A regular file.
-    File,
-    /// A directory.
-    Dir,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "Model structure implemented ahead of next execution flow"
-)]
-pub enum FsRecord {
-    File(FileRecord),
-    Dir(DirRecord),
-}
-
 /// An indexed file record with identity, path, and metadata.
 ///
 /// Represents a discovered file within the index scope, capturing all
@@ -304,8 +281,15 @@ impl FsParentId {
 
 #[cfg(test)]
 mod tests {
-    mod id {
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
+    mod fs_record_id {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -317,6 +301,9 @@ mod tests {
         }
 
         mod ordering {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -327,7 +314,10 @@ mod tests {
             }
         }
 
-        mod default {
+        mod defaults {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -342,7 +332,10 @@ mod tests {
             }
         }
 
-        mod display {
+        mod formatting {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::model::FsRecordId;
 
             #[test]
@@ -354,27 +347,14 @@ mod tests {
         }
     }
 
-    mod fs_record_type {
-        mod constructor {
-            use crate::model::FsRecordType;
-
-            #[test]
-            fn file_variant_is_distinguishable_from_dir() {
-                assert_ne!(FsRecordType::File, FsRecordType::Dir);
-            }
-
-            #[test]
-            fn clones_correctly() {
-                let t = FsRecordType::File;
-                assert_eq!(t, t.clone());
-            }
-        }
-    }
-
-    mod file {
+    mod file_record {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 FileFormat,
                 metadata::{FileMetadata, FsTimes},
@@ -441,10 +421,14 @@ mod tests {
         }
     }
 
-    mod dir {
+    mod dir_record {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 metadata::{DirMetadata, FsTimes},
                 name::DirName,
@@ -496,6 +480,9 @@ mod tests {
     }
 
     mod fs_parent_id {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use crate::model::{FsParentId, FsRecordId};
 
         #[test]
@@ -514,8 +501,9 @@ mod tests {
         }
     }
 
-    mod path_conversions {
-
+    mod conversions {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         use traces_fs::{DirPath, FilePath};
 
         #[test]

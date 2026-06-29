@@ -30,6 +30,24 @@ struct RepositoryState {
     dirs_by_parent: HashMap<FsRecordId, Vec<FsRecordId>>,
 }
 
+/// Mirrors `RedbRepository`'s duplicate-path contract: a path already owned by
+/// a *different* record id is a conflict; same-id ownership is an update.
+fn file_path_taken_by_other(
+    state: &RepositoryState,
+    path: &PathKey,
+    owner_id: FsRecordId,
+) -> bool {
+    state.file_path_to_id.get(path).is_some_and(|id| *id != owner_id)
+}
+
+fn dir_path_taken_by_other(
+    state: &RepositoryState,
+    path: &PathKey,
+    owner_id: FsRecordId,
+) -> bool {
+    state.dir_path_to_id.get(path).is_some_and(|id| *id != owner_id)
+}
+
 impl InMemoryRepository {
     /// Creates a new, empty in-memory repository.
     pub(crate) fn new() -> Self {
@@ -157,8 +175,15 @@ impl ReadRepository for InMemoryRepository {
 
     fn all_paths(&self) -> Result<Box<[PathKey]>, IndexerRepositoryError> {
         let state = self.state.read().unwrap();
-        let mut paths: Vec<_> = state.file_path_to_id.keys().cloned().collect();
-        paths.extend(state.dir_path_to_id.keys().cloned());
+        let mut paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for pk in
+            state.file_path_to_id.keys().chain(state.dir_path_to_id.keys())
+        {
+            if seen.insert(pk.clone()) {
+                paths.push(pk.clone());
+            }
+        }
         Ok(paths.into_boxed_slice())
     }
 }
@@ -169,6 +194,11 @@ impl WriteRepository for InMemoryRepository {
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
         let mut state = self.state.write().unwrap();
+        if file_path_taken_by_other(&state, record.path(), record.id()) {
+            return Err(IndexerRepositoryError::DuplicatePath(
+                record.path().clone(),
+            ));
+        }
         Self::save_file_internal(&mut state, record);
         Ok(())
     }
@@ -178,6 +208,11 @@ impl WriteRepository for InMemoryRepository {
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
         let mut state = self.state.write().unwrap();
+        if dir_path_taken_by_other(&state, record.path(), record.id()) {
+            return Err(IndexerRepositoryError::DuplicatePath(
+                record.path().clone(),
+            ));
+        }
         Self::save_dir_internal(&mut state, record);
         Ok(())
     }
@@ -203,6 +238,21 @@ impl WriteRepository for InMemoryRepository {
         dirs: &[DirRecord],
     ) -> Result<(), IndexerRepositoryError> {
         let mut state = self.state.write().unwrap();
+        // Validate the whole batch before mutating any state.
+        for file in files {
+            if file_path_taken_by_other(&state, file.path(), file.id()) {
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    file.path().clone(),
+                ));
+            }
+        }
+        for dir in dirs {
+            if dir_path_taken_by_other(&state, dir.path(), dir.id()) {
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    dir.path().clone(),
+                ));
+            }
+        }
         for file in files {
             Self::save_file_internal(&mut state, file);
         }
@@ -347,12 +397,120 @@ impl InMemoryRepository {
 mod tests {
     use std::time::SystemTime;
 
-    use traces_fs::{FileMetadata, metadata::FsTimes, name::FileName};
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
+    use traces_fs::{
+        DirMetadata, FileMetadata,
+        metadata::FsTimes,
+        name::{DirName, FileName},
+    };
 
     use super::*;
 
     #[test]
-    fn repository_double_supports_save_and_find() {
+    fn in_memory_repository_satisfies_repository_contract() {
+        use crate::storage::contract::assert_repository_contract;
+        assert_repository_contract(&InMemoryRepository::new());
+    }
+
+    #[test]
+    fn all_paths_deduplicates_across_file_and_dir_tables() {
+        let repo = InMemoryRepository::new();
+        let shared = PathKey::try_new("shared").unwrap();
+
+        repo.save_file(&FileRecord::new(
+            FsRecordId::new(),
+            FsParentId::Root,
+            shared.clone(),
+            FileName::new("shared".into()),
+            FileFormat::Unknown,
+            FileMetadata::new(FsTimes::new(None, None), 0, false),
+            SystemTime::now(),
+        ))
+        .unwrap();
+        repo.save_dir(&DirRecord::new(
+            FsRecordId::new(),
+            FsParentId::Root,
+            shared.clone(),
+            DirName::new("shared".into()),
+            DirMetadata::new(FsTimes::new(None, None), false),
+            SystemTime::now(),
+        ))
+        .unwrap();
+
+        let results = repo.all_paths().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results.first(), Some(&shared));
+    }
+
+    #[test]
+    fn save_file_with_existing_path_different_id_returns_duplicate_path() {
+        let repo = InMemoryRepository::new();
+        let path = PathKey::try_new("dup.txt").unwrap();
+        let file = |id| {
+            FileRecord::new(
+                id,
+                FsParentId::Root,
+                path.clone(),
+                FileName::new("dup.txt".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            )
+        };
+
+        repo.save_file(&file(FsRecordId::new())).unwrap();
+        let err = repo.save_file(&file(FsRecordId::new())).unwrap_err();
+
+        assert!(matches!(
+            err,
+            IndexerRepositoryError::DuplicatePath(p) if p == path
+        ));
+    }
+
+    #[test]
+    fn save_file_with_same_id_and_path_is_update_not_duplicate() {
+        let repo = InMemoryRepository::new();
+        let id = FsRecordId::new();
+        let path = PathKey::try_new("same.txt").unwrap();
+        let file = FileRecord::new(
+            id,
+            FsParentId::Root,
+            path.clone(),
+            FileName::new("same.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 0, false),
+            SystemTime::now(),
+        );
+
+        repo.save_file(&file).unwrap();
+        repo.save_file(&file).unwrap();
+
+        assert!(repo.find_file_by_path(&path).unwrap().is_some());
+    }
+
+    #[test]
+    fn repository_double_supports_save_and_find_file_by_id() {
+        let repo = InMemoryRepository::new();
+        let id = FsRecordId::new();
+        let path = PathKey::try_new("test.txt").unwrap();
+        let record = FileRecord::new(
+            id,
+            FsParentId::Root,
+            path,
+            FileName::new("test.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 123, false),
+            SystemTime::now(),
+        );
+
+        repo.save_file(&record).unwrap();
+        let found = repo.find_file(id).unwrap().unwrap();
+        assert_eq!(found, record);
+    }
+
+    #[test]
+    fn repository_double_supports_find_file_by_path() {
         let repo = InMemoryRepository::new();
         let id = FsRecordId::new();
         let path = PathKey::try_new("test.txt").unwrap();
@@ -367,12 +525,26 @@ mod tests {
         );
 
         repo.save_file(&record).unwrap();
-        let found = repo.find_file(id).unwrap().unwrap();
-        assert_eq!(found, record);
-
         let found_by_path = repo.find_file_by_path(&path).unwrap().unwrap();
         assert_eq!(found_by_path, record);
+    }
 
+    #[test]
+    fn repository_double_supports_delete_file() {
+        let repo = InMemoryRepository::new();
+        let id = FsRecordId::new();
+        let path = PathKey::try_new("test.txt").unwrap();
+        let record = FileRecord::new(
+            id,
+            FsParentId::Root,
+            path.clone(),
+            FileName::new("test.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 123, false),
+            SystemTime::now(),
+        );
+
+        repo.save_file(&record).unwrap();
         repo.delete_file(id).unwrap();
         assert!(repo.find_file(id).unwrap().is_none());
         assert!(repo.find_file_by_path(&path).unwrap().is_none());

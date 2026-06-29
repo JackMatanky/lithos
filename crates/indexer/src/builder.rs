@@ -16,7 +16,7 @@ use crate::{
     model::{DirRecord, FileRecord, FsParentId, FsRecordId},
     port::ScanEntry,
     report::SkippedEntry,
-    repository::{ReadRepository, WriteRepository},
+    repository::{ReadRepository, Repository},
 };
 
 // ─── State types ─────────────────────────────────────────────────────────────
@@ -99,12 +99,11 @@ pub(crate) struct EntryBuilder<S> {
 }
 
 impl<S> EntryBuilder<S> {
+    /// Borrows the wrapped typestate. Test-only: production code consumes the
+    /// builder via [`into_state`](Self::into_state).
+    #[cfg(test)]
     #[inline]
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "Internal state accessor used in tests in future issues"
-    )]
     pub(crate) fn state(&self) -> &S {
         &self.state
     }
@@ -185,7 +184,7 @@ impl EntryBuilder<Init> {
 impl EntryBuilder<FileComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &impl ReadRepository,
+        repo: &dyn ReadRepository,
     ) -> Result<FileComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_file_by_path(&state.path_key)?;
@@ -233,7 +232,7 @@ impl EntryBuilder<FileComparison> {
 impl EntryBuilder<DirComparison> {
     pub(crate) fn into_comparison_branch(
         self,
-        repo: &impl ReadRepository,
+        repo: &dyn ReadRepository,
     ) -> Result<DirComparisonBranch, IndexerError> {
         let state = self.state;
         let existing = repo.find_dir_by_path(&state.path_key)?;
@@ -277,20 +276,29 @@ impl EntryBuilder<DirComparison> {
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
+/// Resolve the parent record id for an entry from the accumulated `dir_ids`
+/// map: the entry's parent path, if already indexed, gives `FsParentId::Id`;
+/// otherwise the entry sits directly under the vault root (`FsParentId::Root`).
+fn resolve_parent_id(
+    path_key: &PathKey,
+    dir_ids: &HashMap<PathKey, FsRecordId>,
+) -> FsParentId {
+    path_key
+        .parent()
+        .and_then(|pk| dir_ids.get(&pk).copied())
+        .map_or(FsParentId::Root, FsParentId::Id)
+}
+
 impl EntryBuilder<FilePersistence> {
     pub(crate) fn into_indexed(
         self,
-        repo: &impl WriteRepository,
+        repo: &dyn Repository,
         dir_ids: &HashMap<PathKey, FsRecordId>,
         dry_run: bool,
     ) -> Result<EntryBuilder<FileIndexed>, IndexerError> {
         let state = self.state;
 
-        let parent_id = state
-            .path_key
-            .parent()
-            .and_then(|pk| dir_ids.get(&pk).copied())
-            .map_or(FsParentId::Root, FsParentId::Id);
+        let parent_id = resolve_parent_id(&state.path_key, dir_ids);
 
         let name = FileName::new(
             state
@@ -335,17 +343,13 @@ impl EntryBuilder<FilePersistence> {
 impl EntryBuilder<DirPersistence> {
     pub(crate) fn into_indexed(
         self,
-        repo: &impl WriteRepository,
+        repo: &dyn Repository,
         dir_ids: &HashMap<PathKey, FsRecordId>,
         dry_run: bool,
     ) -> Result<EntryBuilder<DirIndexed>, IndexerError> {
         let state = self.state;
 
-        let parent_id = state
-            .path_key
-            .parent()
-            .and_then(|pk| dir_ids.get(&pk).copied())
-            .map_or(FsParentId::Root, FsParentId::Id);
+        let parent_id = resolve_parent_id(&state.path_key, dir_ids);
 
         let name = DirName::new(
             state
@@ -434,24 +438,19 @@ impl EntryBuilder<DirIndexed> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::panic,
-        clippy::shadow_unrelated,
-        reason = "Test code often panics and shadows variables safely"
-    )]
-
     use traces_fs::metadata::{DirMetadata, FileMetadata, FsTimes};
 
     use super::*;
-    use crate::storage::InMemoryRepository;
+    use crate::{repository::ReadRepository, storage::InMemoryRepository};
 
-    fn make_vault_root() -> DirPath {
-        std::fs::create_dir_all("/tmp/vault").unwrap();
-        DirPath::try_new("/tmp/vault".into()).unwrap()
+    fn make_vault_root() -> (tempfile::TempDir, DirPath) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vault = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
+        (tmp, vault)
     }
 
-    fn make_file_entry(path: &str) -> ScanEntry {
-        let p = std::path::PathBuf::from(path);
+    fn make_file_entry(vault: &DirPath, rel: &str) -> ScanEntry {
+        let p = vault.as_path().join(rel);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
@@ -465,85 +464,112 @@ mod tests {
         ScanEntry::File(FileNode::new(fp, meta))
     }
 
-    fn make_dir_entry(path: &str) -> ScanEntry {
-        let p = std::path::PathBuf::from(path);
+    fn make_dir_entry(vault: &DirPath, rel: &str) -> ScanEntry {
+        let p = vault.as_path().join(rel);
         std::fs::create_dir_all(&p).unwrap();
         let dp = DirPath::try_new(p).unwrap();
         let meta = DirMetadata::new(FsTimes::new(None, None), false);
         ScanEntry::Dir(DirNode::new(dp, meta))
     }
 
-    #[test]
-    fn test_init_to_comparison_file() {
-        let vault = make_vault_root();
-        let entry = make_file_entry("/tmp/vault/doc.md");
+    mod into_branch {
+        use pretty_assertions::assert_eq;
 
-        let builder = EntryBuilder::<Init>::from_scan_entry(entry);
-        let branch = builder.into_branch(&vault).unwrap();
+        use super::*;
 
-        match branch {
-            EntryBranch::File(b) => {
-                assert_eq!(b.state().path_key.as_str(), "doc.md");
-            }
-            _ => panic!("expected File branch"),
+        #[test]
+        #[expect(
+            clippy::unreachable,
+            reason = "typestate extraction guards an impossible test setup"
+        )]
+        fn routes_file_entry_to_file_branch() {
+            // Arrange
+            let (_tmp, vault) = make_vault_root();
+            let entry = make_file_entry(&vault, "doc.md");
+            let builder = EntryBuilder::<Init>::from_scan_entry(entry);
+
+            // Act
+            let branch = builder.into_branch(&vault).unwrap();
+
+            // Assert
+            let EntryBranch::File(file_branch) = branch else {
+                unreachable!("a file entry must route to the File branch")
+            };
+            assert_eq!(file_branch.state().path_key.as_str(), "doc.md");
+        }
+
+        #[test]
+        #[expect(
+            clippy::unreachable,
+            reason = "typestate extraction guards an impossible test setup"
+        )]
+        fn routes_dir_entry_to_dir_branch() {
+            // Arrange
+            let (_tmp, vault) = make_vault_root();
+            let entry = make_dir_entry(&vault, "notes");
+            let builder = EntryBuilder::<Init>::from_scan_entry(entry);
+
+            // Act
+            let branch = builder.into_branch(&vault).unwrap();
+
+            // Assert
+            let EntryBranch::Dir(dir_branch) = branch else {
+                unreachable!("a dir entry must route to the Dir branch")
+            };
+            assert_eq!(dir_branch.state().path_key.as_str(), "notes");
         }
     }
 
-    #[test]
-    fn test_init_to_comparison_dir() {
-        let vault = make_vault_root();
-        let entry = make_dir_entry("/tmp/vault/notes");
+    mod pipeline {
+        use pretty_assertions::assert_eq;
 
-        let builder = EntryBuilder::<Init>::from_scan_entry(entry);
-        let branch = builder.into_branch(&vault).unwrap();
+        use super::*;
 
-        match branch {
-            EntryBranch::Dir(b) => {
-                assert_eq!(b.state().path_key.as_str(), "notes");
-            }
-            _ => panic!("expected Dir branch"),
-        }
-    }
+        #[test]
+        #[expect(
+            clippy::unreachable,
+            reason = "typestate extraction guards an impossible test setup"
+        )]
+        fn drives_new_file_entry_to_completion() {
+            // Arrange
+            let (_tmp, vault) = make_vault_root();
+            let dir_ids = HashMap::new();
+            let repo = InMemoryRepository::new();
+            let scan_entry = make_file_entry(&vault, "new.md");
+            let branch = EntryBuilder::<Init>::from_scan_entry(scan_entry)
+                .into_branch(&vault)
+                .unwrap();
+            let EntryBranch::File(file_branch) = branch else {
+                unreachable!("a file entry must route to the File branch")
+            };
 
-    #[test]
-    fn test_full_pipeline_file_new() {
-        let vault = make_vault_root();
-        let dir_ids = HashMap::new();
-        let repo = InMemoryRepository::new();
-        let entry = make_file_entry("/tmp/vault/new.md");
+            // Act
+            let comparison = file_branch.into_comparison_branch(&repo).unwrap();
 
-        let branch = EntryBuilder::<Init>::from_scan_entry(entry)
-            .into_branch(&vault)
-            .unwrap();
-        let EntryBranch::File(b) = branch else {
-            panic!()
-        };
+            // Assert: an unseen file is a New mismatch
+            let FileComparisonBranch::Mismatch(persistence) = comparison else {
+                unreachable!("an unseen file must be a Mismatch")
+            };
+            assert_eq!(persistence.state().status, IndexStatus::New);
 
-        let FileComparisonBranch::Mismatch(b) =
-            b.into_comparison_branch(&repo).unwrap()
-        else {
-            panic!("expected Mismatch")
-        };
-        assert_eq!(b.state().status, IndexStatus::New);
+            // Act: persist then complete
+            let indexed =
+                persistence.into_indexed(&repo, &dir_ids, false).unwrap();
+            let saved =
+                repo.find_file_by_path(&indexed.state().path_key).unwrap();
+            let completion = indexed.into_completion().into_state();
 
-        let b = b.into_indexed(&repo, &dir_ids, false).unwrap();
-
-        // Record should be persisted
-        let existing = repo.find_file_by_path(&b.state().path_key).unwrap();
-        assert!(existing.is_some());
-
-        let b = b.into_completion();
-        let state = b.into_state();
-
-        match state.kind {
-            CompletionKind::File {
+            // Assert: persisted and completed as New
+            assert!(saved.is_some(), "New file must be persisted");
+            let CompletionKind::File {
                 entry,
                 path_key,
-            } => {
-                assert_eq!(entry.status(), IndexStatus::New);
-                assert_eq!(path_key.as_str(), "new.md");
-            }
-            _ => panic!("Expected File completion"),
+            } = completion.kind
+            else {
+                unreachable!("the pipeline must yield a File completion")
+            };
+            assert_eq!(entry.status(), IndexStatus::New);
+            assert_eq!(path_key.as_str(), "new.md");
         }
     }
 }

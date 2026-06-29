@@ -105,6 +105,34 @@ impl RedbRepository {
         Ok(())
     }
 
+    /// Returns `true` if `path` is already claimed in `FILE_ID_BY_PATH` by a
+    /// record whose id differs from `owner_id`.
+    ///
+    /// Same-id ownership is a legitimate update and yields `false`. Reads
+    /// inside the active write transaction so it observes pending state; redb's
+    /// single-writer model makes this a reliable guard.
+    fn file_path_taken_by_other(
+        tx: &traces_db::WriteTx,
+        path: &traces_fs::path::PathKey,
+        owner_id: FsRecordId,
+    ) -> Result<bool, DbError> {
+        let path_table = tx.inner.open_table(FILE_ID_BY_PATH.definition())?;
+        Ok(path_table
+            .get(DbPathKey::from(path))?
+            .is_some_and(|owner| owner.value() != owner_id))
+    }
+
+    fn dir_path_taken_by_other(
+        tx: &traces_db::WriteTx,
+        path: &traces_fs::path::PathKey,
+        owner_id: FsRecordId,
+    ) -> Result<bool, DbError> {
+        let path_table = tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
+        Ok(path_table
+            .get(DbPathKey::from(path))?
+            .is_some_and(|owner| owner.value() != owner_id))
+    }
+
     #[inline]
     fn save_file_in_tx(
         tx: &traces_db::WriteTx,
@@ -203,11 +231,21 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %record.id(), path = %record.path(), "saving file record");
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
-        self.store
-            .write(|tx| Self::save_file_in_tx(tx, record, bytes.as_slice()))
-            .map_err(Into::into)
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
+            // Reject before writing: returning Err rolls the transaction back,
+            // so a conflict changes nothing (no no-op commit).
+            if Self::file_path_taken_by_other(tx, record.path(), record.id())? {
+                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate file path detected");
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    record.path().clone(),
+                ));
+            }
+            Self::save_file_in_tx(tx, record, bytes.as_slice())?;
+            Ok(())
+        })
     }
 
     #[inline]
@@ -215,11 +253,19 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %record.id(), path = %record.path(), "saving dir record");
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
-        self.store
-            .write(|tx| Self::save_dir_in_tx(tx, record, bytes.as_slice()))
-            .map_err(Into::into)
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
+            if Self::dir_path_taken_by_other(tx, record.path(), record.id())? {
+                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate dir path detected");
+                return Err(IndexerRepositoryError::DuplicatePath(
+                    record.path().clone(),
+                ));
+            }
+            Self::save_dir_in_tx(tx, record, bytes.as_slice())?;
+            Ok(())
+        })
     }
 
     #[inline]
@@ -227,6 +273,7 @@ impl WriteRepository for RedbRepository {
         &self,
         id: FsRecordId,
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %id, "deleting file record");
         self.store
             .write(|tx| Self::delete_file_in_tx(tx, id))
             .map_err(Into::into)
@@ -234,6 +281,7 @@ impl WriteRepository for RedbRepository {
 
     #[inline]
     fn delete_dir(&self, id: FsRecordId) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(id = %id, "deleting dir record");
         self.store
             .write(|tx| Self::delete_dir_in_tx(tx, id))
             .map_err(Into::into)
@@ -245,6 +293,11 @@ impl WriteRepository for RedbRepository {
         files: &[FileRecord],
         dirs: &[DirRecord],
     ) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!(
+            files = files.len(),
+            dirs = dirs.len(),
+            "saving many records"
+        );
         let file_archives: Vec<_> = files
             .iter()
             .map(rkyv::to_bytes::<rkyv::rancor::Error>)
@@ -256,17 +309,34 @@ impl WriteRepository for RedbRepository {
             .collect::<Result<_, _>>()
             .map_err(|e| DbError::Serialization(e.to_string()))?;
 
-        self.store
-            .write(|tx| {
-                for (file, archive) in files.iter().zip(file_archives.iter()) {
-                    Self::save_file_in_tx(tx, file, archive.as_slice())?;
+        self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
+            // Validate every path before writing any record so a conflict
+            // rejects the whole batch (Err rolls back) with no partial writes.
+            for file in files {
+                if Self::file_path_taken_by_other(tx, file.path(), file.id())? {
+                    tracing::warn!(id = %file.id(), path = %file.path(), "duplicate file path detected in batch");
+                    return Err(IndexerRepositoryError::DuplicatePath(
+                        file.path().clone(),
+                    ));
                 }
-                for (dir, archive) in dirs.iter().zip(dir_archives.iter()) {
-                    Self::save_dir_in_tx(tx, dir, archive.as_slice())?;
+            }
+            for dir in dirs {
+                if Self::dir_path_taken_by_other(tx, dir.path(), dir.id())? {
+                    tracing::warn!(id = %dir.id(), path = %dir.path(), "duplicate dir path detected in batch");
+                    return Err(IndexerRepositoryError::DuplicatePath(
+                        dir.path().clone(),
+                    ));
                 }
-                Ok(())
-            })
-            .map_err(Into::into)
+            }
+
+            for (file, archive) in files.iter().zip(file_archives.iter()) {
+                Self::save_file_in_tx(tx, file, archive.as_slice())?;
+            }
+            for (dir, archive) in dirs.iter().zip(dir_archives.iter()) {
+                Self::save_dir_in_tx(tx, dir, archive.as_slice())?;
+            }
+            Ok(())
+        })
     }
 
     #[inline]
@@ -276,7 +346,7 @@ impl WriteRepository for RedbRepository {
         dir_ids: &[FsRecordId],
     ) -> Result<(), IndexerRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 for id in file_ids {
                     Self::delete_file_in_tx(tx, *id)?;
                 }
@@ -290,8 +360,11 @@ impl WriteRepository for RedbRepository {
 
     #[inline]
     fn clear(&self) -> Result<(), IndexerRepositoryError> {
+        tracing::debug!("clearing indexer repository");
+        // All delete+recreate pairs run within a single WriteTransaction; redb
+        // guarantees atomicity, so every deletion reverts together on rollback.
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), DbError> {
                 tx.inner.delete_table(FILES.definition())?;
                 tx.inner.delete_table(DIRS.definition())?;
                 tx.inner.delete_table(FILE_ID_BY_PATH.definition())?;
@@ -327,6 +400,8 @@ impl WriteRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_db::Store;
     use traces_fs::{
         FileFormat,
@@ -336,6 +411,7 @@ mod tests {
     };
 
     use crate::{
+        error::IndexerRepositoryError,
         model::{DirRecord, FileRecord, FsParentId, FsRecordId},
         repository::{ReadRepository, WriteRepository},
         storage::RedbRepository,
@@ -346,11 +422,100 @@ mod tests {
         (tempdir, RedbRepository::try_new(Arc::new(store)).unwrap())
     }
 
-    mod create {
+    fn file_at(id: FsRecordId, path: &PathKey) -> FileRecord {
+        FileRecord::new(
+            id,
+            FsParentId::Root,
+            path.clone(),
+            FileName::new("file.txt".into()),
+            FileFormat::Markdown,
+            FileMetadata::new(FsTimes::new(None, None), 0, false),
+            SystemTime::now(),
+        )
+    }
+
+    fn dir_at(id: FsRecordId, path: &PathKey) -> DirRecord {
+        DirRecord::new(
+            id,
+            FsParentId::Root,
+            path.clone(),
+            traces_fs::name::DirName::new("dir".into()),
+            traces_fs::DirMetadata::new(FsTimes::new(None, None), false),
+            SystemTime::now(),
+        )
+    }
+
+    mod contract {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
+        use super::setup_repo;
+        use crate::storage::contract::assert_repository_contract;
+
+        #[test]
+        fn redb_repository_satisfies_repository_contract() {
+            let (_tempdir, repo) = setup_repo();
+            assert_repository_contract(&repo);
+        }
+    }
+
+    mod duplicate_path {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
-        #[inline]
+        fn save_file_with_existing_path_different_id_returns_duplicate_path() {
+            let (_tempdir, repo) = setup_repo();
+            let path = PathKey::try_new("dup.txt").unwrap();
+
+            repo.save_file(&file_at(FsRecordId::new(), &path)).unwrap();
+            let err =
+                repo.save_file(&file_at(FsRecordId::new(), &path)).unwrap_err();
+
+            assert!(matches!(
+                err,
+                IndexerRepositoryError::DuplicatePath(p) if p == path
+            ));
+        }
+
+        #[test]
+        fn save_dir_with_existing_path_different_id_returns_duplicate_path() {
+            let (_tempdir, repo) = setup_repo();
+            let path = PathKey::try_new("dup").unwrap();
+
+            repo.save_dir(&dir_at(FsRecordId::new(), &path)).unwrap();
+            let err =
+                repo.save_dir(&dir_at(FsRecordId::new(), &path)).unwrap_err();
+
+            assert!(matches!(
+                err,
+                IndexerRepositoryError::DuplicatePath(p) if p == path
+            ));
+        }
+
+        #[test]
+        fn save_file_with_same_id_and_path_is_update_not_duplicate() {
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let path = PathKey::try_new("same.txt").unwrap();
+
+            repo.save_file(&file_at(id, &path)).unwrap();
+            // Re-saving the same id at the same path is a legitimate update.
+            repo.save_file(&file_at(id, &path)).unwrap();
+
+            assert!(repo.find_file_by_path(&path).unwrap().is_some());
+        }
+    }
+
+    mod create {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
+        use super::*;
+
+        #[test]
         fn save_file_persists_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -401,7 +566,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn save_dir_persists_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -443,10 +607,12 @@ mod tests {
     }
 
     mod delete {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
-        #[inline]
         fn delete_file_removes_primary_and_indexes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -489,7 +655,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_file_is_idempotent_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -499,7 +664,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_dir_removes_primary_and_path_index() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -535,7 +699,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_dir_is_idempotent_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -546,10 +709,12 @@ mod tests {
     }
 
     mod update {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
-        #[inline]
         fn save_file_cleans_stale_indexes_when_record_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -616,7 +781,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn save_dir_cleans_stale_path_index_when_path_changes() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -666,10 +830,12 @@ mod tests {
     }
 
     mod transactions {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
 
         #[test]
-        #[inline]
         fn save_many_records_persists_files_and_dirs_together() {
             let (_tempdir, repo) = setup_repo();
 
@@ -712,7 +878,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn delete_many_records_removes_files_and_dirs_together() {
             let (_tempdir, repo) = setup_repo();
 

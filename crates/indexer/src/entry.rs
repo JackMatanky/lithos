@@ -140,8 +140,15 @@ impl DirIndexEntry {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     mod index_status {
-        mod constructor {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+        mod equality {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::entry::IndexStatus;
 
             #[test]
@@ -150,7 +157,17 @@ mod tests {
                 assert_ne!(IndexStatus::New, IndexStatus::Stale);
                 assert_ne!(IndexStatus::Fresh, IndexStatus::Stale);
             }
+        }
 
+        mod traits {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
+            use crate::entry::IndexStatus;
+
+            // ponytail: near-tautological Clone check on a Copy enum; kept as a
+            // low-value smoke test (flag-and-leave per R19), just re-homed out
+            // of `constructor`.
             #[test]
             fn clones_correctly() {
                 let s = IndexStatus::New;
@@ -160,9 +177,13 @@ mod tests {
     }
 
     mod file_index_entry {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 FileFormat,
                 metadata::{FileMetadata, FsTimes},
@@ -239,9 +260,13 @@ mod tests {
     }
 
     mod dir_index_entry {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 metadata::{DirMetadata, FsTimes},
                 name::DirName,

@@ -389,7 +389,7 @@ mod tests {
             let id_bytes = id.to_bytes().expect("serialize id");
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table =
                         tx.try_open_table(TEMPLATES.definition())?;
                     table.insert(id, bytes.as_slice())?;
@@ -437,7 +437,7 @@ mod tests {
             let id_bytes = id.to_bytes().expect("serialize id");
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table =
                         tx.try_open_table(TEMPLATES.definition())?;
                     table.insert(id, bytes.as_slice())?;
@@ -475,7 +475,7 @@ mod tests {
             let t2 = test_template("two");
 
             store
-                .write(|tx| {
+                .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table =
                         tx.try_open_table(TEMPLATES.definition())?;
                     let mut name_table =

@@ -144,10 +144,16 @@ impl DeletedNodes {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     mod indexed_nodes {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
             use std::time::SystemTime;
 
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
             use traces_fs::{
                 FileFormat,
                 metadata::{DirMetadata, FileMetadata, FsTimes},
@@ -225,7 +231,12 @@ mod tests {
     }
 
     mod deleted {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::{model::FsRecordId, summary::DeletedNodes};
 
             #[test]
@@ -256,7 +267,12 @@ mod tests {
     }
 
     mod result {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
         mod constructor {
+            #[allow(unused_imports, reason = "added globally for ease")]
+            use pretty_assertions::{assert_eq, assert_ne};
+
             use crate::summary::{DeletedNodes, IndexResult, IndexedNodes};
 
             #[test]

@@ -70,7 +70,7 @@ impl WriteRepository for RedbRepository {
             schema.id().to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 table.insert(*schema.id(), bytes.as_slice())?;
 
@@ -90,7 +90,7 @@ impl WriteRepository for RedbRepository {
         schemas: &[Schema],
     ) -> Result<(), SchemaRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
                 let mut name_table =
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
@@ -117,7 +117,7 @@ impl WriteRepository for RedbRepository {
         let bytes = bank.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(PROPERTY_BANK.definition())?;
                 table.insert(PROPERTY_BANK_KEY, bytes.as_slice())?;
@@ -135,7 +135,7 @@ impl WriteRepository for RedbRepository {
         let bytes = view.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
                 table.insert(DbPathKey::from(path), bytes.as_slice())?;
@@ -155,7 +155,7 @@ impl WriteRepository for RedbRepository {
         let id_bytes = id.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut view_table =
                     tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
                 let mut path_table =
@@ -188,7 +188,7 @@ impl WriteRepository for RedbRepository {
         let bytes = graph.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(SCHEMA_TOPOLOGICAL_GRAPH.definition())?;
                 table.insert(TOPOLOGICAL_GRAPH_KEY, bytes.as_slice())?;
@@ -203,7 +203,7 @@ impl WriteRepository for RedbRepository {
         id: crate::identifier::SchemaId,
     ) -> Result<(), SchemaRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let ctx = load_delete_context(tx, id)?;
                 remove_name_id_index(
                     tx,
@@ -225,7 +225,7 @@ impl WriteRepository for RedbRepository {
         let bytes = schema.to_bytes().map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
                 table.insert(*schema.id(), bytes.as_slice())?;
@@ -248,7 +248,7 @@ impl WriteRepository for RedbRepository {
             .map_err(SchemaRepositoryError::from)?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
 
@@ -266,7 +266,7 @@ impl WriteRepository for RedbRepository {
         id: crate::identifier::SchemaId,
     ) -> Result<(), SchemaRepositoryError> {
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
                 let _ = table.remove(id)?;

@@ -1,9 +1,11 @@
 //! Indexer error types and boundaries.
 //!
-//! This module defines the core error types for the `trace-indexer` bounded
-//! context. It strictly separates internal scanner/traversal errors from
-//! local database (repository) errors, allowing upstream components
-//! to appropriately categorize and respond to failures.
+//! This module defines the core error types for the `traces-indexer` bounded
+//! context. [`IndexerError`] separates failures into three arms — scanner /
+//! traversal errors, local database (repository) errors, and path-resolution
+//! errors — so upstream components can categorize and respond to each
+//! appropriately. The `Path` arm is the linchpin of the soft-fail model:
+//! per-entry path errors are recoverable, while repository errors are fatal.
 
 use std::path::PathBuf;
 

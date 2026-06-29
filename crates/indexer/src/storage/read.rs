@@ -30,11 +30,13 @@ use crate::{
     },
 };
 
+#[inline]
 fn deserialize_file(bytes: &[u8]) -> Result<FileRecord, DbError> {
     rkyv::from_bytes::<FileRecord, rkyv::rancor::Error>(bytes)
         .map_err(|e| DbError::Deserialization(e.to_string()))
 }
 
+#[inline]
 fn deserialize_dir(bytes: &[u8]) -> Result<DirRecord, DbError> {
     rkyv::from_bytes::<DirRecord, rkyv::rancor::Error>(bytes)
         .map_err(|e| DbError::Deserialization(e.to_string()))
@@ -221,15 +223,22 @@ impl ReadRepository for RedbRepository {
                     tx.inner.open_table(DIR_ID_BY_PATH.definition())?;
 
                 let mut paths = Vec::new();
+                let mut seen = std::collections::HashSet::new();
 
                 for result in file_path_table.iter()? {
                     let (path, _id) = result?;
-                    paths.push(path.value().into_inner());
+                    let pk = path.value().into_inner();
+                    if seen.insert(pk.clone()) {
+                        paths.push(pk);
+                    }
                 }
 
                 for result in dir_path_table.iter()? {
                     let (path, _id) = result?;
-                    paths.push(path.value().into_inner());
+                    let pk = path.value().into_inner();
+                    if seen.insert(pk.clone()) {
+                        paths.push(pk);
+                    }
                 }
 
                 Ok(paths.into_boxed_slice())
@@ -246,6 +255,8 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::{sync::Arc, time::SystemTime};
 
+    #[allow(unused_imports, reason = "added globally for ease")]
+    use pretty_assertions::{assert_eq, assert_ne};
     use traces_db::{DbPathKey, Store};
     use traces_fs::{
         FileFormat,
@@ -275,11 +286,13 @@ mod tests {
     }
 
     mod lookup {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::FILE_IDS_BY_BASENAME;
 
         #[test]
-        #[inline]
         fn find_file_returns_none_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -287,7 +300,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_file_returns_record_when_present() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -310,7 +322,7 @@ mod tests {
             );
             // Need to insert record using write tx
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     table.insert(id, file_bytes(&record).as_slice()).unwrap();
@@ -322,7 +334,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_returns_none_when_missing() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -330,7 +341,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_returns_record_when_present() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -350,7 +360,7 @@ mod tests {
             );
             // Need to insert record using write tx
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     table.insert(id, dir_bytes(&record).as_slice()).unwrap();
@@ -362,7 +372,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_file_by_path_returns_record_when_path_exists() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -385,7 +394,7 @@ mod tests {
             );
             // Seed both primary and secondary tables
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table.insert(id, file_bytes(&record).as_slice()).unwrap();
@@ -402,7 +411,6 @@ mod tests {
         }
 
         #[test]
-        #[inline]
         fn find_dir_by_path_returns_record_when_path_exists() {
             let (_tempdir, repo) = setup_repo();
             let id = FsRecordId::new();
@@ -423,7 +431,7 @@ mod tests {
 
             // Seed both primary and secondary tables
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     d_table.insert(id, dir_bytes(&record).as_slice()).unwrap();
@@ -467,7 +475,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table
@@ -495,6 +503,9 @@ mod tests {
     }
 
     mod list {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::{DIR_IDS_BY_PARENT, FILE_IDS_BY_PARENT};
 
@@ -538,7 +549,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table
@@ -604,7 +615,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
                     d_table
@@ -641,7 +652,7 @@ mod tests {
             let dir_path = PathKey::try_new("dir").unwrap();
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_p_table = tx
                         .inner
                         .open_table(FILE_ID_BY_PATH.definition())
@@ -666,9 +677,65 @@ mod tests {
             assert!(results.contains(&file_path));
             assert!(results.contains(&dir_path));
         }
+
+        #[test]
+        fn list_files_by_parent_root() {
+            use crate::repository::WriteRepository;
+
+            let (_tempdir, repo) = setup_repo();
+            let id = FsRecordId::new();
+            let record = FileRecord::new(
+                id,
+                FsParentId::Root,
+                PathKey::try_new("root_file.md").unwrap(),
+                FileName::new("root_file.md".into()),
+                FileFormat::Markdown,
+                FileMetadata::new(FsTimes::new(None, None), 0, false),
+                SystemTime::now(),
+            );
+            repo.save_file(&record).unwrap();
+
+            let results = repo.list_files_by_parent(FsParentId::Root).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first(), Some(&record));
+        }
+
+        #[test]
+        fn all_paths_deduplicates_across_file_and_dir_tables() {
+            let (_tempdir, repo) = setup_repo();
+            let shared = PathKey::try_new("shared").unwrap();
+
+            repo.store
+                .write(|tx| -> Result<(), DbError> {
+                    let mut f_p_table = tx
+                        .inner
+                        .open_table(FILE_ID_BY_PATH.definition())
+                        .unwrap();
+                    f_p_table
+                        .insert(DbPathKey::from(&shared), FsRecordId::new())
+                        .unwrap();
+
+                    let mut d_p_table = tx
+                        .inner
+                        .open_table(DIR_ID_BY_PATH.definition())
+                        .unwrap();
+                    d_p_table
+                        .insert(DbPathKey::from(&shared), FsRecordId::new())
+                        .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+            let results = repo.all_paths().unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.first(), Some(&shared));
+        }
     }
 
     mod filter {
+        #[allow(unused_imports, reason = "added globally for ease")]
+        use pretty_assertions::{assert_eq, assert_ne};
+
         use super::*;
         use crate::storage::tables::FILE_IDS_BY_FORMAT;
 
@@ -701,7 +768,7 @@ mod tests {
             );
 
             repo.store
-                .write(|tx| {
+                .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
                     f_table

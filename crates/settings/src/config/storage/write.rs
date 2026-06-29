@@ -34,7 +34,7 @@ impl WriteRepository for RedbRepository {
         let bytes = config.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(GLOBAL_CONFIG.definition())?;
                 table.insert(version_key.as_str(), bytes.as_slice())?;
@@ -53,7 +53,7 @@ impl WriteRepository for RedbRepository {
         let bytes = config.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(VAULT_CONFIG.definition())?;
                 table.insert(version_key.as_str(), bytes.as_slice())?;
                 Ok(())
@@ -69,7 +69,7 @@ impl WriteRepository for RedbRepository {
     ) -> Result<Version, ConfigRepositoryError> {
         // Atomically allocate version and save config
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<Version, traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(CONFIG_VERSIONS.definition())?;
 
@@ -125,7 +125,7 @@ impl WriteRepository for RedbRepository {
         let root_bytes = vault_root.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut id_by_path =
                     tx.try_open_table(VAULT_ID_BY_PATH.definition())?;
                 let mut path_by_id =
@@ -146,7 +146,7 @@ impl WriteRepository for RedbRepository {
         let bytes = view.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_GLOBAL_CONFIG_VIEW.definition())?;
                 table.insert("global", bytes.as_slice())?;
@@ -164,7 +164,7 @@ impl WriteRepository for RedbRepository {
         let bytes = view.to_bytes()?;
 
         self.store
-            .write(|tx| {
+            .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_VAULT_CONFIG_VIEW.definition())?;
                 table.insert(&vault_id, bytes.as_slice())?;

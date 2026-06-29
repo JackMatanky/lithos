@@ -155,7 +155,7 @@ pub(crate) const PATH_BY_DIR_ID: UuidPathTable<DirId> =
 
 #[cfg(test)]
 mod path_by_file_id {
-    use traces_db::Store;
+    use traces_db::{DbError, Store};
 
     use super::*;
 
@@ -163,7 +163,7 @@ mod path_by_file_id {
     fn can_open_table() {
         let (_tempdir, store) = Store::open_temp().unwrap();
 
-        let result = store.write(|tx| {
+        let result = store.write(|tx| -> Result<(), DbError> {
             tx.try_open_table(PATH_BY_FILE_ID.definition())?;
             Ok(())
         });
@@ -178,7 +178,7 @@ mod path_by_file_id {
 
 #[cfg(test)]
 mod path_by_dir_id {
-    use traces_db::Store;
+    use traces_db::{DbError, Store};
 
     use super::*;
 
@@ -186,7 +186,7 @@ mod path_by_dir_id {
     fn can_open_table() {
         let (_tempdir, store) = Store::open_temp().unwrap();
 
-        let result = store.write(|tx| {
+        let result = store.write(|tx| -> Result<(), DbError> {
             tx.try_open_table(PATH_BY_DIR_ID.definition())?;
             Ok(())
         });

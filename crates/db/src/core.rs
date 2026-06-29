@@ -68,21 +68,31 @@ impl Store {
     ///
     /// Automatically commits on `Ok`, rolls back on `Err`.
     ///
+    /// Generic over the closure error type `E` so a repository adapter can
+    /// return its own domain error (e.g. a duplicate-path rejection) directly
+    /// from the closure and have the transaction roll back, instead of
+    /// committing a no-op and signalling rejection out-of-band. Infrastructure
+    /// failures (`begin_write`, `commit`) are produced as [`DbError`] and
+    /// lifted into `E` via the `E: From<DbError>` bound. Callers that do
+    /// not need a domain error keep returning `Result<R, DbError>` (the `E
+    /// = DbError` case is inferred). See ADR 025.
+    ///
     /// # Errors
     ///
-    /// Returns [`DbError`] if the transaction fails or the closure returns an
-    /// error.
+    /// Returns `E` if the transaction fails (lifted from [`DbError`]) or the
+    /// closure returns an error.
     #[inline]
-    pub fn write<R, F>(&self, f: F) -> Result<R, DbError>
+    pub fn write<R, F, E>(&self, f: F) -> Result<R, E>
     where
-        F: FnOnce(&mut WriteTx) -> Result<R, DbError>,
+        F: FnOnce(&mut WriteTx) -> Result<R, E>,
+        E: From<DbError>,
     {
-        let tx = self.inner.begin_write()?;
+        let tx = self.inner.begin_write().map_err(DbError::from)?;
         let mut write_tx = WriteTx {
             inner: tx,
         };
         let result = f(&mut write_tx)?;
-        write_tx.inner.commit()?;
+        write_tx.inner.commit().map_err(DbError::from)?;
         Ok(result)
     }
 
@@ -155,7 +165,7 @@ mod tests {
             let db_path = temp_dir.path().join("test.db");
 
             let mut store = Store::open(&db_path)?;
-            store.write(|tx| {
+            store.write(|tx| -> Result<(), DbError> {
                 let mut table = tx.inner.open_table(TEST_TABLE)?;
                 table.insert("key", "value")?;
                 Ok(())
@@ -186,7 +196,7 @@ mod tests {
             let db_path = temp_dir.path().join("test.db");
 
             let mut store = Store::open(&db_path)?;
-            store.write(|tx| {
+            store.write(|tx| -> Result<(), DbError> {
                 let mut table = tx.inner.open_table(TEST_TABLE)?;
                 table.insert("initial", "data")?;
                 Ok(())
