@@ -64,16 +64,16 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         .to_template_spec()
         .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
     let template_root = spec.to_dir_path().map_err(|e| {
-        TemplateCommandError::InvalidOutputPath {
-            reason: format!("spec: {e}"),
+        TemplateCommandError::OutputPathInvalid {
+            detail: format!("spec: {e}"),
         }
     })?;
     let template_input = normalize_template_input(&args.input);
     let template_path =
         template_root.as_path().join(format!("{template_input}.md"));
     let name = TemplateName::try_new(&template_path, template_root.as_path())
-        .map_err(|e| TemplateCommandError::InvalidOutputPath {
-        reason: format!("name: {e}"),
+        .map_err(|e| TemplateCommandError::OutputPathInvalid {
+        detail: format!("name: {e}"),
     })?;
     let output_path =
         args.output.unwrap_or_else(|| format!("{template_input}.md"));
@@ -158,15 +158,15 @@ fn map_template_error(err: AppError) -> CliError {
             .into()
         }
         AppError::Template(TemplateError::Path(e)) => {
-            TemplateCommandError::InvalidOutputPath {
-                reason: format!("path: {e}"),
+            TemplateCommandError::OutputPathInvalid {
+                detail: format!("path: {e}"),
             }
             .into()
         }
         AppError::Template(TemplateError::Artifact(
             TemplateArtifactError::Path(e),
-        )) => TemplateCommandError::InvalidOutputPath {
-            reason: format!("artifact: {e}"),
+        )) => TemplateCommandError::OutputPathInvalid {
+            detail: format!("artifact: {e}"),
         }
         .into(),
         AppError::Template(TemplateError::Artifact(
@@ -189,8 +189,8 @@ fn map_template_error(err: AppError) -> CliError {
         }
         .into(),
         AppError::Template(TemplateError::Name(e)) => {
-            TemplateCommandError::InvalidOutputPath {
-                reason: format!("name: {e}"),
+            TemplateCommandError::OutputPathInvalid {
+                detail: format!("name: {e}"),
             }
             .into()
         }
@@ -470,7 +470,6 @@ mod tests {
 
             let message = result.unwrap_err().to_string();
             assert!(message.starts_with("Template 'missing' not found."));
-            assert!(message.contains("Run 'traces index'"));
         }
 
         #[test]
@@ -521,10 +520,6 @@ mod tests {
                 cli_err.to_string().contains("Output file already exists:"),
                 "got: {cli_err}"
             );
-            assert!(
-                cli_err.to_string().contains("Choose a different output path."),
-                "got: {cli_err}"
-            );
         }
     }
 
@@ -573,7 +568,7 @@ mod tests {
             ));
             assert!(matches!(
                 template_command_error(err),
-                Some(TemplateCommandError::InvalidOutputPath { .. })
+                Some(TemplateCommandError::OutputPathInvalid { .. })
             ));
         }
 
@@ -609,7 +604,7 @@ mod tests {
             ));
 
             assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::InvalidOutputPath { reason })                 if reason.starts_with("name: "))
+                matches!(template_command_error(err), Some(TemplateCommandError::OutputPathInvalid { detail })                 if detail.starts_with("name: "))
             );
         }
 

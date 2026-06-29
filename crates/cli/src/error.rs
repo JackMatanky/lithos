@@ -115,37 +115,77 @@ pub(crate) enum IndexCommandError {
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub(crate) enum TemplateCommandError {
-    #[error(
-        "Template '{name}' not found. Run 'traces index' to re-index \
-         available templates."
-    )]
+    /// Requested template was not found in the index.
+    #[error("Template '{name}' not found.")]
+    #[diagnostic(help(
+        "Run `traces index` to re-index available templates, or check the \
+         template name matches a file in the configured template directory."
+    ))]
     TemplateNotFound {
         name: String,
     },
 
-    #[error("Template rendering failed: {detail}")]
-    RenderFailed {
+    /// Output path failed validation (absolute, traversal, hidden, etc.).
+    #[error("Output path is invalid: {detail}")]
+    #[diagnostic(help(
+        "Use a vault-relative path that stays within the vault directory."
+    ))]
+    OutputPathInvalid {
         detail: String,
     },
 
-    #[error("Output path is invalid: {reason}")]
-    InvalidOutputPath {
-        reason: String,
-    },
-
-    #[error(
-        "Output file already exists: {path}. Choose a different output path."
-    )]
+    /// Output file already exists and overwrite is not permitted.
+    #[error("Output file already exists: {path}")]
+    #[diagnostic(help(
+        "Choose a different output path, or remove the existing file first."
+    ))]
     DestinationExists {
         path: String,
     },
 
+    /// Template rendering pipeline failure (engine, body, read, name,
+    /// repository).
+    #[error("Template rendering failed: {detail}")]
+    #[diagnostic(help(
+        "Review the error detail and fix the template or your input. If the \
+         issue persists, run `traces index` to rebuild metadata."
+    ))]
+    RenderFailed {
+        detail: String,
+    },
+
+    /// Write I/O failure writing the output file to disk.
     #[error("Failed to write output: {detail}")]
+    #[diagnostic(help(
+        "Check disk space and filesystem permissions on the output directory."
+    ))]
     WriteFailed {
         detail: String,
     },
 
+    /// Template configuration or directory is invalid.
+    #[error("Template configuration error: {detail}")]
+    #[diagnostic(help(
+        "Ensure `[template]` is configured in traces.toml with a valid \
+         `directory` setting, and that the directory exists."
+    ))]
+    // ponytail: added for future mapping from AppError, not yet
+    // constructed by any code path
+    #[allow(
+        dead_code,
+        reason = "ponytail: added for future use, not yet constructed by any \
+                  code path"
+    )]
+    ConfigInvalid {
+        detail: String,
+    },
+
+    /// Invalid --var value format (missing `=`).
     #[error("Invalid --var value '{value}'. Expected key=value.")]
+    #[diagnostic(help(
+        "Use `--var key=value`. For values containing '=', only the first '=' \
+         is used as the separator."
+    ))]
     InvalidVarFormat {
         value: String,
     },
@@ -271,7 +311,13 @@ impl CliError {
                     ..
                 } => 3,
             },
-            Self::TemplateCommand(_) | Self::Bootstrap(_) => 2,
+            Self::TemplateCommand(err) => match err {
+                TemplateCommandError::WriteFailed {
+                    ..
+                } => 3,
+                _ => 2,
+            },
+            Self::Bootstrap(_) => 2,
         }
     }
 }
@@ -544,51 +590,71 @@ mod tests {
 
         #[test]
         fn template_command_error_display() {
-            let cases = [
+            let cases: Vec<(TemplateCommandError, &str, u8)> = vec![
                 (
                     TemplateCommandError::TemplateNotFound {
                         name: "daily".to_owned(),
                     },
-                    "Template 'daily' not found. Run 'traces index' to \
-                     re-index available templates.",
+                    "Template 'daily' not found.",
+                    2,
                 ),
                 (
                     TemplateCommandError::RenderFailed {
                         detail: "missing variable".to_owned(),
                     },
                     "Template rendering failed: missing variable",
+                    2,
                 ),
                 (
-                    TemplateCommandError::InvalidOutputPath {
-                        reason: "parent traversal".to_owned(),
+                    TemplateCommandError::OutputPathInvalid {
+                        detail: "parent traversal".to_owned(),
                     },
                     "Output path is invalid: parent traversal",
+                    2,
                 ),
                 (
                     TemplateCommandError::DestinationExists {
                         path: "notes/today.md".to_owned(),
                     },
-                    "Output file already exists: notes/today.md. Choose a \
-                     different output path.",
+                    "Output file already exists: notes/today.md",
+                    2,
                 ),
                 (
                     TemplateCommandError::WriteFailed {
                         detail: "permission denied".to_owned(),
                     },
                     "Failed to write output: permission denied",
+                    3,
+                ),
+                (
+                    TemplateCommandError::ConfigInvalid {
+                        detail: "missing template.directory".to_owned(),
+                    },
+                    "Template configuration error: missing template.directory",
+                    2,
                 ),
                 (
                     TemplateCommandError::InvalidVarFormat {
                         value: "missing-equals".to_owned(),
                     },
                     "Invalid --var value 'missing-equals'. Expected key=value.",
+                    2,
                 ),
             ];
 
-            for (err, expected) in cases {
+            for (err, expected, code) in cases {
                 assert_eq!(err.to_string(), expected);
-                assert_eq!(CliError::TemplateCommand(err).exit_code(), 2);
+                assert_eq!(CliError::TemplateCommand(err).exit_code(), code);
             }
+        }
+
+        #[test]
+        fn write_failed_exit_code_is_3() {
+            let err =
+                CliError::TemplateCommand(TemplateCommandError::WriteFailed {
+                    detail: "x".into(),
+                });
+            assert_eq!(err.exit_code(), 3);
         }
     }
 
