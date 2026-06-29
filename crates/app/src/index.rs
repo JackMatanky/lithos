@@ -133,7 +133,7 @@ mod tests {
             // Instead of using cache_dir, pass a file as cache_dir so it fails
             // to open DB inside it
             let bad_dir = DirPath::try_new(tmp.path().to_path_buf()).unwrap();
-            let db_path = bad_dir.as_path().join("index.redb");
+            let db_path = bad_dir.as_path().join(INDEX_DB_FILENAME);
             // Write a directory to the db path so open fails
             std::fs::create_dir_all(&db_path).unwrap();
             let result = run_index(&root, &bad_dir, &cmd);

@@ -39,7 +39,7 @@ use crate::{
 };
 
 /// The filename of the Redb database.
-pub const INDEX_DB_FILENAME: &str = "index.redb";
+pub const INDEX_DB_FILENAME: &str = "index.db";
 
 /// Redb-backed repository implementing [`ReadRepository`] and
 /// [`WriteRepository`] for the indexer context.
