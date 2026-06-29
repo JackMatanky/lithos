@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Application composition root for Traces.
 //!
 //! This module is the single place where core ports and adapters are wired

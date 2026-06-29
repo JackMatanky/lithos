@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Shared utility contracts exposed by `traces-core`.
 //!
 //! This module provides domain-agnostic primitives with stable semantics that

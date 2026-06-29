@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Vault context for file and folder metadata tracking.
 //!
 //! This module owns vault-wide file discovery and metadata persistence. It

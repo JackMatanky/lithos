@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Note bounded context for markdown-based document modeling and persistence.
 //!
 //! This module provides the core domain entities, value objects, and the

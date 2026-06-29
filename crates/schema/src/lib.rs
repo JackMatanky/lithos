@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Schema bounded context domain models.
 //!
 //! This module contains all entities and services for the schema system,

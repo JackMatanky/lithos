@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 //! Persistence infrastructure for rebuildable domain projections.
 //!
 //! This module provides a zero-copy database layer built on [`redb`] and
