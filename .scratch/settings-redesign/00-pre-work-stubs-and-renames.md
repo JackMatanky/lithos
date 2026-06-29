@@ -2,11 +2,11 @@
 title: 00-pre-work-stubs-and-renames
 category: enhancement
 label: ready-for-agent
-status: ready
+status: completed
 branch: issue-00-pre-work-stubs-and-renames
 merge_commit: null
 date_created: 2026-06-29
-date_completed: null
+date_completed: 2026-06-29
 ---
 
 # 00: Pre-Work — File Structure Stubs and Renames
@@ -97,8 +97,16 @@ Run these steps sequentially, verifying `cargo build` (not just `cargo check`) a
 
 ## Definition of Done
 
-- [ ] New additive file stubs (`trust.rs`, `tracker.rs`, etc.) are created.
-- [ ] `Global` → `GlobalConfig`, `Vault` → `LocalConfig`, `Config` → `AppConfig`, `DiscoveryEnv` → `SettingsEnvVars` struct renames are complete.
-- [ ] `Bootstrapper` renamed to `BootstrapRunner` everywhere.
-- [ ] No pipeline functionality, `Config` methods, or database modules were deleted.
-- [ ] `cargo build --workspace` and `cargo test --workspace` succeed.
+- [x] New additive file stubs (`trust.rs`, `tracker.rs`, etc.) are created.
+- [x] `Global` → `GlobalConfig`, `Vault` → `LocalConfig`, `Config` → `AppConfig`, `DiscoveryEnv` → `SettingsEnvVars` struct renames are complete.
+- [x] `Bootstrapper` renamed to `BootstrapRunner` everywhere.
+- [x] No pipeline functionality, `Config` methods, or database modules were deleted.
+- [x] `cargo build --workspace` and `cargo test --workspace` succeed.
+
+## Implementation Notes
+
+- **Test Relocation & Splits**: Successfully split `src/discovery/env.rs` into `src/os_dirs.rs` and `src/env_var.rs`. `CandidatePath` was moved from `src/discovery/service.rs` to `src/candidate.rs`. Crucially, all relevant unit tests were moved and adapted to ensure test coverage remains intact.
+- **Raw Config Merging**: `RawGlobalConfig` and `RawVaultConfig` were unified into a single `RawConfig` struct containing all fields (with `trusted_vaults` and `cache` correctly marked as optional/skipped where appropriate).
+- **Refactoring Strategy**: Automated and manual string replacements were used to rename `Config` to `AppConfig`, `Global` to `GlobalConfig`, and `Vault` to `LocalConfig`. All external usages (`Bootstrapper` -> `BootstrapRunner`) in `crates/cli` and `crates/app` were successfully updated.
+- **Stubbing Approach**: Additive stubs (`trust.rs`, `tracker.rs`, etc.) use empty bodies with `// TODO:` comments rather than `todo!()` macros. This adheres to `rust-best-practices` (avoiding panics in production code) and ensures the existing test suite cannot accidentally hit a panic during the transition period before the pipeline is fully re-wired.
+- **Verification**: `mise run v` (which includes `cargo fmt`, `cargo clippy`, and `cargo test --workspace`) passes 100% cleanly.
