@@ -109,8 +109,8 @@ src/
 │   ├── builder.rs      // ConfigBuilder typestate
 │   ├── raw.rs          // RawConfig
 │   ├── global.rs       // GlobalConfig
-│   ├── local.rs        // LocalConfig
-│   ├── app.rs          // AppConfig
+│   ├── vault.rs        // LocalConfig
+│   ├── aggregate.rs    // AppConfig
 │   ├── error.rs        // ConfigError
 │   ├── logging.rs      // Logging domain type
 │   ├── frontmatter.rs  // Frontmatter domain type

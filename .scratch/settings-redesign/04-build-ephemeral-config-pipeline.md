@@ -34,14 +34,15 @@ Migrate SettingsService build behavior to this builder, but leave old repository
 ## Acceptance criteria
 
 - [ ] `ConfigBuilder::new` receives `(vault: Box<[CandidatePath]>, global: Box<[CandidatePath]>, options: ConfigBuilderOptions)` — not a `DiscoveryOutcome`, as the builder only needs the candidate slices.
-- [ ] Builder states follow the approved sequence: tracked, trusted, loaded, validated, ready.
-- [ ] Loaded state reads TOML/JSON/YAML files into `RawConfig`.
-- [ ] Validated state constructs optional `GlobalConfig` and ordered `LocalConfig` stack.
-- [ ] Merge applies global first, then local configs outer-ancestor to nearest-ancestor, with nearest local values winning.
+- [ ] Builder states follow the approved sequence: `Tracked`, `Trusted`, `Loaded`, `Validated`, `Ready`.
+- [ ] `Loaded` state reads TOML/JSON/YAML files into `RawConfig` using manual serde dispatch (to catch file-specific errors).
+- [ ] `Validated` state runs `TryFrom<RawConfig>` to ensure per-source forbidden fields are caught early.
+- [ ] `Ready` state uses **Figment** to merge `Serialized::defaults`, global candidates, local candidates (outer to inner), and `Env::prefixed("TRACES_")`.
+- [ ] `Ready` state extracts `AppConfig` from Figment.
 - [ ] `build_config` errors when no local candidate can provide the concrete app config base required by command semantics.
 - [ ] `AppConfig` finalization does not persist snapshots, versions, or cached views.
 - [ ] `AppConfig::create_cache_dir()` is called after finalize — it creates `<base>/.traces/cache/` and returns the path.
-- [ ] Tests cover merge precedence and repository-free app config construction.
+- [ ] Tests cover merge precedence (via Figment `Jail`) and repository-free app config construction.
 
 ## Out of Scope
 
@@ -68,7 +69,7 @@ This is the central implementation slice. It is ready, but only after discovery 
 
 - Implement the new typestate builder as the path used by `SettingsService::build_config`.
 - Keep the old `Builder<R>` only while existing callers remain; do not add new callers to it.
-- Read files, deserialize raw config, convert to domain types, merge, and finalize without snapshot persistence.
+- Read files, deserialize raw config, convert to domain types, and then use **Figment** to merge and extract `AppConfig` without snapshot persistence.
 - Track/trust phases may call existing or newly-added modules depending on completed blockers; do not stub security behavior silently.
 - Surface no-local-candidate as a typed error instead of defaulting to an invalid `AppConfig`.
 

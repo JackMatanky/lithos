@@ -27,7 +27,7 @@ This slice introduces the new boundary types. Some are new, others are renames o
 
 | New Name | Old Name | Action |
 |----------|----------|--------|
-| `AppConfig` (in `config/app.rs`) | `Config` (in `config/aggregate.rs`) | **Rename**. Move aggregation content into `app.rs`, delete `aggregate.rs` later |
+| `AppConfig` (in `config/aggregate.rs`) | `Config` (in `config/aggregate.rs`) | **Rename** struct only |
 | `SettingsService` | (new — no direct rename) | New boundary that owns discovery + config building |
 | `DiscoveryOptions` | Replaces `DiscoveryFlags`/`DiscoveryContext` | New DTO, no old struct to rename |
 | `ConfigBuilderOptions` | (new) | New DTO, no old equivalent |
