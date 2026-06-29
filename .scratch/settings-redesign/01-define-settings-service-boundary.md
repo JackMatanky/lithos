@@ -42,7 +42,7 @@ Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). D
 - [ ] `DiscoveryOptions` contains CLI/runtime discovery inputs, not environment variables.
 - [ ] `ConfigBuilderOptions` contains config-build inputs such as trust mode and auto-confirm.
 - [ ] `SettingsService` exposes `discover` and `build_config` with the PRD semantics, even if implementation delegates internally for now.
-- [ ] `build_config` receives `(vault: Box<[CandidatePath]>, global: Box<[CandidatePath]>, options: ConfigBuilderOptions)` directly, not a `DiscoveryOutcome` — the ConfigBuilder only needs candidates.
+- [ ] `build_config` receives `(vault: &[CandidatePath], global: &[CandidatePath], options: ConfigBuilderOptions)` directly, not a `DiscoveryOutcome` — the ConfigBuilder only needs candidates.
 - [ ] `CandidatePath` is a public type in `src/candidate.rs`, shared between discovery and config.
 - [ ] Cache dir creation is on `AppConfig::create_cache_dir()`, not on `SettingsService`.
 - [ ] Existing public callers continue to compile.
@@ -94,3 +94,38 @@ This is the correct first migration slice. It creates the new seam without delet
 - Use borrowed parameters (`&Path`, `&DiscoveryOutcome`) unless ownership is required by the API contract.
 - Keep DTOs simple and typed; avoid one-off traits or factories.
 - Add compile-time/API-shape tests rather than broad integration scaffolding.
+
+## TDD Plan
+
+**Cycle 1: Relocate `CandidatePath` (No Aliasing)**
+- **Test:** Rely on `cargo check` and existing tests to ensure all module paths are correct.
+- **Implement:**
+  - Delete `CandidatePath` from `crates/settings/src/discovery/service.rs`.
+  - Update imports in `discovery/processor.rs`, `discovery/port.rs`, `app/src/bootstrap.rs` (and any other affected callers) to `use crate::candidate::CandidatePath`.
+
+**Cycle 2: Boundary DTOs - Options**
+- **Test:** Write `tests/service_boundary.rs` to construct `DiscoveryOptions` and `ConfigBuilderOptions`.
+- **Implement:**
+  - Define `DiscoveryOptions` (`anchor: PathBuf`, `config_file: Option<PathBuf>`, `vault_dir: Option<PathBuf>`, `suppress_global: bool`).
+  - Define `TrustMode` enum (`Verify`, `AcceptAll`) and `ConfigBuilderOptions` (`trust_mode`, `auto_confirm: bool`).
+
+**Cycle 3: Boundary DTOs - Outcome**
+- **Test:** Add assertions testing `DiscoveryOutcome` construction.
+- **Implement:** Define `DiscoveryOutcome` containing `vault: Box<[CandidatePath]>`, `global: Box<[CandidatePath]>`, and `cache_root: CacheRoot`.
+
+**Cycle 4: `SettingsService` Trait and Error Boundary**
+- **Test:** Write a test verifying that `SettingsService` trait methods have the correct signatures and borrow semantics.
+- **Implement:**
+  - Define a precise `SettingsError` using `thiserror`.
+  - Define `SettingsService` trait with:
+    - `fn discover(&self, options: DiscoveryOptions) -> Result<DiscoveryOutcome, SettingsError>`
+    - `fn build_config(&self, vault: &[CandidatePath], global: &[CandidatePath], options: ConfigBuilderOptions) -> Result<AppConfig, SettingsError>`
+  - Add a stubbed `Service` struct that satisfies the trait.
+
+**Cycle 5: `AppConfig::create_cache_dir`**
+- **Test:** Add a unit test in `crates/settings/src/config/aggregate.rs` building a test `AppConfig`, calling `create_cache_dir()`, and verifying the filesystem.
+- **Implement:** Add `pub fn create_cache_dir(&self) -> std::io::Result<()>` (or map to `ConfigError`) to `AppConfig`, calling `std::fs::create_dir_all`.
+
+**Cycle 6: Visibility & Lints Hardening**
+- **Test:** Run `cargo check` and `cargo clippy`.
+- **Implement:** Export `SettingsService`, `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, and `DiscoveryOutcome` as `pub` from `crates/settings/src/lib.rs`. Ensure internal components remain `pub(crate)`.
