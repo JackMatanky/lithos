@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -32,7 +32,7 @@ This slice adds the replacement mechanism before the old repository storage is r
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/02-make-discovery-internal-and-linear.md
+- .scratch/settings-redesign/02-make-discovery-internal-and-linear.md
 
 ## Triage Notes
 

@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 

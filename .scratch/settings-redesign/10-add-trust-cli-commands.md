@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -31,8 +31,8 @@ Add user-facing trust commands over the new Trust module. Keep CLI as a thin orc
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/06-add-trust-and-ignore-system.md
-- .scratch/config-pipeline-redesign/09-rewire-existing-cli-commands.md
+- .scratch/settings-redesign/06-add-trust-and-ignore-system.md
+- .scratch/settings-redesign/09-rewire-existing-cli-commands.md
 
 ## Triage Notes
 

@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -34,8 +34,8 @@ Migrate SettingsService build behavior to this builder, but leave old repository
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/02-make-discovery-internal-and-linear.md
-- .scratch/config-pipeline-redesign/03-simplify-raw-and-domain-config-types.md
+- .scratch/settings-redesign/02-make-discovery-internal-and-linear.md
+- .scratch/settings-redesign/03-simplify-raw-and-domain-config-types.md
 
 ## Triage Notes
 

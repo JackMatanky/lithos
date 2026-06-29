@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -33,9 +33,9 @@ If any component still imports the old repository, storage, version, view, event
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/04-build-ephemeral-config-pipeline.md
-- .scratch/config-pipeline-redesign/05-add-filesystem-tracker.md
-- .scratch/config-pipeline-redesign/06-add-trust-and-ignore-system.md
+- .scratch/settings-redesign/04-build-ephemeral-config-pipeline.md
+- .scratch/settings-redesign/05-add-filesystem-tracker.md
+- .scratch/settings-redesign/06-add-trust-and-ignore-system.md
 
 ## Triage Notes
 

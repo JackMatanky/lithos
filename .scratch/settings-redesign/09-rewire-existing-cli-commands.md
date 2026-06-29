@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -32,7 +32,7 @@ This slice removes CLI usage of old components before the components are deleted
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/08-rename-bootstrapper-to-bootstraprunner.md
+- .scratch/settings-redesign/08-rename-bootstrapper-to-bootstraprunner.md
 
 ## Triage Notes
 

@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -34,8 +34,8 @@ This slice creates the new trust path before old security/persistence assumption
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/02-make-discovery-internal-and-linear.md
-- .scratch/config-pipeline-redesign/05-add-filesystem-tracker.md
+- .scratch/settings-redesign/02-make-discovery-internal-and-linear.md
+- .scratch/settings-redesign/05-add-filesystem-tracker.md
 
 ## Triage Notes
 

@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -30,9 +30,9 @@ Bring architecture tests and domain documentation in line with the completed set
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/07-remove-settings-persistence-model.md
-- .scratch/config-pipeline-redesign/09-rewire-existing-cli-commands.md
-- .scratch/config-pipeline-redesign/10-add-trust-cli-commands.md
+- .scratch/settings-redesign/07-remove-settings-persistence-model.md
+- .scratch/settings-redesign/09-rewire-existing-cli-commands.md
+- .scratch/settings-redesign/10-add-trust-cli-commands.md
 
 ## Triage Notes
 

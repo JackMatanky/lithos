@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -34,7 +34,7 @@ Do this migration before any old Bootstrapper-facing settings components are rem
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/04-build-ephemeral-config-pipeline.md
+- .scratch/settings-redesign/04-build-ephemeral-config-pipeline.md
 
 ## Triage Notes
 

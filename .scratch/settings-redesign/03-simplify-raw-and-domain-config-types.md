@@ -13,7 +13,7 @@ date_completed: null
 
 ## Parent
 
-.scratch/config-pipeline-redesign/PRD.md
+.scratch/settings-redesign/PRD.md
 
 ## What to build
 
@@ -34,7 +34,7 @@ Keep compatibility shims only where required for current callers; remove those s
 
 ## Blocked by
 
-- .scratch/config-pipeline-redesign/01-define-settings-service-boundary.md
+- .scratch/settings-redesign/01-define-settings-service-boundary.md
 
 ## Triage Notes
 
