@@ -32,6 +32,14 @@ If any component still imports the old repository, storage, version, view, event
 - [ ] Compile errors from removed components are fixed by using the new SettingsService and AppConfig path, not by adding compatibility wrappers.
 - [ ] Architecture tests assert the persistence model is gone.
 
+## Out of Scope
+
+- Adding any new functionality (this slice is deletion-only)
+- Migrating callers — if a production caller still imports an old component, fix that caller first, then delete
+- Updating domain docs or architecture tests (issue 11)
+- CLI command rewiring (issue 09)
+- Dependency removal confirmation: after deletion, `traces-db`, `redb`, and `rkyv` should be removable from settings `Cargo.toml` without breaking compilation
+
 ## Blocked by
 
 - .scratch/settings-redesign/04-build-ephemeral-config-pipeline.md

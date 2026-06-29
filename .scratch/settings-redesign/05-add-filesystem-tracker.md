@@ -29,7 +29,16 @@ This slice adds the replacement mechanism before the old repository storage is r
 - [ ] Tracking creates symlinks from `TRACKED_CONFIGS/<path-hash>` to the canonical file path.
 - [ ] Tracking is idempotent when called repeatedly for the same path.
 - [ ] `clean` removes dangling tracking symlinks.
+- [ ] Path hash algorithm: SHA-256 of the canonicalized path string. (SHA-256 preferred over BLAKE3 for wide platform availability; revisit if hash perf becomes a bottleneck.)
+- [ ] Tracking directory lives at `TRACKED_CONFIGS` path constant from `src/location.rs`.
 - [ ] Tempdir tests cover track, list, idempotency, and clean.
+
+## Out of Scope
+
+- Trust or ignore functionality (issue 06)
+- Interactive prompts or security modes (issue 06)
+- Old repository/storage removal (issue 07)
+- ConfigBuilder integration — `Tracker::track()` is called by builder finalize, but this slice only provides the module
 
 ## Blocked by
 

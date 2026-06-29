@@ -40,7 +40,16 @@ Migrate SettingsService build behavior to this builder, but leave old repository
 - [ ] Merge applies global first, then local configs outer-ancestor to nearest-ancestor, with nearest local values winning.
 - [ ] `build_config` errors when no local candidate can provide the concrete app config base required by command semantics.
 - [ ] `AppConfig` finalization does not persist snapshots, versions, or cached views.
+- [ ] `AppConfig::create_cache_dir()` is called after finalize — it creates `<base>/.traces/cache/` and returns the path.
 - [ ] Tests cover merge precedence and repository-free app config construction.
+
+## Out of Scope
+
+- Discovery implementation or candidate collection (issue 02)
+- Raw config deserialization or domain type validation (issue 03 — already done before this slice)
+- Tracker or trust module implementation (issues 05, 06)
+- Removing old repository-backed `Builder<R>` callers (issue 07)
+- BootstrapRunner or CLI migration (issues 08, 09)
 
 ## Blocked by
 

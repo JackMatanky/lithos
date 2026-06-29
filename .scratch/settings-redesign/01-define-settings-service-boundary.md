@@ -48,6 +48,17 @@ Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). D
 - [ ] Cache dir creation is on `AppConfig::create_cache_dir()`, not on `SettingsService`.
 - [ ] Existing public callers continue to compile.
 - [ ] Tests or compile-time checks cover the new API shape.
+- [ ] Public types follow the PRD visibility hardening: `SettingsService` (trait + impl), `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, `DiscoveryOutcome` are `pub`. Everything else is `pub(crate)` or private.
+
+## Out of Scope
+
+- Config file reading, parsing, or deserialization (issue 03)
+- Discovery implementation or filesystem I/O (issue 02)
+- Config builder typestate states (issue 04)
+- Tracker, trust, or any symlink-based module (issues 05, 06)
+- Removing old Bootstrapper/Builder/Repository code (issue 07)
+- CLI command rewiring or trust commands (issues 09, 10)
+- Architecture tests or doc updates (issue 11)
 
 ## Blocked by
 

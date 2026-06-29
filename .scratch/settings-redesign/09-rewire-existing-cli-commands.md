@@ -44,6 +44,12 @@ These are consumer-side changes — CLI handlers reference old types in their im
 - [ ] CLI tests are updated away from `DiscoveryService`, `DiscoveryFlags`, and `InMemoryRepository`.
 - [ ] User-facing diagnostics remain actionable and avoid leaking internal pipeline names unless already part of CLI contract.
 
+## Out of Scope
+
+- Adding trust CLI commands (issue 10)
+- Deleting old settings components — only migrate CLI callers away from them (issue 07)
+- Architecture tests or doc updates (issue 11)
+
 ## Blocked by
 
 - .scratch/settings-redesign/08-rename-bootstrapper-to-bootstraprunner.md

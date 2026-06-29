@@ -26,8 +26,15 @@ Bring architecture tests and domain documentation in line with the completed set
 - [ ] Architecture tests assert discovery is internal and settings has one inbound service boundary.
 - [ ] Architecture tests assert the final crate module layout: `CandidatePath` at `src/candidate.rs`, `Tracker` and `Trust` under `config/`, `service.rs`/`location.rs`/`env.rs`/`os_dirs.rs` flat at `src/`.
 - [ ] Architecture tests assert settings no longer exposes repository/storage/snapshot/version APIs.
+- [ ] Architecture tests or compile-time checks enforce the PRD visibility hardening table: only `SettingsService`, `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, `AppConfig`, `GlobalConfig`, `LocalConfig`, `Trust`, `DiscoveryOutcome`, and `ConfigError` are `pub`. `ConfigBuilder`, `Tracker`, `SettingsEnvVars`, `DiscoveryInput`, and `RawConfig` are `pub(crate)`.
 - [ ] ADR supersession notes from the PRD are reflected in the relevant docs.
 - [ ] Documentation matches public exports and tested behavior.
+
+## Out of Scope
+
+- Any implementation changes — this slice is documentation and architecture-test enforcement only
+- Adding new features or types
+- Changing module structure (the crate is already restructured by earlier slices)
 
 ## Blocked by
 

@@ -44,6 +44,16 @@ Migrate discovery consumers to the new SettingsService API before marking old di
 - [ ] Exact filename slices in `src/location.rs` replace marker-pattern/extension iteration for new discovery code.
 - [ ] `CandidatePath` lives at `src/candidate.rs`, not in `discovery/outcome.rs` — discovery produces them, config consumes them.
 - [ ] Dedupe/desymlink and ignored-path filtering happen before returning `DiscoveryOutcome`.
+- [ ] `DiscoveryInput` carries the exact fields from the PRD: `anchor`, `flag_global`, `flag_vault`, `env_global`, `env_default_vault`, `ceiling_dirs`, `suppress_global`.
+- [ ] `CandidatePath` is imported from `src/candidate.rs` — not defined in `discovery/outcome.rs`.
+
+## Out of Scope
+
+- Config file reading, parsing, or domain type construction (issue 03)
+- Config builder typestate or merge logic (issue 04)
+- Tracker or trust modules (issues 05, 06)
+- Removing old DiscoveryService/DiscoveryPort callers (issue 07)
+- BootstrapRunner or CLI migration (issues 08, 09)
 
 ## Blocked by
 

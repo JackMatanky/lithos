@@ -28,6 +28,14 @@ Add user-facing trust commands over the new Trust module. Keep CLI as a thin orc
 - [ ] `traces trust --all` trusts all currently untrusted discovered configs.
 - [ ] Human and JSON output are deterministic and tested where the CLI supports both.
 - [ ] Command handlers do not own trust storage rules.
+- [ ] The `traces trust --show` command uses `SettingsService::discover()` to discover configs and the Trust module to determine their status.
+
+## Out of Scope
+
+- Trust module implementation — CLI delegates to `traces-settings::Trust` (already built in issue 06)
+- Discovery implementation — CLI calls `SettingsService::discover()` (already built in issues 01-02)
+- Rewiring existing config/doctor/index commands (issue 09)
+- Architecture tests or doc updates (issue 11)
 
 ## Blocked by
 

@@ -43,7 +43,22 @@ Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `templat
 - [ ] `LocalConfig` carries `base`, `path`, and a derived/defaultable name.
 - [ ] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/local.rs` (LocalConfig), `config/app.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
 - [ ] `AppConfig` is constructable without a repository or database.
+- [ ] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
+- [ ] `serde_json` and `serde_yaml` dependencies are optional Cargo features (default: TOML only).
+- [ ] `RawConfig` fields match the PRD: `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`, `trusted_vaults` — all `Option<T>`.
+- [ ] `AppConfig` fields match the PRD: `base`, `path`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
+- [ ] `GlobalConfig` fields match the PRD: `path`, `logging`, `frontmatter`, `template`, `schema`, `trusted_vaults`, `task`.
+- [ ] `LocalConfig` fields match the PRD: `base`, `path`, `name`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
 - [ ] Inline-data tests cover raw parsing, forbidden fields, and default construction.
+
+## Out of Scope
+
+- Discovery or filesystem I/O (issue 02)
+- Config builder typestate or merge logic (issue 04)
+- Tracker or trust modules (issues 05, 06)
+- Removing old RawGlobalConfig/RawVaultConfig callers that still compile (deferred to issue 07)
+- BootstrapRunner or CLI migration (issues 08, 09)
+- AppConfig::create_cache_dir() (issue 04)
 
 ## Blocked by
 

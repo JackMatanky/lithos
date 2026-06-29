@@ -41,6 +41,13 @@ Do this migration before any old Bootstrapper-facing settings components are rem
 - [ ] No repository argument is required to run bootstrap.
 - [ ] Existing app-level bootstrap tests are migrated to the new runner.
 
+## Out of Scope
+
+- Rewiring individual CLI command handlers (issue 09)
+- Trust CLI commands (issue 10)
+- Removing old Bootstrapper-adjacent code that still has callers in CLI (deferred to issue 09)
+- Architecture tests or doc updates (issue 11)
+
 ## Blocked by
 
 - .scratch/settings-redesign/04-build-ephemeral-config-pipeline.md

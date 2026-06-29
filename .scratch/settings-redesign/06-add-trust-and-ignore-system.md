@@ -31,7 +31,16 @@ This slice creates the new trust path before old security/persistence assumption
 - [ ] Paranoid mode verifies trusted content hashes according to the PRD’s security model.
 - [ ] Safe configs without trust-requiring directives can skip prompts.
 - [ ] ConfigBuilder’s trust phase uses the trust system and skips ignored candidates.
+- [ ] Trust directory lives at `TRUSTED_CONFIGS` path constant from `src/location.rs`.
+- [ ] Ignore directory lives at `IGNORED_CONFIGS` path constant from `src/location.rs`.
 - [ ] Tempdir tests cover trust, untrust, ignore, status, CI mode, and paranoid mismatch.
+
+## Out of Scope
+
+- CLI trust command routing or clap subcommands (issue 10)
+- Interactive prompt UI — Trust exposes `trust_check()` but prompting is handled by the caller
+- Old security/persistence model removal (issue 07)
+- ConfigBuilder integration — trust phase calls Trust internally, but this slice only provides the module
 
 ## Blocked by
 
