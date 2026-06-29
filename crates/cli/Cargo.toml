@@ -20,6 +20,7 @@ bench = false
 traces-app.workspace = true
 traces-settings = { workspace = true, features = ["testing"] }
 traces-fs.workspace = true
+traces-template.workspace = true
 
 clap = { version = "4.6", features = ["env", "derive"] }
 miette = { workspace = true, features = ["fancy"] }
@@ -38,7 +39,6 @@ traces-indexer = { version = "0.1.0", path = "../indexer" }
 pretty_assertions.workspace = true
 tempfile.workspace = true
 traces-db.workspace = true
-traces-template.workspace = true
 # Enables IndexReport::new_for_test / IndexNodeFailure::new_for_test for tests.
 traces-indexer = { version = "0.1.0", path = "../indexer", features = ["testing"] }
 

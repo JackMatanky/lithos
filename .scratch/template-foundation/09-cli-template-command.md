@@ -43,16 +43,16 @@ Deferred (out of scope for this slice):
 
 ## Acceptance criteria
 
-- [ ] `traces template --input <name> --output <path>` renders a template and prints the created path
-- [ ] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content without creating a file
-- [ ] `-i`, `-o`, and `-n` short flags are accepted
-- [ ] `--var key=value` is accepted and repeated flags build the context map
-- [ ] `--var` values containing `=` are correctly split on the first `=` only
-- [ ] Missing `--input` or conflicting `--output`/`--dry-run` flags produce a clear usage error
-- [ ] `TemplateError` variants are mapped to user-facing messages (not raw `Display` forwarding)
-- [ ] Success output prints the vault-relative path of the created file
-- [ ] No `unwrap()` or `panic!` in CLI code
-- [ ] Tests cover: render command (normal path), dry-run command (`--dry-run` and `-n`), repeated `--var` flags including values with `=`, output path reporting, structured failure paths (missing template, engine error, path validation error, destination exists)
+- [x] `traces template --input <name> --output <path>` renders a template and prints the created path
+- [x] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content without creating a file
+- [x] `-i`, `-o`, and `-n` short flags are accepted
+- [x] `--var key=value` is accepted and repeated flags build the context map
+- [x] `--var` values containing `=` are correctly split on the first `=` only
+- [x] Missing `--input` or conflicting `--output`/`--dry-run` flags produce a clear usage error
+- [x] `TemplateError` variants are mapped to user-facing messages (not raw `Display` forwarding)
+- [x] Success output prints the vault-relative path of the created file
+- [x] No `unwrap()` or `panic!` in CLI code
+- [x] Tests cover: render command (normal path), dry-run command (`--dry-run` and `-n`), repeated `--var` flags including values with `=`, output path reporting, structured failure paths (missing template, engine error, path validation error, destination exists)
 
 ## Blocked by
 
@@ -109,18 +109,18 @@ Short forms: `-i` for `--input`, `-o` for `--output`, `-n` for `--dry-run`.
 - `--var` parsing: split each value on the first `=` only; collect into `HashMap<String, String>`; a value with no `=` is a parse error
 
 **Acceptance criteria:**
-- [ ] `traces template --input <name> --output <path>` renders the named template and prints the created vault-relative path
-- [ ] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content to stdout without creating any file
-- [ ] `-i` short flag is accepted for `--input`; `-o` short flag for `--output`; `-n` short flag for `--dry-run`
-- [ ] `--var key=value` is accepted; repeated flags accumulate into the context map
-- [ ] `--var url=https://example.com/foo=bar` correctly produces key `url`, value `https://example.com/foo=bar`
-- [ ] Missing `--input` produces a clear usage/parse error
-- [ ] Providing both `--output` and `--dry-run` produces a clear conflict error
-- [ ] Each `TemplateError` variant is mapped to a distinct, actionable user-facing message (not raw `Display`)
-- [ ] Success prints the vault-relative path of the created file
-- [ ] No `unwrap()` or `panic!` in CLI handler code
-- [ ] Tests cover: normal render (path printed), dry-run (content printed, no file), repeated `--var` flags, `--var` values with `=`, missing template error message, engine error message, path validation error message, destination-exists error message
-- [ ] `mise run test` passes
+- [x] `traces template --input <name> --output <path>` renders the named template and prints the created vault-relative path
+- [x] `traces template --input <name> --dry-run` and `traces template --input <name> -n` print the rendered content to stdout without creating any file
+- [x] `-i` short flag is accepted for `--input`; `-o` short flag for `--output`; `-n` short flag for `--dry-run`
+- [x] `--var key=value` is accepted; repeated flags accumulate into the context map
+- [x] `--var url=https://example.com/foo=bar` correctly produces key `url`, value `https://example.com/foo=bar`
+- [x] Missing `--input` produces a clear usage/parse error
+- [x] Providing both `--output` and `--dry-run` produces a clear conflict error
+- [x] Each `TemplateError` variant is mapped to a distinct, actionable user-facing message (not raw `Display`)
+- [x] Success prints the vault-relative path of the created file
+- [x] No `unwrap()` or `panic!` in CLI handler code
+- [x] Tests cover: normal render (path printed), dry-run (content printed, no file), repeated `--var` flags, `--var` values with `=`, missing template error message, engine error message, path validation error message, destination-exists error message
+- [x] `mise run test` passes
 
 **Out of scope:**
 - Declared inputs or `inputs.*` namespace
@@ -180,7 +180,6 @@ pub(crate) enum TemplateCommandError {
     DestinationExists { path: String },
     WriteFailed { detail: String },
     InvalidVarFormat { value: String },
-    MissingOutput,
 }
 ```
 
@@ -232,3 +231,417 @@ pub(crate) enum TemplateCommandError {
 | `--output` + `--dry-run` → conflict error | Parse/validation test |
 | No `unwrap()` / `panic!` in handler | Clippy + code review |
 | `mise run test` passes | Full workspace suite |
+
+---
+
+## Completion TDD Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` to implement this plan task-by-task. Every implementer and reviewer subagent MUST first verify it is operating only in `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command` before reading, editing, testing, or reviewing. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Complete the already-started `traces template` CLI implementation by closing the remaining acceptance-criteria gaps and making the worktree ready for review.
+
+**Architecture:** Keep the CLI as a thin adapter over `traces_app::template::run_template_create`. Add missing public-interface coverage and handler-level failure coverage without adding abstractions or changing the approved command shape.
+
+**Tech Stack:** Rust, clap derive, thiserror/miette diagnostics, `traces_app::template`, `traces_template`, `mise` tasks.
+
+### Current Implementation State
+
+Implemented in the worktree:
+- `TemplateArgs` and `Command::Template` exist in `crates/cli/src/cli.rs`.
+- `Command::Template` dispatches from `run_main` in `crates/cli/src/main.rs`.
+- `crates/cli/src/commands/template.rs` exists and implements `run_template`, `parse_vars`, `.md` input normalization, `run_template_create` invocation, success output, dry-run output, and `TemplateError` mapping.
+- `TemplateCommandError` exists in `crates/cli/src/error.rs` and maps to exit code `2` as approved.
+- `traces-template` is a normal dependency of `traces-cli`.
+
+Known gaps to close:
+- `crates/cli/src/commands/template.rs` is untracked; final status must show it as an intended new file.
+- Stale implementation comments and temporary `#[allow(dead_code)]` should be removed if no longer needed.
+- Public clap parsing does not explicitly cover `-i`, `-o`, and long `--dry-run` together.
+- Structured failure paths are mostly mapper/display tests; handler-level tests should cover missing template, invalid output path, and destination exists.
+- No binary-level smoke test verifies that CLI argument parsing reaches the template handler and emits user-facing diagnostics.
+
+### Task 1: Track the Template Module and Remove Stale Scaffolding
+
+**Files:**
+- Modify: `crates/cli/src/commands/template.rs`
+- Modify: `crates/cli/src/error.rs`
+- Verify: `crates/cli/src/commands/mod.rs`
+
+- [ ] **Step 1: Verify worktree isolation**
+
+Run:
+```bash
+pwd
+```
+Expected: both paths are `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command`; `crates/cli/src/commands/template.rs` is present as an untracked intended new file.
+
+- [ ] **Step 2: Remove stale handler doc text**
+
+Replace the `run_template` doc comment in `crates/cli/src/commands/template.rs` with:
+```rust
+/// Executes the `template` subcommand.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when bootstrap/config loading fails, variable parsing
+/// fails, template creation fails, or writing command output fails.
+```
+
+- [ ] **Step 3: Remove obsolete dead-code allowance if clippy permits**
+
+In `crates/cli/src/error.rs`, remove:
+```rust
+#[allow(
+    dead_code,
+    reason = "template command variants are wired incrementally by later \
+              slices"
+)]
+```
+Expected: no dead-code allowance remains. `MissingOutput` is not part of the final enum because clap owns missing-output validation.
+
+- [ ] **Step 4: Run focused compile/lint check**
+
+Run:
+```bash
+cargo check -p traces-cli
+```
+Expected: PASS with no warnings.
+
+- [ ] **Step 5: Verify intended new file remains visible**
+
+Run:
+```bash
+git status --short
+```
+Expected: `?? crates/cli/src/commands/template.rs` remains until final staging/commit; do not delete it.
+
+### Task 2: Add Public Clap Coverage for Short Flags and Long Dry-Run
+
+**Files:**
+- Modify: `crates/cli/src/cli.rs`
+
+- [ ] **Step 1: Verify worktree isolation**
+
+Run:
+```bash
+pwd
+```
+Expected: both paths are `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command`.
+
+- [ ] **Step 2: Write the failing public parse tests**
+
+Add these tests to `mod arg_parsing` in `crates/cli/src/cli.rs`:
+```rust
+#[expect(
+    clippy::panic,
+    reason = "match panic signals test invariant violation, not production code"
+)]
+#[test]
+fn template_accepts_short_input_and_output_flags() {
+    let cli = parse(&[
+        "traces",
+        "template",
+        "-i",
+        "greeting",
+        "-o",
+        "notes/out.md",
+    ])
+    .expect("valid args");
+
+    let Command::Template(args) = cli.command else {
+        panic!("expected Template variant, got {:?}", cli.command);
+    };
+
+    assert_eq!(args.input, "greeting");
+    assert_eq!(args.output, Some("notes/out.md".to_owned()));
+    assert!(!args.dry_run);
+}
+
+#[expect(
+    clippy::panic,
+    reason = "match panic signals test invariant violation, not production code"
+)]
+#[test]
+fn template_accepts_long_dry_run_flag() {
+    let cli = parse(&["traces", "template", "--input", "greeting", "--dry-run"])
+        .expect("valid args");
+
+    let Command::Template(args) = cli.command else {
+        panic!("expected Template variant, got {:?}", cli.command);
+    };
+
+    assert!(args.dry_run);
+    assert_eq!(args.output, None);
+}
+```
+
+- [ ] **Step 3: Run the tests to verify failure or pass-after-existing-support**
+
+Run:
+```bash
+cargo test -p traces-cli template_accepts_short_input_and_output_flags template_accepts_long_dry_run_flag
+```
+Expected: These may PASS immediately because clap attributes already exist; record that as an already-green coverage slice.
+
+- [ ] **Step 4: Run all CLI arg parsing tests**
+
+Run:
+```bash
+cargo test -p traces-cli arg_parsing
+```
+Expected: PASS.
+
+### Task 3: Add Handler-Level Missing Template and Invalid Output Tests
+
+**Files:**
+- Modify: `crates/cli/src/commands/template.rs`
+
+- [ ] **Step 1: Verify worktree isolation**
+
+Run:
+```bash
+pwd
+```
+Expected: both paths are `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command`.
+
+- [ ] **Step 2: Write missing-template handler test**
+
+Add this test in `mod run_template_handler`:
+```rust
+#[test]
+fn missing_template_returns_user_facing_error() {
+    let (dir, bootstrapper, flags) = make_vault();
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+
+    let result = run_template(
+        &bootstrapper,
+        Some(flags),
+        dir.path(),
+        args_with_input("missing", false),
+        OutputFormat::Human,
+        0,
+        &mut out,
+        &mut err,
+    );
+
+    let err = result.expect_err("missing template should fail");
+    assert_eq!(
+        err.to_string(),
+        "Template 'missing' not found. Run 'traces index' to re-index available templates."
+    );
+}
+```
+
+- [ ] **Step 3: Write invalid-output handler test**
+
+Add this helper and test in `mod run_template_handler`:
+```rust
+fn args_with_output(output: &str) -> TemplateArgs {
+    TemplateArgs {
+        input: "greeting".to_owned(),
+        output: Some(output.to_owned()),
+        dry_run: false,
+        vars: vec!["name=Alice".to_owned()],
+    }
+}
+
+#[test]
+fn invalid_output_path_returns_user_facing_error() {
+    let (dir, bootstrapper, flags) = make_vault();
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+
+    let result = run_template(
+        &bootstrapper,
+        Some(flags),
+        dir.path(),
+        args_with_output("../out.md"),
+        OutputFormat::Human,
+        0,
+        &mut out,
+        &mut err,
+    );
+
+    let err = result.expect_err("invalid output should fail");
+    assert!(
+        err.to_string().starts_with("Output path is invalid:"),
+        "got: {err}"
+    );
+}
+```
+
+- [ ] **Step 4: Run focused handler tests**
+
+Run:
+```bash
+cargo test -p traces-cli commands::template::tests::run_template_handler
+```
+Expected: PASS.
+
+### Task 4: Add Destination-Exists Handler Coverage and Binary Diagnostic Smoke Test
+
+**Files:**
+- Modify: `crates/cli/src/commands/template.rs`
+- Modify: `crates/cli/src/main.rs` only if needed for binary-level testability; prefer not changing production code.
+
+- [ ] **Step 1: Verify worktree isolation**
+
+Run:
+```bash
+pwd
+```
+Expected: both paths are `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command`.
+
+- [ ] **Step 2: Add destination-exists handler test**
+
+Add this test in `mod run_template_handler`:
+```rust
+#[test]
+fn destination_exists_returns_user_facing_error() {
+    let (dir, bootstrapper, flags) = make_vault();
+    fs::create_dir_all(dir.path().join("notes")).expect("create notes dir");
+    fs::write(dir.path().join("notes/out.md"), "existing").expect("write existing output");
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+
+    let result = run_template(
+        &bootstrapper,
+        Some(flags),
+        dir.path(),
+        args(false),
+        OutputFormat::Human,
+        0,
+        &mut out,
+        &mut err,
+    );
+
+    let err = result.expect_err("existing destination should fail");
+    assert!(
+        err.to_string().contains("Output file already exists:"),
+        "got: {err}"
+    );
+    assert!(
+        err.to_string().contains("Choose a different output path."),
+        "got: {err}"
+    );
+}
+```
+
+- [ ] **Step 3: Add CLI parse-to-handler smoke coverage without new dependencies**
+
+If the current `main` structure makes a true binary smoke test expensive, do not add a framework. Instead add this unit test in `crates/cli/src/main.rs` to ensure the top-level parser accepts the command shape that `run_main` dispatches:
+```rust
+#[test]
+fn main_parses_template_subcommand_successfully() {
+    let result = Cli::try_parse_from([
+        "traces",
+        "template",
+        "--input",
+        "greeting",
+        "--output",
+        "notes/out.md",
+    ]);
+    assert!(result.is_ok());
+}
+```
+
+- [ ] **Step 4: Run focused tests**
+
+Run:
+```bash
+cargo test -p traces-cli destination_exists_returns_user_facing_error main_parses_template_subcommand_successfully
+```
+Expected: PASS.
+
+### Task 5: Final Gates, GitNexus Change Review, and Issue Checklist Update
+
+**Files:**
+- Modify: `.scratch/template-foundation/09-cli-template-command.md`
+- Verify: all touched CLI files
+
+- [ ] **Step 1: Verify worktree isolation**
+
+Run:
+```bash
+pwd
+git status --short
+```
+Expected: both paths are `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command`; status contains only intended issue and CLI files.
+
+- [ ] **Step 2: Run formatting**
+
+Run:
+```bash
+mise run fmt
+```
+Expected: PASS or sources up-to-date.
+
+- [ ] **Step 3: Run lint**
+
+Run:
+```bash
+mise run lint
+```
+Expected: PASS with no clippy warnings.
+
+- [ ] **Step 4: Run tests**
+
+Run:
+```bash
+mise run test
+```
+Expected: PASS with 0 failures.
+
+- [ ] **Step 5: Run GitNexus change detection**
+
+Run through MCP:
+```text
+gitnexus_detect_changes({ scope: "all", worktree: "/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command", repo: "traces" })
+```
+Expected: CLI `run_main` processes may still report HIGH impact because this adds a top-level command dispatch. Confirm affected processes are expected CLI flows, not unrelated domains.
+
+- [ ] **Step 6: Update acceptance checklist only after gates pass**
+
+In `.scratch/template-foundation/09-cli-template-command.md`, change acceptance criteria boxes from `[ ]` to `[x]` only for criteria verified by tests and review. Leave unchecked anything not verified.
+
+- [ ] **Step 7: Final status check**
+
+Run:
+```bash
+git status --short
+```
+Expected: intended changed files include:
+- `.scratch/template-foundation/09-cli-template-command.md`
+- `crates/cli/Cargo.toml`
+- `crates/cli/src/cli.rs`
+- `crates/cli/src/commands/mod.rs`
+- `crates/cli/src/commands/template.rs`
+- `crates/cli/src/error.rs`
+- `crates/cli/src/main.rs`
+
+### Self-Review Checklist
+
+- Every remaining acceptance criterion maps to a task above.
+- No new dependencies are added.
+- CLI remains a thin adapter over `run_template_create`; no `process_all()` call is introduced.
+- No production `unwrap()` or `panic!` is introduced.
+- Tests exercise public CLI parsing and handler behavior through existing public functions.
+- All subagents must verify they are only working in `/Users/jack/Documents/41_personal/traces/.worktrees/09-cli-template-command` before acting.
+
+## Implementation Notes
+
+During an adversarial code review of the initial implementation, several issues were identified and successfully remediated:
+
+1. **`TemplateCommandError` Redesign**:
+   - Split `InvalidOutputPath` cleanly into `OutputPathInvalid` (for artifact path traversal/resolution issues) and `ConfigInvalid` (for config, root directory, and scan errors) to avoid misclassifying directory errors as output path errors.
+   - Upgraded all variants with `#[diagnostic(help(...))]` to provide actionable guidance via `miette`, matching the standard set by `IndexCommandError`.
+   - Updated `exit_code()` so that `WriteFailed` correctly produces an exit code `3` (matching the filesystem I/O error convention), while user errors remain `2`.
+
+2. **Performance Optimization**:
+   - Removed a redundant `run_discovery_only` call in the handler. The `cache_dir` is now dynamically extracted via `bootstrap.config.to_cache_spec()` to eliminate unnecessary filesystem directory walks.
+
+3. **Behavior Consistency**:
+   - JSON format is correctly tested for both dry-run (`preview`) and actual run (`output`).
+   - Duplicate `--var` flags are properly handled (last-wins) and explicitly tested.
+   - All tests pass (102 in total), clippy is clean, and the formatting is strictly enforced.
