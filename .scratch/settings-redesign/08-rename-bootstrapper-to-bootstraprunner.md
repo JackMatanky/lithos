@@ -25,9 +25,9 @@ Do this migration before any old Bootstrapper-facing settings components are rem
 
 | New Name | Old Name | Action |
 |----------|----------|--------|
-| `BootstrapRunner` (in `crates/app/`) | `Bootstrapper` (same file) | **Rename** struct. Remove generic `D: DiscoveryPort` parameter, replace with `SettingsService` |
-| `BootstrapRunner::run()` | `Bootstrapper::run()` | **Rename**. Signature changes: no `Repository`, no `DiscoveryPort` |
-| Discovery flow via `SettingsService::discover()` | `Bootstrapper::run_discovery_only()` | **Replace** — delegate to service instead |
+| `BootstrapRunner` (in `crates/app/`) | `BootstrapRunner` | **Signature change**. Remove generic `D: DiscoveryPort` parameter, replace with `SettingsService` (Structural rename handled in Issue 00) |
+| `BootstrapRunner::run()` | `BootstrapRunner::run()` | **Signature change**: no `Repository`, no `DiscoveryPort` |
+| Discovery flow via `SettingsService::discover()` | `BootstrapRunner::run_discovery_only()` | **Replace** — delegate to service instead |
 | `AppConfig::create_cache_dir()` | (was inline in bootstrap) | **Delegate** — call on `AppConfig` after build |
 
 ## Acceptance criteria

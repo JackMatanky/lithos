@@ -26,7 +26,7 @@ Migrate discovery consumers to the new SettingsService API before marking old di
 | New Name | Old Name | Action |
 |----------|----------|--------|
 | `DiscoveryProcessor` (typestate, internal) | `DiscoveryService` + `DiscoveryPort` | New internal orchestrator replaces both. Delete old port/service in issue 07 |
-| `SettingsEnvVars` (in `src/env.rs`) | `DiscoveryEnv` (in `discovery/env.rs`) | **Rename and move** — internal struct, env var names unchanged |
+| `SettingsEnvVars` (in `src/env.rs`) | `SettingsEnvVars` (in `discovery/env.rs`) | **Move file** — structural rename was handled in Issue 00 |
 | `DiscoveryInput` (in `discovery/input.rs`) | (new — no old equivalent) | Normalized input from options + env |
 | `src/os_dirs.rs` | `discovery/dirs.rs` + static helpers in `discovery/env.rs` | **Consolidate and move** — platform dirs extracted out |
 | `src/location.rs` | `discovery/location.rs` + `discovery/policy.rs` | **Consolidate and move** — `MarkerPattern` replaced by flat `&[&str]` slices |

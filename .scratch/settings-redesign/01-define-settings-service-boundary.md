@@ -27,7 +27,6 @@ This slice introduces the new boundary types. Some are new, others are renames o
 
 | New Name | Old Name | Action |
 |----------|----------|--------|
-| `AppConfig` (in `config/aggregate.rs`) | `Config` (in `config/aggregate.rs`) | **Rename** struct only |
 | `SettingsService` | (new — no direct rename) | New boundary that owns discovery + config building |
 | `DiscoveryOptions` | Replaces `DiscoveryFlags`/`DiscoveryContext` | New DTO, no old struct to rename |
 | `ConfigBuilderOptions` | (new) | New DTO, no old equivalent |
@@ -62,11 +61,11 @@ Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). D
 
 ## Pre-Requisites
 
-- .scratch/settings-redesign/00-pre-work-renames-moves-and-deletions.md — file structure, renames, and dead code removal must be applied first
+- .scratch/settings-redesign/00-pre-work-stubs-and-renames.md — file structure, renames, and dead code removal must be applied first
 
 ## Blocked by
 
-- .scratch/settings-redesign/00-pre-work-renames-moves-and-deletions.md
+- .scratch/settings-redesign/00-pre-work-stubs-and-renames.md
 
 ## Triage Notes
 

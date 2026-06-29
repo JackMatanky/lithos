@@ -23,15 +23,11 @@ This slice removes CLI usage of old components before the components are deleted
 
 ### Renaming Directives
 
-These are consumer-side changes — CLI handlers reference old types in their imports and calls:
+These are consumer-side changes — CLI handlers reference old APIs in their calls. (Note: Mechanical imports for `BootstrapRunner`, `AppConfig`, `LocalConfig`, and `GlobalConfig` were updated in Issue 00. This issue covers logic rewiring).
 
-| Old Import | New Import | Action |
+| Old Construct | New Construct | Action |
 |------------|------------|--------|
-| `Bootstrapper` | `BootstrapRunner` | **Rename** — composition root |
-| `Config` (old aggregate) | `AppConfig` | **Rename** — returned config type |
-| `Vault` | `LocalConfig` | **Rename** — used in display/output |
-| `Global` | `GlobalConfig` | **Rename** — used in display/output |
-| `DiscoveryFlags` / `DiscoveryContext` / `DiscoveryEnv` | `DiscoveryOptions` + `SettingsEnvVars` (internal) | **Replace** — CLI only constructs `DiscoveryOptions` |
+| `DiscoveryFlags` / `DiscoveryContext` / `SettingsEnvVars` | `DiscoveryOptions` + `SettingsEnvVars` (internal) | **Replace** — CLI only constructs `DiscoveryOptions` |
 | `DiscoveryService` / `DiscoveryPort` | (internal — no CLI import) | **Remove** — CLI calls `SettingsService` instead |
 | `InMemoryRepository` | (removed) | **Remove** — CLI tests use tempdirs instead |
 

@@ -1,5 +1,12 @@
 ---
-labels: [ready-for-agent]
+title: 00-pre-work-stubs-and-renames
+category: enhancement
+label: ready-for-agent
+status: ready
+branch: issue-00-pre-work-stubs-and-renames
+merge_commit: null
+date_created: 2026-06-29
+date_completed: null
 ---
 
 # 00: Pre-Work — File Structure Stubs and Renames

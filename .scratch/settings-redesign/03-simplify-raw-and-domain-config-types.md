@@ -25,10 +25,7 @@ Keep compatibility shims only where required for current callers; remove those s
 
 | New Name | Old Name | Action |
 |----------|----------|--------|
-| `RawConfig` (in `config/raw.rs`) | `RawGlobalConfig` + `RawVaultConfig` | **Unify** — one all-Option DTO replaces both |
-| `GlobalConfig` (in `config/global.rs`) | `Global` (same file) | **Rename** struct, keep file |
-| `LocalConfig` (in `config/vault.rs`) | `Vault` (in `config/vault.rs`) | **Rename** struct only |
-| `AppConfig` (in `config/aggregate.rs`) | `Config` (in `config/aggregate.rs`) | **Rename** struct only |
+| `RawConfig` (in `config/raw.rs`) | `RawConfig` and `RawVaultConfig` (legacy) | **Unify** — one all-Option DTO replaces both (struct renamed in Issue 00) |
 | `ConfigError` (in `config/error.rs`) | Old `SettingsError` variants | **Consolidate** — keep only config-related variants, remove persistence errors |
 
 Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs` — these are domain types whose structure is not changing.
