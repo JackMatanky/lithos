@@ -129,3 +129,106 @@ Short forms: `-i` for `--input`, `-o` for `--output`, `-n` for `--dry-run`.
 - Multi-file template pack output
 - Rich conflict policies (overwrite, skip, rename, merge)
 - `traces template list` command (deferred)
+
+---
+
+## TDD Plan
+
+### Dependencies
+
+| Blocking issue | Status | Merge commit |
+|---|---|---|
+| `07-template-service.md` | ✅ merged | `8f0edcc` |
+| `08-app-wiring.md` | ✅ merged | `68295e2c` |
+
+### Design decisions
+
+| Decision | Choice |
+|---|---|
+| Error variant | `CliError::TemplateCommand(TemplateCommandError)` — dedicated enum matching `IndexCommandError` pattern; not `Bootstrap(AppError)`. |
+| `--var` parsing | Split on first `=` only; collect into `HashMap<String,String>`. Value with no `=` → parse error. |
+| Output format | Print `WriteTarget::as_path()` display for normal; `RenderedTemplate::as_str()` for dry-run. |
+| Flag validation | Clap `conflicts_with` for `--output` ↔ `--dry-run`; `--input` is required. Manual validation for edge cases only if clap can't express the mutual-exclusion with one required. |
+| CLI adapter scope | No `process_all()` — `run_template_create` already calls `verify_path` internally (AR-1 Option 3). |
+
+### Target interface
+
+```rust
+// crates/cli/src/cli.rs
+#[derive(Debug, Args)]
+pub(crate) struct TemplateArgs {
+    #[arg(short = 'i', long)]
+    pub(crate) input: String,
+    #[arg(short = 'o', long, required_unless_present = "dry_run")]
+    pub(crate) output: Option<String>,
+    #[arg(short = 'n', long, conflicts_with = "output")]
+    pub(crate) dry_run: bool,
+    #[arg(long = "var", action = clap::ArgAction::Append)]
+    pub(crate) vars: Vec<String>,
+}
+
+// Existing Command enum gets:
+Template(TemplateArgs),
+```
+
+```rust
+// crates/cli/src/error.rs
+pub(crate) enum TemplateCommandError {
+    TemplateNotFound { name: String },
+    RenderFailed { detail: String },
+    InvalidOutputPath { reason: String },
+    DestinationExists { path: String },
+    WriteFailed { detail: String },
+    InvalidVarFormat { value: String },
+    MissingOutput,
+}
+```
+
+### Vertical slices (red-green-refactor)
+
+| # | Slice | RED test | GREEN work |
+|---|---|---|---|
+| **0a** | `TemplateArgs` + `Command` variant | `parses_template_subcommand` | Add `Template(TemplateArgs)` to `Command`. Derive `TemplateArgs` struct. |
+| **0b** | `TemplateCommandError` enum | `template_command_error_display` | Add variant + `exit_code()` arm → 2. |
+| **0c** | Module plumbing | builds clean | Create `commands/template.rs` stub. Register in `mod.rs`. Wire dispatch in `main.rs`. Remove shadowed `AppError::Template` arm from `exit_code()`. |
+| **1** | `--var` parsing | `parses_single_var`, `parses_multiple_vars`, `parses_var_with_equals_in_value`, `rejects_var_without_equals` | Split on first `=`. `InvalidVarFormat` on no `=`. |
+| **2** | Normal render (success) | `renders_template_and_prints_path` | Build `CreateTemplateInput`, call `run_template_create()`, print `output_path.as_path()`. Integration test w/ temp vault. |
+| **3** | Dry-run mode | `dry_run_prints_content`, `short_flag_n_works` | Set `dry_run: true`. Print `rendered.as_str()`. Verify no file written. |
+| **4** | `NotFound` mapping | `error_template_not_found` | `TemplateCommandError::TemplateNotFound { name }` → `"Template '{name}' not found. Run 'traces index' to re-index available templates."` |
+| **5** | `Engine` error mapping | `error_engine_failure` | `RenderFailed { detail }` → `"Template rendering failed: {detail}"` |
+| **6** | `Path` error mapping | `error_invalid_path` | `InvalidOutputPath { reason }` → `"Output path is invalid: {reason}"` |
+| **7** | `AlreadyExists` mapping | `error_destination_exists` | `DestinationExists { path }` → `"Output file already exists: {path}. Choose a different output path."` |
+| **8** | `Io` error mapping | `error_write_failure` | `WriteFailed { detail }` → `"Failed to write output: {detail}"` |
+| **9** | Flag validation | `rejects_missing_input`, `rejects_conflicting_output_and_dry_run` | Clap `required` + `conflicts_with`. |
+| **10** | Quality gate | `mise run test` passes | `mise run fmt && mise run lint && mise run test` |
+
+### Files changed
+
+| File | Changes |
+|---|---|
+| `crates/cli/src/cli.rs` | Add `Template(TemplateArgs)` to `Command`. Define `TemplateArgs` struct. |
+| `crates/cli/src/commands/template.rs` (NEW) | Handler, `--var` parsing, error mapping, output formatting. |
+| `crates/cli/src/commands/mod.rs` | Add `pub(crate) mod template;` |
+| `crates/cli/src/main.rs` | Add `Command::Template` dispatch arm. |
+| `crates/cli/src/error.rs` | Add `TemplateCommand(TemplateCommandError)` to `CliError`. Define `TemplateCommandError` enum. Exit code mapping. |
+
+### Test coverage matrix
+
+| Behavior | How verified |
+|---|---|
+| `traces template` parses with all flags | Clap arg parsing tests |
+| `-i`, `-o`, `-n` short flags | Arg parsing tests |
+| `--var key=value` (single, multiple, `=` in value) | Parsing + integration |
+| `--var` without `=` | Rejected with error message |
+| Normal render → path printed | Integration w/ temp vault |
+| Dry-run → content printed, no file | Integration, file absence check |
+| `--dry-run` and `-n` equivalent | Both flag forms tested |
+| Template not found → user message | `TemplateCommandError` display |
+| Engine error → user message | Display test |
+| Invalid path → user message | Display test |
+| Destination exists → user message | Display test |
+| Write failure → user message | Display test |
+| Missing `--input` → parse error | Clap test |
+| `--output` + `--dry-run` → conflict error | Parse/validation test |
+| No `unwrap()` / `panic!` in handler | Clippy + code review |
+| `mise run test` passes | Full workspace suite |
