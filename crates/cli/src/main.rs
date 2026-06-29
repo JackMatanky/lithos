@@ -44,6 +44,7 @@ use crate::{
     cli::{Command, ConfigSubcommand},
     commands::{
         config::run_config, config_files::run_config_files, doctor::run_doctor,
+        template::run_template,
     },
     error::CliError,
 };
@@ -166,6 +167,16 @@ fn run_main() -> Result<(), CliError> {
             &mut out,
             &mut err,
         ),
+        Command::Template(args) => run_template(
+            &bootstrapper,
+            flags,
+            &anchor,
+            args,
+            format,
+            verbose,
+            &mut out,
+            &mut err,
+        ),
     }
 }
 
@@ -231,6 +242,19 @@ mod tests {
     #[test]
     fn main_parses_config_files_subcommand_successfully() {
         let result = Cli::try_parse_from(["traces", "config", "files"]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn main_parses_template_subcommand_successfully() {
+        let result = Cli::try_parse_from([
+            "traces",
+            "template",
+            "--input",
+            "greeting",
+            "--output",
+            "notes/out.md",
+        ]);
         assert!(result.is_ok());
     }
 }

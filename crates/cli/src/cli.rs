@@ -54,6 +54,26 @@ pub(crate) struct IndexArgs {
     pub(crate) dry_run: bool,
 }
 
+/// Arguments for the `template` subcommand.
+#[derive(Debug, Args)]
+pub(crate) struct TemplateArgs {
+    /// Template input path.
+    #[arg(short = 'i', long)]
+    pub(crate) input: String,
+
+    /// Rendered output path.
+    #[arg(short = 'o', long, required_unless_present = "dry_run")]
+    pub(crate) output: Option<String>,
+
+    /// Render without writing output.
+    #[arg(short = 'n', long, conflicts_with = "output")]
+    pub(crate) dry_run: bool,
+
+    /// Template variable assignment.
+    #[arg(long = "var", action = clap::ArgAction::Append)]
+    pub(crate) vars: Vec<String>,
+}
+
 /// Bootstrap/loading flags shared by all commands.
 ///
 /// These flags control how vault and config file discovery is performed before
@@ -85,6 +105,8 @@ pub(crate) enum Command {
     Doctor,
     /// Index templates and layouts in the current vault.
     Index(IndexArgs),
+    /// Render a template.
+    Template(TemplateArgs),
 }
 
 /// Sub-subcommands available under `config`.
@@ -225,6 +247,124 @@ mod arg_parsing {
     fn parses_index_subcommand() {
         let cli = parse(&["traces", "index"]).expect("valid args");
         assert!(matches!(cli.command, Command::Index(_)));
+    }
+
+    #[expect(
+        clippy::panic,
+        reason = "match panic signals test invariant violation, not \
+                  production code"
+    )]
+    #[test]
+    fn parses_template_subcommand() {
+        let cli = parse(&[
+            "traces",
+            "template",
+            "--input",
+            "note.md",
+            "--output",
+            "rendered.md",
+            "--var",
+            "name=traces",
+            "--var",
+            "mode=cli",
+        ])
+        .expect("valid args");
+
+        let Command::Template(args) = cli.command else {
+            panic!("expected Template variant, got {:?}", cli.command);
+        };
+        assert_eq!(args.input, "note.md");
+        assert_eq!(args.output, Some("rendered.md".to_owned()));
+        assert!(!args.dry_run);
+        assert_eq!(args.vars, ["name=traces", "mode=cli"]);
+    }
+
+    #[expect(
+        clippy::panic,
+        reason = "match panic signals test invariant violation, not \
+                  production code"
+    )]
+    #[test]
+    fn template_accepts_short_input_and_output_flags() {
+        let cli = parse(&[
+            "traces",
+            "template",
+            "-i",
+            "greeting",
+            "-o",
+            "notes/out.md",
+        ])
+        .expect("valid args");
+
+        let Command::Template(args) = cli.command else {
+            panic!("expected Template variant, got {:?}", cli.command);
+        };
+
+        assert_eq!(args.input, "greeting");
+        assert_eq!(args.output, Some("notes/out.md".to_owned()));
+        assert!(!args.dry_run);
+    }
+
+    #[expect(
+        clippy::panic,
+        reason = "match panic signals test invariant violation, not \
+                  production code"
+    )]
+    #[test]
+    fn template_accepts_long_dry_run_flag() {
+        let cli =
+            parse(&["traces", "template", "--input", "greeting", "--dry-run"])
+                .expect("valid args");
+
+        let Command::Template(args) = cli.command else {
+            panic!("expected Template variant, got {:?}", cli.command);
+        };
+
+        assert!(args.dry_run);
+        assert_eq!(args.output, None);
+    }
+
+    #[expect(
+        clippy::panic,
+        reason = "match panic signals test invariant violation, not \
+                  production code"
+    )]
+    #[test]
+    fn short_flag_n_works() {
+        let cli = parse(&["traces", "template", "--input", "note", "-n"])
+            .expect("valid args");
+
+        let Command::Template(args) = cli.command else {
+            panic!("expected Template variant, got {:?}", cli.command);
+        };
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn rejects_missing_input() {
+        let err = parse(&["traces", "template", "--output", "out.md"])
+            .expect_err("missing input should fail");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        assert!(err.to_string().contains("--input <INPUT>"));
+    }
+
+    #[test]
+    fn rejects_conflicting_output_and_dry_run() {
+        let err = parse(&[
+            "traces",
+            "template",
+            "--input",
+            "note",
+            "--output",
+            "out.md",
+            "--dry-run",
+        ])
+        .expect_err("conflicting output and dry-run should fail");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        assert!(err.to_string().contains("--output <OUTPUT>"));
+        assert!(err.to_string().contains("--dry-run"));
     }
 
     #[test]

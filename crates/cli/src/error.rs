@@ -56,6 +56,10 @@ pub(crate) enum CliError {
     /// Error during the index operation.
     #[error(transparent)]
     Index(#[from] IndexCommandError),
+
+    /// Error during the template operation.
+    #[error(transparent)]
+    TemplateCommand(#[from] TemplateCommandError),
 }
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -106,6 +110,44 @@ pub(crate) enum IndexCommandError {
     ScanIoError {
         path: PathBuf,
         detail: String,
+    },
+}
+
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub(crate) enum TemplateCommandError {
+    #[error(
+        "Template '{name}' not found. Run 'traces index' to re-index \
+         available templates."
+    )]
+    TemplateNotFound {
+        name: String,
+    },
+
+    #[error("Template rendering failed: {detail}")]
+    RenderFailed {
+        detail: String,
+    },
+
+    #[error("Output path is invalid: {reason}")]
+    InvalidOutputPath {
+        reason: String,
+    },
+
+    #[error(
+        "Output file already exists: {path}. Choose a different output path."
+    )]
+    DestinationExists {
+        path: String,
+    },
+
+    #[error("Failed to write output: {detail}")]
+    WriteFailed {
+        detail: String,
+    },
+
+    #[error("Invalid --var value '{value}'. Expected key=value.")]
+    InvalidVarFormat {
+        value: String,
     },
 }
 
@@ -201,13 +243,16 @@ impl CliError {
     /// - [`AppError::Config`] → 2
     /// - [`CliError::Write`] → 3 (I/O failure writing to stdout or stderr)
     /// - All other variants → 2
+    #[expect(
+        clippy::match_same_arms,
+        reason = "exit-code mapping keeps user-error arms explicit"
+    )]
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
             Self::Bootstrap(AppError::Discovery(discovery_err)) => {
                 exit_code_for_discovery(discovery_err)
             }
-            Self::Bootstrap(AppError::Config(_) | AppError::Template(_))
-            | Self::InvalidPath(_) => 2,
+            Self::Bootstrap(AppError::Config(_)) | Self::InvalidPath(_) => 2,
             Self::Bootstrap(AppError::Indexer(_))
             | Self::Write {
                 ..
@@ -226,6 +271,7 @@ impl CliError {
                     ..
                 } => 3,
             },
+            Self::TemplateCommand(_) | Self::Bootstrap(_) => 2,
         }
     }
 }
@@ -268,7 +314,7 @@ mod tests {
         error::ConfigError,
     };
 
-    use super::{CliError, IndexCommandError};
+    use super::{CliError, IndexCommandError, TemplateCommandError};
 
     mod conversions {
         use super::*;
@@ -494,6 +540,55 @@ mod tests {
                 help_text(&err),
                 "Check disk space and filesystem health, then retry"
             );
+        }
+
+        #[test]
+        fn template_command_error_display() {
+            let cases = [
+                (
+                    TemplateCommandError::TemplateNotFound {
+                        name: "daily".to_owned(),
+                    },
+                    "Template 'daily' not found. Run 'traces index' to \
+                     re-index available templates.",
+                ),
+                (
+                    TemplateCommandError::RenderFailed {
+                        detail: "missing variable".to_owned(),
+                    },
+                    "Template rendering failed: missing variable",
+                ),
+                (
+                    TemplateCommandError::InvalidOutputPath {
+                        reason: "parent traversal".to_owned(),
+                    },
+                    "Output path is invalid: parent traversal",
+                ),
+                (
+                    TemplateCommandError::DestinationExists {
+                        path: "notes/today.md".to_owned(),
+                    },
+                    "Output file already exists: notes/today.md. Choose a \
+                     different output path.",
+                ),
+                (
+                    TemplateCommandError::WriteFailed {
+                        detail: "permission denied".to_owned(),
+                    },
+                    "Failed to write output: permission denied",
+                ),
+                (
+                    TemplateCommandError::InvalidVarFormat {
+                        value: "missing-equals".to_owned(),
+                    },
+                    "Invalid --var value 'missing-equals'. Expected key=value.",
+                ),
+            ];
+
+            for (err, expected) in cases {
+                assert_eq!(err.to_string(), expected);
+                assert_eq!(CliError::TemplateCommand(err).exit_code(), 2);
+            }
         }
     }
 
