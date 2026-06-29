@@ -1,4 +1,11 @@
-//! CLI handler for the `template` command.
+//! CLI handler for the `template` subcommand.
+//!
+//! Accepts `--input`, `--output`, `--dry-run`/`-n`, and repeated
+//! `--var key=value` flags. `--var` splits on first `=` only. Maps
+//! every `TemplateError` variant to a user-facing
+//! `TemplateCommandError` message. Normal render prints the created
+//! vault-relative path; dry-run prints the rendered content. Output
+//! honours `OutputFormat::Human` (default) and `OutputFormat::Json`.
 
 use std::{collections::HashMap, io::Write, path::Path};
 
@@ -36,7 +43,7 @@ pub(crate) fn run_template<D: DiscoveryPort>(
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     args: TemplateArgs,
-    _format: OutputFormat,
+    format: OutputFormat,
     _verbose: u8,
     out: &mut impl Write,
     _err: &mut impl Write,
@@ -58,7 +65,7 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
     let template_root = spec.to_dir_path().map_err(|e| {
         TemplateCommandError::InvalidOutputPath {
-            reason: e.to_string(),
+            reason: format!("spec: {e}"),
         }
     })?;
     let template_input = normalize_template_input(&args.input);
@@ -66,7 +73,7 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         template_root.as_path().join(format!("{template_input}.md"));
     let name = TemplateName::try_new(&template_path, template_root.as_path())
         .map_err(|e| TemplateCommandError::InvalidOutputPath {
-        reason: e.to_string(),
+        reason: format!("name: {e}"),
     })?;
     let output_path =
         args.output.unwrap_or_else(|| format!("{template_input}.md"));
@@ -85,13 +92,32 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         CreateTemplateOutcome::Preview {
             rendered,
             ..
-        } => writeln!(out, "{}", rendered.as_str())
+        } => match format {
+            OutputFormat::Human => writeln!(out, "{}", rendered.as_str())
+                .map_err(crate::output::stdout_err)?,
+            OutputFormat::Json => writeln!(
+                out,
+                "{}",
+                serde_json::json!({ "preview": rendered.as_str() })
+            )
             .map_err(crate::output::stdout_err)?,
+        },
         CreateTemplateOutcome::Created {
             output_path: created_path,
             ..
-        } => writeln!(out, "{}", created_path.as_path().display())
+        } => match format {
+            OutputFormat::Human => {
+                writeln!(out, "{}", created_path.as_path().display())
+                    .map_err(crate::output::stdout_err)?;
+            }
+            OutputFormat::Json => writeln!(
+                out,
+                "{}",
+                serde_json::json!({ "created": created_path.as_path().display().to_string() })
+            )
             .map_err(crate::output::stdout_err)?,
+        },
+        // ponytail: catch-all for outcome variants not yet handled
         _ => {}
     }
 
@@ -133,14 +159,14 @@ fn map_template_error(err: AppError) -> CliError {
         }
         AppError::Template(TemplateError::Path(e)) => {
             TemplateCommandError::InvalidOutputPath {
-                reason: e.to_string(),
+                reason: format!("path: {e}"),
             }
             .into()
         }
         AppError::Template(TemplateError::Artifact(
             TemplateArtifactError::Path(e),
         )) => TemplateCommandError::InvalidOutputPath {
-            reason: e.to_string(),
+            reason: format!("artifact: {e}"),
         }
         .into(),
         AppError::Template(TemplateError::Artifact(
@@ -164,7 +190,7 @@ fn map_template_error(err: AppError) -> CliError {
         .into(),
         AppError::Template(TemplateError::Name(e)) => {
             TemplateCommandError::InvalidOutputPath {
-                reason: format!("Template name is invalid: {e}"),
+                reason: format!("name: {e}"),
             }
             .into()
         }
@@ -210,8 +236,9 @@ mod tests {
     use traces_fs::error::{WriteError, WriteTargetError};
     use traces_settings::{DiscoveryFlags, service::DiscoveryService};
     use traces_template::{
-        TemplateArtifactError, TemplateEngineError, TemplateError,
-        TemplateName, TemplateNameError,
+        TemplateArtifactError, TemplateBodyError, TemplateDirScanError,
+        TemplateEngineError, TemplateError, TemplateName, TemplateNameError,
+        TemplateReadError, TemplateRepositoryError,
     };
 
     use super::{map_template_error, parse_vars, run_template};
@@ -274,11 +301,15 @@ mod tests {
     }
 
     mod parse_vars {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
         fn parses_single_var() {
-            let parsed = parse_vars(["name=Alice".to_owned()]).unwrap();
+            let result = parse_vars(["name=Alice".to_owned()]);
+            assert!(result.is_ok(), "parse_vars should succeed");
+            let parsed = result.unwrap();
             assert_eq!(
                 parsed,
                 HashMap::from([("name".to_owned(), "Alice".to_owned())])
@@ -287,9 +318,10 @@ mod tests {
 
         #[test]
         fn parses_multiple_vars() {
-            let parsed =
-                parse_vars(["name=Alice".to_owned(), "mode=cli".to_owned()])
-                    .unwrap();
+            let result =
+                parse_vars(["name=Alice".to_owned(), "mode=cli".to_owned()]);
+            assert!(result.is_ok(), "parse_vars should succeed");
+            let parsed = result.unwrap();
             assert_eq!(
                 parsed,
                 HashMap::from([
@@ -301,7 +333,9 @@ mod tests {
 
         #[test]
         fn parses_var_with_equals_in_value() {
-            let parsed = parse_vars(["query=a=b".to_owned()]).unwrap();
+            let result = parse_vars(["query=a=b".to_owned()]);
+            assert!(result.is_ok(), "parse_vars should succeed");
+            let parsed = result.unwrap();
             assert_eq!(parsed.get("query"), Some(&"a=b".to_owned()));
         }
 
@@ -315,10 +349,12 @@ mod tests {
     }
 
     mod run_template_handler {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
-        fn renders_template_and_prints_path() {
+        fn renders_template_to_disk() {
             let (dir, bootstrapper, flags) = make_vault();
             let mut out = Vec::new();
             let mut err = Vec::new();
@@ -335,11 +371,34 @@ mod tests {
             );
 
             assert!(result.is_ok(), "run_template failed: {result:?}");
-            assert_eq!(String::from_utf8(out).unwrap(), "notes/out.md\n");
             assert_eq!(
-                fs::read_to_string(dir.path().join("notes/out.md")).unwrap(),
+                fs::read_to_string(dir.path().join("notes/out.md"))
+                    .expect("output file should exist"),
                 "Hello Alice"
             );
+        }
+
+        #[test]
+        fn prints_path_to_stdout() {
+            let (dir, bootstrapper, flags) = make_vault();
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+
+            let result = run_template(
+                &bootstrapper,
+                Some(flags),
+                dir.path(),
+                args(false),
+                OutputFormat::Human,
+                0,
+                &mut out,
+                &mut err,
+            );
+
+            assert!(result.is_ok(), "run_template failed: {result:?}");
+            let stdout = String::from_utf8(out)
+                .expect("valid utf-8 output from template command");
+            assert_eq!(stdout, "notes/out.md\n");
         }
 
         #[test]
@@ -360,11 +419,12 @@ mod tests {
             );
 
             assert!(result.is_ok(), "run_template failed: {result:?}");
-            assert_eq!(String::from_utf8(out).unwrap(), "notes/out.md\n");
-            assert_eq!(
-                fs::read_to_string(dir.path().join("notes/out.md")).unwrap(),
-                "Hello Alice"
-            );
+            let output = String::from_utf8(out)
+                .expect("valid utf-8 output from template command");
+            assert_eq!(output, "notes/out.md\n");
+            let content = fs::read_to_string(dir.path().join("notes/out.md"))
+                .expect("output file should exist");
+            assert_eq!(content, "Hello Alice");
         }
 
         #[test]
@@ -385,7 +445,9 @@ mod tests {
             );
 
             assert!(result.is_ok(), "run_template failed: {result:?}");
-            assert_eq!(String::from_utf8(out).unwrap(), "Hello Alice\n");
+            let output = String::from_utf8(out)
+                .expect("valid utf-8 output from template command");
+            assert_eq!(output, "Hello Alice\n");
             assert!(!dir.path().join("notes/out.md").exists());
         }
 
@@ -469,16 +531,12 @@ mod tests {
     mod error_mapping {
         use super::*;
 
-        #[expect(
-            clippy::panic,
-            reason = "test helper panic signals unexpected error variant"
-        )]
-        fn template_command_error(err: AppError) -> TemplateCommandError {
+        fn template_command_error(
+            err: AppError,
+        ) -> Option<TemplateCommandError> {
             match map_template_error(err) {
-                CliError::TemplateCommand(err) => err,
-                other => {
-                    panic!("expected TemplateCommand error, got {other:?}")
-                }
+                CliError::TemplateCommand(err) => Some(err),
+                _ => None,
             }
         }
 
@@ -488,7 +546,7 @@ mod tests {
                 name: template_name("missing"),
             });
             assert!(
-                matches!(template_command_error(err), TemplateCommandError::TemplateNotFound { name } if name == "missing")
+                matches!(template_command_error(err), Some(TemplateCommandError::TemplateNotFound { name }) if name == "missing")
             );
         }
 
@@ -502,7 +560,7 @@ mod tests {
                 },
             ));
             assert!(
-                matches!(template_command_error(err), TemplateCommandError::RenderFailed { detail } if detail.contains("daily"))
+                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("daily"))
             );
         }
 
@@ -515,7 +573,7 @@ mod tests {
             ));
             assert!(matches!(
                 template_command_error(err),
-                TemplateCommandError::InvalidOutputPath { .. }
+                Some(TemplateCommandError::InvalidOutputPath { .. })
             ));
         }
 
@@ -527,7 +585,7 @@ mod tests {
                 }),
             ));
             assert!(
-                matches!(template_command_error(err), TemplateCommandError::DestinationExists { path } if path == "notes/out.md")
+                matches!(template_command_error(err), Some(TemplateCommandError::DestinationExists { path }) if path == "notes/out.md")
             );
         }
 
@@ -540,7 +598,7 @@ mod tests {
                 }),
             ));
             assert!(
-                matches!(template_command_error(err), TemplateCommandError::WriteFailed { detail } if detail == "notes/out.md: disk full")
+                matches!(template_command_error(err), Some(TemplateCommandError::WriteFailed { detail }) if detail == "notes/out.md: disk full")
             );
         }
 
@@ -551,8 +609,71 @@ mod tests {
             ));
 
             assert!(
-                matches!(template_command_error(err), TemplateCommandError::InvalidOutputPath { reason } if reason.contains("Template name is invalid"))
+                matches!(template_command_error(err), Some(TemplateCommandError::InvalidOutputPath { reason })                 if reason.starts_with("name: "))
             );
+        }
+
+        #[test]
+        fn maps_body_error() {
+            let err = AppError::Template(TemplateError::Body(
+                TemplateBodyError::Empty,
+            ));
+            assert!(matches!(
+                template_command_error(err),
+                Some(TemplateCommandError::RenderFailed { .. })
+            ));
+        }
+
+        #[test]
+        fn maps_read_error() {
+            let path = std::path::PathBuf::from("test.md");
+            let source = std::io::Error::other("permission denied");
+            let read_err = TemplateReadError::from(traces_fs::ReadError::Io {
+                path,
+                source,
+            });
+            let err = AppError::Template(TemplateError::Read(read_err));
+            assert!(
+                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Could not read"))
+            );
+        }
+
+        #[test]
+        fn maps_repository_error() {
+            let err = AppError::Template(TemplateError::Repository(
+                TemplateRepositoryError::NotFoundByPath(
+                    traces_fs::PathKey::try_new("templates/test.md")
+                        .expect("valid PathKey"),
+                ),
+            ));
+            assert!(
+                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Run 'traces index'"))
+            );
+        }
+
+        #[test]
+        fn maps_scan_error() {
+            let scan_err = TemplateDirScanError::from(
+                traces_fs::error::ScanError::Traversal {
+                    path: std::path::PathBuf::from("templates"),
+                    source: std::io::Error::other("permission denied"),
+                },
+            );
+            let err = AppError::Template(TemplateError::Scan(scan_err));
+            assert!(
+                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Check template directory permissions"))
+            );
+        }
+
+        #[test]
+        fn non_template_error_wraps_in_bootstrap() {
+            let err = AppError::Config(
+                traces_settings::error::ConfigError::Ingestion(
+                    "bad config".into(),
+                ),
+            );
+            let result = map_template_error(err);
+            assert!(matches!(result, CliError::Bootstrap(AppError::Config(_))));
         }
     }
 }

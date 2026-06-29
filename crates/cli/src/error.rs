@@ -247,7 +247,7 @@ impl CliError {
         clippy::match_same_arms,
         reason = "exit-code mapping keeps user-error arms explicit"
     )]
-    pub(crate) fn exit_code(&self) -> i32 {
+    pub(crate) fn exit_code(&self) -> u8 {
         match self {
             Self::Bootstrap(AppError::Discovery(discovery_err)) => {
                 exit_code_for_discovery(discovery_err)
@@ -282,7 +282,7 @@ impl CliError {
     reason = "Flag and Env arms are explicit per exit-code specification; the \
               wildcard catch-all also returning 2 is intentional"
 )]
-fn exit_code_for_discovery(err: &DiscoveryError) -> i32 {
+fn exit_code_for_discovery(err: &DiscoveryError) -> u8 {
     match err {
         DiscoveryError::InvalidAnchorDirectory {
             ..

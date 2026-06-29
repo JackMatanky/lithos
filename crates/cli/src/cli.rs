@@ -330,7 +330,7 @@ mod arg_parsing {
                   production code"
     )]
     #[test]
-    fn short_flag_n_works() {
+    fn short_flag_n_sets_dry_run() {
         let cli = parse(&["traces", "template", "--input", "note", "-n"])
             .expect("valid args");
 

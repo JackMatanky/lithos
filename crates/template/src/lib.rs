@@ -41,7 +41,8 @@ pub use engine::{
     mini_jinja::MiniJinjaEngine,
 };
 pub use error::{
-    TemplateArtifactError, TemplateBodyError, TemplateError, TemplateNameError,
+    TemplateArtifactError, TemplateBodyError, TemplateDirScanError,
+    TemplateError, TemplateNameError, TemplateReadError,
     TemplateRepositoryError,
 };
 pub use raw::RawTemplate;

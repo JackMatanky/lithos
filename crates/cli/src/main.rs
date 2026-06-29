@@ -70,7 +70,7 @@ fn main() -> ExitCode {
             let code = e.exit_code();
             let report = miette::Report::new(e);
             eprintln!("{report:?}");
-            ExitCode::from(u8::try_from(code).unwrap_or(2))
+            ExitCode::from(code)
         }
     }
 }
