@@ -27,7 +27,7 @@ Replace the Repository-backed persistence model with a mise-inspired ephemeral c
 11. **Simplified domain types** — no `VaultId`, `VaultVersion`, `GlobalVersion`, `Version`, `Metadata`, `AppVersion`
 12. **Forbidden-field errors** on GlobalConfig/LocalConfig construction — error now, warn later
 13. **Cache dir** `<base>/.traces/cache/` is created by `AppConfig::create_cache_dir()` after config construction, not by `DiscoveryProcessor` or `DiscoveryOutcome`.
-14. **Config file format** — TOML (default), JSON, YAML — all via serde
+14. **Config file format** — TOML (default), JSON, YAML — all via figment Format providers
 
 ## User Stories
 
@@ -182,10 +182,10 @@ CLI invocation
       → ConfigBuilder::new(vault, global, builder_options)  // Init state
         → .track()                  // Tracked state — checks tracking symlinks
         → .trust()                  // Trusted state — trust_check per candidate
-        → .load_files(reader)       // Loaded state — reads + parses RawConfig
-        → .validate()              // Validated state — TryFrom<RawConfig>
-        → .merge()                 // Ready state — precedence merge
-        → .finalize()              // AppConfig
+        → .load_files()             // Loaded state — reads + parses RawConfig per file
+        → .validate()               // Validated state — TryFrom<RawConfig> for per-source forbidden-field checks
+        → .build_figment()          // Ready state — figment merge(global + local + env) → extract AppConfig
+        → .finalize()              // tracks paths, returns AppConfig
     → app_config.create_cache_dir()
 ```
 
@@ -270,15 +270,15 @@ Component boundaries:
 | `Tracked`    | + tracking status per path                 | → `trust_check()` → `Trusted`              |
 | `Trusted`    | + trust/ignore status per path             | → `load_files()` → `Loaded`                |
 | `Loaded`     | + `RawConfig` values for global + local stack | → `TryFrom` → `Validated`               |
-| `Validated`  | + optional `GlobalConfig` + ordered `LocalConfig` stack | → `merge()` → `Ready`       |
+| `Validated`  | + validated `RawConfig` values (per-source forbidden-field checks passed) | → `build_figment()` → `Ready` |
 | `Ready`      | `AppConfig`                                 | `.finalize() -> AppConfig`                |
 
 - `Tracked` state checks existing tracking symlinks for each candidate path.
 - `Trusted` state calls `trust_check()` per candidate — prompts for untrusted, skips ignored.
-- `Loaded` state reads and deserializes each TOML/JSON/YAML file into `RawConfig`.
-- `Validated` state runs `TryFrom<RawConfig>` → one optional `GlobalConfig` plus an ordered stack of `LocalConfig` values.
-- `Ready` merges global first, then local configs in discovery order (outer ancestor → nearest ancestor), so nearest local config wins.
-- `merge()` errors when no local candidate exists and a command requires an `AppConfig` with a concrete base. Commands that only need global config should use `discover()`/global-specific handling rather than `build_config()`.
+- `Loaded` state reads and deserializes each TOML/JSON/YAML file into `RawConfig` (manual serde, not figment — per-source validation needs the raw value before merge).
+- `Validated` state runs `TryFrom<RawConfig>` per candidate, enforcing forbidden-field rules (`cache` banned in global, `trusted_vaults` banned in local). Errors carry the source file path.
+- `Ready` state builds a figment: `Serialized::defaults(AppConfig::defaults())` as base, then `merge(Serialized::from(&raw, ..))` for each validated global candidate (base layer), then `merge(Serialized::from(&raw, ..))` for each validated local candidate in discovery order (override), then `merge(Env::prefixed("TRACES_"))` for env var overrides. Calls `figment.extract::<AppConfig>()`.
+- `build_figment()` errors when no local candidate exists and a command requires an `AppConfig` with a concrete base. Commands that only need global config should use `discover()`/global-specific handling rather than `build_config()`.
 - `Finalize` tracks discovered paths via `Tracker::track()`.
 
 ### Types
@@ -325,7 +325,7 @@ Component boundaries:
 
 ### Config File Format
 
-Serde handles format polymorphism:
+Per-file deserialization into `RawConfig` uses manual serde dispatch (needed for per-source forbidden-field validation before merge):
 ```rust
 fn deserialize_config(path: &Path, content: &str) -> Result<RawConfig> {
     match path.extension().and_then(|e| e.to_str()) {
@@ -336,7 +336,9 @@ fn deserialize_config(path: &Path, content: &str) -> Result<RawConfig> {
 }
 ```
 
-`serde_json` and `serde_yaml` are optional features (default: TOML only).
+The validated `RawConfig` values feed into figment as `Serialized` providers for merge + extraction into `AppConfig` (see Figment Integration below).
+
+TOML/JSON/YAML format support uses manual serde dispatch with `toml`, `serde_json`, `serde_yaml` as optional Cargo features (default: TOML only). Figment does NOT read config files directly — it receives already-validated `RawConfig` values via `Serialized` providers for the merge+extract step.
 
 ### Path Definitions
 
@@ -392,6 +394,64 @@ No other module defines filesystem path patterns.
 - `rkyv` dependency — no persistence means no archive types needed
 - `trace-db` dependency — removed from settings crate
 - `redb` dependency — removed from settings crate
+
+### Figment Integration
+
+[Figment](https://docs.rs/figment) replaces ConfigBuilder's manual merge logic and typed extraction. The original reasons to avoid figment (multiple Raw* types, repository-backed processor) no longer apply — there is now a single `RawConfig` DTO and no persistence in the pipeline.
+
+**What figment does:**
+- Merges validated config sources with `merge()` (later sources override earlier ones)
+- Injects `TRACES_`-prefixed environment variables as the highest-precedence source via `Env::prefixed("TRACES_")`
+- Extracts a typed `AppConfig` via `Deserialize` with provenance-tracked error messages
+- Provides `Jail` for sandboxed filesystem testing
+
+**What figment does NOT do:**
+- Discovery, trust checking, or file tracking (those remain in `SettingsService`/`ConfigBuilder`)
+- Per-source forbidden-field validation (that happens before figment, per `RawConfig` candidate, with `TryFrom`)
+- Reading config files (manual `deserialize_config` is used so forbidden-field errors carry the source file path)
+
+**Figment build pattern in `ConfigBuilder::build_figment()`:**
+
+```rust
+use figment::{Figment, providers::{Serialized, Env}};
+
+let mut fig = Figment::from(Serialized::defaults(AppConfig::default_values()));
+
+// Global candidates: base layer (lowest precedence)
+for raw in &self.global_validated {
+    fig = fig.merge(Serialized::from(raw));
+}
+// Local candidates: override layer, discovery order (outer → nearest wins)
+for raw in &self.local_validated {
+    fig = fig.merge(Serialized::from(raw));
+}
+// Environment overrides: highest precedence
+fig = fig.merge(Env::prefixed("TRACES_"));
+
+let app_config: AppConfig = fig.extract()?;
+```
+
+**Dependencies:**
+- `figment = { version = "...", features = ["env"] }` — added for merge+extract pipeline. Only the `env` feature is needed (figment does NOT read config files directly).
+- `toml` — required (format dispatch for manual `deserialize_config`)
+- `serde_json` — optional feature (JSON config files)
+- `serde_yaml` — optional feature (YAML config files)
+- `figment/json` and `figment/yaml` features are NOT needed — figment receives in-memory `Serialized` providers, not file streams
+
+**Testing with `Jail`:**
+```rust
+figment::Jail::expect_with(|jail| {
+    jail.create_file("traces.toml", r#"..."#)?;
+    jail.set_env("TRACES_CACHE_DIR", "/tmp/cache");
+    let config: AppConfig = Figment::new()
+        .merge(Toml::file("traces.toml"))
+        .merge(Env::prefixed("TRACES_"))
+        .extract()?;
+    Ok(())
+});
+```
+
+**Note:** ADR 009 (Figment) is no longer superseded — figment is now part of the architecture. The previous ADR conclusion is replaced by this section.
 
 ### Config File Tracking (mise-inspired)
 
@@ -477,6 +537,9 @@ Good tests:
 - **Unit**: `GlobalConfig::try_from` with `RawConfig { cache: Some(...), .. }` → assert forbidden-field error
 - **Unit**: `LocalConfig::try_from` with `RawConfig { trusted_vaults: Some(...), .. }` → assert forbidden-field error
 - **Unit**: `deserialize_config` with `.toml`, `.json`, `.yaml` → all produce same `RawConfig`
+- **Unit**: Figment merge chain with `Serialized::defaults` + `Serialized::from(raw)` for global + local → `extract::<AppConfig>` produces correct precedence
+- **Unit**: `Env::prefixed("TRACES_")` overrides merged config values
+- **Sandboxed**: `figment::Jail` for full-config extraction tests (filesystem + env isolation)
 - **Unit**: Trust module tests with tempdir (create/check/untrust/ignore symlinks)
 - **Unit**: Tracker module tests with tempdir (track/list/clean symlinks)
 - **Unit**: `DiscoveryOutcome` preserves `local` and `global` order with boxed slices
@@ -496,7 +559,6 @@ Prior art: Existing `build_from_layers_regression` tests in `crates/settings/src
 
 ## Out of Scope
 
-- FIGMENT integration (ADR 009) — not currently used, no plan to add
 - Multi-vault workflows (deferred)
 - Config file schema versioning (no project does this)
 - WASM target support for settings crate
@@ -506,7 +568,7 @@ Prior art: Existing `build_from_layers_regression` tests in `crates/settings/src
 
 ## Further Notes
 
-- ADR 009 (Figment) is effectively superseded — the Figment provider pattern was never implemented.
+- ADR 009 (Figment) — now active (see Figment Integration section). Figment handles merge + typed extraction with provenance-tracked errors.
 - ADR 016 (Segregated Repository Traits) — the Repository traits themselves go away, but the Read/Write separation principle still applies if any persistence is added later.
 - ADR 021 (`app` as composition root) remains valid — BootstrapRunner is the composition root, it just calls `SettingsService::build_config()` instead of `Builder::new().build()`.
 - ADR 024 (Bootstrapper as orchestration point) — Bootstrapper → BootstrapRunner rename. Principle unchanged, but no longer takes a Repository or DiscoveryPort.

@@ -60,9 +60,13 @@ Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). D
 - CLI command rewiring or trust commands (issues 09, 10)
 - Architecture tests or doc updates (issue 11)
 
+## Pre-Requisites
+
+- .scratch/settings-redesign/00-pre-work-renames-moves-and-deletions.md — file structure, renames, and dead code removal must be applied first
+
 ## Blocked by
 
-None - can start immediately
+- .scratch/settings-redesign/00-pre-work-renames-moves-and-deletions.md
 
 ## Triage Notes
 
