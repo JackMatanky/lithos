@@ -31,11 +31,11 @@ These components are additive and can be introduced safely:
 
 | File                 | Purpose                                                   |
 | -------------------- | --------------------------------------------------------- |
-| `src/candidate.rs`     | `CandidatePath { base: DirPath, path: FilePath }`           |
+| `src/candidate.rs`     | `CandidatePath { base: DirPath, path: FilePath }` (Move from `src/discovery/service.rs`, including tests) |
 | `src/service.rs`       | `SettingsService` trait + `Service` impl (minimal stubs)    |
 | `src/location.rs`      | Flat `&[&str]` path constants (marker filenames, etc.)      |
-| `src/env.rs`           | `SettingsEnvVars` — env var names and reading               |
-| `src/os_dirs.rs`       | Platform XDG/home/AppData directory resolution              |
+| `src/env_var.rs`       | `SettingsEnvVars` — env var names and reading (Move from `src/discovery/env.rs`, including tests) |
+| `src/os_dirs.rs`       | Platform XDG/home/AppData directory resolution (Move from `src/discovery/env.rs`, including tests) |
 | `src/config/tracker.rs` | `Tracker` module, `pub(crate)` — `track()`, `list_all()`, `clean()` stubs |
 | `src/config/trust.rs`   | `Trust` module, `pub` — `trust()`, `untrust()`, `trust_check()` stubs |
 | `src/config/options.rs` | `ConfigBuilderOptions { trust_mode, auto_confirm }`         |
