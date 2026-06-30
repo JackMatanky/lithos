@@ -1,5 +1,5 @@
 ---
-name: handoff-to-tdd
+name: to-tdd
 disable-model-invocation: true
 description: Compact session into a tight opening prompt for TDD planning. User-invoked.
 argument-hint: "<issue-file-path>"

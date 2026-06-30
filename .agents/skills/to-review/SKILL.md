@@ -1,5 +1,5 @@
 ---
-name: handoff-to-review
+name: to-review
 disable-model-invocation: true
 description: Compact session into a tight opening prompt for adversarial review. User-invoked.
 argument-hint: "<scratch-issue-path>"

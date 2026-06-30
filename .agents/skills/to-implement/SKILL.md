@@ -1,5 +1,5 @@
 ---
-name: handoff-to-implement
+name: to-implement
 disable-model-invocation: true
 description: Compact session into a tight opening prompt for implementation. User-invoked.
 argument-hint: "<scratch-issue-path>"
