@@ -1,15 +1,15 @@
 //! Template configuration types.
 //!
 //! This module owns the template portion of resolved configuration:
-//! [`TemplateDir`] stores the declarative relative template directory,
-//! [`TemplateConfig`] stores the validated resolved config value, and
-//! [`TemplateConfigSpec`] exposes the narrowed contract used by template
+//! `TemplateDir` stores the declarative relative template directory,
+//! `TemplateConfig` stores the validated resolved config value, and
+//! `TemplateConfigSpec` exposes the narrowed contract used by template
 //! discovery and loading code.
 //!
-//! Template paths are intentionally declarative. They use [`RelativeDirPath`]
+//! Template paths are intentionally declarative. They use `RelativeDirPath`
 //! rather than a filesystem-validated directory so configuration can be loaded
 //! even before templates exist. Consumers resolve the declaration against a
-//! vault root through [`TemplateConfigSpec`].
+//! vault root through `TemplateConfigSpec`.
 //!
 //! # Examples
 //!

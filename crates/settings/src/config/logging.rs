@@ -1,6 +1,6 @@
 //! Logging configuration types and validation.
 //!
-//! This module provides the [`Logging`] domain type and [`LogLevel`] enum
+//! This module provides the `Logging` domain type and `LogLevel` enum
 //! to ensure system logging is configured correctly.
 
 #![expect(

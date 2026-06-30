@@ -2,7 +2,7 @@
 //!
 //! This module provides the [`AppConfig`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
-//! defines [`Version`] for tracking configuration history.
+//! defines `Version` for tracking configuration history.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -305,6 +305,22 @@ impl AppConfig {
         let root = self.vault_metadata.root().as_dir_path().clone();
         let directory = self.cache.cache_dir().as_relative_dir().clone();
         Ok(CacheConfigSpec::new(root, directory))
+    }
+
+    /// Creates the configured cache directory on disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ConfigError`] if the directory cannot be created.
+    #[inline]
+    pub fn create_cache_dir(&self) -> Result<(), ConfigError> {
+        std::fs::create_dir_all(
+            self.vault_metadata
+                .root()
+                .as_path()
+                .join(self.cache.directory().as_relative_dir().as_str()),
+        )
+        .map_err(ConfigError::from)
     }
 
     /// Create a new `AppConfig` with the specified version, keeping all other
@@ -988,6 +1004,41 @@ mod tests {
 
     mod config_specs {
         use super::*;
+
+        #[test]
+        fn create_cache_dir_creates_configured_cache_directory() {
+            let root = tempfile::tempdir().expect("temp dir should be created");
+            let cache = root.path().join(".traces-cache").join("nested");
+            let vault = crate::config::raw::RawConfig {
+                cache: Some(crate::config::raw::RawCacheConfig {
+                    directory: Some(".traces-cache/nested".to_owned()),
+                }),
+                ..Default::default()
+            };
+            let config = crate::config::builder::build_from_layers(
+                None,
+                Some(&vault),
+                fixtures::vault_id(),
+                crate::config::vault::VaultRoot::try_new(
+                    root.path().to_path_buf(),
+                )
+                .expect("vault root should be valid"),
+                Version::initial(),
+            )
+            .expect("config should build");
+
+            assert!(
+                !cache.exists(),
+                "test should start without the configured cache directory"
+            );
+
+            config.create_cache_dir().expect("cache dir should be created");
+
+            assert!(
+                cache.is_dir(),
+                "configured cache directory should exist on disk"
+            );
+        }
 
         #[test]
         fn to_schema_spec_respects_custom_schema_config() {

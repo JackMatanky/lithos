@@ -1,6 +1,6 @@
 //! Inbound port for the Discovery domain.
 //!
-//! [`DiscoveryPort`] is the boundary trait that separates bootstrap
+//! `DiscoveryPort` is the boundary trait that separates bootstrap
 //! orchestration from the Discovery implementation. The application layer
 //! calls this trait; the Discovery domain provides the implementation.
 //! This allows the bootstrap layer to be tested with a mock without
@@ -20,7 +20,7 @@ pub trait DiscoveryPort {
     ///
     /// # Errors
     ///
-    /// Returns [`DiscoveryError`] if the anchor directory is invalid, the
+    /// Returns `DiscoveryError` if the anchor directory is invalid, the
     /// ascending traversal fails, or a global config directory cannot be
     /// read.
     fn discover(
@@ -39,9 +39,9 @@ mod tests {
     use traces_fs::{DirPath, FilePath, PathError};
 
     use super::*;
-    use crate::discovery::{
-        report::{DiscoveryReport, LocalTraversalStopReason},
-        service::CandidatePath,
+    use crate::{
+        candidate::CandidatePath,
+        discovery::report::{DiscoveryReport, LocalTraversalStopReason},
     };
 
     // Generate a mock using mock! so the production trait keeps `'_`.

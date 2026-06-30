@@ -4,7 +4,7 @@
 //! pipeline. It locates the vault root and the root marker file on disk and
 //! returns typed path/format metadata, including the resolved cache root. It
 //! does **not** parse, merge, validate, or hash config contents — those
-//! responsibilities belong to [`Config`].
+//! responsibilities belong to `Config`.
 //!
 //! # Boundary Invariants
 //!
@@ -19,11 +19,11 @@
 //!   [`DiscoveryFlags`].
 //! - **`location`** — Cache root types: [`CacheRoot`], [`CacheLocation`],
 //!   [`LocalCacheLocation`], [`GlobalCacheLocation`].
-//! - **`port`** — Inbound port trait ([`DiscoveryPort`]).
+//! - **`port`** — Inbound port trait (`DiscoveryPort`).
 //! - **`report`** — Non-fatal diagnostic output ([`DiscoveryReport`]).
-//! - **`service`** — Concrete service ([`DiscoveryService`]) and boundary data
-//!   ([`DiscoveryResult`], [`CandidatePath`]).
-//! - **`error`** — Fatal error types ([`DiscoveryError`]).
+//! - **`service`** — Concrete service ([`DiscoveryService`]) and discovery
+//!   result boundary data ([`DiscoveryResult`]).
+//! - **`error`** — Fatal error types (`DiscoveryError`).
 //! - **`processor`** — Internal typestate pipeline (crate-private).
 //! - **`probe`** / **`walk`** — Internal filesystem helpers (crate-private).
 //!
@@ -45,9 +45,7 @@
 //! println!("cache root: {:?}", result.cache_root().path());
 //! ```
 //!
-//! [`Config`]: traces_settings
-//! [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
-//! [`DiscoveryError`]: crate::discovery::error::DiscoveryError
+//! `Config`
 
 pub mod context;
 pub mod dirs;
@@ -71,6 +69,4 @@ pub use report::{
     DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
     SkippedCeiling, SkippedCeilingReason,
 };
-pub use service::{
-    CandidatePath, DiscoveryResult, DiscoveryService, DiscoveryServiceConfig,
-};
+pub use service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig};

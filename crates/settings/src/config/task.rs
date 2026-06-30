@@ -1,6 +1,6 @@
 //! Task configuration schema and validation.
 //!
-//! This module provides the [`Task`] aggregate and supporting types
+//! This module provides the `Task` aggregate and supporting types
 //! for defining how Markdown-based tasks are recognized and indexed.
 
 #![allow(

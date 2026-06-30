@@ -5,9 +5,9 @@
 //!
 //! | Stage | Marker type | What happens |
 //! |-------|-------------|--------------|
-//! | 1 | [`Comparison`] | Compare raw config vs cached view (staleness detection) |
-//! | 2 | [`Analysis`] | Field-level change detection (property hashes) |
-//! | 3 | [`Completed`] | Terminal state with processing outcome |
+//! | 1 | `Comparison` | Compare raw config vs cached view (staleness detection) |
+//! | 2 | `Analysis` | Field-level change detection (property hashes) |
+//! | 3 | `Completed` | Terminal state with processing outcome |
 //!
 //! # Architecture
 //!
@@ -31,9 +31,9 @@
 //! # Processing Outcomes
 //!
 //! The processor produces one of three outcomes:
-//! - [`UseCached`] - Config is fresh, use cached domain object
-//! - [`UpdateViewOnly`] - Metadata changed, update view but reuse cached config
-//! - [`Rebuild`] - Properties changed, need to rebuild domain config
+//! - `UseCached` - Config is fresh, use cached domain object
+//! - `UpdateViewOnly` - Metadata changed, update view but reuse cached config
+//! - `Rebuild` - Properties changed, need to rebuild domain config
 //!
 //! # Examples
 //!

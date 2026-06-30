@@ -5,7 +5,7 @@
 //! "Always Valid" by performing strict validation during ingestion and
 //! construction.
 //!
-//! Once a domain type like [`Config`] is constructed, it is guaranteed to be
+//! Once a domain type like `Config` is constructed, it is guaranteed to be
 //! internally consistent and valid for use throughout the system.
 //!
 //! # Features
@@ -53,7 +53,7 @@
 //! The configuration context follows a clean layered architecture:
 //!
 //! ## Core Domain
-//! - [`aggregate`] - The [`Config`] aggregate root with versioning
+//! - [`aggregate`] - The `Config` aggregate root with versioning
 //! - [`cache`] - Cache configuration settings
 //! - [`global`] - GlobalConfig-level configuration settings
 //! - [`schema`] - Schema configuration settings
@@ -64,7 +64,7 @@
 //! - [`processor`] - Typestate processor for single config files
 //! - [`merger`] - Combines processor outcomes with precedence rules
 //! - [`builder`] - Orchestrates: build → process → merge → persist
-//! - [`traces_settings`] - Pre-config vault root and path discovery (Discovery
+//! - `traces_settings` - Pre-config vault root and path discovery (Discovery
 //!   context)
 //!
 //! ## Storage & Views

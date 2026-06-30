@@ -36,13 +36,16 @@ use super::{
         DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
         SkippedCeiling, SkippedCeilingReason,
     },
-    service::{CandidatePath, DiscoveryResult, DiscoveryServiceConfig},
+    service::{DiscoveryResult, DiscoveryServiceConfig},
     walk::BoundedAscent,
 };
-use crate::discovery::{
-    env::XDG_CACHE_HOME,
-    location::{
-        CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
+use crate::{
+    candidate::CandidatePath,
+    discovery::{
+        env::XDG_CACHE_HOME,
+        location::{
+            CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
+        },
     },
 };
 

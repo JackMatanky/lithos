@@ -394,7 +394,7 @@ impl TrustedVaultMap {
 /// A validated path to a trusted vault (absolute).
 ///
 /// This type validates that the path is non-empty and absolute. It performs
-/// only syntactic validation — no filesystem I/O. Use [`to_dir_path`] to
+/// only syntactic validation — no filesystem I/O. Use `to_dir_path` to
 /// convert to a filesystem-backed [`DirPath`].
 ///
 /// # Invariants

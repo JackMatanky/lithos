@@ -1,6 +1,6 @@
 //! Configuration error types.
 //!
-//! This module defines the [`ConfigError`] hierarchy, covering ingestion,
+//! This module defines the `ConfigError` hierarchy, covering ingestion,
 //! validation failures, and storage-layer errors.
 
 use std::path::PathBuf;
@@ -10,8 +10,8 @@ use traces_db::DbError;
 /// Primary error type for configuration operations.
 ///
 /// This enum covers all domain-level validation failures, dependency
-/// violations, and type mismatches that can occur during configuration
-/// construction.
+/// violations, type mismatches, and I/O errors that can occur during
+/// configuration construction.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {
@@ -113,6 +113,17 @@ pub enum ConfigError {
     /// Configuration ingestion failed.
     #[error("Ingestion error: {0}")]
     Ingestion(Box<str>),
+
+    /// I/O error during configuration operations.
+    #[error("I/O error: {0}")]
+    Io(Box<str>),
+}
+
+impl From<std::io::Error> for ConfigError {
+    #[inline]
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err.to_string().into())
+    }
 }
 
 /// Errors returned by configuration repository operations.

@@ -1,6 +1,6 @@
 //! Configuration building orchestration with hybrid staleness detection.
 //!
-//! This module provides the [`Builder`] struct which orchestrates the complete
+//! This module provides the `Builder` struct which orchestrates the complete
 //! configuration loading pipeline:
 //!
 //! 1. **Load raw views** from database (cached file state)
@@ -44,7 +44,7 @@ use crate::config::{
     unused_imports,
     reason = "required for builder construction tests"
 )]
-use crate::discovery::service::{CandidatePath, DiscoveryResult};
+use crate::{candidate::CandidatePath, discovery::service::DiscoveryResult};
 
 /// Build validated config from layered raw sources.
 ///
@@ -196,7 +196,7 @@ pub fn build_from_layers(
 /// - `Repository`: Database persistence and retrieval
 /// - `build_from_layers`: Domain validation and construction
 ///
-/// Callers construct a `Builder` via [`Builder::from_discovery`], which
+/// Callers construct a `Builder` via `Builder::from_discovery`, which
 /// consumes a [`DiscoveryResult`] produced by the Bootstrapper.
 ///
 /// # Second-call / cached-path behaviour
