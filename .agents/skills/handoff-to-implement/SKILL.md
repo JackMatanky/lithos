@@ -1,96 +1,62 @@
 ---
 name: handoff-to-implement
-description: Orchestrates structured handoff from TDD planning to implementation. Invokes the handoff skill to compact the session, then produces a ready-to-use opening prompt for the next agent containing worktree creation, validation, and implementation instructions using GitNexus, rust-best-practices, tdd, and subagent-driven-development skills. Use when the TDD plan is approved and the issue is ready for implementation. Triggered by "handoff to implement", "create handoff for implementation", "ready for next agent", "handoff to implement", or after completing TDD planning.
+disable-model-invocation: true
+description: Compact session into a tight opening prompt for implementation. User-invoked.
 argument-hint: "<scratch-issue-path>"
 ---
 
 # Handoff to Implementation
 
-## Argument
-
-One positional argument:
-
-| # | Argument | Example |
-|---|----------|---------|
-| 1 | scratch-issue-path | `.scratch/feature/ISSUE-42.md` |
-
 ## Workflow
 
-### Step 0 — Pre-flight: ensure GitNexus index is fresh
+### 0 — Freshen index
 
-Before creating the handoff, verify the GitNexus index is current:
+Check GitNexus index freshness (last indexed timestamp vs HEAD). Stale? Run `.gitnexus/run.cjs analyze`.
+**Done:** index matches HEAD commit.
 
-1. Read `gitnexus://repo/lithos/context` to check index freshness (last indexed date vs HEAD).
-2. If stale, run `.gitnexus/run.cjs analyze` or `npx gitnexus analyze` from the project root.
-3. Confirm the index is up to date before proceeding.
+### 1 — Gather state
 
-### Step 1 — Gather session state
+Record: current branch, uncommitted changes (`git status --porcelain`), index freshness (timestamp + SHA), relevant ADR paths, key findings from TDD planning.
+**Done:** all five captured.
 
-Collect factual state to seed the handoff:
+### 2 — Write tight handoff
 
-- Current branch name (`git branch --show-current`).
-- Whether there are uncommitted changes (`git status --porcelain`).
-- GitNexus index freshness confirmation (timestamp and HEAD SHA).
-- Any relevant ADRs discovered during this session (paths only).
-- Key findings from TDD planning that the next agent should know.
+Write the handoff doc directly. Save to OS temp dir (not workspace). Reference existing artifacts (PRDs, ADRs, plans, issues, commits, diffs) by path — don't duplicate. Redact secrets (API keys, passwords, PII).
 
-### Step 2 — Create handoff document
+Include in the doc:
+- **Focus:** implementing the plan in `<scratch-issue-path>`.
+- **Session state** from Step 1.
+- **Suggested skills:** `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, `gitnexus-exploring`, `gitnexus-impact-analysis`, `gitnexus-refactoring`, `gitnexus-debugging`.
+- **Next Agent Instructions** block below (paths substituted).
 
-Invoke the `handoff` skill with argument:
+**Done:** handoff doc written to temp dir, path known.
 
-> Handoff for implementing the plan in `<scratch-issue-path>`
+### 3 — Deliver
 
-Include the following in the handoff document:
-- **Session state** — branch, uncommitted changes, index freshness, ADR paths.
-- A "Suggested skills" section listing: `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, and relevant `gitnexus-*` skills.
-- The **Next Agent Instructions** block below (substituted with actual paths).
-- Any additional context, findings, recommendations, or guidance relevant to the task.
+Present: (1) handoff path, (2) opening prompt with path substituted.
+**Done:** user acknowledged.
 
-### Step 3 — Present deliverables
+## Opening Prompt
 
-Report to the user:
-1. **Handoff document path** — path returned by the handoff skill.
-2. **Opening prompt** — the template below with `<handoff-doc-path>` substituted.
-
-## Opening Prompt Template
-
-Substitute `<handoff-doc-path>` and present to the user as a ready-to-copy block.
-
----
-
-Read the handoff document at `<handoff-doc-path>`.
-
-Use the Skill tool to invoke: `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`.
-
-Follow the instructions in the handoff document. Do not deviate from the approved implementation plan without approval.
-
----
+```
+Read handoff at <handoff-doc-path>.
+Invoke `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`, `gitnexus-refactoring`, `gitnexus-debugging`.
+Follow handoff instructions. No deviation from approved plan. Work only in worktree.
+```
 
 ## Next Agent Instructions
 
-Copy into the handoff document with `<scratch-issue-path>` replaced. These are the minimum required instructions — include any additional context, findings, recommendations, or guidance relevant to the task.
+Copy into handoff doc (substitute paths).
 
----
-
-Your deliverables:
-1. Implement the approved plan in a dedicated worktree.
+**Objectives:**
+1. Implement the approved plan for `<scratch-issue-path>` in a dedicated worktree.
 2. Fulfill all acceptance criteria.
+3. Validate approach against the codebase via GitNexus + `rust-best-practices` + `tdd`.
 
-Process:
-1. `use_skill "using-git-worktrees"` — create a dedicated worktree for `<scratch-issue-path>`.
-2. Review the issue, acceptance criteria, approved implementation plan, and relevant code.
-3. Use GitNexus (query, context, impact), `rust-best-practices`, and `tdd` skills to validate the implementation approach against the existing codebase.
-4. If no blockers are found, implement using `use_skill "subagent-driven-development"` together with the above skills.
+**Process:**
+1. Use `using-git-worktrees` to create a dedicated worktree.
+2. Review issue, ACs, plan, and relevant code.
+3. Found blockers? Present for review; do not implement until resolved.
+4. Implement via `subagent-driven-development` + above skills.
 
-Review requirements:
-- Verify the issue, acceptance criteria, implementation plan, and codebase remain consistent.
-- Identify any ambiguities, inconsistencies, dependencies, implementation risks, or unaddressed side effects.
-- If any blockers are identified, present them for review and do not proceed until resolved.
-
-Implementation requirements:
-- Treat the approved implementation plan as the source of truth.
-- Fulfill all acceptance criteria.
-- All agent and subagent work occurs only in the dedicated worktree.
-
-Constraints:
-- Do not deviate from the approved implementation plan without approval.
+**Constraints:** no deviation from approved plan without approval.

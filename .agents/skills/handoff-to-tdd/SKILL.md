@@ -28,7 +28,7 @@ Write the handoff doc directly. Save to OS temp dir (not workspace). Reference e
 Include in the doc:
 - **Focus:** TDD planning for `<issue-file-path>` in context of `<scratch-folder-path>`.
 - **Session state** from Step 1.
-- **Suggested skills:** `rust-best-practices`, `tdd`, `gitnexus-*`.
+- **Suggested skills:** `rust-best-practices`, `tdd`, `gitnexus-exploring`, `gitnexus-impact-analysis`.
 - **Next Agent Instructions** block below (paths substituted).
 
 **Done:** handoff doc written to temp dir, path known.
