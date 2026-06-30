@@ -2,7 +2,7 @@
 
 **Status**: ready-for-agent
 **Created**: 2026-06-30
-**Builds on**: `.scratch/filesystem-indexer/PRD.md` (foundation — `crates/indexer/` already implemented)
+**Builds on**: `.scratch/filesystem-indexer/foundation/PRD.md` (foundation — `crates/indexer/` already implemented)
 **Supersedes**: `.scratch/filesystem-indexer/07-vault-deletion.md` (vault deletion folds into this work)
 
 ---

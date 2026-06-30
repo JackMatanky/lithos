@@ -43,8 +43,8 @@ The agent should:
 
 ## Blocked by
 
-- 03-ports-and-adapters.md
-- 04-application-service.md
+- foundation/03-ports-and-adapters.md
+- foundation/04-application-service.md
 - Refactor `crates/note/` integration tests to remove `traces_vault::VaultProcessor` dependency
 
 ---

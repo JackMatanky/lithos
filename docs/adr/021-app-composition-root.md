@@ -108,6 +108,6 @@ Add `[[bin]]` to `traces-core` and embed composition logic in `main.rs`.
 
 - [Master Hexagonal Architecture in Rust](https://www.howtocodeit.com/guides/master-hexagonal-architecture-in-rust) — composition root pattern
 - `crates/application` (deprecated) — prior art and cautionary example
-- `.scratch/filesystem-indexer/PRD.md` — Indexer PRD that triggered this decision
+- `.scratch/filesystem-indexer/foundation/PRD.md` — Indexer PRD that triggered this decision
 - ADR 016 — segregated repository traits (port ownership pattern this extends)
 - ADR 018 — explicit redb adapter seam (adapter injection precedent)

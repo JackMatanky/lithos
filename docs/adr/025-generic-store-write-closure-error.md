@@ -126,5 +126,5 @@ is inferred — no call-site change).
 - ADR 005 — error handling (typed errors, no smuggling)
 - ADR 018 — explicit redb adapter seam (adapter owns its error translation)
 - `crates/db/CONTEXT.md` — "Error Kind" invariant; business semantics Not Owned Here
-- `.scratch/filesystem-indexer/06.5-comprehensive-review.md` — finding R4
-- `.scratch/filesystem-indexer/06.7-tdd-plan.md` — Slice 2.3
+- `.scratch/filesystem-indexer/foundation/06.5-comprehensive-review.md` — finding R4
+- `.scratch/filesystem-indexer/foundation/06.7-tdd-plan.md` — Slice 2.3

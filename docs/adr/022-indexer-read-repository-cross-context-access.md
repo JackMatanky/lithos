@@ -99,4 +99,4 @@ downstream adapters can build their own read-only accessors.
 - ADR 016 — segregated repository traits (port ownership rule)
 - ADR 018 — explicit redb adapter seam (adapter injection precedent)
 - ADR 021 — `traces-core::app` composition root (injection site for `IndexerReadRepository`)
-- `.scratch/filesystem-indexer/PRD.md` Section 10 — `FILES`/`DIRS` table ownership
+- `.scratch/filesystem-indexer/foundation/PRD.md` Section 10 — `FILES`/`DIRS` table ownership
