@@ -129,3 +129,13 @@ This is the correct first migration slice. It creates the new seam without delet
 **Cycle 6: Visibility & Lints Hardening**
 - **Test:** Run `cargo check` and `cargo clippy`.
 - **Implement:** Export `SettingsService`, `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, and `DiscoveryOutcome` as `pub` from `crates/settings/src/lib.rs`. Ensure internal components remain `pub(crate)`.
+
+## Implementation Notes
+
+- Implemented on branch `settings-service-boundary` in commit `c4fe9ee1` (`feat(settings): add service boundary`).
+- `CandidatePath` now uses the standalone `crates/settings/src/candidate.rs` type across discovery, config, and app bootstrap call sites. No compatibility alias was added.
+- `crates/settings/src/service.rs` defines the boundary DTOs (`DiscoveryOptions`, `ConfigBuilderOptions`, `DiscoveryOutcome`), `TrustMode`, `SettingsError`, the `SettingsService` trait, and a stub `Service` implementation returning `SettingsError::PipelineNotImplemented` until later pipeline slices wire behavior.
+- `SettingsError` uses `thiserror`; no `anyhow` was introduced in `traces-settings`.
+- `AppConfig::create_cache_dir()` was added on the aggregate root and creates the configured cache directory with `std::fs::create_dir_all`.
+- `crates/settings/tests/service_boundary.rs` covers the public API shape and borrow semantics. `crates/settings/src/config/aggregate.rs` covers cache directory creation.
+- Verification before commit: `mise run verify` passed; GitNexus staged change detection reported LOW risk and 0 affected flows.
