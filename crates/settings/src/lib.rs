@@ -44,3 +44,7 @@ pub use discovery::{
     service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
 pub use env_var::SettingsEnvVars;
+pub use service::{
+    ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome, Service,
+    SettingsError, SettingsService, TrustMode,
+};

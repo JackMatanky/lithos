@@ -102,10 +102,7 @@ mod tests {
             "config/builder.rs must not use DiscoveryPolicy"
         );
         assert!(
-            content.contains("discovery::service::DiscoveryResult")
-                || content.contains(
-                    "discovery::service::{CandidatePath, DiscoveryResult}"
-                ),
+            content.contains("discovery::service::DiscoveryResult"),
             "config/builder.rs must import DiscoveryResult from \
              discovery::service only"
         );

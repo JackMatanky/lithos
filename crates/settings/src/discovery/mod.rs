@@ -21,8 +21,8 @@
 //!   [`LocalCacheLocation`], [`GlobalCacheLocation`].
 //! - **`port`** — Inbound port trait ([`DiscoveryPort`]).
 //! - **`report`** — Non-fatal diagnostic output ([`DiscoveryReport`]).
-//! - **`service`** — Concrete service ([`DiscoveryService`]) and boundary data
-//!   ([`DiscoveryResult`], [`CandidatePath`]).
+//! - **`service`** — Concrete service ([`DiscoveryService`]) and discovery
+//!   result boundary data ([`DiscoveryResult`]).
 //! - **`error`** — Fatal error types ([`DiscoveryError`]).
 //! - **`processor`** — Internal typestate pipeline (crate-private).
 //! - **`probe`** / **`walk`** — Internal filesystem helpers (crate-private).
@@ -71,6 +71,4 @@ pub use report::{
     DiscoveryReport, GlobalResolutionSkipReason, LocalTraversalStopReason,
     SkippedCeiling, SkippedCeilingReason,
 };
-pub use service::{
-    CandidatePath, DiscoveryResult, DiscoveryService, DiscoveryServiceConfig,
-};
+pub use service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig};

@@ -39,9 +39,9 @@ mod tests {
     use traces_fs::{DirPath, FilePath, PathError};
 
     use super::*;
-    use crate::discovery::{
-        report::{DiscoveryReport, LocalTraversalStopReason},
-        service::CandidatePath,
+    use crate::{
+        candidate::CandidatePath,
+        discovery::report::{DiscoveryReport, LocalTraversalStopReason},
     };
 
     // Generate a mock using mock! so the production trait keeps `'_`.

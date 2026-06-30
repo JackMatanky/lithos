@@ -1,63 +1,27 @@
 //! Service facade, configuration, and boundary data for the redesigned
 //! discovery service.
 
-use traces_fs::{DirPath, FilePath};
+use traces_fs::DirPath;
 
-use crate::discovery::{
-    context::DiscoveryContext,
-    error::{DiscoveryError, ServiceConfigError},
-    location::CacheRoot,
-    policy::{
-        BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS, MarkerPattern,
-        VAULT_MARKER_PATTERNS,
+use crate::{
+    candidate::CandidatePath,
+    discovery::{
+        context::DiscoveryContext,
+        error::{DiscoveryError, ServiceConfigError},
+        location::CacheRoot,
+        policy::{
+            BOUNDARY_MARKER_PATTERNS, GLOBAL_MARKER_PATTERNS, MarkerPattern,
+            VAULT_MARKER_PATTERNS,
+        },
+        port::DiscoveryPort,
+        processor::{
+            AscendingTraversal, CacheResolution, DiscoveryProcessor,
+            EnvOverride, ExplicitOverrideBranch, Finalized, FlagBranch,
+            FlagOverride, GlobalResolution,
+        },
+        report::DiscoveryReport,
     },
-    port::DiscoveryPort,
-    processor::{
-        AscendingTraversal, CacheResolution, DiscoveryProcessor, EnvOverride,
-        ExplicitOverrideBranch, Finalized, FlagBranch, FlagOverride,
-        GlobalResolution,
-    },
-    report::DiscoveryReport,
 };
-
-/// A validated candidate config path and the base directory it was found from.
-///
-/// Both `base` and `path` are filesystem-validated at construction.
-/// The `base` directory is the starting point used to resolve `path`
-/// during a traversal or global probe pass.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CandidatePath {
-    /// Base directory used to resolve the candidate.
-    base: DirPath,
-    /// Candidate config file path.
-    path: FilePath,
-}
-
-impl CandidatePath {
-    /// Creates a validated discovery candidate path.
-    #[inline]
-    #[must_use]
-    pub fn new(base: DirPath, path: FilePath) -> Self {
-        Self {
-            base,
-            path,
-        }
-    }
-
-    /// Returns the base directory used to resolve this candidate.
-    #[inline]
-    #[must_use]
-    pub fn base(&self) -> &DirPath {
-        &self.base
-    }
-
-    /// Returns the candidate config file path.
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> &FilePath {
-        &self.path
-    }
-}
 
 /// Owned vault and global candidate slices returned by
 /// [`DiscoveryResult::candidates`].

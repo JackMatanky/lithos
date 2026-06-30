@@ -236,9 +236,8 @@ mod tests {
     use traces_fs::{DirPath, FilePath, PathError};
     use traces_settings::{
         DiscoveryContext, DiscoveryError,
-        discovery::service::{
-            CandidatePath, DiscoveryResult, DiscoveryService,
-        },
+        candidate::CandidatePath,
+        discovery::service::{DiscoveryResult, DiscoveryService},
         report::{
             DiscoveryReport, GlobalResolutionSkipReason,
             LocalTraversalStopReason, SkippedCeiling, SkippedCeilingReason,
@@ -629,7 +628,7 @@ mod tests {
         use mockall::predicate::always;
         use traces_fs::{DirPath, FilePath};
         use traces_settings::{
-            discovery::service::{CandidatePath, DiscoveryResult},
+            candidate::CandidatePath, discovery::service::DiscoveryResult,
             storage::testing::InMemoryRepository,
         };
 

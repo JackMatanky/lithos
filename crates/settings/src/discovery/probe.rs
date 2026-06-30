@@ -11,7 +11,7 @@ use traces_fs::{
     path::{DirPath, FilePath},
 };
 
-use crate::discovery::service::CandidatePath;
+use crate::candidate::CandidatePath;
 
 /// Infallible directory probe that checks for marker files by iterating
 /// patterns × format precedence.

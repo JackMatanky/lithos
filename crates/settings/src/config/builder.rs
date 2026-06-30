@@ -44,7 +44,7 @@ use crate::config::{
     unused_imports,
     reason = "required for builder construction tests"
 )]
-use crate::discovery::service::{CandidatePath, DiscoveryResult};
+use crate::{candidate::CandidatePath, discovery::service::DiscoveryResult};
 
 /// Build validated config from layered raw sources.
 ///
