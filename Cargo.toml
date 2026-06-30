@@ -53,7 +53,7 @@ regex = "1.12"
 walkdir = "2.5"
 
 # Testing
-mockall = "0.13"
+mockall = "0.15"
 pretty_assertions = "1.4"
 proptest = "1.11"
 rstest = "0.26"
