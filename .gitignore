@@ -178,3 +178,4 @@ artifacts/
 vendor/
 .gitnexus
 .worktrees/
+.rust-docs/
