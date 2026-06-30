@@ -34,7 +34,7 @@ pub type DiscoveryParts =
 /// Pure discovery output consumed by downstream configuration loading.
 ///
 /// Candidates are stored as boxed slices — the list is frozen once
-/// [`DiscoveryProcessor::finalize`] is called and never grows after that
+/// `DiscoveryProcessor::finalize` is called and never grows after that
 /// point, so `Box<[T]>` communicates immutability and avoids carrying
 /// unused `Vec` capacity into downstream callers.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -121,7 +121,7 @@ impl DiscoveryResult {
 /// application run: marker patterns, boundary markers, global directories,
 /// and traversal policy. Per-invocation state like `suppress_global`,
 /// explicit paths, and anchor directory belong in
-/// [`DiscoveryContext`](crate::discovery::context::DiscoveryContext).
+/// [`DiscoveryContext`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiscoveryServiceConfig {
     /// Ordered marker patterns for vault/local config candidates.
@@ -180,18 +180,15 @@ impl DiscoveryServiceConfig {
     }
 }
 
-/// The concrete discovery service that will implement [`DiscoveryPort`].
+/// The concrete discovery service that will implement `DiscoveryPort`.
 ///
 /// Construction validates that the provided configuration is internally
 /// consistent. No discovery execution happens at construction time.
 ///
 /// This type is `pub` so that external crates can name the concrete
-/// bootstrapper type returned by [`Bootstrapper::from_platform`].
+/// bootstrapper type returned by `Bootstrapper::from_platform`.
 /// Construction is still restricted to crate-internal code via the
 /// `pub(crate)` [`DiscoveryService::new`] constructor.
-///
-/// [`DiscoveryPort`]: crate::discovery::port::DiscoveryPort
-/// [`Bootstrapper::from_platform`]: traces_app::bootstrap::Bootstrapper::from_platform
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiscoveryService {
     /// Stable service configuration.

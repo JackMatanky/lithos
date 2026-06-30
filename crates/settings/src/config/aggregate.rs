@@ -2,7 +2,7 @@
 //!
 //! This module provides the [`AppConfig`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
-//! defines [`Version`] for tracking configuration history.
+//! defines `Version` for tracking configuration history.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -311,20 +311,16 @@ impl AppConfig {
     ///
     /// # Errors
     ///
-    /// Returns an I/O error if the directory cannot be created.
-    #[expect(
-        deprecated,
-        reason = "create_cache_dir() preserves the AppConfig cache boundary \
-                  for this migration step"
-    )]
+    /// Returns a [`ConfigError`] if the directory cannot be created.
     #[inline]
-    pub fn create_cache_dir(&self) -> std::io::Result<()> {
+    pub fn create_cache_dir(&self) -> Result<(), ConfigError> {
         std::fs::create_dir_all(
             self.vault_metadata
                 .root()
                 .as_path()
-                .join(self.cache.cache_dir().as_relative_dir().as_str()),
+                .join(self.cache.directory().as_relative_dir().as_str()),
         )
+        .map_err(ConfigError::from)
     }
 
     /// Create a new `AppConfig` with the specified version, keeping all other

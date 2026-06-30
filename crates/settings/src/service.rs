@@ -12,24 +12,109 @@ use crate::{
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DiscoveryOptions {
     /// Directory or file path where discovery begins.
-    pub anchor: PathBuf,
+    anchor: PathBuf,
     /// Explicit config file supplied by the caller.
-    pub config_file: Option<PathBuf>,
+    config_file: Option<PathBuf>,
     /// Explicit vault directory supplied by the caller.
-    pub vault_dir: Option<PathBuf>,
+    vault_dir: Option<PathBuf>,
     /// Whether global config discovery should be skipped.
-    pub suppress_global: bool,
+    suppress_global: bool,
+}
+
+impl DiscoveryOptions {
+    /// Create new discovery options.
+    #[must_use]
+    #[inline]
+    pub fn new(
+        anchor: PathBuf,
+        config_file: Option<PathBuf>,
+        vault_dir: Option<PathBuf>,
+        suppress_global: bool,
+    ) -> Self {
+        Self {
+            anchor,
+            config_file,
+            vault_dir,
+            suppress_global,
+        }
+    }
+
+    /// Directory or file path where discovery begins.
+    #[must_use]
+    #[inline]
+    pub fn anchor(&self) -> &PathBuf {
+        &self.anchor
+    }
+
+    /// Explicit config file supplied by the caller.
+    #[must_use]
+    #[inline]
+    pub fn config_file(&self) -> Option<&PathBuf> {
+        self.config_file.as_ref()
+    }
+
+    /// Explicit vault directory supplied by the caller.
+    #[must_use]
+    #[inline]
+    pub fn vault_dir(&self) -> Option<&PathBuf> {
+        self.vault_dir.as_ref()
+    }
+
+    /// Whether global config discovery should be skipped.
+    #[must_use]
+    #[inline]
+    pub fn suppress_global(&self) -> bool {
+        self.suppress_global
+    }
 }
 
 /// Public discovery output for settings service callers.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DiscoveryOutcome {
     /// Vault-local candidate config paths.
-    pub vault: Box<[CandidatePath]>,
+    vault: Box<[CandidatePath]>,
     /// Global candidate config paths.
-    pub global: Box<[CandidatePath]>,
+    global: Box<[CandidatePath]>,
     /// Resolved cache root for settings data.
-    pub cache_root: CacheRoot,
+    cache_root: CacheRoot,
+}
+
+impl DiscoveryOutcome {
+    /// Create new discovery outcome.
+    #[must_use]
+    #[inline]
+    pub fn new(
+        vault: Box<[CandidatePath]>,
+        global: Box<[CandidatePath]>,
+        cache_root: CacheRoot,
+    ) -> Self {
+        Self {
+            vault,
+            global,
+            cache_root,
+        }
+    }
+
+    /// Vault-local candidate config paths.
+    #[must_use]
+    #[inline]
+    pub fn vault(&self) -> &[CandidatePath] {
+        &self.vault
+    }
+
+    /// Global candidate config paths.
+    #[must_use]
+    #[inline]
+    pub fn global(&self) -> &[CandidatePath] {
+        &self.global
+    }
+
+    /// Resolved cache root for settings data.
+    #[must_use]
+    #[inline]
+    pub fn cache_root(&self) -> &CacheRoot {
+        &self.cache_root
+    }
 }
 
 /// Trust behavior for config building.
@@ -45,12 +130,39 @@ pub enum TrustMode {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ConfigBuilderOptions {
     /// Trust behavior used during config building.
-    pub trust_mode: TrustMode,
+    trust_mode: TrustMode,
     /// Whether prompts should be accepted automatically.
-    pub auto_confirm: bool,
+    auto_confirm: bool,
+}
+
+impl ConfigBuilderOptions {
+    /// Create new config builder options.
+    #[must_use]
+    #[inline]
+    pub fn new(trust_mode: TrustMode, auto_confirm: bool) -> Self {
+        Self {
+            trust_mode,
+            auto_confirm,
+        }
+    }
+
+    /// Trust behavior used during config building.
+    #[must_use]
+    #[inline]
+    pub fn trust_mode(&self) -> TrustMode {
+        self.trust_mode
+    }
+
+    /// Whether prompts should be accepted automatically.
+    #[must_use]
+    #[inline]
+    pub fn auto_confirm(&self) -> bool {
+        self.auto_confirm
+    }
 }
 
 /// Errors returned by the settings service boundary.
+#[must_use]
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
     /// Discovery failed before config construction could begin.

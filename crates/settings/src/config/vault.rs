@@ -2,7 +2,7 @@
 //!
 //! This module defines the [`LocalConfig`] configuration, which contains
 //! vault-specific settings and overrides for global defaults. It also
-//! manages [`VaultId`] and [`VaultRoot`].
+//! manages `VaultId` and `VaultRoot`.
 
 use std::path::{Path, PathBuf};
 
@@ -356,7 +356,7 @@ fn parse_schema(
 /// Metadata for a specific vault.
 ///
 /// This struct holds the identity, root path, and versioning information
-/// for a vault. It is stored as part of the [`Config`] aggregate.
+/// for a vault. It is stored as part of the `Config` aggregate.
 ///
 /// # Invariants
 ///

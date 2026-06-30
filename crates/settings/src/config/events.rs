@@ -1,6 +1,6 @@
 //! Configuration domain events.
 //!
-//! This module defines the [`Events`] emitted when configuration state
+//! This module defines the `Events` emitted when configuration state
 //! changes, allowing other contexts to react to updates.
 
 #![expect(

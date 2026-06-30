@@ -1,15 +1,15 @@
 //! Cache configuration types.
 //!
 //! This module owns the cache portion of resolved configuration:
-//! [`CacheDir`] stores the declarative relative cache directory,
-//! [`CacheConfig`] stores the validated resolved config value, and
-//! [`CacheConfigSpec`] exposes the narrowed contract consumed by cache-facing
+//! `CacheDir` stores the declarative relative cache directory,
+//! `CacheConfig` stores the validated resolved config value, and
+//! `CacheConfigSpec` exposes the narrowed contract consumed by cache-facing
 //! code.
 //!
-//! Config paths remain declarative here. They use [`RelativeDirPath`] instead
+//! Config paths remain declarative here. They use `RelativeDirPath` instead
 //! of filesystem-validated paths so configuration can be parsed before the
 //! cache directory exists on disk. Consumers that need filesystem paths should
-//! use [`CacheConfigSpec`] to resolve the declaration against a vault root.
+//! use `CacheConfigSpec` to resolve the declaration against a vault root.
 //!
 //! # Examples
 //!
@@ -39,7 +39,7 @@ use super::error::ConfigError;
 pub struct CacheDir(RelativeDirPath);
 
 impl CacheDir {
-    /// Creates a `CacheDir` from a validated [`RelativeDirPath`].
+    /// Creates a `CacheDir` from a validated `RelativeDirPath`.
     #[inline]
     #[must_use]
     pub const fn new(cache_dir: RelativeDirPath) -> Self {
@@ -107,6 +107,13 @@ impl CacheConfig {
         Self {
             cache_dir,
         }
+    }
+
+    /// Returns the configured cache directory.
+    #[inline]
+    #[must_use]
+    pub const fn directory(&self) -> &CacheDir {
+        &self.cache_dir
     }
 
     /// Returns the configured cache directory.

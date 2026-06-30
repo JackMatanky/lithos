@@ -1,6 +1,6 @@
 //! Frontmatter metadata key configuration.
 //!
-//! This module defines the [`Frontmatter`] keys used when parsing
+//! This module defines the `Frontmatter` keys used when parsing
 //! metadata from note files.
 
 use rkyv::{Archive, Deserialize, Serialize};
