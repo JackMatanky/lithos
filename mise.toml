@@ -16,6 +16,7 @@ pre-commit = "latest"
 "cargo:cargo-nextest" = "latest"
 "cargo:critcmp" = "latest"
 "cargo:wasm-pack" = "latest"
+"cargo:rust-docs-mcp" = "latest"
 
 # ------------------------------------------------------------- #
 #                           SETTINGS                            #
