@@ -2,11 +2,11 @@
 title: 01-define-settings-service-boundary
 category: enhancement
 label: ready-for-agent
-status: ready
-branch: issue-01-define-settings-service-boundary
-merge_commit: null
+status: completed
+branch: settings-service-boundary
+merge_commit: 00da4aed
 date_created: 2026-06-29
-date_completed: null
+date_completed: 2026-06-30
 ---
 
 # Define SettingsService Boundary
@@ -37,17 +37,17 @@ Note: `AppConfig` is referenced in this slice's AC (via `create_cache_dir()`). D
 
 ## Acceptance criteria
 
-- [ ] `SettingsService` is the documented public inbound boundary for settings.
-- [ ] Public DTOs exist for `DiscoveryOptions`, `ConfigBuilderOptions`, and `DiscoveryOutcome`.
-- [ ] `DiscoveryOptions` contains CLI/runtime discovery inputs, not environment variables.
-- [ ] `ConfigBuilderOptions` contains config-build inputs such as trust mode and auto-confirm.
-- [ ] `SettingsService` exposes `discover` and `build_config` with the PRD semantics, even if implementation delegates internally for now.
-- [ ] `build_config` receives `(vault: &[CandidatePath], global: &[CandidatePath], options: ConfigBuilderOptions)` directly, not a `DiscoveryOutcome` — the ConfigBuilder only needs candidates.
-- [ ] `CandidatePath` is a public type in `src/candidate.rs`, shared between discovery and config.
-- [ ] Cache dir creation is on `AppConfig::create_cache_dir()`, not on `SettingsService`.
-- [ ] Existing public callers continue to compile.
-- [ ] Tests or compile-time checks cover the new API shape.
-- [ ] Public types follow the PRD visibility hardening: `SettingsService` (trait + impl), `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, `DiscoveryOutcome` are `pub`. Everything else is `pub(crate)` or private.
+- [x] `SettingsService` is the documented public inbound boundary for settings.
+- [x] Public DTOs exist for `DiscoveryOptions`, `ConfigBuilderOptions`, and `DiscoveryOutcome`.
+- [x] `DiscoveryOptions` contains CLI/runtime discovery inputs, not environment variables.
+- [x] `ConfigBuilderOptions` contains config-build inputs such as trust mode and auto-confirm.
+- [x] `SettingsService` exposes `discover` and `build_config` with the PRD semantics, even if implementation delegates internally for now.
+- [x] `build_config` receives `(vault: &[CandidatePath], global: &[CandidatePath], options: ConfigBuilderOptions)` directly, not a `DiscoveryOutcome` — the ConfigBuilder only needs candidates.
+- [x] `CandidatePath` is a public type in `src/candidate.rs`, shared between discovery and config.
+- [x] Cache dir creation is on `AppConfig::create_cache_dir()`, not on `SettingsService`.
+- [x] Existing public callers continue to compile.
+- [x] Tests or compile-time checks cover the new API shape.
+- [x] Public types follow the PRD visibility hardening: `SettingsService` (trait + impl), `CandidatePath`, `DiscoveryOptions`, `ConfigBuilderOptions`, `DiscoveryOutcome` are `pub`. Everything else is `pub(crate)` or private.
 
 ## Out of Scope
 
@@ -139,3 +139,11 @@ This is the correct first migration slice. It creates the new seam without delet
 - `AppConfig::create_cache_dir()` was added on the aggregate root and creates the configured cache directory with `std::fs::create_dir_all`.
 - `crates/settings/tests/service_boundary.rs` covers the public API shape and borrow semantics. `crates/settings/src/config/aggregate.rs` covers cache directory creation.
 - Verification before commit: `mise run verify` passed; GitNexus staged change detection reported LOW risk and 0 affected flows.
+- DTOs were later encapsulated (private fields, constructors + accessors) in refactoring pass.
+- All broken intra-doc links fixed across 17 files (43 warnings eliminated).
+- `CacheConfig::directory()` added as non-deprecated accessor; `create_cache_dir()` migrated off deprecated `cache_dir()`.
+- `ConfigError::Io` variant added with `From<std::io::Error>`; `create_cache_dir()` now returns `Result<(), ConfigError>`.
+- `#[must_use]` added to `SettingsError`.
+- `pretty_assertions` added to `candidate.rs` unit tests.
+- `service_boundary.rs` tests restructured into Structure A (submodules per concern).
+- Final commit: `00da4aed` (`refactor(settings): encapsulate DTOs, fix docs, improve error types`).
