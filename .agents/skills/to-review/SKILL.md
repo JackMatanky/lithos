@@ -22,7 +22,23 @@ Record: current branch, uncommitted changes (`git status --porcelain`), index fr
 
 **Done:** all captured.
 
-### 2 — Write tight handoff
+### 2 — Secure implementation commits
+
+If the worktree path exists, switch to it. Run `git status --porcelain`. If uncommitted implementation files exist (excluding the issue file), stage and commit them all with a descriptive conventional commit message. This puts all implementation work on a commit before the issue doc update, so rolling back implementation won't revert the issue notes.
+
+If no worktree, do the same in the current repo.
+
+**Done:** all implementation changes committed.
+
+### 3 — Update issue with implementation notes
+
+If the worktree path exists, switch to it. Locate `<scratch-issue-path>` and append implementation notes: status, key findings, changes made, any deviations or decisions. Then stage and commit ONLY the issue file. Use a conventional commit message (e.g., `docs(issue): update with implementation notes`).
+
+If no worktree, do the same in the current working directory.
+
+**Done:** issue file updated, staged, committed — only that file.
+
+### 4 — Write tight handoff
 
 Write the handoff doc directly. Save to OS temp dir (not workspace). Reference existing artifacts (PRDs, ADRs, plans, issues, commits, diffs) by path — don't duplicate. Redact secrets (API keys, passwords, PII).
 
@@ -35,7 +51,7 @@ Include in the doc:
 
 **Done:** handoff doc written to temp dir, path known.
 
-### 3 — Deliver
+### 5 — Deliver
 
 Present: (1) handoff path, (2) opening prompt with path substituted.
 **Done:** user acknowledged.
