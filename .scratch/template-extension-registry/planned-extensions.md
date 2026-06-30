@@ -2,7 +2,7 @@
 
 This file is a planning input for the dedicated `template-extension-registry` phase. It is explicitly out of scope for `template-foundation`.
 
-Foundation uses MiniJinja built-ins only and does not implement `TemplateExtension`, `ExtensionRegistry`, or Lithos custom modules.
+Foundation uses MiniJinja built-ins only and does not implement `TemplateExtension`, `ExtensionRegistry`, or Traces custom modules.
 
 All operations are grouped into modules.
 
