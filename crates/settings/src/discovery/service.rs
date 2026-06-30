@@ -14,7 +14,7 @@ use crate::{
             VAULT_MARKER_PATTERNS,
         },
         port::DiscoveryPort,
-        processor::{
+        processor_old::{
             AscendingTraversal, CacheResolution, DiscoveryProcessor,
             EnvOverride, ExplicitOverrideBranch, Finalized, FlagBranch,
             FlagOverride, GlobalResolution,

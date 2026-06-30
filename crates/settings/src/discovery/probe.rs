@@ -59,3 +59,71 @@ impl FolderProbe {
         results
     }
 }
+
+#[allow(
+    dead_code,
+    reason = "internal linear discovery slice is still wiring callers"
+)]
+pub(crate) fn exact_probe(
+    dir: &DirPath,
+    markers: &[&str],
+) -> Vec<CandidatePath> {
+    markers
+        .iter()
+        .filter_map(|marker| {
+            let path = dir.as_path().join(marker);
+            if !path.is_file() {
+                return None;
+            }
+            FilePath::try_new(path)
+                .ok()
+                .map(|file| CandidatePath::new(dir.clone(), file))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod exact_filenames {
+        use super::*;
+
+        #[test]
+        fn returns_candidate_when_marker_exists() {
+            let root = tempfile::tempdir().expect("root");
+            let config = root.path().join("traces.toml");
+            std::fs::write(&config, "").expect("config");
+            let dir = DirPath::try_new(root.path().to_path_buf()).unwrap();
+
+            let candidates = exact_probe(&dir, &["traces.toml"]);
+
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(
+                candidates.first().map(|candidate| candidate.path().as_path()),
+                Some(config.as_path())
+            );
+        }
+
+        #[test]
+        fn returns_empty_when_no_marker_exists() {
+            let root = tempfile::tempdir().expect("root");
+            let dir = DirPath::try_new(root.path().to_path_buf()).unwrap();
+
+            let candidates = exact_probe(&dir, &["traces.toml"]);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn ignores_non_marker_files() {
+            let root = tempfile::tempdir().expect("root");
+            std::fs::write(root.path().join("other.toml"), "").expect("other");
+            let dir = DirPath::try_new(root.path().to_path_buf()).unwrap();
+
+            let candidates = exact_probe(&dir, &["traces.toml"]);
+
+            assert!(candidates.is_empty());
+        }
+    }
+}

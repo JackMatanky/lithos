@@ -16,7 +16,7 @@
 
 use std::path::PathBuf;
 
-use crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
+use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
 // ---------------------------------------------------------------------------
 // AppDirs

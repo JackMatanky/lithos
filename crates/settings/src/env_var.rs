@@ -2,6 +2,9 @@
 
 use std::path::PathBuf;
 
+const DEFAULT_VAULT_KEY: &str = "TRACES_DEFAULT_VAULT";
+const GLOBAL_CONFIG_KEY: &str = "TRACES_GLOBAL_CONFIG";
+
 fn var_path(key: &str) -> Option<PathBuf> {
     std::env::var_os(key).map(PathBuf::from)
 }
@@ -25,8 +28,8 @@ fn var_is_true(key: &str) -> bool {
 /// construction.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SettingsEnvVars {
-    vault_dir: Option<PathBuf>,
-    config_file: Option<PathBuf>,
+    default_vault_dir: Option<PathBuf>,
+    global_config: Option<PathBuf>,
     cache_dir: Option<PathBuf>,
     ceiling_dirs: Option<Vec<PathBuf>>,
     suppress_global: bool,
@@ -38,8 +41,8 @@ impl SettingsEnvVars {
     #[must_use]
     pub fn capture() -> Self {
         Self {
-            vault_dir: var_path("TRACES_VAULT_DIR"),
-            config_file: var_path("TRACES_CONFIG_FILE"),
+            default_vault_dir: var_path(DEFAULT_VAULT_KEY),
+            global_config: var_path(GLOBAL_CONFIG_KEY),
             cache_dir: var_path("TRACES_CACHE_DIR"),
             ceiling_dirs: var_path("TRACES_CEILING_DIRS").map(|raw| {
                 std::env::split_paths(&raw)
@@ -54,33 +57,33 @@ impl SettingsEnvVars {
     #[inline]
     #[must_use]
     pub fn new(
-        vault_dir: Option<PathBuf>,
-        config_file: Option<PathBuf>,
+        default_vault_dir: Option<PathBuf>,
+        global_config: Option<PathBuf>,
         cache_dir: Option<PathBuf>,
         ceiling_dirs: Option<Vec<PathBuf>>,
         suppress_global: bool,
     ) -> Self {
         Self {
-            vault_dir,
-            config_file,
+            default_vault_dir,
+            global_config,
             cache_dir,
             ceiling_dirs,
             suppress_global,
         }
     }
 
-    /// Explicit vault root directory override.
+    /// Default vault root fallback used when local traversal finds nothing.
     #[inline]
     #[must_use]
-    pub fn vault_dir(&self) -> Option<&PathBuf> {
-        self.vault_dir.as_ref()
+    pub fn default_vault_dir(&self) -> Option<&PathBuf> {
+        self.default_vault_dir.as_ref()
     }
 
-    /// Explicit config file path override.
+    /// Explicit global config file path.
     #[inline]
     #[must_use]
-    pub fn config_file(&self) -> Option<&PathBuf> {
-        self.config_file.as_ref()
+    pub fn global_config(&self) -> Option<&PathBuf> {
+        self.global_config.as_ref()
     }
 
     /// Explicit cache directory override.
@@ -113,46 +116,60 @@ impl SettingsEnvVars {
 mod tests {
     use super::*;
 
-    #[test]
-    fn capture_returns_well_formed_struct() {
-        let vars = SettingsEnvVars::capture();
-        let _ = vars.vault_dir();
-        let _ = vars.config_file();
-        let _ = vars.cache_dir();
-        let _ = vars.ceiling_dirs();
-        let _ = vars.suppress_global();
+    mod capture {
+        use super::*;
+
+        #[test]
+        fn uses_new_env_keys() {
+            assert_eq!(DEFAULT_VAULT_KEY, "TRACES_DEFAULT_VAULT");
+            assert_eq!(GLOBAL_CONFIG_KEY, "TRACES_GLOBAL_CONFIG");
+        }
+
+        #[test]
+        fn capture_returns_well_formed_struct() {
+            let vars = SettingsEnvVars::capture();
+            let _ = vars.default_vault_dir();
+            let _ = vars.global_config();
+            let _ = vars.cache_dir();
+            let _ = vars.ceiling_dirs();
+            let _ = vars.suppress_global();
+        }
     }
 
-    #[test]
-    fn new_returns_struct_with_all_fields_set() {
-        let vault = PathBuf::from("/vault");
-        let config = PathBuf::from("/config.toml");
-        let cache = PathBuf::from("/cache");
-        let ceilings = vec![PathBuf::from("/c1"), PathBuf::from("/c2")];
+    mod constructor {
+        use super::*;
 
-        let vars = SettingsEnvVars::new(
-            Some(vault.clone()),
-            Some(config.clone()),
-            Some(cache.clone()),
-            Some(ceilings.clone()),
-            true,
-        );
+        #[test]
+        fn new_returns_struct_with_all_fields_set() {
+            let vault = PathBuf::from("/vault");
+            let config = PathBuf::from("/config.toml");
+            let cache = PathBuf::from("/cache");
+            let ceilings = vec![PathBuf::from("/c1"), PathBuf::from("/c2")];
 
-        assert_eq!(vars.vault_dir(), Some(&vault));
-        assert_eq!(vars.config_file(), Some(&config));
-        assert_eq!(vars.cache_dir(), Some(&cache));
-        assert_eq!(vars.ceiling_dirs(), Some(ceilings.as_slice()));
-        assert!(vars.suppress_global());
-    }
+            let vars = SettingsEnvVars::new(
+                Some(vault.clone()),
+                Some(config.clone()),
+                Some(cache.clone()),
+                Some(ceilings.clone()),
+                true,
+            );
 
-    #[test]
-    fn new_returns_none_fields_when_omitted() {
-        let vars = SettingsEnvVars::new(None, None, None, None, false);
+            assert_eq!(vars.default_vault_dir(), Some(&vault));
+            assert_eq!(vars.global_config(), Some(&config));
+            assert_eq!(vars.cache_dir(), Some(&cache));
+            assert_eq!(vars.ceiling_dirs(), Some(ceilings.as_slice()));
+            assert!(vars.suppress_global());
+        }
 
-        assert!(vars.vault_dir().is_none());
-        assert!(vars.config_file().is_none());
-        assert!(vars.cache_dir().is_none());
-        assert!(vars.ceiling_dirs().is_none());
-        assert!(!vars.suppress_global());
+        #[test]
+        fn new_returns_none_fields_when_omitted() {
+            let vars = SettingsEnvVars::new(None, None, None, None, false);
+
+            assert!(vars.default_vault_dir().is_none());
+            assert!(vars.global_config().is_none());
+            assert!(vars.cache_dir().is_none());
+            assert!(vars.ceiling_dirs().is_none());
+            assert!(!vars.suppress_global());
+        }
     }
 }

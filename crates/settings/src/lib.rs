@@ -39,12 +39,13 @@ pub use discovery::{
     location::{
         CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
     },
+    outcome::DiscoveryOutcome,
     port, report,
     report::DiscoveryReport,
     service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
 pub use env_var::SettingsEnvVars;
 pub use service::{
-    ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome, Service,
-    SettingsError, SettingsService, TrustMode,
+    ConfigBuilderOptions, DiscoveryOptions, Service, SettingsError,
+    SettingsService, TrustMode,
 };

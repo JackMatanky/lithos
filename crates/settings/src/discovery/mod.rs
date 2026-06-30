@@ -51,11 +51,24 @@ pub mod context;
 pub mod dirs;
 pub mod env;
 pub mod error;
+pub(crate) mod filter;
+pub(crate) mod global;
+#[allow(
+    dead_code,
+    reason = "internal linear discovery slice is still wiring callers"
+)]
+pub(crate) mod input;
 pub mod location;
+pub mod outcome;
 pub(crate) mod policy;
 pub mod port;
 pub(crate) mod probe;
+#[allow(
+    dead_code,
+    reason = "internal linear discovery slice is still wiring callers"
+)]
 pub(crate) mod processor;
+pub(crate) mod processor_old;
 pub mod report;
 pub mod service;
 pub(crate) mod walk;

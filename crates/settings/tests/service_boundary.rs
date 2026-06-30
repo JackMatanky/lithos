@@ -4,9 +4,8 @@ use std::path::PathBuf;
 
 use traces_fs::{DirPath, FilePath};
 use traces_settings::{
-    CacheLocation, CacheRoot, CandidatePath, ConfigBuilderOptions,
-    DiscoveryOptions, DiscoveryOutcome, GlobalCacheLocation, Service,
-    SettingsError, SettingsService, TrustMode,
+    CandidatePath, ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome,
+    Service, SettingsError, SettingsService, TrustMode,
 };
 
 mod discovery_options {
@@ -56,20 +55,13 @@ mod discovery_outcome {
             DirPath::try_new(root.path().to_path_buf()).expect("valid dir"),
             FilePath::try_new(config_path).expect("valid file"),
         );
-        let cache_root = CacheRoot::new(
-            CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
-            root.path().join("cache"),
-        );
-
         let outcome = DiscoveryOutcome::new(
             Box::from([candidate.clone()]),
             Box::from([]),
-            cache_root.clone(),
         );
 
         assert_eq!(outcome.vault(), [candidate].as_ref());
         assert!(outcome.global().is_empty());
-        assert_eq!(outcome.cache_root(), &cache_root);
     }
 }
 
@@ -77,8 +69,30 @@ mod settings_service {
     use super::*;
 
     #[test]
-    fn settings_service_trait_uses_owned_options_and_borrowed_candidate_paths()
-    {
+    fn discover_returns_outcome_for_valid_options() {
+        let service = Service;
+        let root = tempfile::tempdir().expect("temp dir");
+        let config = root.path().join("traces.toml");
+        std::fs::write(&config, "").expect("config");
+
+        let outcome = service
+            .discover(DiscoveryOptions::new(
+                root.path().to_path_buf(),
+                None,
+                None,
+                true,
+            ))
+            .expect("discover");
+
+        assert_eq!(
+            outcome.vault().first().map(|candidate| candidate.path().as_path()),
+            Some(config.as_path())
+        );
+        assert!(outcome.global().is_empty());
+    }
+
+    #[test]
+    fn settings_service_trait_uses_borrowed_candidate_paths() {
         let service = Service;
         let discovery_options =
             DiscoveryOptions::new(PathBuf::from("/vault"), None, None, false);
@@ -87,7 +101,7 @@ mod settings_service {
 
         assert!(matches!(
             service.discover(discovery_options),
-            Err(SettingsError::PipelineNotImplemented)
+            Err(SettingsError::Discovery(_))
         ));
         assert!(matches!(
             service.build_config(&[], &[], builder_options),

@@ -14,6 +14,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use traces_fs::DirPath;
+
+use crate::location::BOUNDARY_MARKERS;
+
 /// An iterator that ascends from a directory up to defined boundary ceilings.
 ///
 /// This walker is zero-allocation during traversal as it operates on purely
@@ -58,6 +62,55 @@ impl<'a> Iterator for BoundedAscent<'a> {
         } else {
             Some(current)
         }
+    }
+}
+
+/// Enumerates ancestor directories from outermost boundary to nearest anchor.
+#[allow(
+    dead_code,
+    reason = "internal linear discovery slice is still wiring callers"
+)]
+pub(crate) struct AncestorEnumerator {
+    dirs: std::vec::IntoIter<DirPath>,
+}
+
+#[allow(
+    dead_code,
+    reason = "internal linear discovery slice is still wiring callers"
+)]
+impl AncestorEnumerator {
+    pub(crate) fn new(anchor: &DirPath, ceiling_dirs: &[PathBuf]) -> Self {
+        let mut dirs = Vec::new();
+        let mut current = Some(anchor.as_path());
+
+        while let Some(path) = current {
+            if let Ok(dir) = DirPath::try_new(path.to_path_buf()) {
+                dirs.push(dir);
+            }
+            if ceiling_dirs.iter().any(|ceiling| ceiling == path)
+                || has_boundary_marker(path)
+            {
+                break;
+            }
+            current = path.parent();
+        }
+
+        dirs.reverse();
+        Self {
+            dirs: dirs.into_iter(),
+        }
+    }
+}
+
+fn has_boundary_marker(path: &Path) -> bool {
+    BOUNDARY_MARKERS.iter().any(|marker| path.join(marker).exists())
+}
+
+impl Iterator for AncestorEnumerator {
+    type Item = DirPath;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.dirs.next()
     }
 }
 
@@ -171,6 +224,46 @@ mod tests {
             let results: Vec<&Path> =
                 ascent(&start, &ceilings, false).collect();
             assert!(results.is_empty());
+        }
+    }
+
+    mod ancestor_enumeration {
+        use super::*;
+
+        #[test]
+        fn returns_outer_to_nearest_until_ceiling() {
+            let root = tempdir().expect("root");
+            let ceiling = root.path().join("ceiling");
+            let middle = ceiling.join("middle");
+            let anchor = middle.join("anchor");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+            let anchor = DirPath::try_new(anchor).expect("anchor dir");
+
+            let results: Vec<PathBuf> = AncestorEnumerator::new(
+                &anchor,
+                std::slice::from_ref(&ceiling),
+            )
+            .map(|dir| dir.as_path().to_path_buf())
+            .collect();
+
+            assert_eq!(results, vec![ceiling, middle, anchor.as_path().into()]);
+        }
+
+        #[test]
+        fn stops_after_directory_with_boundary_marker() {
+            let root = tempdir().expect("root");
+            let repo = root.path().join("repo");
+            let leaf = repo.join("a").join("b");
+            std::fs::create_dir_all(&leaf).expect("leaf");
+            std::fs::create_dir(repo.join(".git")).expect("git marker");
+            let anchor = DirPath::try_new(leaf).expect("anchor");
+
+            let dirs: Vec<_> = AncestorEnumerator::new(&anchor, &[])
+                .map(|dir| dir.as_path().to_path_buf())
+                .collect();
+
+            assert_eq!(dirs.first(), Some(&repo));
+            assert!(!dirs.contains(&root.path().to_path_buf()));
         }
     }
 }
