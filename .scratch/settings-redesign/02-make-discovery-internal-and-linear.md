@@ -26,26 +26,33 @@ Migrate discovery consumers to the new SettingsService API before marking old di
 | New Name | Old Name | Action |
 |----------|----------|--------|
 | `DiscoveryProcessor` (typestate, internal) | `DiscoveryService` + `DiscoveryPort` | New internal orchestrator replaces both. Delete old port/service in issue 07 |
-| `SettingsEnvVars` (in `src/env.rs`) | `SettingsEnvVars` (in `discovery/env.rs`) | **Move file** — structural rename was handled in Issue 00 |
+| `SettingsEnvVars` (in `src/env_var.rs`) | `SettingsEnvVars` (in `discovery/env.rs`) | **Move file** — structural rename was handled in Issue 00. Remove duplicated XDG statics from `discovery/env.rs` (already in `src/os_dirs.rs`). Keep `discovery/env.rs` `EnvVars` struct — old `DiscoveryContext`/`DiscoveryProcessor` still construct it. New code uses `SettingsEnvVars` |
 | `DiscoveryInput` (in `discovery/input.rs`) | (new — no old equivalent) | Normalized input from options + env |
-| `src/os_dirs.rs` | `discovery/dirs.rs` + static helpers in `discovery/env.rs` | **Consolidate and move** — platform dirs extracted out |
-| `src/location.rs` | `discovery/location.rs` + `discovery/policy.rs` | **Consolidate and move** — `MarkerPattern` replaced by flat `&[&str]` slices |
+| `src/os_dirs.rs` | `discovery/dirs.rs` + XDG static helpers in `discovery/env.rs` | **Consolidate and move** — `AppDirs` in `discovery/dirs.rs` and XDG statics (`HOME`, `XDG_*`) in `discovery/env.rs` fold into `src/os_dirs.rs`. Old `discovery/dirs.rs` import chain updates to use `crate::os_dirs` |
+| `src/location.rs` | `discovery/policy.rs` (path constants only) | **New code only** — `MarkerPattern` struct replaced by flat `&[&str]` slices in `src/location.rs`. `BOUNDARY_MARKER_PATTERNS` moves into `src/location.rs`. `discovery/location.rs` (cache types `CacheRoot` etc.) is **not consolidated** — those stay for old callers until issue 07 |
 | `CandidatePath` (in `src/candidate.rs`) | Was inline in old discovery outcome | **Extract** — standalone bridge type |
-| `DiscoveryOutcome` (in `discovery/outcome.rs`) | Replaces old `DiscoveryResult` | **Rename** — now holds `Box<[CandidatePath]>` slices, not old candidate types |
+| `SettingsEnvVars` env var rename | `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT` | **Rename** — semantics change: `TRACES_VAULT_DIR` was an override; `TRACES_DEFAULT_VAULT` is a fallback used only when normal local traversal finds nothing. Update `src/env_var.rs` field + capture key. Old `discovery/env.rs` keeps `TRACES_VAULT_DIR` for old callers |
+| `DiscoveryOutcome` (in `discovery/outcome.rs`) | Replaces old `DiscoveryResult` | **Rename** — now holds `Box<[CandidatePath]>` slices, not old candidate types. **No `cache_root` field** — cache dir moves to `AppConfig::create_cache_dir()`. Old `DiscoveryResult` retains `cache_root` for old callers until issues 08/09 |
 
 ## Acceptance criteria
 
+- [ ] `SettingsEnvVars` field `vault_dir` renamed to `default_vault_dir`, env key `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT`.
+- [ ] `SettingsEnvVars` field `config_file` renamed to `global_config`, env key `TRACES_CONFIG_FILE` → `TRACES_GLOBAL_CONFIG`.
+- [ ] `discovery/env.rs` XDG statics (`HOME`, `XDG_*`) removed — already exist in `src/os_dirs.rs`.
+- [ ] `discovery/env.rs` `EnvVars` struct **kept** — old `DiscoveryContext`/`DiscoveryProcessor` still need it. `SettingsEnvVars` is used only by new code.
+- [ ] `discovery/dirs.rs` imports updated from `crate::discovery::env::XDG_*` to `crate::os_dirs::XDG_*`. `AppDirs` struct **kept** — `BootstrapRunner::from_platform()` still uses it until issue 08/09.
 - [ ] `DiscoveryInput` is internal and constructed from `DiscoveryOptions` plus internally-read settings environment variables.
 - [ ] `DiscoveryProcessor` uses explicit transition methods for local collection, global collection, and finish.
 - [ ] Discovery flow is linear and has no old branch/cache-resolution phase model.
 - [ ] Local collection returns candidates in outer-ancestor to nearest-ancestor order.
-- [ ] `TRACES_DEFAULT_VAULT` is only used as fallback when normal local collection finds no local candidate.
+- [ ] `TRACES_DEFAULT_VAULT` (renamed from `TRACES_VAULT_DIR`) is only used as fallback when normal local collection finds no local candidate.
 - [ ] Global collection follows suppress, flag, env, platform-dir precedence.
 - [ ] Exact filename slices in `src/location.rs` replace marker-pattern/extension iteration for new discovery code.
 - [ ] `CandidatePath` lives at `src/candidate.rs`, not in `discovery/outcome.rs` — discovery produces them, config consumes them.
 - [ ] Dedupe/desymlink and ignored-path filtering happen before returning `DiscoveryOutcome`.
 - [ ] `DiscoveryInput` carries the exact fields from the PRD: `anchor`, `flag_global`, `flag_vault`, `env_global`, `env_default_vault`, `ceiling_dirs`, `suppress_global`.
 - [ ] `CandidatePath` is imported from `src/candidate.rs` — not defined in `discovery/outcome.rs`.
+- [ ] `DiscoveryOutcome` has **no `cache_root` field**. Cache dir is derived from `CandidatePath::base` by `AppConfig::create_cache_dir()`, not by discovery. Old `DiscoveryResult` retains `cache_root` for old callers until issues 08/09.
 
 ## Out of Scope
 
@@ -73,12 +80,17 @@ This is ready once the service boundary exists. The issue is intentionally a mig
 - Preserve behavior for existing callers until later migration slices replace them.
 - Keep collector filesystem work outside the typestate orchestrator; processor states should sequence, not perform all logic inline.
 - Use exact filename constants from `location.rs`; do not recreate `MarkerPattern`.
-- Keep `DiscoveryOutcome` free of cache/base convenience fields beyond candidate metadata specified by the PRD.
+- `DiscoveryOutcome` has **no `cache_root`** field. Cache dir is `<base>/.traces/cache/` derived from `CandidatePath::base`, not returned by discovery.
+- Consolidate `discovery/env.rs`: remove its XDG static duplicates (`HOME`, `XDG_*`) — already exist in `src/os_dirs.rs`. **Keep its `EnvVars` struct** — old `DiscoveryContext`/`DiscoveryProcessor` still construct it.
+- Consolidate `discovery/dirs.rs`: `AppDirs` imports are updated to use `crate::os_dirs` statics instead of `discovery/env` ones.
+- Rename `SettingsEnvVars` fields: `vault_dir` → `default_vault_dir` (env key `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT`); `config_file` → `global_config` (env key `TRACES_CONFIG_FILE` → `TRACES_GLOBAL_CONFIG`). These are different semantics — override → fallback.
 
 ### GitNexus Context
 
 - Current CLI config flows call `Bootstrapper.run_discovery_only`, which calls the discovery port.
 - Current architecture tests still assert discovery-service dependencies; expect those to change in the final docs/test slice, not necessarily here.
+- `discovery/env.rs` `EnvVars` is the old env capture — its callers (`discovery/context.rs` via `DiscoveryEnv::from_env`, `discovery/dirs.rs` for XDG statics) stay on the old struct. `app/src/bootstrap.rs` already uses `SettingsEnvVars`.
+- `BootstrapRunner::build_context` in `app/src/bootstrap.rs` still constructs `DiscoveryContext` with old `DiscoveryEnv`/`DiscoveryFlags`. This issue does NOT migrate `BootstrapRunner` (issues 08/09), but its old imports should continue to compile.
 
 ### Rust Best-Practices Notes
 
