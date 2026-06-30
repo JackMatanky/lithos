@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "rust-docs": {
+      "type": "local",
+      "command": ["rust-docs-mcp"],
+      "environment": {
+        "RUST_DOCS_MCP_CACHE_DIR": ".rust-docs/cache/"
+      },
+      "enabled": true
+    }
+  }
+}
