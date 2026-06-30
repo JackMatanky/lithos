@@ -97,3 +97,73 @@ This is ready once the service boundary exists. The issue is intentionally a mig
 - Typestate is justified here because ordering matters; keep it linear and avoid runtime branch enums unless a real branch exists.
 - Use `Result` and `?` for filesystem/env errors; no production `unwrap`/`expect`.
 - Unit-test ordering, fallback behavior, global precedence, and ignored filtering with tempdirs.
+
+## TDD Plan
+
+Approved plan (13 cycles, vertical RED→GREEN tracer bullets per cycle). All tests follow Structure A (submodules) per `docs/engineering/testing/unit-naming.md`. Use `pretty_assertions` + `tempfile`.
+
+### Cycle 1: `SettingsEnvVars` field renames
+**File:** `crates/settings/src/env_var.rs`
+Rename `vault_dir` → `default_vault_dir` (env key `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT`). Rename `config_file` → `global_config` (env key `TRACES_CONFIG_FILE` → `TRACES_GLOBAL_CONFIG`). Update accessors, constructor, capture keys.
+**Test:** `mod capture` / `mod constructor` — capture from new keys, construct with all/none.
+**Callers to update:** `discovery/dirs.rs` (3 `SettingsEnvVars::new(...)` call sites).
+
+### Cycle 2: Remove XDG static duplicates from `discovery/env.rs`
+**File:** `crates/settings/src/discovery/env.rs`
+Delete `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` statics + their tests. Keep `EnvVars` struct + its tests.
+**File:** `crates/settings/src/discovery/dirs.rs`
+Update import: `crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME}` → `crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME}`.
+**Test:** `EnvVars` capture tests still pass. `AppDirs` tests still pass using new import.
+
+### Cycle 3: Remove `cache_root` from `DiscoveryOutcome`
+**File:** `crates/settings/src/service.rs`
+Remove `cache_root` field from struct, `new()` param, accessor. Remove `CacheRoot` import. Update `service_boundary.rs` test.
+**File:** `crates/settings/tests/service_boundary.rs`
+Update existing outcome-construction test — verify only `local` + `global` fields.
+
+### Cycle 4: Expand `location.rs`
+**File:** `crates/settings/src/location.rs`
+Add `BOUNDARY_MARKERS: &[&str] = &[".git", ".workspace"]`. Add `GLOBAL_CONFIG_TARGETS: &[&str]` (same filenames as `MARKERS`). Add tracking/trust subdir names, cache subdir. Keep existing `MARKERS`.
+**Test:** `mod constants` — verify each constant is non-empty and paths are relative.
+
+### Cycle 5: `DiscoveryInput` struct
+**New file:** `crates/settings/src/discovery/input.rs`
+Fields: `anchor: DirPath`, `flag_vault: Option<DirPath>`, `flag_global: Option<FilePath>`, `env_global: Option<FilePath>`, `env_default_vault: Option<DirPath>`, `ceiling_dirs: Box<[PathBuf]>`, `suppress_global: bool`. Constructor `from_options(options: DiscoveryOptions, env: &SettingsEnvVars)`. Accessors.
+**Test:** `mod constructor` — `from_options_merges_flag_and_env`; `mod accessors`.
+
+### Cycle 6: Walker
+**New file:** `crates/settings/src/discovery/walk.rs`
+`AncestorEnumerator` — iterate from anchor up to ceiling dirs, yield `DirPath` per ancestor in outer→nearest order.
+**Test:** `mod ancestor_enumeration` — starts at anchor, stops at ceiling, returns outer→nearest.
+
+### Cycle 7: Prober
+**New file:** `crates/settings/src/discovery/probe.rs` (replaces old internal one)
+`exact_probe(dir: &DirPath, markers: &[&str]) -> Vec<CandidatePath>` — check only exact filenames from `location.rs`.
+**Test:** `mod exact_filenames` — returns candidate when marker exists, returns empty when none, ignores non-marker files.
+
+### Cycle 8: Global collector
+**New file:** `crates/settings/src/discovery/global.rs`
+`global_collect(suppress, flag, env, platform_dirs) -> Vec<CandidatePath>`. Precedence: flag → env → platform dirs.
+**Test:** `mod precedence` — flag overrides env, env overrides platform, suppressed returns empty.
+
+### Cycle 9: Filter
+**New file:** `crates/settings/src/discovery/filter.rs`
+`dedupe(candidates) -> Vec<CandidatePath>` — canonicalize, remove duplicates. `filter_ignored(candidates) -> Vec<CandidatePath>` — ignored-path check (stub for issue 06).
+**Test:** `mod dedupe` — removes symlink duplicates, preserves first occurrence. `mod ignored` — filters ignored paths.
+
+### Cycle 10: New linear `DiscoveryProcessor`
+**New file:** `crates/settings/src/discovery/processor.rs` (after renaming old one)
+Typestate: `Init` → `collect_local()` → `LocalCollected` → `collect_global()` → `GlobalCollected` → `finish()` → `DiscoveryOutcome`. Sequences walker + prober + global collector + filter.
+**Test:** `mod state` — transitions; `mod finish` — returns outcome with correct ordering.
+
+### Cycle 11: Rename old processor + move `DiscoveryOutcome`
+Rename `discovery/processor.rs` → `discovery/processor_old.rs`. Move `DiscoveryOutcome` from `service.rs` to `discovery/outcome.rs` (no re-export, update lib.rs). Update old import paths.
+**Test:** Old callers still compile. New `DiscoveryOutcome` only from `discovery::outcome`.
+
+### Cycle 12: Wire `Service::discover()`
+Replace stub with real impl: capture `SettingsEnvVars` → `DiscoveryInput::from_options()` → `DiscoveryProcessor::new(input).collect_local()?.collect_global()?.finish()`.
+**Test:** `service_boundary.rs` `mod discover` — returns outcome for valid options.
+
+### Cycle 13: Visibility + module wiring
+Update `discovery/mod.rs` with new modules. Update `lib.rs` exports. Run `mise run verify`.
+**Test:** `cargo check` + `cargo clippy` + `mise run test`.
