@@ -1,91 +1,60 @@
 ---
 name: handoff-to-tdd
-description: Orchestrates structured handoff from issue triage to TDD implementation planning. Invokes the handoff skill to compact the session, then produces a ready-to-use opening prompt for the next agent containing review, gap analysis, and TDD plan generation instructions using GitNexus, rust-best-practices, and tdd skills. Use when user provides an issue file path for TDD planning, or says "handoff to tdd", "prepare for implementation", "create handoff for planning", "triage to tdd".
+disable-model-invocation: true
+description: Compact session into a tight opening prompt for TDD planning. User-invoked.
 argument-hint: "<issue-file-path>"
 ---
 
 # Handoff to TDD
 
-## Arguments
-
-One positional argument. `scratch-folder-path` is derived as `dirname(<issue-file-path>)`.
-
-| Argument | Example |
-|----------|---------|
-| issue-file-path | `.scratch/feature/ISSUE-42.md` — scratch folder derived as `.scratch/feature/` |
+Scratch folder = `dirname(<issue-file-path>)`.
 
 ## Workflow
 
-### Step 0 — Pre-flight: ensure GitNexus index is fresh
+### 0 — Freshen index
 
-Before creating the handoff, verify the GitNexus index is current:
+Check GitNexus index freshness (last indexed timestamp vs HEAD). Stale? Run `.gitnexus/run.cjs analyze`.
+**Done:** index matches HEAD commit.
 
-1. Read `gitnexus://repo/lithos/context` to check index freshness (last indexed date vs HEAD).
-2. If stale, run `.gitnexus/run.cjs analyze` or `npx gitnexus analyze` from the project root.
-3. Confirm the index is up to date before proceeding.
+### 1 — Gather state
 
-### Step 1 — Gather session state
+Record: current branch, uncommitted changes (`git status --porcelain`), index freshness (timestamp + SHA), relevant ADR paths.
+**Done:** all four captured.
 
-Collect factual state to seed the handoff:
+### 2 — Write tight handoff
 
-- Current branch name (`git branch --show-current`).
-- Whether there are uncommitted changes (`git status --porcelain`).
-- GitNexus index freshness confirmation (timestamp and HEAD SHA).
-- Any relevant ADRs discovered during this session (paths only).
+Write the handoff doc directly. Save to OS temp dir (not workspace). Reference existing artifacts (PRDs, ADRs, plans, issues, commits, diffs) by path — don't duplicate. Redact secrets (API keys, passwords, PII).
 
-### Step 2 — Create handoff document
+Include in the doc:
+- **Focus:** TDD planning for `<issue-file-path>` in context of `<scratch-folder-path>`.
+- **Session state** from Step 1.
+- **Suggested skills:** `rust-best-practices`, `tdd`, `gitnexus-*`.
+- **Next Agent Instructions** block below (paths substituted).
 
-Derive `scratch-folder-path` as `dirname(<issue-file-path>)` (the parent directory of the issue file).
+**Done:** handoff doc written to temp dir, path known.
 
-Invoke the `handoff` skill with argument:
+### 3 — Deliver
 
-> Handoff for TDD planning of `<issue-file-path>` in context of `<scratch-folder-path>`
+Present: (1) handoff path, (2) opening prompt with path substituted.
+**Done:** user acknowledged.
 
-Include the following in the handoff document:
-- **Session state** — branch, uncommitted changes, index freshness, ADR paths.
-- A "Suggested skills" section listing: `rust-best-practices`, `tdd`, and relevant `gitnexus-*` skills.
-- The **Next Agent Instructions** block below (substituted with actual paths).
-- Any additional context, findings, recommendations, or guidance relevant to the task.
+## Opening Prompt
 
-### Step 3 — Present deliverables
-
-Report to the user:
-1. **Handoff document path** — path returned by the handoff skill.
-2. **Opening prompt** — the template below with `<handoff-doc-path>` substituted.
-
-## Opening Prompt Template
-
-Substitute `<handoff-doc-path>` and present to the user as a ready-to-copy block.
-
----
-
-Read the handoff document at `<handoff-doc-path>`.
-
-Use the Skill tool to invoke: `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`.
-
-Follow the instructions in the handoff document. Do not modify the issue file. Do not implement code. Present findings + plan for approval.
-
----
+```
+Read handoff at <handoff-doc-path>.
+Invoke `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`.
+Follow handoff instructions. No issue edits. No code. Present findings + plan.
+```
 
 ## Next Agent Instructions
 
-Copy into the handoff document with `<issue-file-path>` replaced (derive `scratch-folder-path` as `dirname(issue-file-path)`). These are the minimum required instructions — include any additional context, findings, recommendations, or guidance relevant to the task.
-
----
+Copy into handoff doc (substitute paths).
 
 **Objectives:**
-1. Review `<issue-file-path>` in the context of the overall plan for `<scratch-folder-path>`.
-2. Identify gaps, inconsistencies, implementation risks, dependencies, or unaddressed side effects.
-   - If any found, present for review; do not proceed to planning until resolved.
-3. Using GitNexus skills + Skill tool invocations of `rust-best-practices` and `tdd`, produce a comprehensive TDD plan.
+1. Review `<issue-file-path>` in context of `<scratch-folder-path>`.
+2. Find gaps, risks, side effects. Found? Present for review; no planning until resolved.
+3. Produce TDD plan via GitNexus + `rust-best-practices` + `tdd`.
 
-**Plan requirements:**
-- Cover all work required to satisfy acceptance criteria.
-- Identify required codebase changes and their impacts.
-- Define behaviors to verify, tests required, and required test coverage.
-- Adhere to `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`.
+**Plan must:** specify all changes + impact, tests + coverage, follow `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`.
 
-**Constraints:**
-- Do not modify the issue file.
-- Do not implement code.
-- Present findings and the complete plan for approval.
+**Constraints:** no issue edits, no code, present findings + plan for approval.
