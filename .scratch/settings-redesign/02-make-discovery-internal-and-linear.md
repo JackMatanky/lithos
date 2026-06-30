@@ -167,3 +167,43 @@ Replace stub with real impl: capture `SettingsEnvVars` → `DiscoveryInput::from
 ### Cycle 13: Visibility + module wiring
 Update `discovery/mod.rs` with new modules. Update `lib.rs` exports. Run `mise run verify`.
 **Test:** `cargo check` + `cargo clippy` + `mise run test`.
+
+## Implementation Notes
+
+Status: implemented on branch `issue-02-discovery-linear`.
+
+Implementation commits:
+
+- `0c6711e4 refactor(settings): linearize discovery`
+- `304fc43f chore(gitnexus): refresh index metadata`
+
+Key changes:
+
+- Renamed new `SettingsEnvVars` fields and env keys to `default_vault_dir` / `TRACES_DEFAULT_VAULT` and `global_config` / `TRACES_GLOBAL_CONFIG`.
+- Removed duplicate XDG statics from `discovery/env.rs`; old `EnvVars` remains for old discovery callers.
+- Moved public `DiscoveryOutcome` to `discovery/outcome.rs` and removed `cache_root` from the new settings-service outcome.
+- Added exact marker/location constants, internal `DiscoveryInput`, ancestor enumeration, exact probing, global collection, dedupe, and ignored-path filtering helpers.
+- Preserved old discovery processor as `discovery/processor_old.rs`; old `DiscoveryService` still compiles against it.
+- Replaced new `discovery/processor.rs` with the linear internal typestate processor and wired `Service::discover()` through it.
+
+Decisions and deviations:
+
+- `TRACES_DEFAULT_VAULT` validation is lazy: invalid fallback paths only error when no local marker is found and the fallback is actually used.
+- Suppressed global lookup ignores invalid flag/env global paths because those inputs are not consumed when global discovery is suppressed.
+- Exact marker names include `traces.{toml,json,yaml,yml}` and `.traces/config.{toml,json,yaml,yml}` to match the PRD.
+- Ignored-path filtering is implemented as a helper but receives an empty list until trust-store ignored paths are wired in a later issue.
+- `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
+
+Verification:
+
+- `mise run verify` passed after implementation.
+- Commit hooks passed on the implementation commit, including Rust format, clippy, tests, gitleaks, and conventional commit validation.
+- GitNexus staged change detection before implementation commit reported medium risk with two expected affected old discovery/cache-resolution flows.
+- GitNexus index refreshed after implementation; worktree index at `304fc43fc0848db809905d67ccd891041c23bc46` on `2026-06-30T21:17:29.820Z`.
+
+Review focus:
+
+- Confirm new discovery semantics match the PRD and this issue's acceptance criteria.
+- Check old/new discovery coexistence around `processor.rs` and `processor_old.rs`.
+- Check that ignored-path filtering being a temporary empty-input stub is acceptable for this slice.
+- Check test coverage for fallback precedence, boundary markers, exact marker names, and suppressed global inputs.
