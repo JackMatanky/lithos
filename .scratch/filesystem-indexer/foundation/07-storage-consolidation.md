@@ -203,3 +203,42 @@ right bucket by kind — **no reads of `FILES` or `DIRS`**.
   FsRecordKind)` (PRD §5 line 185) should be corrected to the **key** shape
   `(PathKey, FsRecordKind) -> FsRecordId` decided here, or the discrepancy
   re-grilled if global uniqueness turns out to be wanted.
+
+## TDD Plan
+
+### 1. Domain Modeling: `FsRecordKind`
+- **RED:** Write a test in `model.rs` asserting `FsRecordKind { File, Dir }` can be serialized/deserialized with `rkyv`, and has a valid `redb::Key` and `redb::Value` implementation (a 1-byte codec).
+- **GREEN:** Define `FsRecordKind` with the required derives. Implement the `redb` codecs.
+- **REFACTOR:** Ensure it conforms to zero-copy patterns (small `Copy` type passed by value).
+
+### 2. Storage Setup: The New Table Definition
+- **RED:** In `storage/testing.rs`, add a test for `InMemoryRepository::find_id_by_path` asserting it correctly resolves a hand-seeded path to its ID and Kind.
+- **GREEN:**
+  - Add `FS_ID_BY_PATH` to `tables.rs` keyed by `(DbPathKey, FsRecordKind)` and valued by `FsRecordId`.
+  - Add `find_id_by_path` to the `ReadRepository` trait.
+  - Implement it for `InMemoryRepository` and `MockRepository`.
+- **REFACTOR:** Check visibility and naming.
+
+### 3. Database Read Path Integration
+- **RED:** Add an integration test in `storage/read.rs` ensuring `RedbRepository::find_id_by_path` returns correct data for both files and directories, handling the prefix/range scan over the `(PathKey, FsRecordKind)` tuple.
+- **GREEN:** Implement `find_id_by_path` in `RedbRepository`.
+
+### 4. Read Methods Migration (Refactoring under green tests)
+- **REFACTOR:** Update `find_file_by_path` and `find_dir_by_path` in `read.rs` to internally call `find_id_by_path` instead of reading the old path tables.
+- **REFACTOR:** Switch primary table reads in `read.rs` from `rkyv::from_bytes` to `rkyv::access` + `rkyv::deserialize`.
+- **VERIFY:** Existing repository contract tests and integration tests must stay GREEN.
+
+### 5. Write Methods Migration (Refactoring under green tests)
+- **REFACTOR:** Update `save_file_in_tx`, `save_dir_in_tx`, `remove_file_graph`, and `remove_dir_graph` in `write.rs` to write/delete from the new `FS_ID_BY_PATH` table instead of the old separate tables.
+- **REFACTOR:** Update duplication guards (`file_path_taken_by_other`, `dir_path_taken_by_other`) to check the new kind-tagged table.
+- **REFACTOR:** Drop old `FILE_ID_BY_PATH` and `DIR_ID_BY_PATH` tables from `tables.rs` and the `clear` function.
+- **VERIFY:** `assert_repository_contract` and all duplicate-path tests must pass perfectly, proving per-kind uniqueness is preserved.
+
+### 6. `all_paths` Iteration Migration
+- **REFACTOR:** Update `all_paths` to iterate the single `FS_ID_BY_PATH` table while maintaining cross-kind deduplication.
+- **VERIFY:** `all_paths_deduplicates_across_file_and_dir_tables` and the contract tests remain GREEN.
+
+### 7. Service Layer Optimization: `detect_deletions`
+- **RED:** (Covered by existing `detect_deletions` tests in `service.rs`). Run them to ensure they are GREEN before the change.
+- **REFACTOR:** Modify `detect_deletions` to iterate `FS_ID_BY_PATH` and extract the kind directly from the key, removing the need to fetch the full record from the primary `FILES` / `DIRS` tables.
+- **VERIFY:** Existing tests pass.
