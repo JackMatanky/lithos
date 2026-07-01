@@ -280,6 +280,30 @@ mod tests {
         }
 
         #[test]
+        fn env_suppress_global_skips_invalid_flag_and_env_global() {
+            let root = tempfile::tempdir().expect("root");
+            let options = DiscoveryOptions::new(
+                root.path().to_path_buf(),
+                Some(root.path().join("missing-flag.toml")),
+                None,
+                false,
+            );
+            let env = SettingsEnvVars::new(
+                None,
+                Some(root.path().join("missing-env.toml")),
+                None,
+                None,
+                true,
+            );
+
+            let input = DiscoveryInput::from_options(&options, &env).unwrap();
+
+            assert!(input.flag_global().is_none());
+            assert!(input.env_global().is_none());
+            assert!(input.suppress_global());
+        }
+
+        #[test]
         fn invalid_env_default_vault_is_lazy() {
             let root = tempfile::tempdir().expect("root");
             let options = DiscoveryOptions::new(

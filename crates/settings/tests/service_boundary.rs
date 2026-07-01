@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use traces_fs::{DirPath, FilePath};
 use traces_settings::{
     CandidatePath, ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome,
-    Service, SettingsError, SettingsService, TrustMode,
+    DiscoveryReport, Service, SettingsError, SettingsService, TrustMode,
 };
 
 mod discovery_options {
@@ -58,10 +58,12 @@ mod discovery_outcome {
         let outcome = DiscoveryOutcome::new(
             Box::from([candidate.clone()]),
             Box::from([]),
+            DiscoveryReport::default(),
         );
 
         assert_eq!(outcome.vault(), [candidate].as_ref());
         assert!(outcome.global().is_empty());
+        assert_eq!(outcome.report(), &DiscoveryReport::default());
     }
 }
 

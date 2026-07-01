@@ -98,6 +98,9 @@ impl DiscoveryProcessor<GlobalCollected> {
         DiscoveryOutcome::new(
             filter_ignored(dedupe(self.local), &[]).into_boxed_slice(),
             filter_ignored(dedupe(self.global), &[]).into_boxed_slice(),
+            // ponytail: report detail wiring stays with old discovery until
+            // diagnostics migrate; keep the public shape now.
+            crate::DiscoveryReport::default(),
         )
     }
 }
@@ -146,6 +149,7 @@ mod tests {
 
             assert!(outcome.vault().is_empty());
             assert!(outcome.global().is_empty());
+            assert_eq!(outcome.report(), &crate::DiscoveryReport::default());
         }
     }
 

@@ -1,23 +1,12 @@
 //! Traces environment variables.
 
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 const DEFAULT_VAULT_KEY: &str = "TRACES_DEFAULT_VAULT";
 const GLOBAL_CONFIG_KEY: &str = "TRACES_GLOBAL_CONFIG";
 
-fn var_path(key: &str) -> Option<PathBuf> {
-    std::env::var_os(key).map(PathBuf::from)
-}
-
-fn var_is_true(key: &str) -> bool {
-    std::env::var(key)
-        .map(|v| {
-            matches!(
-                v.to_lowercase().as_str(),
-                "y" | "yes" | "true" | "1" | "on"
-            )
-        })
-        .unwrap_or(false)
+fn is_true(value: &str) -> bool {
+    matches!(value.to_lowercase().as_str(), "y" | "yes" | "true" | "1" | "on")
 }
 
 /// Captured Traces environment variables.
@@ -40,16 +29,28 @@ impl SettingsEnvVars {
     #[inline]
     #[must_use]
     pub fn capture() -> Self {
+        Self::capture_from(
+            |key| std::env::var_os(key),
+            |key| std::env::var(key).ok(),
+        )
+    }
+
+    fn capture_from(
+        var_os: impl Fn(&str) -> Option<OsString>,
+        var: impl Fn(&str) -> Option<String>,
+    ) -> Self {
         Self {
-            default_vault_dir: var_path(DEFAULT_VAULT_KEY),
-            global_config: var_path(GLOBAL_CONFIG_KEY),
-            cache_dir: var_path("TRACES_CACHE_DIR"),
-            ceiling_dirs: var_path("TRACES_CEILING_DIRS").map(|raw| {
+            default_vault_dir: var_os(DEFAULT_VAULT_KEY).map(PathBuf::from),
+            global_config: var_os(GLOBAL_CONFIG_KEY).map(PathBuf::from),
+            cache_dir: var_os("TRACES_CACHE_DIR").map(PathBuf::from),
+            ceiling_dirs: var_os("TRACES_CEILING_DIRS").map(|raw| {
                 std::env::split_paths(&raw)
                     .filter(|p| !p.as_os_str().is_empty())
                     .collect()
             }),
-            suppress_global: var_is_true("TRACES_SUPPRESS_GLOBAL"),
+            suppress_global: var("TRACES_SUPPRESS_GLOBAL")
+                .as_deref()
+                .is_some_and(is_true),
         }
     }
 
@@ -123,6 +124,42 @@ mod tests {
         fn uses_new_env_keys() {
             assert_eq!(DEFAULT_VAULT_KEY, "TRACES_DEFAULT_VAULT");
             assert_eq!(GLOBAL_CONFIG_KEY, "TRACES_GLOBAL_CONFIG");
+        }
+
+        #[test]
+        fn reads_new_env_keys() {
+            let vars = SettingsEnvVars::capture_from(
+                |key| match key {
+                    "TRACES_DEFAULT_VAULT" => Some("/vault".into()),
+                    "TRACES_GLOBAL_CONFIG" => Some("/global.toml".into()),
+                    _ => None,
+                },
+                |_| None,
+            );
+
+            assert_eq!(
+                vars.default_vault_dir(),
+                Some(&PathBuf::from("/vault"))
+            );
+            assert_eq!(
+                vars.global_config(),
+                Some(&PathBuf::from("/global.toml"))
+            );
+        }
+
+        #[test]
+        fn ignores_old_env_keys() {
+            let vars = SettingsEnvVars::capture_from(
+                |key| match key {
+                    "TRACES_VAULT_DIR" => Some("/old-vault".into()),
+                    "TRACES_CONFIG_FILE" => Some("/old-global.toml".into()),
+                    _ => None,
+                },
+                |_| None,
+            );
+
+            assert!(vars.default_vault_dir().is_none());
+            assert!(vars.global_config().is_none());
         }
 
         #[test]

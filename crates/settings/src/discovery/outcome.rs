@@ -1,6 +1,6 @@
 //! Public discovery outcome for the settings service.
 
-use crate::candidate::CandidatePath;
+use crate::{candidate::CandidatePath, discovery::report::DiscoveryReport};
 
 /// Public discovery output for settings service callers.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -9,6 +9,8 @@ pub struct DiscoveryOutcome {
     vault: Box<[CandidatePath]>,
     /// Global candidate config paths.
     global: Box<[CandidatePath]>,
+    /// Non-fatal discovery diagnostics.
+    report: DiscoveryReport,
 }
 
 impl DiscoveryOutcome {
@@ -18,10 +20,12 @@ impl DiscoveryOutcome {
     pub fn new(
         vault: Box<[CandidatePath]>,
         global: Box<[CandidatePath]>,
+        report: DiscoveryReport,
     ) -> Self {
         Self {
             vault,
             global,
+            report,
         }
     }
 
@@ -37,5 +41,12 @@ impl DiscoveryOutcome {
     #[inline]
     pub fn global(&self) -> &[CandidatePath] {
         &self.global
+    }
+
+    /// Non-fatal discovery diagnostics.
+    #[must_use]
+    #[inline]
+    pub fn report(&self) -> &DiscoveryReport {
+        &self.report
     }
 }
