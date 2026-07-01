@@ -43,21 +43,16 @@ impl DiscoveryProcessor<Init> {
     pub(crate) fn collect_local(
         mut self,
     ) -> Result<DiscoveryProcessor<LocalCollected>, DiscoveryError> {
-        if let Some(vault) = self.input.flag_vault() {
-            self.local = exact_probe(vault, MARKERS);
-        } else {
-            self.local = AncestorEnumerator::new(
-                self.input.anchor(),
-                self.input.ceiling_dirs(),
-            )
+        let start =
+            self.input.flag_vault().unwrap_or_else(|| self.input.anchor());
+        self.local = AncestorEnumerator::new(start, self.input.ceiling_dirs())
             .flat_map(|dir| exact_probe(&dir, MARKERS))
             .collect();
 
-            if self.local.is_empty()
-                && let Some(vault) = self.input.env_default_vault()?
-            {
-                self.local = exact_probe(&vault, MARKERS);
-            }
+        if self.local.is_empty()
+            && let Some(vault) = self.input.env_default_vault()?
+        {
+            self.local = exact_probe(&vault, MARKERS);
         }
 
         Ok(DiscoveryProcessor {
@@ -135,6 +130,18 @@ mod tests {
         .unwrap()
     }
 
+    fn input_with_flag_vault(
+        anchor: PathBuf,
+        flag_vault: PathBuf,
+        env_default_vault: Option<PathBuf>,
+    ) -> DiscoveryInput {
+        DiscoveryInput::from_options(
+            &DiscoveryOptions::new(anchor, None, Some(flag_vault), false),
+            &SettingsEnvVars::new(env_default_vault, None, None, None, false),
+        )
+        .expect("valid discovery input")
+    }
+
     mod state {
         use super::*;
 
@@ -154,6 +161,8 @@ mod tests {
     }
 
     mod finish {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -224,6 +233,72 @@ mod tests {
                     .unwrap()
                     .collect_global()
                     .finish();
+
+            assert_eq!(
+                outcome
+                    .vault()
+                    .first()
+                    .map(|candidate| candidate.base().as_path()),
+                Some(fallback.as_path())
+            );
+        }
+
+        #[test]
+        fn flag_vault_starts_outer_to_nearest_ancestor_collection() {
+            let root = tempfile::tempdir().expect("root");
+            let outer = root.path().join("outer");
+            let flag_vault = outer.join("inner");
+            let anchor = root.path().join("ignored-anchor");
+            std::fs::create_dir_all(&flag_vault).expect("flag vault");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+            std::fs::write(outer.join("traces.toml"), "")
+                .expect("outer marker");
+            std::fs::write(flag_vault.join("traces.toml"), "")
+                .expect("inner marker");
+
+            let outcome = DiscoveryProcessor::new(input_with_flag_vault(
+                anchor,
+                flag_vault.clone(),
+                None,
+            ))
+            .collect_local()
+            .expect("local collection")
+            .collect_global()
+            .finish();
+
+            let paths: Vec<_> = outcome
+                .vault()
+                .iter()
+                .map(|candidate| candidate.path().as_path().to_path_buf())
+                .collect();
+
+            assert_eq!(paths, vec![
+                outer.join("traces.toml"),
+                flag_vault.join("traces.toml")
+            ]);
+        }
+
+        #[test]
+        fn flag_vault_uses_default_vault_when_collection_is_empty() {
+            let root = tempfile::tempdir().expect("root");
+            let anchor = root.path().join("anchor");
+            let flag_vault = root.path().join("flag-vault");
+            let fallback = root.path().join("fallback");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+            std::fs::create_dir_all(&flag_vault).expect("flag vault");
+            std::fs::create_dir_all(&fallback).expect("fallback");
+            std::fs::write(fallback.join("traces.toml"), "")
+                .expect("fallback marker");
+
+            let outcome = DiscoveryProcessor::new(input_with_flag_vault(
+                anchor,
+                flag_vault,
+                Some(fallback.clone()),
+            ))
+            .collect_local()
+            .expect("local collection")
+            .collect_global()
+            .finish();
 
             assert_eq!(
                 outcome
