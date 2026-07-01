@@ -16,7 +16,7 @@ fn is_true(value: &str) -> bool {
 /// environment, or via [`SettingsEnvVars::new()`] for deterministic test
 /// construction.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct SettingsEnvVars {
+pub(crate) struct SettingsEnvVars {
     default_vault_dir: Option<PathBuf>,
     global_config: Option<PathBuf>,
     cache_dir: Option<PathBuf>,
@@ -28,7 +28,7 @@ impl SettingsEnvVars {
     /// Read all TRACES_* env vars from the process environment.
     #[inline]
     #[must_use]
-    pub fn capture() -> Self {
+    pub(crate) fn capture() -> Self {
         Self::capture_from(
             |key| std::env::var_os(key),
             |key| std::env::var(key).ok(),
@@ -55,9 +55,14 @@ impl SettingsEnvVars {
     }
 
     /// Pure constructor for tests and custom setups.
+    #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        dead_code,
+        reason = "feature-gated constructor is used by internal test helpers"
+    )]
     #[inline]
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         default_vault_dir: Option<PathBuf>,
         global_config: Option<PathBuf>,
         cache_dir: Option<PathBuf>,
@@ -76,35 +81,39 @@ impl SettingsEnvVars {
     /// Default vault root fallback used when local traversal finds nothing.
     #[inline]
     #[must_use]
-    pub fn default_vault_dir(&self) -> Option<&PathBuf> {
+    pub(crate) fn default_vault_dir(&self) -> Option<&PathBuf> {
         self.default_vault_dir.as_ref()
     }
 
     /// Explicit global config file path.
     #[inline]
     #[must_use]
-    pub fn global_config(&self) -> Option<&PathBuf> {
+    pub(crate) fn global_config(&self) -> Option<&PathBuf> {
         self.global_config.as_ref()
     }
 
     /// Explicit cache directory override.
+    #[allow(
+        dead_code,
+        reason = "cache env override is exposed through AppDirs public helpers"
+    )]
     #[inline]
     #[must_use]
-    pub fn cache_dir(&self) -> Option<&PathBuf> {
+    pub(crate) fn cache_dir(&self) -> Option<&PathBuf> {
         self.cache_dir.as_ref()
     }
 
     /// Colon-separated ceiling directory paths (raw from env).
     #[inline]
     #[must_use]
-    pub fn ceiling_dirs(&self) -> Option<&[PathBuf]> {
+    pub(crate) fn ceiling_dirs(&self) -> Option<&[PathBuf]> {
         self.ceiling_dirs.as_deref()
     }
 
     /// Whether global config lookup is suppressed.
     #[inline]
     #[must_use]
-    pub fn suppress_global(&self) -> bool {
+    pub(crate) fn suppress_global(&self) -> bool {
         self.suppress_global
     }
 }

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use traces_fs::DirPath;
 use traces_settings::{
     DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags,
-    SettingsEnvVars,
     aggregate::AppConfig,
     builder::Builder,
     dirs::AppDirs,
@@ -126,7 +125,7 @@ impl<D: DiscoveryPort> BootstrapRunner<D> {
         env: Option<DiscoveryEnv<'_>>,
         anchor: &std::path::Path,
     ) -> Result<DiscoveryResult, AppError> {
-        let cache_dir = SettingsEnvVars::capture().cache_dir().cloned();
+        let cache_dir = AppDirs::cache_dir_from_env();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         self.discover(&context)
     }
@@ -164,7 +163,7 @@ impl<D: DiscoveryPort> BootstrapRunner<D> {
         anchor: &std::path::Path,
         repository: R,
     ) -> Result<BootstrapResult, AppError> {
-        let cache_dir = SettingsEnvVars::capture().cache_dir().cloned();
+        let cache_dir = AppDirs::cache_dir_from_env();
         let context = Self::build_context(flags, env, anchor, cache_dir)?;
         let discovery = self.discover(&context)?;
         let report = discovery.report().clone();
@@ -182,8 +181,7 @@ impl BootstrapRunner<DiscoveryService> {
     ///
     /// Creates the concrete discovery bootstrapper from platform config dirs.
     ///
-    /// Resolves global config directories via [`AppDirs`], using
-    /// [`SettingsEnvVars::capture()`] to read the process environment.
+    /// Resolves global config directories via [`AppDirs`].
     ///
     /// # Errors
     ///
@@ -191,7 +189,7 @@ impl BootstrapRunner<DiscoveryService> {
     /// its stable configuration.
     #[inline]
     pub fn from_platform() -> Result<Self, AppError> {
-        let app = AppDirs::new(&SettingsEnvVars::capture());
+        let app = AppDirs::from_env();
         let mut global_dirs: Vec<DirPath> = Vec::new();
         if let Ok(dir) = DirPath::try_new(app.config().clone()) {
             global_dirs.push(dir);

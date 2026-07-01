@@ -5,10 +5,11 @@ use std::path::{Path, PathBuf};
 use traces_fs::{DirPath, FilePath};
 
 use crate::{
-    DiscoveryOptions, SettingsEnvVars,
+    DiscoveryOptions,
     discovery::error::{
         DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
     },
+    env_var::SettingsEnvVars,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

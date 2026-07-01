@@ -2,10 +2,13 @@
 
 use std::path::PathBuf;
 
+// SettingsEnvVars is intentionally not imported here: env capture is
+// internal to SettingsService and must not be part of the public boundary.
 use traces_fs::{DirPath, FilePath};
 use traces_settings::{
     CandidatePath, ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome,
     DiscoveryReport, Service, SettingsError, SettingsService, TrustMode,
+    dirs::AppDirs,
 };
 
 mod discovery_options {
@@ -27,6 +30,16 @@ mod discovery_options {
         );
         assert_eq!(options.vault_dir(), Some(&PathBuf::from("/vault")));
         assert!(options.suppress_global());
+    }
+}
+
+mod app_dirs {
+    use super::*;
+
+    #[test]
+    fn exposes_env_capture_without_exposing_env_vars() {
+        let _ = AppDirs::from_env();
+        let _ = AppDirs::cache_dir_from_env();
     }
 }
 

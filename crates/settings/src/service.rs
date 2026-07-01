@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 
 use crate::{
-    SettingsEnvVars,
     candidate::CandidatePath,
     config::{aggregate::AppConfig, error::ConfigError},
     discovery::{
         error::DiscoveryError, input::DiscoveryInput,
         outcome::DiscoveryOutcome, processor::DiscoveryProcessor,
     },
+    env_var::SettingsEnvVars,
 };
 
 /// CLI/runtime inputs for settings discovery.

@@ -125,7 +125,7 @@ fn push_dir(dirs: &mut Vec<DirPath>, path: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DiscoveryOptions, SettingsEnvVars};
+    use crate::{DiscoveryOptions, env_var::SettingsEnvVars};
 
     fn input(
         anchor: PathBuf,

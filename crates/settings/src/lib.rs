@@ -3,6 +3,10 @@
 //!
 //! This crate unifies discovery (locating configuration files) and config
 //! (parsing, validating, and merging them) into a single inbound adapter.
+//!
+//! ```compile_fail
+//! use traces_settings::SettingsEnvVars;
+//! ```
 
 pub mod candidate;
 pub mod config;
@@ -44,7 +48,6 @@ pub use discovery::{
     report::DiscoveryReport,
     service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
 };
-pub use env_var::SettingsEnvVars;
 pub use service::{
     ConfigBuilderOptions, DiscoveryOptions, Service, SettingsError,
     SettingsService, TrustMode,
