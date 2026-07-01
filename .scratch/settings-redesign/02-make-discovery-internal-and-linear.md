@@ -176,6 +176,8 @@ Implementation commits:
 
 - `0c6711e4 refactor(settings): linearize discovery`
 - `304fc43f chore(gitnexus): refresh index metadata`
+- `c0b2dd62 fix(settings): expose discovery report`
+- `555eb9b2 chore(gitnexus): refresh index metadata`
 
 Key changes:
 
@@ -185,6 +187,7 @@ Key changes:
 - Added exact marker/location constants, internal `DiscoveryInput`, ancestor enumeration, exact probing, global collection, dedupe, and ignored-path filtering helpers.
 - Preserved old discovery processor as `discovery/processor_old.rs`; old `DiscoveryService` still compiles against it.
 - Replaced new `discovery/processor.rs` with the linear internal typestate processor and wired `Service::discover()` through it.
+- Follow-up review fixes added `DiscoveryReport` back to the new `DiscoveryOutcome` shape, strengthened env-key capture tests for `TRACES_DEFAULT_VAULT` / `TRACES_GLOBAL_CONFIG`, added env-suppression edge coverage, and corrected stale discovery docs.
 
 Decisions and deviations:
 
@@ -193,6 +196,7 @@ Decisions and deviations:
 - Exact marker names include `traces.{toml,json,yaml,yml}` and `.traces/config.{toml,json,yaml,yml}` to match the PRD.
 - Ignored-path filtering is implemented as a helper but receives an empty list until trust-store ignored paths are wired in a later issue.
 - `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
+- New `DiscoveryOutcome::report()` currently returns a default report from the linear processor; detailed diagnostic population remains with old discovery until diagnostics migrate.
 
 Verification:
 
@@ -200,6 +204,8 @@ Verification:
 - Commit hooks passed on the implementation commit, including Rust format, clippy, tests, gitleaks, and conventional commit validation.
 - GitNexus staged change detection before implementation commit reported medium risk with two expected affected old discovery/cache-resolution flows.
 - GitNexus index refreshed after implementation; worktree index at `304fc43fc0848db809905d67ccd891041c23bc46` on `2026-06-30T21:17:29.820Z`.
+- Follow-up fix verification ran `mise run verify` from the worktree: fmt, clippy, deny, unit/doc, integration, and e2e passed. Unit summary: `2226` passed. Integration summary: `58` passed. E2E summary: `102` passed.
+- GitNexus worktree index refreshed after follow-up fix; index at `555eb9b2f5eb40995246863605170bd66e9e6efa` on `2026-07-01T13:10:41.802Z`.
 
 Review focus:
 
@@ -207,3 +213,4 @@ Review focus:
 - Check old/new discovery coexistence around `processor.rs` and `processor_old.rs`.
 - Check that ignored-path filtering being a temporary empty-input stub is acceptable for this slice.
 - Check test coverage for fallback precedence, boundary markers, exact marker names, and suppressed global inputs.
+- Check whether default-only `DiscoveryReport` population is acceptable for this migration slice or should be populated before merge.
