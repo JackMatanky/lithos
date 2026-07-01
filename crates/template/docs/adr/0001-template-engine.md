@@ -9,7 +9,9 @@ date_updated: 2026-03-11
 update_reason: Clarified why runtime loading is required (template pack ecosystem), added Askama comparison, documented zero-copy integration strategy with rkyv
 ---
 
-# ADR 007: Selection of Template Engine for Markdown-based Templates
+<!-- Relocated from docs/adr/007-template-engine.md on 2026-07-01 as part of adopting per-context ADR dirs (crates/<context>/docs/adr/). Renumbered to 0001 within the template context. -->
+
+# ADR 0001: Selection of Template Engine for Markdown-based Templates
 
 ## Context
 

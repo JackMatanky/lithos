@@ -3,6 +3,8 @@
 **Status**: ready-for-agent
 **Created**: 2026-06-30
 **Builds on**: `.scratch/filesystem-indexer/foundation/PRD.md` (foundation — `crates/indexer/` already implemented)
+**Storage precursor**: `.scratch/filesystem-indexer/foundation/07-storage-consolidation.md` (relocated out of this PRD; lands first)
+**Id-unification precursor**: `.scratch/filesystem-indexer/foundation/08-id-unification.md` (context `*Id` → `FsRecordId`; implements ADR `docs/adr/indexer/0001`; depends on 07; lands before the schema section of this PRD — see §5.1)
 **Supersedes**: `.scratch/filesystem-indexer/07-vault-deletion.md` (vault deletion folds into this work)
 
 ---
@@ -13,7 +15,7 @@ The `crates/indexer/` context now owns filesystem scanning, metadata comparison,
 
 Today that orchestration lives in `crates/vault/src/processor.rs`. `VaultProcessor::process_full` runs its own `DirScanner`, compares against its own `FileView` / `DirView` tables, then routes markdown files into `NoteProcessor` one at a time. Schema's `DiscoveryEngine` runs a parallel `DirScanner` against the same vault root. Neither uses the indexer.
 
-The vault module is dead code in production (zero non-test callers in `crates/cli/`, `crates/app/`, or any downstream context) but cannot be deleted: `crates/note/tests/note_reader.rs` depends on `VaultProcessor::process_full` as its sole fixture-setup mechanism for all seven integration tests.
+The vault module is dead code in production (zero non-test callers in `crates/cli/`, `crates/app/`, or any downstream context) but cannot be deleted: `crates/note/tests/note_reader.rs` depends on `VaultProcessor::process_full` as its sole fixture-setup mechanism for all nine integration tests.
 
 The user-facing symptoms:
 
@@ -42,7 +44,7 @@ Delivery is staged in two phases. Phase 1 ships the event types, sink trait, in-
 3. As a Lithos maintainer, I want the `crates/vault/` crate deleted from the workspace, so that there is one canonical owner of filesystem node state and no dead module to mislead future contributors.
 4. As a maintainer of `crates/note/`, I want my integration tests to set up fixtures without depending on `crates/vault/`, so that my context's tests do not block vault deletion.
 5. As a maintainer of `crates/note/`, I want `NoteProcessor` entry points keyed by `IndexStatus`, so that I can drive the right pipeline branch directly from an `IndexEvent` without paying for Discovery and Comparison stages that the indexer already ran.
-6. As a maintainer of `crates/schema/`, I want my schema ingestion to consume indexer events, so that `DiscoveryEngine` no longer runs its own filesystem scan and `Builder::load_all` is driven by classified events.
+6. As a maintainer of `crates/schema/`, I want my schema ingestion to consume indexer events, so that `DiscoveryEngine` no longer runs its own filesystem scan and the schema service drives `BaseSchemaProcessor` from classified events (its `IndexStatus`) instead of re-scanning.
 7. As a maintainer of `crates/template/`, I want my template service to consume indexer events for template-directory files, so that template processing is wired through the same integration seam as note and schema.
 8. As a future maintainer adding a new bounded context, I want a documented event contract and a stable sink interface, so that I can add a new downstream consumer without modifying the indexer.
 9. As a CLI user, I want a single `sync` command that runs the indexer and then drives all downstream context processing in one orchestrated pass, so that one invocation refreshes the entire derived state of the vault.
@@ -59,7 +61,7 @@ Delivery is staged in two phases. Phase 1 ships the event types, sink trait, in-
 20. As a performance-focused engineer, I want indexer reads in `find_file_by_path` and `find_dir_by_path` to use `rkyv::access` rather than full `rkyv::from_bytes` materialisation, so that hot deletion-detection paths skip unnecessary deserialisation.
 21. As a maintainer of `crates/indexer/`, I want a single `FS_ID_BY_PATH` table replacing `FILE_ID_BY_PATH` and `DIR_ID_BY_PATH`, so that path-lookup paths and deletion detection traverse one table instead of two.
 22. As a maintainer of `crates/indexer/`, I want a new `find_id_by_path` returning `(FsRecordId, FsRecordKind)`, so that deletion detection no longer needs to consult the primary `FILES` / `DIRS` tables to discover kind.
-23. As a maintainer of `crates/schema/`, I want my consumer free to buffer events until `ScanCompleted` and then run `Builder::load_all` against the accumulated set, so that the schema's batched processing model is not forced into a per-event shape.
+23. As a maintainer of `crates/schema/`, I want my consumer free to buffer events until `ScanCompleted` and then flush the accumulated set through the schema service, so that the schema's batched processing model is not forced into a per-event shape.
 24. As an architecture reviewer, I want the per-context consumer logic, dispatch logic, and report aggregation to live inside each context crate, so that `crates/app/` does not become a routing monolith that knows about every processor.
 25. As an architecture reviewer, I want `crates/app/` to know only how to wire channels, spawn consumer threads, and assemble a top-level `SyncReport`, so that adding a new context to the sync pipeline is a one-line orchestration change.
 26. As a future maintainer, I want the indexer's sink trait to be implementable by alternative back-ends (in-memory fan-out, persistent log, tee-to-stdout for debugging), so that observability and persistence concerns can be plugged in without changing the indexer's emit path.
@@ -77,15 +79,15 @@ Wire-domain names follow the suffix **`Event`**. Storage-domain names keep their
 | Storage (per-row) | Record | `FileRecord`, `DirRecord`, `FsRecordId`, `FsRecordKind` |
 | Run-level summary | Result / Report | `IndexResult`, `IndexReport`, `SyncReport`, `NoteSyncReport` |
 
-Renames:
+Renames (wire-domain per-item types only):
 
 - `crates/indexer/src/entry.rs` → `crates/indexer/src/event.rs`
 - `FileIndexEntry` → `FileIndexEvent`
 - `DirIndexEntry` → `DirIndexEvent`
-- `IndexedNodes` → `IndexedEvents`
-- `DeletedNodes` → `DeletionEvents`
 
 `IndexStatus`, `IndexResult`, `IndexReport`, `IndexScope`, `IndexOptions` are unchanged — they are not per-item wire types.
+
+`IndexedNodes` and `DeletedNodes` (`crates/indexer/src/summary.rs:63,100`) are **aggregate/summary types** held by `IndexResult`, not per-item wire types — they keep their existing names. (A prior draft renamed them to `IndexedEvents` / `DeletionEvents`; that was dropped because it dragged storage-aggregate vocabulary into the wire domain, violating the table above, and because `DeletedNodes` carries only `Box<[FsRecordId]>` with no events at all.)
 
 Indexer CONTEXT.md will gain a glossary entry for **Index Event** ("a single classified item flowing through the sink") alongside the existing Index Record entry.
 
@@ -105,7 +107,9 @@ pub enum IndexEvent {
 }
 ```
 
-`FileIndexEvent` and `DirIndexEvent` retain the shape of the existing `*IndexEntry` structs (record + path + status). They become public-domain wire types and gain a `pub fn status() -> IndexStatus` (currently `pub(crate)`).
+`FileIndexEvent` and `DirIndexEvent` retain the shape of the existing `*IndexEntry` structs (record + path + status). They become public-domain wire types and gain a `pub fn status() -> IndexStatus` (currently `pub(crate)`, `crates/indexer/src/entry.rs:75,132`).
+
+Additionally, `FileRecord::metadata()` and `DirRecord::metadata()` (`crates/indexer/src/model.rs:146,234`) flip from `pub(crate)` to `pub`. The schema consumer reconstructs a `traces_fs::FileNode` from a buffered `FileIndexEvent` via `FileNode::new(event.path().clone(), event.node().metadata().clone())` (`crates/fs/src/entry.rs:190`) to feed `BaseSchemaProcessor::from_discovery`, which requires the metadata accessor to be public.
 
 `DeletedRecordEvent` is new and minimal:
 
@@ -175,20 +179,37 @@ Emit points are added inside the existing scan loop and deletion-detection pass:
 - Inside `detect_deletions`, when a missing path resolves to a dir: `IndexEvent::DirDeleted(DeletedRecordEvent::new(id, path))`.
 - After report construction, before returning: `IndexEvent::ScanCompleted(report.clone())`.
 
+**Note on `detect_deletions` (`crates/indexer/src/service.rs:221-249`)**: today it *batches* — it returns a `DeletedNodes` of ids only and discards each path (the `path` at service.rs:229 is in scope but not retained). Emitting per-path `DeletedRecordEvent { id, path }` therefore requires restructuring the deletion pass to emit per-path, not just adding an emit call. Foundation issue 07's `find_id_by_path` makes `(id, kind, path)` cheaply available at that point so this restructuring stays small.
+
+**Note on `ScanCompleted` and error paths**: `run` builds the report and emits `ScanCompleted` only at the very end. On a scanner error (service.rs:98, 132) or a fatal repository error, `run` returns *before* the terminator. Consumers that block waiting for `ScanCompleted` must not hang on an aborted scan — the abnormal-exit path is **disconnect-driven**: when the sink is dropped, `IndexEventStream::next()` returns `None`, which consumers treat as a terminal signal (drain any buffered work, then exit). The `ScanCompleted` terminator is the *normal*-path deterministic flush signal; channel disconnect is the *abnormal*-path one. Both must be handled by every consumer's drain loop.
+
 When `event_sink` is `None`, emit is a no-op. Existing callers (`run_index` in app, indexer unit tests) continue to work unchanged.
 
 ### 5. Storage Consolidation (Precursor)
 
-The integration depends on a storage refactor that is large enough to track as its own implementation issue but small enough to ship as a precursor before consumer work begins:
+The integration depends on a storage refactor that has been **moved out of this PRD** and tracked as a foundation issue: `.scratch/filesystem-indexer/foundation/07-storage-consolidation.md`. The indexer storage layer is foundation-owned and the refactor touches only `crates/indexer/` internals (zero external consumers), so it lands and merges independently, before any consumer work in this PRD begins.
+
+Summary of what that foundation issue covers (see it for full detail):
 
 - Replace `FILE_ID_BY_PATH` and `DIR_ID_BY_PATH` with a single `FS_ID_BY_PATH` table.
-- The new table is keyed by `PathKey` (via `DbPathKey`) and valued by `(FsRecordId, FsRecordKind)`. `FsRecordKind` is a new enum `{ File, Dir }` in `crates/indexer/src/model.rs`, sized for redb-friendly storage (e.g. tagged byte).
-- Add a new repository method `find_id_by_path(p: &PathKey) -> Option<(FsRecordId, FsRecordKind)>` that hits only `FS_ID_BY_PATH`. This is the workhorse for `detect_deletions`: iterate `FS_ID_BY_PATH`, for each path not in `seen_paths`, push the id into the right deletion bucket by kind. No reads of `FILES` or `DIRS` during deletion detection.
-- Rewrite `find_file_by_path` and `find_dir_by_path` internals to chain through `find_id_by_path`, then read the primary table.
-- Switch primary-table reads (`find_file`, `find_dir`, and the by-path methods above) from `rkyv::from_bytes` to `rkyv::access` followed by `rkyv::deserialize`. This matches the pattern used by `note`, `schema`, `template`, and `vault` storage layers (each goes through `traces_db::ArchivedEntity::access`, which wraps `rkyv::access`). The indexer uses bare `rkyv::access` directly because redb yields contiguous slices that do not need the `ArchivedEntity` alignment-buffering ceremony.
-- A future zero-copy `view_file_by_path` / `view_dir_by_path` API returning `&ArchivedFileRecord` / `&ArchivedDirRecord` is deferred until a downstream consumer needs field-level access without materialisation.
+- **The table is keyed by `(PathKey, FsRecordKind)` (via `DbPathKey`) and valued by `FsRecordId`** — *not* keyed by `PathKey` alone valued by `(FsRecordId, FsRecordKind)`. Keying by `(PathKey, FsRecordKind)` preserves today's per-kind path uniqueness (a file and a dir may share a path), so the existing repository contract test (`crates/indexer/src/storage/contract.rs:67-75`, which stores one path in both tables) passes unchanged. A `PathKey`-only key would have made uniqueness global and broken that contract. `FsRecordKind` is a new enum `{ File, Dir }` in `crates/indexer/src/model.rs`.
+- Add `find_id_by_path(p: &PathKey) -> Option<(FsRecordId, FsRecordKind)>`. This is the workhorse for `detect_deletions`: iterate the table, for each path not in `seen_paths`, push the id into the right deletion bucket by kind. No reads of `FILES` or `DIRS` during deletion detection.
+- Rewrite `find_file_by_path` / `find_dir_by_path` to chain through `find_id_by_path`; switch primary-table reads from `rkyv::from_bytes` to `rkyv::access` + `rkyv::deserialize`; update `all_paths` to iterate the single table while still returning distinct `PathKey`s.
+- A future zero-copy `view_file_by_path` / `view_dir_by_path` API is deferred until a downstream consumer needs field-level access without materialisation.
 
-This precursor lands first and is tracked as its own implementation issue. No consumer-side or app-side work in this PRD depends on the `view_*` API.
+No consumer-side or app-side work in this PRD depends on the `view_*` API. The only dependency is that foundation issue 07 lands first.
+
+### 5.1 Context Id Unification (Precursor — Foundation Issue 08)
+
+The schema section (§6/§7/§8) depends on a second foundation refactor: **unifying the per-context identity types onto `FsRecordId`**. This is an already-accepted architecture decision — ADR `docs/adr/indexer/0001-fileid-as-universal-identity.md` — re-expressed against issue 07's `FsRecordId` / `FS_ID_BY_PATH` names. It is tracked as foundation issue `.scratch/filesystem-indexer/foundation/08-id-unification.md` (depends on issue 07).
+
+What it covers:
+
+- Delete the per-context id newtypes (`SchemaId` at `crates/schema/src/identifier.rs:52`; the template and note equivalents) and replace every use site with `FsRecordId`. This re-keys schema's inheritance graph (`InheritanceGraph<()>` topo order, `crates/schema/src/discovery.rs:386`), the schema index (`crates/schema/src/index.rs`), and all name↔id / path↔id maps onto `FsRecordId`.
+- Route every `*_id_by_path` lookup through the consolidated `FS_ID_BY_PATH` table from issue 07, so a path resolves to exactly one `FsRecordId` regardless of context.
+- **Identity becomes derived-from-file**: a schema/template/note's identity *is* its file's `FsRecordId`. There is no independent `SchemaId::new()` (`crates/schema/src/aggregate.rs:62`, `crates/schema/src/base_processor.rs:317`) minting a fresh id — the processor adopts the `FsRecordId` the indexer already assigned and carries on the `FileIndexEvent`. One file → one schema, identity flowing from the indexer.
+
+**Why this is a hard prerequisite for the schema section**: schema deletion (§6/§8) is driven purely by indexer `FileDeleted`/`DirDeleted` events, which carry `(FsRecordId, PathKey)`. Because a schema's identity *is* its `FsRecordId`, the delete path (`repo.delete_base_schema(id)` + `repo.delete_schema(id)`, `crates/schema/src/base_processor.rs:64-66`) reads the id straight off the event with no `PathKey → SchemaId` repository lookup, and schema's own topological-graph deletion pass (`detect_deleted_schemas`, `crates/schema/src/discovery.rs:385-395`) is removed entirely. Without unification, schema would have to keep a path→id repo query on every deletion. This is a foundation-storage change spanning schema/note/template — it is deliberately **not** described inline in the schema sections; those sections assume issue 08 has landed.
 
 ### 6. Per-Context Consumer Layering (Hybrid)
 
@@ -246,7 +267,25 @@ The per-context consumer owns:
 - Any per-context state (buffering, watermarks in Phase 2, retry budgets)
 - Its own filter rules and dispatch logic
 
-Each context is free to differ. Schema's consumer accumulates `FileIndexEvent`s into a private `Vec` and calls `Builder::load_all` on `ScanCompleted` rather than dispatching per-event. Note dispatches per-event. Template will be decided when wired (likely per-event, like note). The shared `IndexEventStream` does not care.
+Each context is free to differ. Schema's and template's consumers accumulate their filtered `FileIndexEvent`s (plus `FileDeleted`/`DirDeleted`) into a private buffer and flush the accumulated set through their service on `ScanCompleted`, rather than dispatching per-event. Note dispatches per-event. The shared `IndexEventStream` does not care.
+
+**Schema buffer shape.** Schema's consumer buffers into an `IndexedSchemaSet`:
+
+```rust
+// crates/schema/src/sync.rs
+pub struct IndexedSchemaSet {
+    /// The single file matching `spec.property_bank_file_path()`, if present.
+    property_bank: Option<FileIndexEvent>,
+    /// The remaining schema-dir files, each carrying its IndexStatus.
+    schemas: Vec<FileIndexEvent>,
+    /// Deletion events for schema-dir paths (id + path).
+    deleted: Vec<DeletedRecordEvent>,
+}
+```
+
+During the scan the consumer appends raw `FileIndexEvent`s; the property-bank split runs **once at flush**, not per event, mirroring today's `separate_property_bank` (`crates/schema/src/discovery.rs:211-250`) by comparing each buffered path against `spec.property_bank_file_path()`. The struct carries **events only** — the inheritance graph and per-schema `RawSchemaView`s are **not** buffered; they are read from schema's own repository at flush (see §7).
+
+**Template buffer shape.** Template's consumer buffers its filtered template-dir `FileIndexEvent`s and deletion events and, on `ScanCompleted`, runs a `process_all`-equivalent over the accumulated set (see §7). Batched-on-flush is the natural fit because template's orphan detection (`identify_deleted_template_paths`, `crates/template/src/service.rs:449`) is a set-difference over the *whole* discovered path set against cached paths — it structurally needs the complete set, exactly like schema.
 
 **Backup options considered and rejected for the PRD baseline** (kept here as fallbacks in case the hybrid hits an unforeseen issue during implementation):
 
@@ -259,16 +298,18 @@ The hybrid takes Option A's win on transport reuse and Option B's win on per-con
 
 Each downstream context exposes a `<Context>Service` as its orchestration root. The service owns config, source reader, repository, and the sync entry point:
 
+The config type is `traces_settings::aggregate::AppConfig` (note's `process_file` takes `&AppConfig`, `crates/note/src/processor.rs:297`; schema's `Builder` holds `&'config AppConfig`, `crates/schema/src/builder.rs:21`, and `SchemaService` carries the same). There is no `Config` newtype. `AppConfig` is `Send + Sync` (confirmed: a plain validated aggregate value with no interior mutability, `crates/settings/src/config/aggregate.rs:29`), so the `Arc<AppConfig>` field crosses a thread boundary safely (see §9 threading).
+
 ```rust
 // crates/note/src/service.rs (example shape)
 pub struct NoteService {
-    config: Arc<Config>,
+    config: Arc<AppConfig>,
     source: FileReader,
     repository: Arc<dyn Repository + Send + Sync>,
 }
 
 impl NoteService {
-    pub fn new(config: Arc<Config>, source: FileReader, repository: Arc<dyn Repository + Send + Sync>) -> Self { ... }
+    pub fn new(config: Arc<AppConfig>, source: FileReader, repository: Arc<dyn Repository + Send + Sync>) -> Self { ... }
 
     pub fn sync(&self, rx: Receiver<IndexEvent>) -> Result<NoteSyncReport, NoteSyncError> {
         NoteIndexEventConsumer::new(IndexEventStream::new(rx), self).drain()
@@ -284,9 +325,42 @@ impl NoteService {
 }
 ```
 
-`TemplateService` already exists and will be extended with `sync(rx)`. `NoteService` and `SchemaService` are new and may be introduced as part of this PRD's implementation. Each service's `handle_event` is the per-event dispatch surface that the consumer calls back into; keeping `handle_event` on the service (not on the consumer) means processor-aware logic lives next to processor invocation, and the consumer stays a pure channel-drain shell.
+`NoteService` and `SchemaService` are new and may be introduced as part of this PRD's implementation. **Two dispatch models coexist**: note is *per-event* — its `NoteService::handle_event` is the dispatch surface the consumer calls back into per event, keeping processor-aware logic next to processor invocation while the consumer stays a pure channel-drain shell. Schema and template are *batched-on-flush* — their consumers buffer and call a single `flush`/`sync` entry on `ScanCompleted` (see §7.1, §7.2), so they expose no per-event `handle_event`.
 
-For schema specifically, `SchemaService::handle_event` does not invoke the processor directly — it appends to an internal buffer. `SchemaIndexEventConsumer::drain` triggers `SchemaService::flush()` (or equivalent) on `ScanCompleted`, which runs `Builder::load_all` against the buffered set. This keeps schema's batched processing model intact without leaking into the shared transport.
+`AppConfig` is confirmed `Send + Sync` — it is a plain validated aggregate value with no interior mutability (`crates/settings/src/config/aggregate.rs:29`; nested `Arc` fields are themselves `Send + Sync`), so the `Arc<AppConfig>` field crosses a thread boundary safely.
+
+#### 7.1 Schema Service — flush model
+
+For schema, `SchemaService` does **not** dispatch per-event. Its consumer buffers into the `IndexedSchemaSet` from §6; on `ScanCompleted`, `SchemaService::flush(IndexedSchemaSet)` owns the orchestration that previously lived inside `Builder::load_all` (`crates/schema/src/builder.rs:70-131`), **minus the `DiscoveryEngine::run` call** — the file set already arrived as events. The flush loop:
+
+1. **Property bank first.** If `property_bank` is present, run `PropertyBankProcessor::from_discovery(bank_file, root)` → `run(view, source, repo)` (`crates/schema/src/builder.rs:154-162`), yielding a `PropertyBankResolution`. The bank's `RawPropertyBankView` is read from schema's own repository. The bank is a *dependency* of schema processing, so it is resolved before the per-schema loop.
+2. **Per schema.** For each buffered schema `FileIndexEvent`, adapt it to a `FileNode` (§2) and run `BaseSchemaProcessor::from_new` / `from_stale` (§8), threading `Some(&bank_resolution)`. The per-schema `RawSchemaView` is read from schema's own repository, keyed by path. `Fresh` events never reach the processor — the service drops them.
+3. **Deletions.** For each buffered `DeletedRecordEvent`, call the caller-level delete path (`repo.delete_base_schema(id)` + `repo.delete_schema(id)`, `crates/schema/src/base_processor.rs:64-66`) using the `FsRecordId` carried on the event (post-issue-08, that id *is* the schema's identity).
+
+**The seam is the service, not `Builder`.** `SchemaService::flush` calls `PropertyBankProcessor` and `BaseSchemaProcessor` directly; `Builder` is **off the integration path**. The schema context is migrating from the `Builder` design to a service design, so investing a new `Builder::load_from` sibling would prop up a type on its way out. `Builder::load_all` (and the old `SchemaProcessor` it drives via `from_discovery_result`) remains only for whatever legacy/test callers survive until it is removed.
+
+What schema reuses from the indexer is the **filesystem scan + per-file `IndexStatus`** — it stops running `DiscoveryEngine::scan_filesystem` (`crates/schema/src/discovery.rs:184`) entirely (user stories 1, 6). The inheritance graph and cached views still come from schema's own repository; the property-bank split still runs at flush. That is the intended and bounded win.
+
+#### 7.2 Template Service — sync(rx) and threading
+
+`TemplateService<R, W, E>` already exists (`crates/template/src/service.rs:137`) and is extended with a `sync(rx)` entry point. **The generics are kept**; `sync` stays generic under the existing port bounds:
+
+```rust
+impl<R, W, E> TemplateService<R, W, E>
+where
+    R: ReadRepository + WriteRepository,
+    W: FileWriter,
+    E: TemplateEngine,
+{
+    pub fn sync(&self, rx: Receiver<IndexEvent>) -> Result<TemplateSyncReport, TemplateSyncError> {
+        TemplateIndexEventConsumer::new(IndexEventStream::new(rx), self).drain()
+    }
+}
+```
+
+`sync` takes `&self` (matching `process_all`, `crates/template/src/service.rs:344`, which is `&self` — the engine `E` is touched only by `create()`'s render path, not by ingestion). The **composition root pins the concrete triple** `TemplateService<RedbRepository, Writer, MiniJinjaEngine>` when it constructs and spawns the service; the `Send + 'static` bounds `thread::spawn` requires are satisfied by those concrete types at the spawn site, not written into the generic method. The service is not erased to a concrete type internally — the generics exist for hexagonal testability with in-memory doubles.
+
+Template's consumer buffers template-dir events and runs a `process_all`-equivalent on `ScanCompleted` (§6). This is batched-on-flush, the same shape as schema.
 
 ### 8. Processor Refactor — `IndexStatus`-Keyed Entry Points
 
@@ -300,16 +374,24 @@ impl NoteProcessor {
     pub fn process_file(self, ...) -> Result<NoteProcessReport, _> { ... }
 
     // new entry points for event-driven callers
-    pub fn from_new(repo: &impl Repository, config: &Config, source: &FileReader, event: &FileIndexEvent)
+    pub fn from_new(repo: &impl Repository, config: &AppConfig, source: &FileReader, event: &FileIndexEvent)
         -> Result<NoteProcessReport, NoteProcessError>;
-    pub fn from_stale(repo: &impl Repository, config: &Config, source: &FileReader, event: &FileIndexEvent)
+    pub fn from_stale(repo: &impl Repository, config: &AppConfig, source: &FileReader, event: &FileIndexEvent)
         -> Result<NoteProcessReport, NoteProcessError>;
 }
 ```
 
-`Fresh` events are never passed to a processor — the service drops them with no work. `New` and `Stale` events each enter the pipeline at the correct branch (Construction-from-scratch or Analysis-then-Construction respectively).
+`Fresh` events are never passed to a processor — the service drops them with no work.
 
-The same shape applies to `crates/schema/src/property_bank_processor.rs` and `crates/schema/src/schema_processor.rs`. Schema's existing `PropertyBankProcessor::from_discovery` already accepts a typed entry point; the change is to add `from_new` and `from_stale` siblings (or repurpose the existing one) that carry the indexer's status forward instead of repeating Comparison work.
+**What the entry points actually skip**: in note's typestate pipeline (`crates/note/src/processor.rs`), the only stages that duplicate the indexer's work are **Discovery** (the `discover()` repo lookup, processor.rs:357) and **Comparison** (`check_metadata()`, processor.rs:390). The `New` / `Changed` status structs (processor.rs:108-122) hold an already-*parsed* `RawNote` — they are post-Analysis states. A `New` event therefore still pays for **Analysis** (read from disk + markdown parse, via `read_and_persist`, processor.rs:584); it does **not** enter at Construction directly. So `from_new` enters past Discovery+Comparison into Analysis-then-Construction; `from_stale` does the same. The saving is the skipped repo lookup and metadata comparison, not the parse. (For deletions, note already exposes `record_deleted`, processor.rs:330, which the `FileDeleted`/`DirDeleted` handlers can reuse.)
+
+**Schema's processor entry points.** The target is the new per-file `BaseSchemaProcessor` (`crates/schema/src/base_processor.rs`), not the retiring `schema_processor.rs`. Today `BaseSchemaProcessor::from_discovery(file, root)` → `run(view, source, repo, bank_resolution)` (`base_processor.rs:252,280`) branches on `view: Option<&RawSchemaView>` and, on the present path, calls `check_timestamps` internally (`run_present`, `base_processor.rs:360`) to re-derive freshness. The integration adds `from_new` / `from_stale` siblings that **thread the indexer's `IndexStatus` and skip `check_timestamps`**, mapping the three statuses onto the pipeline:
+
+- **`IndexStatus::New`** → the missing path (no cached view): read → parse → construct → persist. `from_new` enters here directly; the timestamp check is never run.
+- **`IndexStatus::Stale`** → a cached view exists and the file changed: `from_stale` enters directly at the content-hash comparison (`run_content_check`, `base_processor.rs:389`), skipping `check_timestamps`. **The content-hash compare is retained** — that is not freshness re-derivation, it is schema's own "did the bytes actually change" guard that decides a Stale-noop (identical content, sync metadata only) versus a Stale semantic update. Dropping it would force a re-parse whenever an mtime changed with identical bytes.
+- **`IndexStatus::Fresh`** → never reaches the processor. `SchemaService::flush` drops Fresh events with no work (the biggest saving, satisfying user story 2 for schema).
+
+This delivers the `IndexStatus` reuse fully for schema: the indexer's classification drives the branch selection instead of the processor recomputing it. The property-bank processor (`PropertyBankProcessor`) keeps its own `run` because the bank is resolved once, up front, not per-schema.
 
 The original `process_file` / `from_discovery` constructors remain in place. They are still useful for tests that want to drive the full pipeline from raw inputs, and for any future ad-hoc caller that doesn't run through the indexer.
 
@@ -319,10 +401,10 @@ The original `process_file` / `from_discovery` constructors remain in place. The
 
 - Open the redb `Store` at the configured cache path.
 - Construct `FileReader` from the vault root.
-- Construct one `NoteService`, one `SchemaService`, one `TemplateService` from the shared store and config.
+- Construct one `NoteService`, one `SchemaService`, one concrete `TemplateService<RedbRepository, Writer, MiniJinjaEngine>` from the shared store and config.
 - Create one bounded `crossbeam_channel` per service (default capacity 1024).
 - Construct a `FanoutSink` over the sender halves.
-- Spawn one OS thread per service, running `service.sync(receiver)`.
+- Spawn one OS thread per service, running `service.sync(receiver)`. Every service is `Send + 'static`, including template once its concrete triple is pinned here (see the threading note below).
 - Construct the `IndexerService`, attach the fan-out sink, run the scan.
 - Join all consumer threads, collect their reports, aggregate into a single `SyncReport`.
 
@@ -337,15 +419,28 @@ pub struct SyncReport {
 }
 ```
 
-The app crate gains direct dependencies on `traces-note`, `traces-schema` (in addition to its existing `traces-template`, `traces-indexer`). The new `traces-note`, `traces-schema`, `traces-template` each gain a dependency on `traces-indexer` (for `IndexEvent` types and `IndexEventStream`). These dependencies are intentional: they encode the "indexer → downstream consumer" direction that CONTEXT.md describes.
+The app crate gains direct dependencies on `traces-note`, `traces-schema` (in addition to its existing `traces-template`, `traces-indexer`). The new `traces-note`, `traces-schema`, `traces-template` each gain a dependency on `traces-indexer` (for `IndexEvent` types and `IndexEventStream`). These dependencies are intentional: they encode the "indexer → downstream consumer" direction that CONTEXT.md describes. They are acyclic on the regular dependency graph (`traces-indexer` depends on none of `note`/`schema`/`template`). The one wrinkle: `crates/note/Cargo.toml:44` carries an **unused `traces-app` dev-dependency**; once app depends on note, remove that dev-dep (see §10) to avoid fragile dev/regular coupling.
+
+**Threading model — uniform thread-per-service, including template.** Spawning one OS thread per service requires every service be `Send + 'static`. The full chain is confirmed:
+
+| Service | Field / port | Send + Sync? |
+| --- | --- | --- |
+| all | `FileReader` (`PathBuf` + `Validator`) | ✓ |
+| all | `Arc<AppConfig>` (`crates/settings/src/config/aggregate.rs:29`) | ✓ |
+| note / schema | `RedbRepository` (`Arc<Store>`) | ✓ |
+| template | `R = RedbRepository` (`Arc<Store>`) | ✓ |
+| template | `W = Writer` (`PathBuf`, `crates/fs/src/writer.rs:34`) | ✓ |
+| template | `E = MiniJinjaEngine` (`minijinja::Environment<'static>`, `crates/template/src/engine/mini_jinja.rs:20`) | ✓ |
+
+`TemplateService` **runs on its own thread**, like note and schema — the uniform "one OS thread per service" claim holds for all three. `crates/template/src/service.rs:132-136` documents the service as *intentionally not* `Send + Sync`, but nothing in the concrete `TemplateService<RedbRepository, Writer, MiniJinjaEngine>` is intrinsically non-`Send`; that doc was a premature marker omission. The `Send + 'static` bounds are re-added at the **composition root** (the spawn site in `run_sync`), not inside the generic service — `sync` stays generic (§7.2). Because this reverses a documented design decision in the template context, it is recorded as an ADR (`crates/template/docs/adr/0002-template-service-send-at-composition-root.md`).
 
 ### 10. Vault Deletion
 
 Once each downstream context's service exists and is integrated:
 
-- Rewrite `crates/note/tests/note_reader.rs` to drive fixtures through `NoteService::sync` (or directly through `NoteProcessor::from_new` / `from_stale` for the per-event test cases). The integration tests do not need to go through the indexer at all — they can construct synthetic `IndexEvent`s.
-- Remove the `traces-vault` dev-dependency from `crates/note/Cargo.toml`.
-- Fix the two doc-comment references in `crates/db/src/table.rs` that mention `traces_vault::model::FileId`.
+- Rewrite `crates/note/tests/note_reader.rs` to drive fixtures through `NoteService::sync` (or directly through `NoteProcessor::from_new` / `from_stale` for the per-event test cases). The integration tests do not need to go through the indexer at all — they can construct synthetic `IndexEvent`s. **There are nine test functions, not seven.** Three of them (`load_skips_unchanged_notes`, `load_removes_missing_notes`, `full_scan_reports_pruned_files_for_removed_notes`) currently assert *freshness/deletion* behaviour of `VaultProcessor::process_full` — i.e. the indexer's job, not note's. When re-expressed as synthetic-event tests they will assert note's *event handler* behaviour (given a `FileDeleted` event, the note is removed), not scan behaviour. That is the correct new home for those assertions, but note it is a change in what they verify, not a mechanical port.
+- Remove the `traces-vault` dev-dependency from `crates/note/Cargo.toml`. Also remove the **unused `traces-app` dev-dependency** (`crates/note/Cargo.toml:44`, zero uses in note source/tests) — once §9 makes `traces-note` a regular dependency of `traces-app`, leaving an unused `traces-app` dev-dep on note is fragile dev/regular coupling.
+- Fix the two doc-comment references in `crates/db/src/table.rs` (lines 140 and 176) that mention `traces_vault::model::FileId`.
 - Remove `traces-vault` from the workspace `Cargo.toml`.
 - Delete `crates/vault/`.
 
@@ -397,10 +492,11 @@ Tests will be authored TDD-style (red-green-refactor cycle) during implementatio
 **Per-context (`note`, `schema`, `template`)**
 
 - `<Context>Service::matches` — filter predicate against fixture events covering format match, format non-match, template-directory exclusion (for note), schema-directory inclusion (for schema), and template-directory inclusion (for template).
-- `<Context>Service::handle_event` — per-event dispatch correctness against hand-built events. One test per `IndexStatus` (`New`, `Stale`, `Fresh`), one test per deletion variant, one test for events the context should ignore.
+- `NoteService::handle_event` (per-event dispatch) — correctness against hand-built events. One test per `IndexStatus` (`New`, `Stale`, `Fresh`), one test per deletion variant, one test for events the context should ignore.
 - `<Context>IndexEventConsumer::drain` — end-to-end on a hand-rolled `crossbeam_channel::unbounded()` feeding canned events including a terminating `ScanCompleted`. Asserts the returned report reflects the dispatched events.
-- Schema-specific: consumer buffering behaviour — events accumulate; `flush` runs only on `ScanCompleted`; buffer is empty after drain returns.
-- Processor entry points: `NoteProcessor::from_new` and `from_stale` (and schema equivalents) produce the same observable result as the existing `process_file` path when fed equivalent inputs. These are direct comparisons, not integration tests.
+- Schema-specific (batched-on-flush): the property-bank split in `IndexedSchemaSet` routes the bank file out of the schema set; events accumulate; `SchemaService::flush` runs only on `ScanCompleted`; the buffer is empty after drain returns; a `FileDeleted` event drives the caller-level delete on flush.
+- Template-specific (batched-on-flush): template-dir events accumulate; the `process_all`-equivalent runs only on `ScanCompleted`; orphan detection over the buffered set matches `identify_deleted_template_paths` behaviour.
+- Processor entry points: `NoteProcessor::from_new`/`from_stale` and `BaseSchemaProcessor::from_new`/`from_stale` produce the same observable result as the existing `process_file` / `from_discovery`+`run` path when fed equivalent inputs, and the schema siblings skip `check_timestamps` while preserving the content-hash branch. These are direct comparisons, not integration tests.
 
 **App crate**
 
@@ -414,7 +510,7 @@ Tests will be authored TDD-style (red-green-refactor cycle) during implementatio
 
 **Note integration test rewrite**
 
-- `crates/note/tests/note_reader.rs` rewritten to drive fixtures through `NoteService::sync` (passing synthetic `IndexEvent`s) instead of `VaultProcessor::process_full`. All seven existing test functions retained; the fixture-construction helpers (`build_fixture`, `build_environment`) re-implemented against the new service.
+- `crates/note/tests/note_reader.rs` rewritten to drive fixtures through `NoteService::sync` (passing synthetic `IndexEvent`s) instead of `VaultProcessor::process_full`. All **nine** existing test functions retained; the fixture-construction helpers (`build_fixture`, `build_environment`) re-implemented against the new service. Note that the three deletion/freshness tests change what they assert (note's event handler vs the vault scan) — see §10.
 
 ### Prior art for test patterns
 

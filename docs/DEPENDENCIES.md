@@ -125,7 +125,7 @@ Legend:
 - Upgrade concerns: escaping defaults, whitespace behavior, rendering regressions.
 - Licensing/security: permissive.
 - Integration pattern: typed borrowed contexts from domain/archive-backed data.
-- References: `docs/adr/007-template-engine.md`
+- References: `crates/template/docs/adr/0001-template-engine.md`
 
 ### pulldown-cmark
 - Purpose: high-throughput markdown event parsing.
@@ -296,7 +296,7 @@ Recommendation:
 
 - `docs/adr/005-error-handling.md`
 - `docs/adr/006-persistence-cache-infrastructure.md`
-- `docs/adr/007-template-engine.md`
+- `crates/template/docs/adr/0001-template-engine.md`
 - `docs/adr/008-markdown-parsing.md`
 - `docs/adr/009-configuration-management.md`
 - `docs/adr/012-benchmarking-infrastructure.md` (proposed)

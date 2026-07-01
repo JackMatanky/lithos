@@ -450,7 +450,7 @@ Is this a new dependency?
 
 **Example ADRs:**
 - ADR 006: Storage (redb + rkyv) - Documented technology choice
-- ADR 007: Template Engine (minijinja) - Compared alternatives
+- Template Engine ADR (minijinja) - Compared alternatives (`crates/template/docs/adr/0001-template-engine.md`, formerly ADR 007)
 
 ### 9.2 Review Schedule
 

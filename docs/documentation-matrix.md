@@ -22,7 +22,7 @@ Decisions: `keep`, `archive`, `move`, `delete`.
 | `docs/adr/004-event-orchestration.md` | keep | aligned with approved target structure | `` |
 | `docs/adr/005-error-handling.md` | keep | aligned with approved target structure | `` |
 | `docs/adr/006-persistence-cache-infrastructure.md` | keep | aligned with approved target structure | `` |
-| `docs/adr/007-template-engine.md` | keep | aligned with approved target structure | `` |
+| `crates/template/docs/adr/0001-template-engine.md` | keep | relocated to per-context ADR dir (was `docs/adr/007-template-engine.md`) | `` |
 | `docs/adr/008-markdown-parsing.md` | keep | aligned with approved target structure | `` |
 | `docs/adr/009-configuration-management.md` | keep | aligned with approved target structure | `` |
 | `docs/adr/010-file-ingestion.md` | keep | aligned with approved target structure | `` |

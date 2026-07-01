@@ -31,7 +31,7 @@ Unlike AST-based parsers (Comrak, markdown-rs), `pulldown-cmark` uses a pull-bas
 
 ### 2. LSP and Mechanical Sympathy
 
-In alignment with **ADR 006 (Redb/rkyv)** and **ADR 007 (MiniJinja)**, `pulldown-cmark` is optimized for speed and low overhead. Its ability to render small snippets of Markdown to HTML in sub-millisecond time is essential for the fluid user experience required by the LSP.
+In alignment with **ADR 006 (Redb/rkyv)** and the **template-engine ADR (MiniJinja)** (`crates/template/docs/adr/0001-template-engine.md`, formerly ADR 007), `pulldown-cmark` is optimized for speed and low overhead. Its ability to render small snippets of Markdown to HTML in sub-millisecond time is essential for the fluid user experience required by the LSP.
 
 ### 3. Obsidian Compatibility Strategy
 
