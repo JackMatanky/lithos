@@ -27,6 +27,7 @@ pub(crate) struct DiscoveryProcessor<State> {
     input: DiscoveryInput,
     local: Vec<CandidatePath>,
     global: Vec<CandidatePath>,
+    report: crate::DiscoveryReport,
     _state: PhantomData<State>,
 }
 
@@ -36,6 +37,7 @@ impl DiscoveryProcessor<Init> {
             input,
             local: Vec::new(),
             global: Vec::new(),
+            report: crate::DiscoveryReport::default(),
             _state: PhantomData,
         }
     }
@@ -59,6 +61,7 @@ impl DiscoveryProcessor<Init> {
             input: self.input,
             local: self.local,
             global: self.global,
+            report: self.report,
             _state: PhantomData,
         })
     }
@@ -68,6 +71,12 @@ impl DiscoveryProcessor<LocalCollected> {
     pub(crate) fn collect_global(
         mut self,
     ) -> DiscoveryProcessor<GlobalCollected> {
+        if self.input.suppress_global() {
+            self.report.global_resolution_skip_reason = Some(
+                crate::report::GlobalResolutionSkipReason::SuppressedByFlag,
+            );
+        }
+
         let platform_dirs = platform_global_dirs();
         self.global = global_collect(
             self.input.suppress_global(),
@@ -80,6 +89,7 @@ impl DiscoveryProcessor<LocalCollected> {
             input: self.input,
             local: self.local,
             global: self.global,
+            report: self.report,
             _state: PhantomData,
         }
     }
@@ -93,9 +103,7 @@ impl DiscoveryProcessor<GlobalCollected> {
         DiscoveryOutcome::new(
             filter_ignored(dedupe(self.local), &[]).into_boxed_slice(),
             filter_ignored(dedupe(self.global), &[]).into_boxed_slice(),
-            // ponytail: report detail wiring stays with old discovery until
-            // diagnostics migrate; keep the public shape now.
-            crate::DiscoveryReport::default(),
+            self.report,
         )
     }
 }
@@ -140,6 +148,40 @@ mod tests {
             &SettingsEnvVars::new(env_default_vault, None, None, None, false),
         )
         .expect("valid discovery input")
+    }
+
+    fn input_with_suppressed_global(anchor: PathBuf) -> DiscoveryInput {
+        DiscoveryInput::from_options(
+            &DiscoveryOptions::new(anchor, None, None, true),
+            &SettingsEnvVars::new(None, None, None, None, false),
+        )
+        .expect("valid discovery input")
+    }
+
+    mod report {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn report_records_suppressed_global_resolution() {
+            let root = tempfile::tempdir().expect("root");
+
+            let outcome = DiscoveryProcessor::new(
+                input_with_suppressed_global(root.path().to_path_buf()),
+            )
+            .collect_local()
+            .expect("local collection")
+            .collect_global()
+            .finish();
+
+            assert_eq!(
+                outcome.report().global_resolution_skip_reason,
+                Some(
+                    crate::report::GlobalResolutionSkipReason::SuppressedByFlag
+                )
+            );
+        }
     }
 
     mod state {

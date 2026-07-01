@@ -196,7 +196,7 @@ Decisions and deviations:
 - Exact marker names include `traces.{toml,json,yaml,yml}` and `.traces/config.{toml,json,yaml,yml}` to match the PRD.
 - Ignored-path filtering is implemented as a helper but receives an empty list until trust-store ignored paths are wired in a later issue.
 - `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
-- New `DiscoveryOutcome::report()` currently returns a default report from the linear processor; detailed diagnostic population remains with old discovery until diagnostics migrate.
+- New `DiscoveryOutcome::report()` from the linear processor records suppressed global resolution; full skipped-ceiling and local traversal stop diagnostics remain deferred until diagnostics migrate.
 
 Verification:
 
@@ -213,4 +213,4 @@ Review focus:
 - Check old/new discovery coexistence around `processor.rs` and `processor_old.rs`.
 - Check that ignored-path filtering being a temporary empty-input stub is acceptable for this slice.
 - Check test coverage for fallback precedence, boundary markers, exact marker names, and suppressed global inputs.
-- Check whether default-only `DiscoveryReport` population is acceptable for this migration slice or should be populated before merge.
+- Check whether the remaining deferred `DiscoveryReport` diagnostics should move before the diagnostics migration.
