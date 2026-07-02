@@ -2,10 +2,10 @@
 //!
 //! New settings-service code normalizes
 //! [`DiscoveryOptions`](crate::DiscoveryOptions)
-//! plus [`SettingsEnvVars`](crate::env_var::SettingsEnvVars), collects
-//! vault-local and global candidate config paths, filters/deduplicates them,
-//! and returns a [`DiscoveryOutcome`](crate::DiscoveryOutcome). Discovery does
-//! not parse config contents or resolve cache directories.
+//! plus internal env capture, collects vault-local and global candidate config
+//! paths, filters/deduplicates them, and returns a
+//! [`DiscoveryOutcome`](crate::DiscoveryOutcome). Discovery does not parse
+//! config contents or resolve cache directories.
 //!
 //! Old `DiscoveryPort`/`DiscoveryService` modules remain for migration slices
 //! that still compile against the previous bootstrap path.
