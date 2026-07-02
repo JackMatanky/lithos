@@ -114,5 +114,6 @@ paths = [
   '^_bmad/_config/files-manifest\.csv$',
   '^_bmad/tea/workflows/testarch/',
   '^\.agents/skills/bmad-testarch-[^/]+/resources/knowledge/',
-  '^\.agents/skills/bmad-testarch-atdd/steps-c/'
+  '^\.agents/skills/bmad-testarch-atdd/steps-c/',
+  '^\.agents/skills/rust-skills/rules/'
 ]
