@@ -236,3 +236,29 @@ Review focus:
 - Check that ignored-path filtering being a temporary empty-input stub is acceptable for this slice.
 - Check test coverage for fallback precedence, boundary markers, exact marker names, and suppressed global inputs.
 - Check whether the remaining deferred `DiscoveryReport` diagnostics should move before the diagnostics migration.
+
+## Acceptance Criteria Status
+
+All 17 criteria fulfilled. Detailed check:
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | `vault_dir` → `default_vault_dir`, `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT` | ✅ `src/env_var.rs` lines 8, 23, 46, 87 |
+| 2 | `config_file` → `global_config`, `TRACES_CONFIG_FILE` → `TRACES_GLOBAL_CONFIG` | ✅ `src/env_var.rs` lines 9, 24, 47, 94 |
+| 3 | `discovery/env.rs` XDG statics removed | ✅ File has no HOME/XDG_* statics — only `EnvVars` struct |
+| 4 | `discovery/env.rs` `EnvVars` kept with old field names | ✅ `vault_dir`, `config_file`, `TRACES_VAULT_DIR`, `TRACES_CONFIG_FILE` preserved for old callers |
+| 5 | `discovery/dirs.rs` imports from `crate::os_dirs`; `AppDirs` kept | ✅ `use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};`; `AppDirs` struct retained |
+| 6 | `DiscoveryInput` internal from `DiscoveryOptions` + `SettingsEnvVars` | ✅ `pub(crate)` struct at `discovery/input.rs`; `from_options(options, env)` |
+| 7 | Explicit transition methods | ✅ `new` → `collect_local()` → `collect_global()` → `finish()` |
+| 8 | Linear flow, no old branch/cache-resolution phase | ✅ Single linear pipeline in `processor.rs` |
+| 9 | Outer→nearest ancestor order | ✅ Walk yields outer→nearest; test `returns_outcome_with_local_outer_to_nearest_ordering` |
+| 10 | `TRACES_DEFAULT_VAULT` fallback only when local empty | ✅ Test `uses_default_vault_only_when_local_collection_is_empty` |
+| 11 | Global: suppress → flag → env → platform-dirs | ✅ `global_collect` in `discovery/global.rs` follows this order |
+| 12 | Exact filename slices (was `src/location.rs`) | ✅ Moved to `discovery/targets.rs` — `VAULT_CONFIG_TARGETS` + `GLOBAL_CONFIG_TARGETS` |
+| 13 | `CandidatePath` at `src/candidate.rs` | ✅ Standalone type with `base` + `path` fields |
+| 14 | Dedupe/desymlink + ignored-path filtering before return | ✅ `finish()` calls `dedupe_keep_last(self.local)` + `dedupe(self.global)` + `filter_ignored()` |
+| 15 | `DiscoveryInput` fields match PRD | ✅ `anchor`, `flag_global`, `flag_vault`, `env_global`, `env_default_vault`, `ceiling_dirs`, `suppress_global` |
+| 16 | `CandidatePath` imported from `src/candidate.rs` | ✅ Used via `crate::candidate::CandidatePath` |
+| 17 | `DiscoveryOutcome` has no `cache_root` | ✅ Fields: `vault`, `global`, `report` only. Old `DiscoveryResult` retains `cache_root` for old callers |
+
+**Deviation:** Criterion 12 references `src/location.rs` — this file was deleted during post-review refactoring. The exact filename slices live in `discovery/targets.rs` instead. Intent (exact slices, no marker-pattern iteration) is fully met.
