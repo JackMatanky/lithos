@@ -12,6 +12,8 @@ use traces_settings::{
 };
 
 mod discovery_options {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
@@ -56,6 +58,8 @@ mod config_builder_options {
 }
 
 mod discovery_outcome {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
@@ -81,6 +85,8 @@ mod discovery_outcome {
 }
 
 mod settings_service {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]

@@ -171,6 +171,8 @@ mod tests {
     use super::*;
 
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -321,6 +323,8 @@ mod tests {
     }
 
     mod accessors {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]

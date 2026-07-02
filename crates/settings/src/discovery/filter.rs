@@ -45,13 +45,15 @@ mod tests {
     use super::*;
 
     fn candidate(path: PathBuf) -> CandidatePath {
-        let base = DirPath::try_new(path.parent().unwrap().to_path_buf())
-            .expect("base dir");
+        let parent = path.parent().expect("candidate path should have parent");
+        let base = DirPath::try_new(parent.to_path_buf()).expect("base dir");
         let file = FilePath::try_new(path).expect("file path");
         CandidatePath::new(base, file)
     }
 
     mod dedupe {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -80,6 +82,8 @@ mod tests {
     }
 
     mod ignored {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]

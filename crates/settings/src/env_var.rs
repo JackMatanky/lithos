@@ -130,6 +130,8 @@ mod tests {
     use super::*;
 
     mod capture {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -180,6 +182,8 @@ mod tests {
     }
 
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]

@@ -83,6 +83,8 @@ mod tests {
     use super::*;
 
     mod exact_filenames {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]

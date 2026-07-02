@@ -40,6 +40,8 @@ mod tests {
     use super::*;
 
     mod precedence {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         fn file(root: &tempfile::TempDir, name: &str) -> FilePath {

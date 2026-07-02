@@ -112,12 +112,13 @@ impl Iterator for AncestorEnumerator {
 
 #[cfg(test)]
 mod tests {
-
     use tempfile::tempdir;
 
     use super::*;
 
     mod bounded_ascent {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         fn ascent<'a>(
@@ -220,6 +221,8 @@ mod tests {
     }
 
     mod ancestor_enumeration {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
