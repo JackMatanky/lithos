@@ -29,28 +29,21 @@ impl DiscoveryInput {
         env: &SettingsEnvVars,
     ) -> Result<Self, DiscoveryError> {
         let anchor = normalize_anchor(options.anchor())?;
-        let flag_vault = options
-            .vault_dir()
-            .map(|path| validate_flag_vault(path))
-            .transpose()?;
+        let flag_vault =
+            options.vault_dir().map(validate_flag_vault).transpose()?;
         let suppress_global =
             options.suppress_global() || env.suppress_global();
         let flag_global = if suppress_global {
             None
         } else {
-            options
-                .config_file()
-                .map(|path| validate_flag_global(path))
-                .transpose()?
+            options.config_file().map(validate_flag_global).transpose()?
         };
         let env_global = if suppress_global {
             None
         } else {
-            env.global_config()
-                .map(|path| validate_env_global(path))
-                .transpose()?
+            env.global_config().map(validate_env_global).transpose()?
         };
-        let env_default_vault = env.default_vault_dir().cloned();
+        let env_default_vault = env.default_vault_dir().map(Path::to_path_buf);
         let ceiling_dirs =
             env.ceiling_dirs().unwrap_or(&[]).to_vec().into_boxed_slice();
 

@@ -1,6 +1,6 @@
 //! Settings service facade.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{
     candidate::CandidatePath,
@@ -46,22 +46,22 @@ impl DiscoveryOptions {
     /// Directory or file path where discovery begins.
     #[must_use]
     #[inline]
-    pub fn anchor(&self) -> &PathBuf {
+    pub fn anchor(&self) -> &Path {
         &self.anchor
     }
 
     /// Explicit config file supplied by the caller.
     #[must_use]
     #[inline]
-    pub fn config_file(&self) -> Option<&PathBuf> {
-        self.config_file.as_ref()
+    pub fn config_file(&self) -> Option<&Path> {
+        self.config_file.as_deref()
     }
 
     /// Explicit vault directory supplied by the caller.
     #[must_use]
     #[inline]
-    pub fn vault_dir(&self) -> Option<&PathBuf> {
-        self.vault_dir.as_ref()
+    pub fn vault_dir(&self) -> Option<&Path> {
+        self.vault_dir.as_deref()
     }
 
     /// Whether global config discovery should be skipped.

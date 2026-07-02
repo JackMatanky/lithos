@@ -1,6 +1,9 @@
 //! Traces environment variables.
 
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 const DEFAULT_VAULT_KEY: &str = "TRACES_DEFAULT_VAULT";
 const GLOBAL_CONFIG_KEY: &str = "TRACES_GLOBAL_CONFIG";
@@ -81,15 +84,15 @@ impl SettingsEnvVars {
     /// Default vault root fallback used when local traversal finds nothing.
     #[inline]
     #[must_use]
-    pub(crate) fn default_vault_dir(&self) -> Option<&PathBuf> {
-        self.default_vault_dir.as_ref()
+    pub(crate) fn default_vault_dir(&self) -> Option<&Path> {
+        self.default_vault_dir.as_deref()
     }
 
     /// Explicit global config file path.
     #[inline]
     #[must_use]
-    pub(crate) fn global_config(&self) -> Option<&PathBuf> {
-        self.global_config.as_ref()
+    pub(crate) fn global_config(&self) -> Option<&Path> {
+        self.global_config.as_deref()
     }
 
     /// Explicit cache directory override.
@@ -99,8 +102,8 @@ impl SettingsEnvVars {
     )]
     #[inline]
     #[must_use]
-    pub(crate) fn cache_dir(&self) -> Option<&PathBuf> {
-        self.cache_dir.as_ref()
+    pub(crate) fn cache_dir(&self) -> Option<&Path> {
+        self.cache_dir.as_deref()
     }
 
     /// Colon-separated ceiling directory paths (raw from env).
@@ -146,14 +149,8 @@ mod tests {
                 |_| None,
             );
 
-            assert_eq!(
-                vars.default_vault_dir(),
-                Some(&PathBuf::from("/vault"))
-            );
-            assert_eq!(
-                vars.global_config(),
-                Some(&PathBuf::from("/global.toml"))
-            );
+            assert_eq!(vars.default_vault_dir(), Some(Path::new("/vault")));
+            assert_eq!(vars.global_config(), Some(Path::new("/global.toml")));
         }
 
         #[test]
@@ -200,9 +197,9 @@ mod tests {
                 true,
             );
 
-            assert_eq!(vars.default_vault_dir(), Some(&vault));
-            assert_eq!(vars.global_config(), Some(&config));
-            assert_eq!(vars.cache_dir(), Some(&cache));
+            assert_eq!(vars.default_vault_dir(), Some(vault.as_path()));
+            assert_eq!(vars.global_config(), Some(config.as_path()));
+            assert_eq!(vars.cache_dir(), Some(cache.as_path()));
             assert_eq!(vars.ceiling_dirs(), Some(ceilings.as_slice()));
             assert!(vars.suppress_global());
         }

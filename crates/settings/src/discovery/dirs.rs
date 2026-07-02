@@ -14,7 +14,7 @@
 //! let cache = app.cache();
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
@@ -46,7 +46,9 @@ impl AppDirs {
     #[inline]
     #[must_use]
     pub fn cache_dir_from_env() -> Option<PathBuf> {
-        crate::env_var::SettingsEnvVars::capture().cache_dir().cloned()
+        crate::env_var::SettingsEnvVars::capture()
+            .cache_dir()
+            .map(Path::to_path_buf)
     }
 
     /// Resolve app directories from env captures and platform defaults.
@@ -65,8 +67,7 @@ impl AppDirs {
     pub(crate) fn new(vars: &crate::env_var::SettingsEnvVars) -> Self {
         let cache = vars
             .cache_dir()
-            .cloned()
-            .unwrap_or_else(|| XDG_CACHE_HOME.join("traces"));
+            .map_or_else(|| XDG_CACHE_HOME.join("traces"), Path::to_path_buf);
         let config = XDG_CONFIG_HOME.join("traces");
         let system_config = platform_system_config();
         Self {

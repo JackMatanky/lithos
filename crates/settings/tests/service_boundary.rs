@@ -1,6 +1,6 @@
 //! Public boundary DTO tests for settings service inputs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // SettingsEnvVars is intentionally not imported here: env capture is
 // internal to SettingsService and must not be part of the public boundary.
@@ -23,12 +23,12 @@ mod discovery_options {
             true,
         );
 
-        assert_eq!(options.anchor(), &PathBuf::from("/vault"));
+        assert_eq!(options.anchor(), Path::new("/vault"));
         assert_eq!(
             options.config_file(),
-            Some(&PathBuf::from("/vault/traces.toml"))
+            Some(Path::new("/vault/traces.toml"))
         );
-        assert_eq!(options.vault_dir(), Some(&PathBuf::from("/vault")));
+        assert_eq!(options.vault_dir(), Some(Path::new("/vault")));
         assert!(options.suppress_global());
     }
 }
