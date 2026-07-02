@@ -34,6 +34,7 @@ pub(crate) mod processor;
 pub(crate) mod processor_old;
 pub mod report;
 pub mod service;
+pub mod targets;
 pub(crate) mod walk;
 
 pub use context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags};

@@ -123,6 +123,14 @@ pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 
 // ---------------------------------------------------------------------------
+// App-specific directories
+// ---------------------------------------------------------------------------
+
+/// App-specific state directory.
+pub static STATE: LazyLock<PathBuf> =
+    LazyLock::new(|| XDG_STATE_HOME.join("traces"));
+
+// ---------------------------------------------------------------------------
 // System-wide config directory
 // ---------------------------------------------------------------------------
 

@@ -13,9 +13,9 @@ use crate::{
         input::DiscoveryInput,
         outcome::DiscoveryOutcome,
         probe::exact_probe,
+        targets::VAULT_CONFIG_TARGETS,
         walk::AncestorEnumerator,
     },
-    location::VAULT_CONFIG_TARGETS,
     os_dirs::XDG_CONFIG_HOME,
 };
 

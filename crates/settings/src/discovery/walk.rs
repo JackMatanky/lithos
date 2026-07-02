@@ -25,9 +25,10 @@ use std::{
 
 use traces_fs::DirPath;
 
-use crate::{
-    discovery::report::LocalTraversalStopReason, location::BOUNDARY_MARKERS,
-};
+use crate::discovery::report::LocalTraversalStopReason;
+
+/// Directory names that stop local ancestor discovery.
+const BOUNDARY_MARKERS: &[&str] = &[".git", ".workspace"];
 
 /// An iterator that ascends from a directory up to defined boundary ceilings.
 ///

@@ -2,8 +2,8 @@
 
 use traces_fs::{DirPath, FilePath};
 
-use super::probe::exact_probe;
-use crate::{candidate::CandidatePath, location::GLOBAL_CONFIG_TARGETS};
+use super::{probe::exact_probe, targets::GLOBAL_CONFIG_TARGETS};
+use crate::candidate::CandidatePath;
 
 pub(crate) fn global_collect(
     suppress: bool,
