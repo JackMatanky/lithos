@@ -44,6 +44,11 @@ pub enum SkippedCeilingReason {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum LocalTraversalStopReason {
     /// Traversal did not run because an explicit config file was supplied.
+    ///
+    /// Old-path only: emitted by `processor_old` and consumed by the old
+    /// bootstrap/CLI diagnostics. New linear discovery never sets this
+    /// variant. Retained until the old discovery service is removed in
+    /// issue 07.
     ExplicitConfigFile,
     /// Traversal reached the filesystem root.
     #[default]

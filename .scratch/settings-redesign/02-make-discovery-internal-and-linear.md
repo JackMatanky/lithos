@@ -198,6 +198,16 @@ Decisions and deviations:
 - `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
 - The new linear report is wired through the processor and records global suppression; full skipped-ceiling and local traversal stop diagnostics remain deferred.
 
+Adversarial-review follow-up fixes:
+
+- Added `os_dirs::SYSTEM_CONFIG_DIR` (`/etc/traces` on Unix) and replaced the hardcoded `/etc/traces` in the processor's platform global dirs.
+- `GLOBAL_CONFIG_TARGETS` is now its own slice using `traces/config.{toml,json,yaml,yml}` (platform config layout) and no longer aliases `MARKERS` or includes `.traces/*`/bare `traces.*` names.
+- Local candidate dedupe now keeps the **nearest** (deepest) ancestor when a config is reachable from multiple ancestors (`dedupe_keep_last`), while output stays outer → nearest. Global dedupe keeps first-wins precedence.
+- `flag_vault` (`--vault`) now probes a **single directory**, symmetric with the `TRACES_DEFAULT_VAULT` fallback; it no longer seeds an ancestor walk.
+- Ceiling inputs are normalized in `DiscoveryInput` with `~/` → `$HOME` expansion and empty/nonexistent-segment filtering, matching `mise`'s `file::all_dirs`. Ancestor comparison remains lexical (no canonicalization) by design.
+- `DiscoveryReport` diagnostics are now fully populated: `local_traversal_stop_reason` (`CeilingEnforced`, `ProjectBoundaryMarker`, `FilesystemRoot`) is recorded by the ancestor walk, and `skipped_ceilings` (`EmptySegment`, `InvalidPath`) is carried from input normalization. `ExplicitConfigFile` is documented as old-path-only and is not emitted by linear discovery.
+- Doc fixes: differentiated `exact_probe` (new) from `FolderProbe` (old-only) and `AncestorEnumerator` (new) from `BoundedAscent` (old-only); annotated `DiscoveryError::Config`/`CanonicalizePath` as old-path-only. `DiscoveryReport` fields remain `pub` by decision.
+
 Verification:
 
 - `mise run verify` passed after implementation.

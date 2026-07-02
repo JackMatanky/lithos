@@ -28,9 +28,17 @@ pub enum DiscoveryError {
     #[error(transparent)]
     Env(#[from] EnvironmentOverrideError),
     /// Invalid discovery service configuration.
+    ///
+    /// Old-path only: produced by the `processor_old` `DiscoveryService`
+    /// construction, not by new linear discovery. Removed with the old service
+    /// in issue 07.
     #[error(transparent)]
     Config(#[from] ServiceConfigError),
     /// Failed to canonicalize a specific path during discovery.
+    ///
+    /// Old-path only: new linear discovery compares ancestors lexically and
+    /// never canonicalizes, so it cannot emit this variant. Removed with the
+    /// old service in issue 07.
     #[error("Failed to canonicalize path {path}: {source}")]
     CanonicalizePath {
         /// The path that failed canonicalization.

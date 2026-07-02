@@ -46,11 +46,11 @@ impl SettingsEnvVars {
             default_vault_dir: var_os(DEFAULT_VAULT_KEY).map(PathBuf::from),
             global_config: var_os(GLOBAL_CONFIG_KEY).map(PathBuf::from),
             cache_dir: var_os("TRACES_CACHE_DIR").map(PathBuf::from),
-            ceiling_dirs: var_os("TRACES_CEILING_DIRS").map(|raw| {
-                std::env::split_paths(&raw)
-                    .filter(|p| !p.as_os_str().is_empty())
-                    .collect()
-            }),
+            // Raw split only — empty segments are kept so discovery can
+            // report them as skipped ceilings. Normalization and validation
+            // are policy, and live in the discovery input layer.
+            ceiling_dirs: var_os("TRACES_CEILING_DIRS")
+                .map(|raw| std::env::split_paths(&raw).collect()),
             suppress_global: var("TRACES_SUPPRESS_GLOBAL")
                 .as_deref()
                 .is_some_and(is_true),

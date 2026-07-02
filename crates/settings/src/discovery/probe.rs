@@ -1,8 +1,16 @@
 //! Logic for examining individual directories for configuration marker files.
 //!
-//! This module provides the [`FolderProbe`] for detecting marker files in a
-//! single directory. It abstracts the filesystem mechanics of checking for
-//! supported filename patterns and structured formats.
+//! This module contains two probes for two eras of discovery:
+//!
+//! - [`exact_probe`] is the **new** linear-discovery entry point. It matches a
+//!   directory against an exact list of marker filenames (from
+//!   [`crate::location`]) and is what [`DiscoveryProcessor`] uses.
+//! - [`FolderProbe`] is the **old** processor's probe. It iterates marker
+//!   patterns × structured-format precedence and is used only by
+//!   `processor_old`; it is removed together with the old discovery service in
+//!   issue 07. New code must not use it.
+//!
+//! [`DiscoveryProcessor`]: super::processor::DiscoveryProcessor
 
 use std::path::Path;
 
@@ -17,6 +25,9 @@ use crate::candidate::CandidatePath;
 /// patterns × format precedence.
 ///
 /// All input paths are pre-validated before reaching it.
+///
+/// **Old discovery only** — used by `processor_old`, removed in issue 07. New
+/// linear discovery uses [`exact_probe`] instead.
 pub(crate) struct FolderProbe {
     /// Ordered marker patterns to search for.
     pub(crate) patterns: &'static [super::policy::MarkerPattern],
@@ -60,6 +71,13 @@ impl FolderProbe {
     }
 }
 
+/// Probe a single directory for exact marker filenames.
+///
+/// Joins each entry of `markers` (exact relative names such as `traces.toml`
+/// or `traces/config.toml` from [`crate::location`]) onto `dir` and returns a
+/// [`CandidatePath`] for each one that resolves to a regular file. Order
+/// follows the `markers` slice. Non-file and non-existent markers are skipped.
+/// This is the marker check used by new linear discovery.
 pub(crate) fn exact_probe(
     dir: &DirPath,
     markers: &[&str],

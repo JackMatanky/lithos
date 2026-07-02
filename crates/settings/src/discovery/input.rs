@@ -6,10 +6,12 @@ use traces_fs::{DirPath, FilePath};
 
 use crate::{
     DiscoveryOptions,
-    discovery::error::{
-        DiscoveryError, EnvironmentOverrideError, FlagOverrideError,
+    discovery::{
+        error::{DiscoveryError, EnvironmentOverrideError, FlagOverrideError},
+        report::{SkippedCeiling, SkippedCeilingReason},
     },
     env_var::SettingsEnvVars,
+    os_dirs::HOME,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,6 +22,7 @@ pub(crate) struct DiscoveryInput {
     env_global: Option<FilePath>,
     env_default_vault: Option<PathBuf>,
     ceiling_dirs: Box<[PathBuf]>,
+    skipped_ceilings: Vec<SkippedCeiling>,
     suppress_global: bool,
 }
 
@@ -44,8 +47,8 @@ impl DiscoveryInput {
             env.global_config().map(validate_env_global).transpose()?
         };
         let env_default_vault = env.default_vault_dir().map(Path::to_path_buf);
-        let ceiling_dirs =
-            env.ceiling_dirs().unwrap_or(&[]).to_vec().into_boxed_slice();
+        let (ceiling_dirs, skipped_ceilings) =
+            normalize_ceilings(env.ceiling_dirs().unwrap_or(&[]));
 
         Ok(Self {
             anchor,
@@ -54,6 +57,7 @@ impl DiscoveryInput {
             env_global,
             env_default_vault,
             ceiling_dirs,
+            skipped_ceilings,
             suppress_global,
         })
     }
@@ -87,8 +91,58 @@ impl DiscoveryInput {
         &self.ceiling_dirs
     }
 
+    pub(crate) fn skipped_ceilings(&self) -> &[SkippedCeiling] {
+        &self.skipped_ceilings
+    }
+
     pub(crate) fn suppress_global(&self) -> bool {
         self.suppress_global
+    }
+}
+
+/// Normalize raw ceiling segments for lexical ancestor matching.
+///
+/// Applies `~/` → `$HOME` expansion (mirroring how `mise` normalizes ceiling
+/// paths in `file::all_dirs`) and drops empty and non-existent segments. Paths
+/// are intentionally **not** canonicalized: ancestor comparison in
+/// [`AncestorEnumerator`](super::walk::AncestorEnumerator) is lexical, matching
+/// `mise`'s behavior, so canonicalizing here would break matches against a
+/// lexically-walked ancestor. Dropped segments are reported as
+/// [`SkippedCeiling`] entries for diagnostics.
+fn normalize_ceilings(
+    raw: &[PathBuf],
+) -> (Box<[PathBuf]>, Vec<SkippedCeiling>) {
+    let mut kept = Vec::new();
+    let mut skipped = Vec::new();
+
+    for segment in raw {
+        if segment.as_os_str().is_empty() {
+            skipped.push(SkippedCeiling {
+                segment: segment.clone(),
+                reason: SkippedCeilingReason::EmptySegment,
+            });
+            continue;
+        }
+
+        let expanded = expand_home(segment);
+        if expanded.is_dir() {
+            kept.push(expanded);
+        } else {
+            skipped.push(SkippedCeiling {
+                segment: segment.clone(),
+                reason: SkippedCeilingReason::InvalidPath,
+            });
+        }
+    }
+
+    (kept.into_boxed_slice(), skipped)
+}
+
+/// Expand a leading `~/` to the user's home directory.
+fn expand_home(path: &Path) -> PathBuf {
+    match path.strip_prefix("~") {
+        Ok(rest) => HOME.join(rest),
+        Err(_) => path.to_path_buf(),
     }
 }
 
@@ -189,6 +243,7 @@ mod tests {
             std::fs::write(&flag_global, "").expect("flag global");
             std::fs::write(&env_global, "").expect("env global");
             let ceiling = root.path().join("ceiling");
+            std::fs::create_dir_all(&ceiling).expect("ceiling");
 
             let options = DiscoveryOptions::new(
                 anchor.clone(),
@@ -338,6 +393,87 @@ mod tests {
             let input = DiscoveryInput::from_options(&options, &env).unwrap();
 
             assert_eq!(input.anchor().as_path(), root.path());
+        }
+    }
+
+    mod ceilings {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        fn input_with_ceilings(raw: Vec<PathBuf>) -> DiscoveryInput {
+            let root = tempfile::tempdir().expect("root");
+            let options = DiscoveryOptions::new(
+                root.path().to_path_buf(),
+                None,
+                None,
+                false,
+            );
+            let env = SettingsEnvVars::new(None, None, None, Some(raw), false);
+            DiscoveryInput::from_options(&options, &env).expect("input")
+        }
+
+        #[test]
+        fn keeps_existing_directory_segments() {
+            let dir = tempfile::tempdir().expect("dir");
+            let input = input_with_ceilings(vec![dir.path().to_path_buf()]);
+
+            assert_eq!(input.ceiling_dirs(), [dir.path().to_path_buf()]);
+            assert!(input.skipped_ceilings().is_empty());
+        }
+
+        #[test]
+        fn records_empty_segment_as_skipped() {
+            let input = input_with_ceilings(vec![PathBuf::new()]);
+
+            assert!(input.ceiling_dirs().is_empty());
+            assert_eq!(input.skipped_ceilings(), [SkippedCeiling {
+                segment: PathBuf::new(),
+                reason: SkippedCeilingReason::EmptySegment,
+            }]);
+        }
+
+        #[test]
+        fn records_nonexistent_segment_as_invalid() {
+            let missing = PathBuf::from("/definitely/not/a/real/ceiling");
+            let input = input_with_ceilings(vec![missing.clone()]);
+
+            assert!(input.ceiling_dirs().is_empty());
+            assert_eq!(input.skipped_ceilings(), [SkippedCeiling {
+                segment: missing,
+                reason: SkippedCeilingReason::InvalidPath,
+            }]);
+        }
+
+        #[test]
+        fn expands_tilde_prefix_to_home() {
+            // Under test builds HOME is redirected to tests/fixtures; a
+            // `~/<random>` path expands there and (not existing) is reported
+            // as invalid, proving expansion occurred against HOME rather than
+            // being treated as a literal "~" directory.
+            let input = input_with_ceilings(vec![PathBuf::from(
+                "~/traces-nonexistent-ceiling",
+            )]);
+
+            let expected = HOME.join("traces-nonexistent-ceiling");
+            assert_eq!(
+                input.skipped_ceilings(),
+                [SkippedCeiling {
+                    segment: PathBuf::from("~/traces-nonexistent-ceiling"),
+                    reason: SkippedCeilingReason::InvalidPath,
+                }],
+                "tilde ceiling should expand to {} and be reported invalid",
+                expected.display()
+            );
+        }
+
+        #[test]
+        fn expand_home_joins_home_for_tilde_paths() {
+            assert_eq!(expand_home(Path::new("~/config")), HOME.join("config"));
+            assert_eq!(
+                expand_home(Path::new("/abs/path")),
+                PathBuf::from("/abs/path")
+            );
         }
     }
 }

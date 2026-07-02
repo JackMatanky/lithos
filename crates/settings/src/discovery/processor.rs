@@ -8,14 +8,14 @@ use crate::{
     candidate::CandidatePath,
     discovery::{
         error::DiscoveryError,
-        filter::{dedupe, filter_ignored},
+        filter::{dedupe, dedupe_keep_last, filter_ignored},
         global::global_collect,
         input::DiscoveryInput,
         outcome::DiscoveryOutcome,
         probe::exact_probe,
         walk::AncestorEnumerator,
     },
-    location::MARKERS,
+    location::VAULT_CONFIG_TARGETS,
     os_dirs::XDG_CONFIG_HOME,
 };
 
@@ -45,16 +45,27 @@ impl DiscoveryProcessor<Init> {
     pub(crate) fn collect_local(
         mut self,
     ) -> Result<DiscoveryProcessor<LocalCollected>, DiscoveryError> {
+        // Ceiling segments dropped during input normalization are surfaced as
+        // report diagnostics regardless of which local branch runs.
+        self.report.skipped_ceilings = self.input.skipped_ceilings().to_vec();
+
+        // An explicit `--vault` flag overrides the start directory for the
+        // ascending walk. Both paths fall back to the default vault when
+        // they find no local marker.
         let start =
             self.input.flag_vault().unwrap_or_else(|| self.input.anchor());
-        self.local = AncestorEnumerator::new(start, self.input.ceiling_dirs())
-            .flat_map(|dir| exact_probe(&dir, MARKERS))
+        let mut walk =
+            AncestorEnumerator::new(start, self.input.ceiling_dirs());
+        self.local = walk
+            .by_ref()
+            .flat_map(|dir| exact_probe(&dir, VAULT_CONFIG_TARGETS))
             .collect();
+        self.report.local_traversal_stop_reason = walk.stop_reason().clone();
 
         if self.local.is_empty()
             && let Some(vault) = self.input.env_default_vault()?
         {
-            self.local = exact_probe(&vault, MARKERS);
+            self.local = exact_probe(&vault, VAULT_CONFIG_TARGETS);
         }
 
         Ok(DiscoveryProcessor {
@@ -101,7 +112,8 @@ impl DiscoveryProcessor<GlobalCollected> {
         // yet; pass tracked ignored paths here when trust is
         // integrated.
         DiscoveryOutcome::new(
-            filter_ignored(dedupe(self.local), &[]).into_boxed_slice(),
+            filter_ignored(dedupe_keep_last(self.local), &[])
+                .into_boxed_slice(),
             filter_ignored(dedupe(self.global), &[]).into_boxed_slice(),
             self.report,
         )
@@ -112,7 +124,7 @@ fn platform_global_dirs() -> Vec<DirPath> {
     let mut dirs = Vec::new();
     push_dir(&mut dirs, XDG_CONFIG_HOME.join("traces"));
     #[cfg(unix)]
-    push_dir(&mut dirs, PathBuf::from("/etc/traces"));
+    push_dir(&mut dirs, crate::os_dirs::SYSTEM_CONFIG_DIR.join("traces"));
     dirs
 }
 
@@ -158,10 +170,25 @@ mod tests {
         .expect("valid discovery input")
     }
 
+    fn input_with_ceilings(
+        anchor: PathBuf,
+        ceilings: Vec<PathBuf>,
+    ) -> DiscoveryInput {
+        DiscoveryInput::from_options(
+            &DiscoveryOptions::new(anchor, None, None, false),
+            &SettingsEnvVars::new(None, None, None, Some(ceilings), false),
+        )
+        .expect("valid discovery input")
+    }
+
     mod report {
         use pretty_assertions::assert_eq;
 
         use super::*;
+        use crate::report::{
+            GlobalResolutionSkipReason, LocalTraversalStopReason,
+            SkippedCeiling, SkippedCeilingReason,
+        };
 
         #[test]
         fn report_records_suppressed_global_resolution() {
@@ -177,10 +204,91 @@ mod tests {
 
             assert_eq!(
                 outcome.report().global_resolution_skip_reason,
-                Some(
-                    crate::report::GlobalResolutionSkipReason::SuppressedByFlag
-                )
+                Some(GlobalResolutionSkipReason::SuppressedByFlag)
             );
+        }
+
+        #[test]
+        fn records_ceiling_enforced_stop_reason() {
+            let root = tempfile::tempdir().expect("root");
+            let ceiling = root.path().canonicalize().expect("canonical root");
+            let anchor = ceiling.join("a").join("b");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+
+            let outcome =
+                DiscoveryProcessor::new(input_with_ceilings(anchor, vec![
+                    ceiling.clone(),
+                ]))
+                .collect_local()
+                .expect("local collection")
+                .collect_global()
+                .finish();
+
+            assert_eq!(
+                outcome.report().local_traversal_stop_reason,
+                LocalTraversalStopReason::CeilingEnforced {
+                    ceiling
+                }
+            );
+        }
+
+        #[test]
+        fn records_project_boundary_marker_stop_reason() {
+            let root = tempfile::tempdir().expect("root");
+            let repo = root.path().join("repo");
+            let anchor = repo.join("a").join("b");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+            std::fs::create_dir(repo.join(".git")).expect("git marker");
+
+            let outcome = DiscoveryProcessor::new(input(anchor, None))
+                .collect_local()
+                .expect("local collection")
+                .collect_global()
+                .finish();
+
+            assert_eq!(
+                outcome.report().local_traversal_stop_reason,
+                LocalTraversalStopReason::ProjectBoundaryMarker {
+                    marker: repo.join(".git")
+                }
+            );
+        }
+
+        #[test]
+        fn records_filesystem_root_stop_reason_by_default() {
+            let root = tempfile::tempdir().expect("root");
+
+            let outcome =
+                DiscoveryProcessor::new(input(root.path().into(), None))
+                    .collect_local()
+                    .expect("local collection")
+                    .collect_global()
+                    .finish();
+
+            assert_eq!(
+                outcome.report().local_traversal_stop_reason,
+                LocalTraversalStopReason::FilesystemRoot
+            );
+        }
+
+        #[test]
+        fn propagates_skipped_ceilings_from_input() {
+            let root = tempfile::tempdir().expect("root");
+            let missing = PathBuf::from("/definitely/not/a/real/ceiling");
+
+            let outcome = DiscoveryProcessor::new(input_with_ceilings(
+                root.path().to_path_buf(),
+                vec![missing.clone()],
+            ))
+            .collect_local()
+            .expect("local collection")
+            .collect_global()
+            .finish();
+
+            assert_eq!(outcome.report().skipped_ceilings, [SkippedCeiling {
+                segment: missing,
+                reason: SkippedCeilingReason::InvalidPath,
+            }]);
         }
     }
 
@@ -320,6 +428,42 @@ mod tests {
                 outer.join("traces.toml"),
                 flag_vault.join("traces.toml")
             ]);
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn nearest_candidate_wins_when_config_reachable_from_two_ancestors() {
+            // Layout:
+            //   root/real/traces.toml         (the physical config)
+            //   root/real/child               (anchor's parent)
+            //   root/link -> root/real        (symlinked ancestor)
+            //   root/link/child               (== root/real/child via symlink)
+            // Walking up from root/link/child yields link/child, link, root.
+            // `link/traces.toml` and `real/traces.toml` share a canonical key;
+            // the nearest occurrence (deepest ancestor) must survive.
+            let root = tempfile::tempdir().expect("root");
+            let real = root.path().join("real");
+            let child = real.join("child");
+            std::fs::create_dir_all(&child).expect("child");
+            std::fs::write(real.join("traces.toml"), "").expect("marker");
+            let link = root.path().join("link");
+            std::os::unix::fs::symlink(&real, &link).expect("dir symlink");
+
+            let anchor = link.join("child");
+            let outcome = DiscoveryProcessor::new(input(anchor, None))
+                .collect_local()
+                .expect("local collection")
+                .collect_global()
+                .finish();
+
+            // Exactly one candidate survives dedupe (same canonical target).
+            assert_eq!(outcome.vault().len(), 1);
+            // The surviving candidate is the nearest ancestor's view (link),
+            // not the outer real path.
+            assert_eq!(
+                outcome.vault().first().map(|c| c.path().as_path()),
+                Some(link.join("traces.toml").as_path())
+            );
         }
 
         #[test]

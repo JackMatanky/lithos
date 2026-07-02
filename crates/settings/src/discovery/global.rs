@@ -91,5 +91,41 @@ mod tests {
 
             assert!(candidates.is_empty());
         }
+
+        #[test]
+        fn platform_dir_probes_traces_config_target() {
+            let root = tempfile::tempdir().expect("root");
+            let config = root.path().join("traces");
+            std::fs::create_dir_all(&config).expect("traces dir");
+            std::fs::write(config.join("config.toml"), "")
+                .expect("global config");
+            let platform =
+                DirPath::try_new(root.path().to_path_buf()).expect("platform");
+
+            let candidates = global_collect(false, None, None, &[platform]);
+
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(
+                candidates.first().map(|c| c.path().as_path()),
+                Some(config.join("config.toml").as_path())
+            );
+        }
+
+        #[test]
+        fn platform_dir_ignores_vault_only_markers() {
+            let root = tempfile::tempdir().expect("root");
+            let dot = root.path().join(".traces");
+            std::fs::create_dir_all(&dot).expect("dot dir");
+            std::fs::write(dot.join("config.toml"), "").expect("dot marker");
+            let platform =
+                DirPath::try_new(root.path().to_path_buf()).expect("platform");
+
+            let candidates = global_collect(false, None, None, &[platform]);
+
+            assert!(
+                candidates.is_empty(),
+                "global collection must not match vault-only markers"
+            );
+        }
     }
 }

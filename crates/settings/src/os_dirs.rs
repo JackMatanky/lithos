@@ -122,6 +122,18 @@ pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_else(|| HOME.join(".local").join("state"))
 });
 
+// ---------------------------------------------------------------------------
+// System-wide config directory
+// ---------------------------------------------------------------------------
+
+/// System-wide config directory searched for global config markers.
+///
+/// On Unix this is `/etc`. Other platforms have no system-wide
+/// location, so the static is absent under `cfg`.
+#[cfg(unix)]
+pub static SYSTEM_CONFIG_DIR: LazyLock<PathBuf> =
+    LazyLock::new(|| PathBuf::from("/etc"));
+
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -157,6 +169,17 @@ mod tests {
             XDG_DATA_HOME.to_string_lossy().contains(".local/share"),
             "unix XDG_DATA_HOME should contain .local/share, got: {}",
             XDG_DATA_HOME.display()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_config_dir_is_etc() {
+        assert_eq!(
+            SYSTEM_CONFIG_DIR.as_path(),
+            std::path::Path::new("/etc"),
+            "unix SYSTEM_CONFIG_DIR should be /etc, got: {}",
+            SYSTEM_CONFIG_DIR.display()
         );
     }
 }
