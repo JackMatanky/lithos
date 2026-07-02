@@ -196,7 +196,7 @@ Decisions and deviations:
 - Exact marker names include `traces.{toml,json,yaml,yml}` and `.traces/config.{toml,json,yaml,yml}` to match the PRD.
 - Ignored-path filtering is implemented as a helper but receives an empty list until trust-store ignored paths are wired in a later issue.
 - `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
-- New `DiscoveryOutcome::report()` from the linear processor records suppressed global resolution; full skipped-ceiling and local traversal stop diagnostics remain deferred until diagnostics migrate.
+- The new linear report is wired through the processor and records global suppression; full skipped-ceiling and local traversal stop diagnostics remain deferred.
 
 Verification:
 
