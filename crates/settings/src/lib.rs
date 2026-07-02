@@ -11,7 +11,7 @@
 pub mod candidate;
 pub mod config;
 pub mod discovery;
-pub mod env_var;
+mod env_var;
 pub mod location;
 pub mod os_dirs;
 pub mod service;

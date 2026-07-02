@@ -1,7 +1,6 @@
 //! Resolved platform and application directories for Traces.
 //!
-//! [`AppDirs`] merges [`SettingsEnvVars`](crate::env_var::SettingsEnvVars)
-//! overrides with XDG platform defaults.
+//! [`AppDirs`] merges environment overrides with XDG platform defaults.
 //!
 //! This compatibility helper stays until bootstrap migration slices stop using
 //! old discovery app-directory wiring.
@@ -25,8 +24,8 @@ use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
 /// Resolved Traces application directories.
 ///
-/// Merges [`SettingsEnvVars`](crate::env_var::SettingsEnvVars) overrides with
-/// XDG platform defaults, applying the `"traces"` suffix to platform base
+/// Merges environment overrides with XDG platform defaults, applying the
+/// `"traces"` suffix to platform base
 /// directories.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppDirs {
