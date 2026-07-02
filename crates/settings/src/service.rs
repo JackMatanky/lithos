@@ -1,11 +1,15 @@
 //! Settings service facade.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{
     candidate::CandidatePath,
     config::{aggregate::AppConfig, error::ConfigError},
-    discovery::{CacheRoot, error::DiscoveryError},
+    discovery::{
+        error::DiscoveryError, input::DiscoveryInput,
+        outcome::DiscoveryOutcome, processor::DiscoveryProcessor,
+    },
+    env_var::SettingsEnvVars,
 };
 
 /// CLI/runtime inputs for settings discovery.
@@ -42,22 +46,22 @@ impl DiscoveryOptions {
     /// Directory or file path where discovery begins.
     #[must_use]
     #[inline]
-    pub fn anchor(&self) -> &PathBuf {
+    pub fn anchor(&self) -> &Path {
         &self.anchor
     }
 
     /// Explicit config file supplied by the caller.
     #[must_use]
     #[inline]
-    pub fn config_file(&self) -> Option<&PathBuf> {
-        self.config_file.as_ref()
+    pub fn config_file(&self) -> Option<&Path> {
+        self.config_file.as_deref()
     }
 
     /// Explicit vault directory supplied by the caller.
     #[must_use]
     #[inline]
-    pub fn vault_dir(&self) -> Option<&PathBuf> {
-        self.vault_dir.as_ref()
+    pub fn vault_dir(&self) -> Option<&Path> {
+        self.vault_dir.as_deref()
     }
 
     /// Whether global config discovery should be skipped.
@@ -65,55 +69,6 @@ impl DiscoveryOptions {
     #[inline]
     pub fn suppress_global(&self) -> bool {
         self.suppress_global
-    }
-}
-
-/// Public discovery output for settings service callers.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct DiscoveryOutcome {
-    /// Vault-local candidate config paths.
-    vault: Box<[CandidatePath]>,
-    /// Global candidate config paths.
-    global: Box<[CandidatePath]>,
-    /// Resolved cache root for settings data.
-    cache_root: CacheRoot,
-}
-
-impl DiscoveryOutcome {
-    /// Create new discovery outcome.
-    #[must_use]
-    #[inline]
-    pub fn new(
-        vault: Box<[CandidatePath]>,
-        global: Box<[CandidatePath]>,
-        cache_root: CacheRoot,
-    ) -> Self {
-        Self {
-            vault,
-            global,
-            cache_root,
-        }
-    }
-
-    /// Vault-local candidate config paths.
-    #[must_use]
-    #[inline]
-    pub fn vault(&self) -> &[CandidatePath] {
-        &self.vault
-    }
-
-    /// Global candidate config paths.
-    #[must_use]
-    #[inline]
-    pub fn global(&self) -> &[CandidatePath] {
-        &self.global
-    }
-
-    /// Resolved cache root for settings data.
-    #[must_use]
-    #[inline]
-    pub fn cache_root(&self) -> &CacheRoot {
-        &self.cache_root
     }
 }
 
@@ -210,9 +165,14 @@ impl SettingsService for Service {
     #[inline]
     fn discover(
         &self,
-        _options: DiscoveryOptions,
+        options: DiscoveryOptions,
     ) -> Result<DiscoveryOutcome, SettingsError> {
-        Err(SettingsError::PipelineNotImplemented)
+        let env = SettingsEnvVars::capture();
+        let input = DiscoveryInput::from_options(&options, &env)?;
+        Ok(DiscoveryProcessor::new(input)
+            .collect_local()?
+            .collect_global()
+            .finish())
     }
 
     #[inline]

@@ -58,20 +58,24 @@ _Avoid_: upward scan, directory crawl, recursive search
 A directory boundary that stops the Ascending Walk, preventing discovery from searching above a declared limit.
 _Avoid_: stop path, upper bound, limit dir
 
-**Override**:
-An explicit Vault Root path supplied via CLI flag (`--vault`) or environment variable (`TRACES_VAULT`) that preempts the Ascending Walk entirely.
+**Vault Override**:
+An explicit Vault Root path supplied via CLI flag (`--vault`) that changes the Ascending Walk start directory.
 _Avoid_: forced path, hardcoded path, explicit config
 
-**Discovery Result**:
-The output of an internal discovery step: the located Vault Root, ranked global and local Candidate Markers, and the cache root directory. Not a public boundary — consumed internally by the ConfigBuilder.
-_Avoid_: discovery output, found configs, resolved paths
+**Default Vault Fallback**:
+An internal fallback Vault Root path supplied by `TRACES_DEFAULT_VAULT` and used only when normal local discovery finds no Candidate Markers.
+_Avoid_: override, forced path, primary vault
+
+**Discovery Outcome**:
+The output of internal discovery: ordered local Candidate Markers, ordered global Candidate Markers, and a Discovery Report. It does not carry a cache root. Not a public boundary — consumed internally by the ConfigBuilder.
+_Avoid_: discovery result, found configs, resolved paths
 
 **Discovery Report**:
-Process metadata produced alongside the Discovery Result, capturing skipped Overrides, skipped Ceilings, and why the Ascending Walk stopped. Consumed by BootstrapRunner for diagnostics only.
+Process metadata produced alongside the Discovery Outcome. The current linear report records global suppression; fuller skipped-ceiling and local traversal stop diagnostics are deferred. Consumed by BootstrapRunner for diagnostics only.
 _Avoid_: discovery log, diagnostics, discovery warnings
 
 **Settings Env Vars**:
-Environment variables that influence discovery behavior: `TRACES_VAULT`, `TRACES_CEILING`, `TRACES_CACHE_DIR`, etc. Read internally by SettingsService during `build_config()`. Not exposed through the public API.
+Internal environment variables that influence settings discovery and storage: `TRACES_DEFAULT_VAULT`, `TRACES_GLOBAL_CONFIG`, `TRACES_CEILING_DIRS`, `TRACES_CACHE_DIR`, and `TRACES_SUPPRESS_GLOBAL`. Read internally by SettingsService during `build_config()`. Not exposed through the public API.
 _Avoid_: env config, discovery env, system env overrides
 
 ## Language: Pipeline (internal)

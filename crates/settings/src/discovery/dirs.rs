@@ -1,22 +1,22 @@
 //! Resolved platform and application directories for Traces.
 //!
-//! [`AppDirs`] merges [`EnvVars`](crate::SettingsEnvVars) overrides with XDG
-//! platform defaults from [`crate`].
+//! [`AppDirs`] merges environment overrides with XDG platform defaults.
+//!
+//! This compatibility helper stays until bootstrap migration slices stop using
+//! old discovery app-directory wiring.
 //!
 //! # Example
 //!
 //! ```rust,ignore
 //! use traces_settings::config::dirs::AppDirs;
-//! use traces_settings::config::EnvVars;
 //!
-//! let vars = EnvVars::capture();
-//! let app = AppDirs::new(&vars);
+//! let app = AppDirs::from_env();
 //! let cache = app.cache();
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
+use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
 // ---------------------------------------------------------------------------
 // AppDirs
@@ -24,8 +24,9 @@ use crate::discovery::env::{XDG_CACHE_HOME, XDG_CONFIG_HOME};
 
 /// Resolved Traces application directories.
 ///
-/// Merges [`EnvVars`](crate::SettingsEnvVars) overrides with XDG platform
-/// defaults, applying the `"traces"` suffix to platform base directories.
+/// Merges environment overrides with XDG platform defaults, applying the
+/// `"traces"` suffix to platform base
+/// directories.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppDirs {
     cache: PathBuf,
@@ -34,6 +35,22 @@ pub struct AppDirs {
 }
 
 impl AppDirs {
+    /// Resolve app directories from process environment and platform defaults.
+    #[inline]
+    #[must_use]
+    pub fn from_env() -> Self {
+        Self::new(&crate::env_var::SettingsEnvVars::capture())
+    }
+
+    /// Return the explicit `TRACES_CACHE_DIR` override, if set.
+    #[inline]
+    #[must_use]
+    pub fn cache_dir_from_env() -> Option<PathBuf> {
+        crate::env_var::SettingsEnvVars::capture()
+            .cache_dir()
+            .map(Path::to_path_buf)
+    }
+
     /// Resolve app directories from env captures and platform defaults.
     ///
     /// Precedence per directory:
@@ -41,13 +58,16 @@ impl AppDirs {
     /// - **config**: `XDG_CONFIG_HOME / "traces"`
     /// - **`system_config`**: `/etc/traces` (unix), `%PROGRAMDATA%/Traces`
     ///   (win)
+    #[allow(
+        dead_code,
+        reason = "direct constructor is retained for internal tests"
+    )]
     #[inline]
     #[must_use]
-    pub fn new(vars: &crate::SettingsEnvVars) -> Self {
+    pub(crate) fn new(vars: &crate::env_var::SettingsEnvVars) -> Self {
         let cache = vars
             .cache_dir()
-            .cloned()
-            .unwrap_or_else(|| XDG_CACHE_HOME.join("traces"));
+            .map_or_else(|| XDG_CACHE_HOME.join("traces"), Path::to_path_buf);
         let config = XDG_CONFIG_HOME.join("traces");
         let system_config = platform_system_config();
         Self {
@@ -85,6 +105,10 @@ impl AppDirs {
 
 /// System-wide config directory.
 #[cfg(unix)]
+#[allow(
+    dead_code,
+    reason = "legacy AppDirs constructor is dormant during service migration"
+)]
 #[expect(
     clippy::unnecessary_wraps,
     reason = "signature matches non-unix variant"
@@ -112,7 +136,7 @@ fn platform_system_config() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SettingsEnvVars;
+    use crate::env_var::SettingsEnvVars;
 
     mod app_dirs {
         use super::*;

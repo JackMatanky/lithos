@@ -1,7 +1,16 @@
-//! Platform directories (`HOME`, `XDG_*`).
+//! Raw OS-level platform directories.
 //!
-//! Platform directories are resolved as lazy statics with per-platform
-//! fallbacks.
+//! These are the foundational directories (`HOME`, `XDG_*`, `/etc`) resolved
+//! from environment variables with platform-specific fallbacks. They carry
+//! **no application suffix** — the `traces` subdirectory is appended in
+//! [`crate::dirs`].
+//!
+//! ## Design
+//!
+//! | Layer | Module | Example |
+//! |-------|--------|---------|
+//! | OS platform | `os_dirs` | `~/.config` |
+//! | Application | [`crate::dirs`] | `~/.config/traces` |
 
 use std::{path::PathBuf, sync::LazyLock};
 
@@ -9,36 +18,41 @@ fn var_path(key: &str) -> Option<PathBuf> {
     std::env::var_os(key).map(PathBuf::from)
 }
 
-// ---------------------------------------------------------------------------
-// HOME
-// ---------------------------------------------------------------------------
+// -- HOME -------------------------------------------------------------------
 
 /// The user's home directory.
 ///
-/// In test builds this points to `<CARGO_MANIFEST_DIR>/tests/fixtures/` so
-/// that discovery tests do not accidentally depend on the real home directory.
+/// Resolves via the `dirs` crate, falling back to `/` when even that fails.
+///
+/// In test builds this is redirected to `<CARGO_MANIFEST_DIR>/tests/fixtures/`
+/// so discovery tests don't depend on the real home directory
+/// (see [`HOME`](self::HOME#test-redirect) under test).
+#[cfg(not(test))]
+pub static HOME: LazyLock<PathBuf> =
+    LazyLock::new(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")));
+
+/// The user's home directory — test fixture redirect.
+///
+/// Points to `<CARGO_MANIFEST_DIR>/tests/fixtures/` so discovery tests
+/// do not accidentally depend on the real home directory.
 #[cfg(test)]
 pub static HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 });
 
-/// The user's home directory.
-#[cfg(not(test))]
-pub static HOME: LazyLock<PathBuf> =
-    LazyLock::new(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")));
+// -- XDG config -------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// XDG platform directories
-// ---------------------------------------------------------------------------
-
-/// `$XDG_CONFIG_HOME` or the platform config directory.
+/// `$XDG_CONFIG_HOME` — user-specific configuration files.
+///
+/// macOS:    `~/Library/Application Support`
+/// Windows:  `$APPDATA` → `~/AppData/Roaming`
+/// Other:   `~/.config`
 #[cfg(target_os = "macos")]
 pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CONFIG_HOME")
         .unwrap_or_else(|| HOME.join("Library/Application Support"))
 });
 
-/// `$XDG_CONFIG_HOME` or the platform config directory.
 #[cfg(windows)]
 pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CONFIG_HOME")
@@ -46,21 +60,23 @@ pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_else(|| HOME.join("AppData/Roaming"))
 });
 
-/// `$XDG_CONFIG_HOME` or the platform config directory.
 #[cfg(not(any(target_os = "macos", windows)))]
 pub static XDG_CONFIG_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CONFIG_HOME").unwrap_or_else(|| HOME.join(".config"))
 });
 
-// ---------------------------------------------------------------------------
+// -- XDG cache --------------------------------------------------------------
 
-/// `$XDG_CACHE_HOME` or the platform cache directory.
+/// `$XDG_CACHE_HOME` — user-specific non-essential data files.
+///
+/// macOS:    `~/Library/Caches`
+/// Windows:  `$TEMP` → `~/AppData/Local/Temp`
+/// Other:   `~/.cache`
 #[cfg(target_os = "macos")]
 pub static XDG_CACHE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CACHE_HOME").unwrap_or_else(|| HOME.join("Library/Caches"))
 });
 
-/// `$XDG_CACHE_HOME` or the platform cache directory.
 #[cfg(windows)]
 pub static XDG_CACHE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CACHE_HOME")
@@ -68,22 +84,24 @@ pub static XDG_CACHE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_else(|| HOME.join("AppData/Local/Temp"))
 });
 
-/// `$XDG_CACHE_HOME` or the platform cache directory.
 #[cfg(not(any(target_os = "macos", windows)))]
 pub static XDG_CACHE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_CACHE_HOME").unwrap_or_else(|| HOME.join(".cache"))
 });
 
-// ---------------------------------------------------------------------------
+// -- XDG data ---------------------------------------------------------------
 
-/// `$XDG_DATA_HOME` or the platform data directory.
+/// `$XDG_DATA_HOME` — user-specific data files.
+///
+/// macOS:    `~/Library/Application Support`
+/// Windows:  `$LOCALAPPDATA` → `~/AppData/Local`
+/// Other:   `~/.local/share`
 #[cfg(target_os = "macos")]
 pub static XDG_DATA_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_DATA_HOME")
         .unwrap_or_else(|| HOME.join("Library/Application Support"))
 });
 
-/// `$XDG_DATA_HOME` or the platform data directory.
 #[cfg(windows)]
 pub static XDG_DATA_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_DATA_HOME")
@@ -91,23 +109,25 @@ pub static XDG_DATA_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_else(|| HOME.join("AppData/Local"))
 });
 
-/// `$XDG_DATA_HOME` or the platform data directory.
 #[cfg(not(any(target_os = "macos", windows)))]
 pub static XDG_DATA_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_DATA_HOME")
         .unwrap_or_else(|| HOME.join(".local").join("share"))
 });
 
-// ---------------------------------------------------------------------------
+// -- XDG state --------------------------------------------------------------
 
-/// `$XDG_STATE_HOME` or the platform state directory.
+/// `$XDG_STATE_HOME` — user-specific state data.
+///
+/// macOS:    `~/Library/Application Support`
+/// Windows:  `$LOCALAPPDATA` → `~/AppData/Local`
+/// Other:   `~/.local/state`
 #[cfg(target_os = "macos")]
 pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_STATE_HOME")
         .unwrap_or_else(|| HOME.join("Library/Application Support"))
 });
 
-/// `$XDG_STATE_HOME` or the platform state directory.
 #[cfg(windows)]
 pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_STATE_HOME")
@@ -115,16 +135,23 @@ pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_else(|| HOME.join("AppData/Local"))
 });
 
-/// `$XDG_STATE_HOME` or the platform state directory.
 #[cfg(not(any(target_os = "macos", windows)))]
 pub static XDG_STATE_HOME: LazyLock<PathBuf> = LazyLock::new(|| {
     var_path("XDG_STATE_HOME")
         .unwrap_or_else(|| HOME.join(".local").join("state"))
 });
 
-// ----------------------------------------------------------- //
-//                            Tests                            //
-// ----------------------------------------------------------- //
+// -- System config ----------------------------------------------------------
+
+/// System-wide config directory.
+///
+/// Only available on Unix (`/etc`). Used as a fallback for global config
+/// discovery when no user-level config exists.
+#[cfg(unix)]
+pub static SYSTEM_CONFIG_DIR: LazyLock<PathBuf> =
+    LazyLock::new(|| PathBuf::from("/etc"));
+
+// -- Tests ------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -157,6 +184,17 @@ mod tests {
             XDG_DATA_HOME.to_string_lossy().contains(".local/share"),
             "unix XDG_DATA_HOME should contain .local/share, got: {}",
             XDG_DATA_HOME.display()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_config_dir_is_etc() {
+        assert_eq!(
+            SYSTEM_CONFIG_DIR.as_path(),
+            std::path::Path::new("/etc"),
+            "unix SYSTEM_CONFIG_DIR should be /etc, got: {}",
+            SYSTEM_CONFIG_DIR.display()
         );
     }
 }

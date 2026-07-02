@@ -6,19 +6,38 @@
 //!
 //! # Main Components
 //!
-//! - [`BoundedAscent`]: An iterator that yields parent directories from a
-//!   starting path up to a set of boundary ceilings.
+//! - [`AncestorEnumerator`]: the iterator used by **new** linear discovery. It
+//!   yields ancestors from the outermost boundary down to the anchor (outer →
+//!   nearest) and records why the walk stopped as a
+//!   [`LocalTraversalStopReason`].
+//! - [`BoundedAscent`]: the iterator used by the **old** processor
+//!   (`processor_old`), kept until the old discovery service is removed in
+//!   issue 07. New code must not use it.
+//!
+//! Ceiling comparison is lexical (no canonicalization), matching `mise`'s
+//! `file::all_dirs`; input paths are normalized (including `~/` expansion) by
+//! [`DiscoveryInput`](super::input::DiscoveryInput) before reaching the walk.
 
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
 
+use traces_fs::DirPath;
+
+use crate::discovery::report::LocalTraversalStopReason;
+
+/// Directory names that stop local ancestor discovery.
+const BOUNDARY_MARKERS: &[&str] = &[".git", ".workspace"];
+
 /// An iterator that ascends from a directory up to defined boundary ceilings.
 ///
 /// This walker is zero-allocation during traversal as it operates on purely
 /// lexical parents of the starting path. It stops when a parent directory
 /// matches one of the provided `ceilings`.
+///
+/// **Old discovery only** — used by `processor_old`, removed in issue 07. New
+/// linear discovery uses [`AncestorEnumerator`] instead.
 pub(crate) struct BoundedAscent<'a> {
     current: Option<&'a Path>,
     ceilings: &'a HashSet<PathBuf>,
@@ -61,18 +80,85 @@ impl<'a> Iterator for BoundedAscent<'a> {
     }
 }
 
+/// Enumerates ancestor directories from outermost boundary to nearest anchor.
+///
+/// Alongside the ordered directories, the enumerator records **why** the
+/// ascending walk stopped as a [`LocalTraversalStopReason`], available via
+/// [`AncestorEnumerator::stop_reason`] once construction completes. Ancestor
+/// comparison against `ceiling_dirs` is lexical (no canonicalization), matching
+/// `mise`'s `file::all_dirs`.
+pub(crate) struct AncestorEnumerator {
+    dirs: std::vec::IntoIter<DirPath>,
+    stop_reason: LocalTraversalStopReason,
+}
+
+impl AncestorEnumerator {
+    pub(crate) fn new(anchor: &DirPath, ceiling_dirs: &[PathBuf]) -> Self {
+        let mut dirs = Vec::new();
+        let mut current = Some(anchor.as_path());
+        let mut stop_reason = LocalTraversalStopReason::FilesystemRoot;
+
+        while let Some(path) = current {
+            if let Ok(dir) = DirPath::try_new(path.to_path_buf()) {
+                dirs.push(dir);
+            }
+            if ceiling_dirs.iter().any(|ceiling| ceiling == path) {
+                stop_reason = LocalTraversalStopReason::CeilingEnforced {
+                    ceiling: path.to_path_buf(),
+                };
+                break;
+            }
+            if let Some(marker) = boundary_marker(path) {
+                stop_reason = LocalTraversalStopReason::ProjectBoundaryMarker {
+                    marker,
+                };
+                break;
+            }
+            current = path.parent();
+        }
+
+        dirs.reverse();
+        Self {
+            dirs: dirs.into_iter(),
+            stop_reason,
+        }
+    }
+
+    /// Why the ascending walk stopped.
+    pub(crate) fn stop_reason(&self) -> &LocalTraversalStopReason {
+        &self.stop_reason
+    }
+}
+
+/// First boundary marker path present in `path`, if any.
+fn boundary_marker(path: &Path) -> Option<PathBuf> {
+    BOUNDARY_MARKERS.iter().find_map(|marker| {
+        let candidate = path.join(marker);
+        candidate.exists().then_some(candidate)
+    })
+}
+
+impl Iterator for AncestorEnumerator {
+    type Item = DirPath;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.dirs.next()
+    }
+}
+
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
 
 #[cfg(test)]
 mod tests {
-
     use tempfile::tempdir;
 
     use super::*;
 
     mod bounded_ascent {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         fn ascent<'a>(
@@ -171,6 +257,48 @@ mod tests {
             let results: Vec<&Path> =
                 ascent(&start, &ceilings, false).collect();
             assert!(results.is_empty());
+        }
+    }
+
+    mod ancestor_enumeration {
+        use pretty_assertions::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn returns_outer_to_nearest_until_ceiling() {
+            let root = tempdir().expect("root");
+            let ceiling = root.path().join("ceiling");
+            let middle = ceiling.join("middle");
+            let anchor = middle.join("anchor");
+            std::fs::create_dir_all(&anchor).expect("anchor");
+            let anchor = DirPath::try_new(anchor).expect("anchor dir");
+
+            let results: Vec<PathBuf> = AncestorEnumerator::new(
+                &anchor,
+                std::slice::from_ref(&ceiling),
+            )
+            .map(|dir| dir.as_path().to_path_buf())
+            .collect();
+
+            assert_eq!(results, vec![ceiling, middle, anchor.as_path().into()]);
+        }
+
+        #[test]
+        fn stops_after_directory_with_boundary_marker() {
+            let root = tempdir().expect("root");
+            let repo = root.path().join("repo");
+            let leaf = repo.join("a").join("b");
+            std::fs::create_dir_all(&leaf).expect("leaf");
+            std::fs::create_dir(repo.join(".git")).expect("git marker");
+            let anchor = DirPath::try_new(leaf).expect("anchor");
+
+            let dirs: Vec<_> = AncestorEnumerator::new(&anchor, &[])
+                .map(|dir| dir.as_path().to_path_buf())
+                .collect();
+
+            assert_eq!(dirs.first(), Some(&repo));
+            assert!(!dirs.contains(&root.path().to_path_buf()));
         }
     }
 }

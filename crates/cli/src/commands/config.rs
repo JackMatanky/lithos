@@ -15,8 +15,10 @@ use std::{io::Write, path::Path};
 use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::{
     DiscoveryFlags, InMemoryRepository,
-    port::DiscoveryPort,
-    report::{DiscoveryReport, SkippedCeilingReason},
+    discovery::{
+        port::DiscoveryPort,
+        report::{DiscoveryReport, SkippedCeilingReason},
+    },
 };
 
 use crate::{cli::OutputFormat, error::CliError, output};

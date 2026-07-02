@@ -15,7 +15,7 @@
 use std::{io::Write, path::PathBuf};
 
 use traces_app::bootstrap::BootstrapRunner;
-use traces_settings::{DiscoveryFlags, port::DiscoveryPort};
+use traces_settings::{DiscoveryFlags, discovery::port::DiscoveryPort};
 
 use crate::{cli::OutputFormat, error::CliError, output};
 

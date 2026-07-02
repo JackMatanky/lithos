@@ -167,3 +167,98 @@ Replace stub with real impl: capture `SettingsEnvVars` → `DiscoveryInput::from
 ### Cycle 13: Visibility + module wiring
 Update `discovery/mod.rs` with new modules. Update `lib.rs` exports. Run `mise run verify`.
 **Test:** `cargo check` + `cargo clippy` + `mise run test`.
+
+## Implementation Notes
+
+Status: implemented on branch `issue-02-discovery-linear`.
+
+Implementation commits:
+
+- `0c6711e4 refactor(settings): linearize discovery`
+- `304fc43f chore(gitnexus): refresh index metadata`
+- `c0b2dd62 fix(settings): expose discovery report`
+- `555eb9b2 chore(gitnexus): refresh index metadata`
+
+Key changes:
+
+- Renamed new `SettingsEnvVars` fields and env keys to `default_vault_dir` / `TRACES_DEFAULT_VAULT` and `global_config` / `TRACES_GLOBAL_CONFIG`.
+- Removed duplicate XDG statics from `discovery/env.rs`; old `EnvVars` remains for old discovery callers.
+- Moved public `DiscoveryOutcome` to `discovery/outcome.rs` and removed `cache_root` from the new settings-service outcome.
+- Added exact marker/location constants, internal `DiscoveryInput`, ancestor enumeration, exact probing, global collection, dedupe, and ignored-path filtering helpers.
+- Preserved old discovery processor as `discovery/processor_old.rs`; old `DiscoveryService` still compiles against it.
+- Replaced new `discovery/processor.rs` with the linear internal typestate processor and wired `Service::discover()` through it.
+- Follow-up review fixes added `DiscoveryReport` back to the new `DiscoveryOutcome` shape, strengthened env-key capture tests for `TRACES_DEFAULT_VAULT` / `TRACES_GLOBAL_CONFIG`, added env-suppression edge coverage, and corrected stale discovery docs.
+
+Decisions and deviations:
+
+- `TRACES_DEFAULT_VAULT` validation is lazy: invalid fallback paths only error when no local marker is found and the fallback is actually used.
+- Suppressed global lookup ignores invalid flag/env global paths because those inputs are not consumed when global discovery is suppressed.
+- Exact marker names include `traces.{toml,json,yaml,yml}` and `.traces/config.{toml,json,yaml,yml}` to match the PRD.
+- Ignored-path filtering is implemented as a helper but receives an empty list until trust-store ignored paths are wired in a later issue.
+- `AGENTS.md` changed only because GitNexus index metadata was refreshed after implementation.
+- The new linear report is wired through the processor and records global suppression; full skipped-ceiling and local traversal stop diagnostics remain deferred.
+
+Adversarial-review follow-up fixes:
+
+- Added `os_dirs::SYSTEM_CONFIG_DIR` (`/etc/traces` on Unix) and replaced the hardcoded `/etc/traces` in the processor's platform global dirs.
+- `GLOBAL_CONFIG_TARGETS` is now its own slice using `traces/config.{toml,json,yaml,yml}` (platform config layout) and no longer aliases `MARKERS` or includes `.traces/*`/bare `traces.*` names.
+- Local candidate dedupe now keeps the **nearest** (deepest) ancestor when a config is reachable from multiple ancestors (`dedupe_keep_last`), while output stays outer → nearest. Global dedupe keeps first-wins precedence.
+- `flag_vault` (`--vault`) now probes a **single directory**, symmetric with the `TRACES_DEFAULT_VAULT` fallback; it no longer seeds an ancestor walk.
+- Ceiling inputs are normalized in `DiscoveryInput` with `~/` → `$HOME` expansion and empty/nonexistent-segment filtering, matching `mise`'s `file::all_dirs`. Ancestor comparison remains lexical (no canonicalization) by design.
+- `DiscoveryReport` diagnostics are now fully populated: `local_traversal_stop_reason` (`CeilingEnforced`, `ProjectBoundaryMarker`, `FilesystemRoot`) is recorded by the ancestor walk, and `skipped_ceilings` (`EmptySegment`, `InvalidPath`) is carried from input normalization. `ExplicitConfigFile` is documented as old-path-only and is not emitted by linear discovery.
+- Doc fixes: differentiated `exact_probe` (new) from `FolderProbe` (old-only) and `AncestorEnumerator` (new) from `BoundedAscent` (old-only); annotated `DiscoveryError::Config`/`CanonicalizePath` as old-path-only. `DiscoveryReport` fields remain `pub` by decision.
+
+Verification:
+
+- `mise run verify` passed after implementation.
+- Commit hooks passed on the implementation commit, including Rust format, clippy, tests, gitleaks, and conventional commit validation.
+- GitNexus staged change detection before implementation commit reported medium risk with two expected affected old discovery/cache-resolution flows.
+- GitNexus index refreshed after implementation; worktree index at `304fc43fc0848db809905d67ccd891041c23bc46` on `2026-06-30T21:17:29.820Z`.
+- Follow-up fix verification ran `mise run verify` from the worktree: fmt, clippy, deny, unit/doc, integration, and e2e passed. Unit summary: `2226` passed. Integration summary: `58` passed. E2E summary: `102` passed.
+- GitNexus worktree index refreshed after follow-up fix; index at `555eb9b2f5eb40995246863605170bd66e9e6efa` on `2026-07-01T13:10:41.802Z`.
+
+Post-review structural refactors:
+
+- **`crate::dirs` promoted to crate root** — `src/dirs.rs` holds the application-layout facade (STATE, CONFIG, SYSTEM_CONFIG, TRACKED_CONFIGS, TRUSTED_CONFIGS, IGNORED_CONFIGS, CACHE_SUBDIR). Replaces `src/location.rs` (deleted). Built on top of `os_dirs` platform primitives.
+- **STATE moved out of `os_dirs.rs`** — `os_dirs` is now purely OS platform directories (HOME, XDG_*, /etc) with no application suffix. The `traces` subdirectory is appended by `crate::dirs`.
+- **Crate-root re-exports tightened** — `discovery::dirs`, `discovery::port`, and `discovery::report` are no longer re-exported at crate root. Consumers import through `discovery::{dirs, port, report}` directly.
+- **`os_dirs.rs` doc comments cleaned** — module doc explains OS-vs-app layer split with a design table; one doc per XDG group (purpose + per-platform table) replaces identical doc repeated across three `cfg` variants; HOME docs flipped (production first with primary doc, test fixture redirect second).
+
+Commits:
+
+- `d6f9f195` — `refactor(settings): promote dirs to crate root, drop location.rs`
+- `765f0a5` — `docs(settings): clean up os_dirs doc comments`
+
+Review focus:
+
+- Confirm new discovery semantics match the PRD and this issue's acceptance criteria.
+- Check old/new discovery coexistence around `processor.rs` and `processor_old.rs`.
+- Check that ignored-path filtering being a temporary empty-input stub is acceptable for this slice.
+- Check test coverage for fallback precedence, boundary markers, exact marker names, and suppressed global inputs.
+- Check whether the remaining deferred `DiscoveryReport` diagnostics should move before the diagnostics migration.
+
+## Acceptance Criteria Status
+
+All 17 criteria fulfilled. Detailed check:
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | `vault_dir` → `default_vault_dir`, `TRACES_VAULT_DIR` → `TRACES_DEFAULT_VAULT` | ✅ `src/env_var.rs` lines 8, 23, 46, 87 |
+| 2 | `config_file` → `global_config`, `TRACES_CONFIG_FILE` → `TRACES_GLOBAL_CONFIG` | ✅ `src/env_var.rs` lines 9, 24, 47, 94 |
+| 3 | `discovery/env.rs` XDG statics removed | ✅ File has no HOME/XDG_* statics — only `EnvVars` struct |
+| 4 | `discovery/env.rs` `EnvVars` kept with old field names | ✅ `vault_dir`, `config_file`, `TRACES_VAULT_DIR`, `TRACES_CONFIG_FILE` preserved for old callers |
+| 5 | `discovery/dirs.rs` imports from `crate::os_dirs`; `AppDirs` kept | ✅ `use crate::os_dirs::{XDG_CACHE_HOME, XDG_CONFIG_HOME};`; `AppDirs` struct retained |
+| 6 | `DiscoveryInput` internal from `DiscoveryOptions` + `SettingsEnvVars` | ✅ `pub(crate)` struct at `discovery/input.rs`; `from_options(options, env)` |
+| 7 | Explicit transition methods | ✅ `new` → `collect_local()` → `collect_global()` → `finish()` |
+| 8 | Linear flow, no old branch/cache-resolution phase | ✅ Single linear pipeline in `processor.rs` |
+| 9 | Outer→nearest ancestor order | ✅ Walk yields outer→nearest; test `returns_outcome_with_local_outer_to_nearest_ordering` |
+| 10 | `TRACES_DEFAULT_VAULT` fallback only when local empty | ✅ Test `uses_default_vault_only_when_local_collection_is_empty` |
+| 11 | Global: suppress → flag → env → platform-dirs | ✅ `global_collect` in `discovery/global.rs` follows this order |
+| 12 | Exact filename slices (was `src/location.rs`) | ✅ Moved to `discovery/targets.rs` — `VAULT_CONFIG_TARGETS` + `GLOBAL_CONFIG_TARGETS` |
+| 13 | `CandidatePath` at `src/candidate.rs` | ✅ Standalone type with `base` + `path` fields |
+| 14 | Dedupe/desymlink + ignored-path filtering before return | ✅ `finish()` calls `dedupe_keep_last(self.local)` + `dedupe(self.global)` + `filter_ignored()` |
+| 15 | `DiscoveryInput` fields match PRD | ✅ `anchor`, `flag_global`, `flag_vault`, `env_global`, `env_default_vault`, `ceiling_dirs`, `suppress_global` |
+| 16 | `CandidatePath` imported from `src/candidate.rs` | ✅ Used via `crate::candidate::CandidatePath` |
+| 17 | `DiscoveryOutcome` has no `cache_root` | ✅ Fields: `vault`, `global`, `report` only. Old `DiscoveryResult` retains `cache_root` for old callers |
+
+**Deviation:** Criterion 12 references `src/location.rs` — this file was deleted during post-review refactoring. The exact filename slices live in `discovery/targets.rs` instead. Intent (exact slices, no marker-pattern iteration) is fully met.

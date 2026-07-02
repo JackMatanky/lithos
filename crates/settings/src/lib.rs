@@ -3,12 +3,16 @@
 //!
 //! This crate unifies discovery (locating configuration files) and config
 //! (parsing, validating, and merging them) into a single inbound adapter.
+//!
+//! ```compile_fail
+//! use traces_settings::SettingsEnvVars;
+//! ```
 
 pub mod candidate;
 pub mod config;
+pub mod dirs;
 pub mod discovery;
-pub mod env_var;
-pub mod location;
+mod env_var;
 pub mod os_dirs;
 pub mod service;
 
@@ -34,17 +38,16 @@ pub use config::{
 pub use discovery::{
     context,
     context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
-    dirs,
     error::DiscoveryError,
     location::{
         CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
     },
-    port, report,
+    outcome::DiscoveryOutcome,
+    report,
     report::DiscoveryReport,
-    service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
+    service::{DiscoveryResult, DiscoveryService},
 };
-pub use env_var::SettingsEnvVars;
 pub use service::{
-    ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome, Service,
-    SettingsError, SettingsService, TrustMode,
+    ConfigBuilderOptions, DiscoveryOptions, Service, SettingsError,
+    SettingsService, TrustMode,
 };

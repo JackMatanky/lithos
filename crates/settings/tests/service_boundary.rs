@@ -1,15 +1,19 @@
 //! Public boundary DTO tests for settings service inputs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+// SettingsEnvVars is intentionally not imported here: env capture is
+// internal to SettingsService and must not be part of the public boundary.
 use traces_fs::{DirPath, FilePath};
 use traces_settings::{
-    CacheLocation, CacheRoot, CandidatePath, ConfigBuilderOptions,
-    DiscoveryOptions, DiscoveryOutcome, GlobalCacheLocation, Service,
-    SettingsError, SettingsService, TrustMode,
+    CandidatePath, ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome,
+    Service, SettingsError, SettingsService, TrustMode,
+    discovery::{dirs::AppDirs, report::DiscoveryReport},
 };
 
 mod discovery_options {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
@@ -21,13 +25,23 @@ mod discovery_options {
             true,
         );
 
-        assert_eq!(options.anchor(), &PathBuf::from("/vault"));
+        assert_eq!(options.anchor(), Path::new("/vault"));
         assert_eq!(
             options.config_file(),
-            Some(&PathBuf::from("/vault/traces.toml"))
+            Some(Path::new("/vault/traces.toml"))
         );
-        assert_eq!(options.vault_dir(), Some(&PathBuf::from("/vault")));
+        assert_eq!(options.vault_dir(), Some(Path::new("/vault")));
         assert!(options.suppress_global());
+    }
+}
+
+mod app_dirs {
+    use super::*;
+
+    #[test]
+    fn exposes_env_capture_without_exposing_env_vars() {
+        let _ = AppDirs::from_env();
+        let _ = AppDirs::cache_dir_from_env();
     }
 }
 
@@ -44,6 +58,8 @@ mod config_builder_options {
 }
 
 mod discovery_outcome {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
@@ -56,29 +72,48 @@ mod discovery_outcome {
             DirPath::try_new(root.path().to_path_buf()).expect("valid dir"),
             FilePath::try_new(config_path).expect("valid file"),
         );
-        let cache_root = CacheRoot::new(
-            CacheLocation::Global(GlobalCacheLocation::PlatformUserCache),
-            root.path().join("cache"),
-        );
-
         let outcome = DiscoveryOutcome::new(
             Box::from([candidate.clone()]),
             Box::from([]),
-            cache_root.clone(),
+            DiscoveryReport::default(),
         );
 
         assert_eq!(outcome.vault(), [candidate].as_ref());
         assert!(outcome.global().is_empty());
-        assert_eq!(outcome.cache_root(), &cache_root);
+        assert_eq!(outcome.report(), &DiscoveryReport::default());
     }
 }
 
 mod settings_service {
+    use pretty_assertions::assert_eq;
+
     use super::*;
 
     #[test]
-    fn settings_service_trait_uses_owned_options_and_borrowed_candidate_paths()
-    {
+    fn discover_returns_outcome_for_valid_options() {
+        let service = Service;
+        let root = tempfile::tempdir().expect("temp dir");
+        let config = root.path().join("traces.toml");
+        std::fs::write(&config, "").expect("config");
+
+        let outcome = service
+            .discover(DiscoveryOptions::new(
+                root.path().to_path_buf(),
+                None,
+                None,
+                true,
+            ))
+            .expect("discover");
+
+        assert_eq!(
+            outcome.vault().first().map(|candidate| candidate.path().as_path()),
+            Some(config.as_path())
+        );
+        assert!(outcome.global().is_empty());
+    }
+
+    #[test]
+    fn settings_service_trait_uses_borrowed_candidate_paths() {
         let service = Service;
         let discovery_options =
             DiscoveryOptions::new(PathBuf::from("/vault"), None, None, false);
@@ -87,7 +122,7 @@ mod settings_service {
 
         assert!(matches!(
             service.discover(discovery_options),
-            Err(SettingsError::PipelineNotImplemented)
+            Err(SettingsError::Discovery(_))
         ));
         assert!(matches!(
             service.build_config(&[], &[], builder_options),
