@@ -5,10 +5,6 @@ use traces_fs::{DirPath, FilePath};
 use super::probe::exact_probe;
 use crate::{candidate::CandidatePath, location::GLOBAL_CONFIG_TARGETS};
 
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 pub(crate) fn global_collect(
     suppress: bool,
     flag: Option<&FilePath>,

@@ -66,18 +66,10 @@ impl<'a> Iterator for BoundedAscent<'a> {
 }
 
 /// Enumerates ancestor directories from outermost boundary to nearest anchor.
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 pub(crate) struct AncestorEnumerator {
     dirs: std::vec::IntoIter<DirPath>,
 }
 
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 impl AncestorEnumerator {
     pub(crate) fn new(anchor: &DirPath, ceiling_dirs: &[PathBuf]) -> Self {
         let mut dirs = Vec::new();

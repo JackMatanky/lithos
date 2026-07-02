@@ -4,10 +4,6 @@ use std::{collections::HashSet, path::PathBuf};
 
 use crate::candidate::CandidatePath;
 
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 pub(crate) fn dedupe(candidates: Vec<CandidatePath>) -> Vec<CandidatePath> {
     let mut seen = HashSet::new();
     let mut kept = Vec::new();
@@ -26,10 +22,6 @@ pub(crate) fn dedupe(candidates: Vec<CandidatePath>) -> Vec<CandidatePath> {
     kept
 }
 
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 pub(crate) fn filter_ignored(
     candidates: Vec<CandidatePath>,
     ignored_paths: &[PathBuf],

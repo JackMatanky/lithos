@@ -60,10 +60,6 @@ impl FolderProbe {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "internal linear discovery slice is still wiring callers"
-)]
 pub(crate) fn exact_probe(
     dir: &DirPath,
     markers: &[&str],
