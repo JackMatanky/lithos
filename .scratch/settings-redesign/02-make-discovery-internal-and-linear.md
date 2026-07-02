@@ -217,6 +217,18 @@ Verification:
 - Follow-up fix verification ran `mise run verify` from the worktree: fmt, clippy, deny, unit/doc, integration, and e2e passed. Unit summary: `2226` passed. Integration summary: `58` passed. E2E summary: `102` passed.
 - GitNexus worktree index refreshed after follow-up fix; index at `555eb9b2f5eb40995246863605170bd66e9e6efa` on `2026-07-01T13:10:41.802Z`.
 
+Post-review structural refactors:
+
+- **`crate::dirs` promoted to crate root** — `src/dirs.rs` holds the application-layout facade (STATE, CONFIG, SYSTEM_CONFIG, TRACKED_CONFIGS, TRUSTED_CONFIGS, IGNORED_CONFIGS, CACHE_SUBDIR). Replaces `src/location.rs` (deleted). Built on top of `os_dirs` platform primitives.
+- **STATE moved out of `os_dirs.rs`** — `os_dirs` is now purely OS platform directories (HOME, XDG_*, /etc) with no application suffix. The `traces` subdirectory is appended by `crate::dirs`.
+- **Crate-root re-exports tightened** — `discovery::dirs`, `discovery::port`, and `discovery::report` are no longer re-exported at crate root. Consumers import through `discovery::{dirs, port, report}` directly.
+- **`os_dirs.rs` doc comments cleaned** — module doc explains OS-vs-app layer split with a design table; one doc per XDG group (purpose + per-platform table) replaces identical doc repeated across three `cfg` variants; HOME docs flipped (production first with primary doc, test fixture redirect second).
+
+Commits:
+
+- `d6f9f195` — `refactor(settings): promote dirs to crate root, drop location.rs`
+- `765f0a5` — `docs(settings): clean up os_dirs doc comments`
+
 Review focus:
 
 - Confirm new discovery semantics match the PRD and this issue's acceptance criteria.
