@@ -7,12 +7,12 @@ use traces_settings::{
     DiscoveryContext, DiscoveryEnv, DiscoveryError, DiscoveryFlags,
     aggregate::AppConfig,
     builder::Builder,
-    dirs::AppDirs,
-    discovery::service::{
-        DiscoveryResult, DiscoveryService, DiscoveryServiceConfig,
+    discovery::{
+        dirs::AppDirs,
+        port::DiscoveryPort,
+        report::DiscoveryReport,
+        service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
     },
-    port::DiscoveryPort,
-    report::DiscoveryReport,
     repository::Repository,
 };
 
@@ -246,7 +246,7 @@ mod tests {
 
     mock! {
         DiscoveryPort {}
-        impl traces_settings::port::DiscoveryPort for DiscoveryPort {
+        impl traces_settings::discovery::port::DiscoveryPort for DiscoveryPort {
             fn discover<'ctx>(
                 &self,
                 context: &DiscoveryContext<'ctx>,

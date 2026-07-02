@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use traces_fs::{DirPath, FilePath};
 use traces_settings::{
     CandidatePath, ConfigBuilderOptions, DiscoveryOptions, DiscoveryOutcome,
-    DiscoveryReport, Service, SettingsError, SettingsService, TrustMode,
-    dirs::AppDirs,
+    Service, SettingsError, SettingsService, TrustMode,
+    discovery::{dirs::AppDirs, report::DiscoveryReport},
 };
 
 mod discovery_options {

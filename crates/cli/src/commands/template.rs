@@ -17,7 +17,7 @@ use traces_app::{
         run_template_create as app_run_template_create,
     },
 };
-use traces_settings::{DiscoveryFlags, port::DiscoveryPort};
+use traces_settings::{DiscoveryFlags, discovery::port::DiscoveryPort};
 use traces_template::{TemplateArtifactError, TemplateError, TemplateName};
 
 use crate::{

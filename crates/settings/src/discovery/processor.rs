@@ -5,18 +5,17 @@ use std::{marker::PhantomData, path::PathBuf};
 use traces_fs::DirPath;
 
 use crate::{
+    DiscoveryOutcome, DiscoveryReport,
     candidate::CandidatePath,
     discovery::{
         error::DiscoveryError,
         filter::{dedupe, dedupe_keep_last, filter_ignored},
         global::global_collect,
         input::DiscoveryInput,
-        outcome::DiscoveryOutcome,
         probe::exact_probe,
         targets::VAULT_CONFIG_TARGETS,
         walk::AncestorEnumerator,
     },
-    os_dirs::XDG_CONFIG_HOME,
 };
 
 pub(crate) struct Init;
@@ -27,7 +26,7 @@ pub(crate) struct DiscoveryProcessor<State> {
     input: DiscoveryInput,
     local: Vec<CandidatePath>,
     global: Vec<CandidatePath>,
-    report: crate::DiscoveryReport,
+    report: DiscoveryReport,
     _state: PhantomData<State>,
 }
 
@@ -37,7 +36,7 @@ impl DiscoveryProcessor<Init> {
             input,
             local: Vec::new(),
             global: Vec::new(),
-            report: crate::DiscoveryReport::default(),
+            report: DiscoveryReport::default(),
             _state: PhantomData,
         }
     }
@@ -122,9 +121,9 @@ impl DiscoveryProcessor<GlobalCollected> {
 
 fn platform_global_dirs() -> Vec<DirPath> {
     let mut dirs = Vec::new();
-    push_dir(&mut dirs, XDG_CONFIG_HOME.join("traces"));
+    push_dir(&mut dirs, crate::dirs::CONFIG.clone());
     #[cfg(unix)]
-    push_dir(&mut dirs, crate::os_dirs::SYSTEM_CONFIG_DIR.join("traces"));
+    push_dir(&mut dirs, crate::dirs::SYSTEM_CONFIG.clone());
     dirs
 }
 
@@ -308,7 +307,10 @@ mod tests {
 
             assert!(outcome.vault().is_empty());
             assert!(outcome.global().is_empty());
-            assert_eq!(outcome.report(), &crate::DiscoveryReport::default());
+            assert_eq!(
+                outcome.report(),
+                &crate::discovery::report::DiscoveryReport::default()
+            );
         }
     }
 

@@ -65,7 +65,9 @@ pub(crate) fn build_index_command(
               verbosity, stdout, stderr"
 )]
 pub(crate) fn run_index(
-    bootstrapper: &BootstrapRunner<impl traces_settings::port::DiscoveryPort>,
+    bootstrapper: &BootstrapRunner<
+        impl traces_settings::discovery::port::DiscoveryPort,
+    >,
     flags: Option<DiscoveryFlags>,
     anchor: &Path,
     args: IndexArgs,

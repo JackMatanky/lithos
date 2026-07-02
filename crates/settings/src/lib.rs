@@ -10,9 +10,9 @@
 
 pub mod candidate;
 pub mod config;
+pub mod dirs;
 pub mod discovery;
 mod env_var;
-pub mod location;
 pub mod os_dirs;
 pub mod service;
 
@@ -38,15 +38,14 @@ pub use config::{
 pub use discovery::{
     context,
     context::{DiscoveryContext, DiscoveryEnv, DiscoveryFlags},
-    dirs,
     error::DiscoveryError,
     location::{
         CacheLocation, CacheRoot, GlobalCacheLocation, LocalCacheLocation,
     },
     outcome::DiscoveryOutcome,
-    port, report,
+    report,
     report::DiscoveryReport,
-    service::{DiscoveryResult, DiscoveryService, DiscoveryServiceConfig},
+    service::{DiscoveryResult, DiscoveryService},
 };
 pub use service::{
     ConfigBuilderOptions, DiscoveryOptions, Service, SettingsError,

@@ -14,7 +14,7 @@ use std::{io::Write, path::Path};
 
 use traces_app::bootstrap::BootstrapRunner;
 use traces_settings::{
-    DiscoveryFlags, InMemoryRepository, port::DiscoveryPort,
+    DiscoveryFlags, InMemoryRepository, discovery::port::DiscoveryPort,
 };
 
 use crate::{cli::OutputFormat, error::CliError, output};
