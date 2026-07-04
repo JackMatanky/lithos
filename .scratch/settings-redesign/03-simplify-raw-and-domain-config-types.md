@@ -92,3 +92,71 @@ This slice is sufficiently specified and can proceed independently of discovery 
 - Prefer typed `ConfigError` variants such as forbidden field, missing local config, parse IO, and unsupported format.
 - Avoid cloning path/string fields in conversion paths unless ownership is part of the resulting domain type.
 - Tests should cover one behavior each: global rejects cache, local rejects trusted vaults, TOML parses, JSON/YAML parse if enabled, defaults construct.
+
+---
+
+## TDD Plan (approved 2026-07-04)
+
+**Note:** `RawConfig.metadata` kept as `#[serde(skip)]` with removal TODO; removed in issue 07 with `builder.rs`. `name`, `version` fields removed from RawConfig (not in PRD spec). `VaultRoot` kept as compat shim for builder.rs. `VaultId`, `Version` kept as compat shims. rkyv stripped from new/changed domain types.
+
+### Sprint 1 — Foundation: `deserialize_config`
+
+| # | Test | Code |
+|---|------|------|
+| 1 | deserialize_config with .toml returns Ok(RawConfig) | `deserialize_config(path, content)` in `raw.rs` using `toml` |
+| 2 | deserialize_config with .json returns Ok(RawConfig) | `serde_json` dispatch (feature-gated) |
+| 3 | deserialize_config with .yaml/.yml returns Ok(RawConfig) | `serde_yaml` dispatch (feature-gated) |
+| 4 | deserialize_config with unknown extension defaults to TOML | Fallback to `toml` |
+| 5 | deserialize_config errors on invalid content | serde error → `ConfigError` |
+
+### Sprint 2 — GlobalConfig `TryFrom<RawConfig>`
+
+| # | Test | Code |
+|---|------|------|
+| 6 | GlobalConfig::try_from accepts valid raw with all fields | `TryFrom<RawConfig>` impl, `path: FilePath` field |
+| 7 | Rejects cache as forbidden field | Check `raw.cache` → `ConfigError::ValidationFailed` |
+| 8 | Applies defaults for omitted fields | `Logging::default()`, `Frontmatter::default()` etc. |
+| 9 | Preserves trusted_vaults, template, schema, task | Field mapping |
+
+### Sprint 3 — LocalConfig `TryFrom<RawConfig>`
+
+| # | Test | Code |
+|---|------|------|
+| 10 | LocalConfig::try_from accepts valid raw | `TryFrom<RawConfig>` impl |
+| 11 | Rejects trusted_vaults as forbidden field | Check `raw.trusted_vaults` → error |
+| 12 | Derives name from base basename when unset | `base.file_name()` fallback |
+| 13 | Carries base, path, name fields | Constructor with `DirPath`, `FilePath`, `Box<str>` |
+
+### Sprint 4 — AppConfig simplification
+
+| # | Test | Code |
+|---|------|------|
+| 14 | AppConfig constructs with inline root, name | Update struct, drop `vault_metadata` |
+| 15 | to_template_spec works with new structure | Accessor chain → `self.root` |
+| 16 | to_schema_spec works with new structure | Same |
+| 17 | create_cache_dir works with new structure | Same |
+| 18 | to_frontmatter_spec, to_task_spec, to_cache_spec work | Same pattern |
+
+### Sprint 5 — Error variants & Cargo features
+
+| # | Test | Code |
+|---|------|------|
+| 19 | Forbidden-field error includes source | `ConfigError` construction |
+| 20 | serde_json feature compiles | Optional dep in Cargo.toml |
+| 21 | serde_yaml feature compiles | Optional dep in Cargo.toml |
+| 22 | ConfigError::Storage/Ingestion/Io still compile | Keep as shims |
+
+### Sprint 6 — Migrate `build_from_layers` and callers
+
+| # | Test | Code |
+|---|------|------|
+| 23 | build_from_layers compiles with new AppConfig | Update signature, return new AppConfig |
+| 24 | Merge regression tests pass | Update test fixtures |
+| 25 | crates/app/src/template.rs:config() compiles | Update production caller |
+| 26 | crates/note, crates/schema test fixtures compile | Update cross-crate callers |
+
+### Cleanup: compat shims
+
+- `VaultId`, `Version`, `VaultRoot` — kept as-is (builder.rs uses them)
+- `Metadata`, `VaultVersion`, `GlobalVersion`, `AppVersion`, `VaultName` — kept as deprecated struct definitions
+- No changes to: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`, `tracker.rs`, `trust.rs`
