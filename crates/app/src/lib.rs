@@ -21,4 +21,5 @@
 pub mod bootstrap;
 pub mod error;
 pub mod index;
+/// Template pipeline wiring and composition.
 pub mod template;

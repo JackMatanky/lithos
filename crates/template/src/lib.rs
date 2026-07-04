@@ -1,6 +1,8 @@
 #![allow(
-    missing_docs,
+    clippy::as_conversions,
+    clippy::impl_trait_in_params,
     clippy::missing_errors_doc,
+    missing_docs,
     reason = "template crate redesign"
 )]
 

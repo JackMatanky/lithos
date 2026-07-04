@@ -49,6 +49,7 @@ where
         }
     }
 
+    #[inline]
     pub fn render(
         &self,
         input: &CreateTemplateInput,

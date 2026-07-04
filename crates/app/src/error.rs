@@ -77,11 +77,7 @@ mod tests {
 
         #[test]
         fn converts_template_error_to_app_error() {
-            let name = traces_template::TemplateName::try_new(
-                std::path::Path::new("templates/missing.md"),
-                std::path::Path::new("templates"),
-            )
-            .expect("expected template name");
+            let name = traces_template::TemplateName::unchecked("missing.md");
             let inner = traces_template::TemplateError::NotFound {
                 name,
             };

@@ -717,11 +717,7 @@ mod tests {
 
         #[test]
         fn returns_2_when_template_error() {
-            let name = traces_template::TemplateName::try_new(
-                std::path::Path::new("templates/missing.md"),
-                std::path::Path::new("templates"),
-            )
-            .expect("expected template name");
+            let name = traces_template::TemplateName::unchecked("missing.md");
             let err = CliError::Bootstrap(AppError::Template(
                 traces_template::TemplateError::NotFound {
                     name,
