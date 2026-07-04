@@ -295,9 +295,10 @@ Prevents arbitrary unvalidated strings from spreading through the domain.
 pub enum PropertyValue {
     Null,
     Bool(bool),
-    Number(f64),
     String(String),
     Date(String),
+    Number(i64),
+    Float(f64),
     List(Vec<PropertyValue>),
     Object(Vec<PropertyEntry>),
 }
