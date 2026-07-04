@@ -37,7 +37,8 @@ Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `templat
 - [ ] JSON/YAML parsing is available according to the project dependency/feature decision in the PRD.
 - [ ] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
 - [ ] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
-- [ ] `LocalConfig` carries `base`, `path`, and a derived/defaultable name.
+- [ ] `LocalConfig` carries `root: DirPath` (vault root dir), `path: FilePath` (config file), and `name: Box<str>` (derived/defaultable from root dir basename). This replaces the old `Metadata` struct — remove it.
+- [ ] `AppConfig` replaces its `vault_metadata: Metadata` field with inline `root: DirPath`, `name: Box<str>` fields (no `VaultId` or `AppVersion` — both removed per PRD).
 - [ ] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/vault.rs` (LocalConfig), `config/aggregate.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
 - [ ] `AppConfig` is constructable without a repository or database.
 - [ ] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
@@ -53,9 +54,10 @@ Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `templat
 - Discovery or filesystem I/O (issue 02)
 - Config builder typestate or merge logic (issue 04)
 - Tracker or trust modules (issues 05, 06)
-- Removing old RawGlobalConfig/RawVaultConfig callers that still compile (deferred to issue 07)
+- **Removing `ConfigError::Storage`/`ConfigError::Ingestion`/`ConfigError::Io` variants** — keep as compatibility shims; removal deferred to issue 07
+- Removing old `RawGlobalConfig`/`RawVaultConfig` callers that still compile (deferred to issue 07)
 - BootstrapRunner or CLI migration (issues 08, 09)
-- AppConfig::create_cache_dir() (issue 04)
+- `AppConfig::create_cache_dir()` (issue 04)
 
 ## Blocked by
 
@@ -72,7 +74,10 @@ This slice is sufficiently specified and can proceed independently of discovery 
 ### Agent Brief
 
 - Add `RawConfig`, `GlobalConfig`, `LocalConfig`, and `AppConfig` as repository-free types.
-- Implement forbidden-field errors at `TryFrom<RawConfig>` boundaries.
+- Implement forbidden-field errors at `TryFrom<RawConfig>` boundaries (`GlobalConfig` rejects `cache`; `LocalConfig` rejects `trusted_vaults`).
+- **Remove `Metadata` struct; inline `root: DirPath`, `path: FilePath`, `name: Box<str>` into `LocalConfig`; inline `root: DirPath`, `name: Box<str>` into `AppConfig`. Remove `VaultVersion`, `GlobalVersion`, `AppVersion`. Keep `VaultId` and `Version` as compatibility shims (repository/storage still uses them — removed in issue 07).**
+- Add `serde_json` and `serde_yaml` as optional Cargo features (default: TOML only). Implement `deserialize_config(path, content)` dispatching by extension.
+- Keep `ConfigError::Storage`/`ConfigError::Ingestion`/`ConfigError::Io` as compatibility shims — do not remove them (deferred to issue 07).
 - Keep raw deserialization free of domain validation beyond serde shape.
 - Do not remove old `RawGlobalConfig`/`RawVaultConfig` callers until build and CLI slices migrate off them.
 - Use the existing merge-regression tests as prior art, but target new names and repository-free construction.
