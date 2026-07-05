@@ -32,7 +32,7 @@ Write the handoff doc directly. Save to OS temp dir (not workspace). Reference e
 Include in the doc:
 - **Focus:** implementing the plan in `<scratch-issue-path>`.
 - **Session state** from Step 1.
-- **Suggested skills:** `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, `gitnexus-exploring`, `gitnexus-impact-analysis`, `gitnexus-refactoring`, `gitnexus-debugging`.
+- **Suggested skills:** `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `rust-skills`, `tdd`, `gitnexus-exploring`, `gitnexus-impact-analysis`, `gitnexus-refactoring`, `gitnexus-debugging`.
 - **Next Agent Instructions** block below (paths substituted).
 
 **Done:** handoff doc written to temp dir, path known.

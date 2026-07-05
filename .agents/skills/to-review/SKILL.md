@@ -46,7 +46,7 @@ Include in the doc:
 - **Focus:** adversarial review of implementation for `<scratch-issue-path>`.
 - **Worktree path** where implementation lives.
 - **Session state** from Step 1.
-- **Suggested skills:** `adversarial-review`, `rust-best-practices`, `gitnexus-exploring`, `gitnexus-impact-analysis`.
+- **Suggested skills:** `adversarial-review`, `rust-best-practices`, `rust-skills`, `gitnexus-exploring`, `gitnexus-impact-analysis`.
 - **Next Agent Instructions** block below (paths substituted).
 
 **Done:** handoff doc written to temp dir, path known.
