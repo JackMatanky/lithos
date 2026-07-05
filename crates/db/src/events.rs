@@ -4,7 +4,7 @@ use std::num::NonZeroU64;
 
 use thiserror::Error;
 
-use crate::{ArchivedEntity, DbError};
+use crate::{DbError, RkyvDecode, RkyvEncode};
 
 #[allow(dead_code, reason = "Foundation type used in upcoming slices")]
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -245,7 +245,7 @@ impl EventIdAllocator {
 /// Infrastructure contract for append/load/compact event-log behavior.
 pub(crate) trait EventStore<E>
 where
-    E: ArchivedEntity,
+    E: RkyvEncode + RkyvDecode,
 {
     /// Append an event atomically and return the allocated event id.
     fn append(&self, event: &E) -> Result<EventId, DbError>;
@@ -501,7 +501,7 @@ mod tests {
         }
 
         #[test]
-        fn accepts_archived_entity_payload_type() {
+        fn accepts_rkyv_codec_payload_type() {
             let store = FixtureStore;
             let event = TestEvent {
                 name: "append".to_owned(),

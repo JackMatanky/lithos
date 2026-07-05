@@ -58,7 +58,11 @@ mod write;
 
 pub use core::Store;
 
+#[allow(deprecated, reason = "temporary compatibility export")]
 pub use codec::ArchivedEntity;
+pub use codec::{
+    CodecError, CodecErrorKind, DbRkyvType, RkyvBytes, RkyvDecode, RkyvEncode,
+};
 pub use error::{DbError, DbErrorKind};
 #[expect(
     unused_imports,
@@ -73,7 +77,8 @@ pub use read::ReadTx;
 )]
 pub(crate) use table::EventTable;
 pub use table::{
-    PathTable, PathUuidTable, Table, UuidMultimap, UuidPathTable, UuidTable,
+    PathTable, PathUuidTable, RkyvMultimap, RkyvTable, Table, UuidMultimap,
+    UuidPathTable, UuidTable,
 };
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,

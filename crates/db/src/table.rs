@@ -10,7 +10,7 @@
 use redb::{Key, MultimapTableDefinition, TableDefinition, Value};
 
 use super::UuidV7DbType;
-use crate::{events::EventId, path::DbPathKey};
+use crate::{DbRkyvType, events::EventId, path::DbPathKey};
 
 /// Table with UUID keys implementing [`UuidV7DbType`].
 ///
@@ -246,6 +246,61 @@ impl<K: Key + 'static, V: Value + 'static> Table<K, V> {
     }
 }
 
+/// Table storing typed rkyv values.
+pub struct RkyvTable<K: crate::RkyvDecode + Ord + 'static, V: 'static> {
+    definition: TableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>>,
+}
+
+impl<K: crate::RkyvDecode + Ord + 'static, V: 'static> RkyvTable<K, V> {
+    /// Create a new table definition with rkyv-encoded values.
+    #[inline]
+    #[must_use]
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            definition: TableDefinition::new(name),
+        }
+    }
+
+    /// Get the underlying redb table definition.
+    #[inline]
+    #[must_use]
+    pub const fn definition(
+        &self,
+    ) -> TableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>> {
+        self.definition
+    }
+}
+
+/// Multimap storing typed rkyv values.
+pub struct RkyvMultimap<
+    K: crate::RkyvDecode + Ord + 'static,
+    V: crate::RkyvDecode + Ord + 'static,
+> {
+    definition: MultimapTableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>>,
+}
+
+impl<K: crate::RkyvDecode + Ord + 'static, V: crate::RkyvDecode + Ord + 'static>
+    RkyvMultimap<K, V>
+{
+    /// Create a new multimap definition with rkyv-encoded values.
+    #[inline]
+    #[must_use]
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            definition: MultimapTableDefinition::new(name),
+        }
+    }
+
+    /// Get the underlying redb multimap table definition.
+    #[inline]
+    #[must_use]
+    pub const fn definition(
+        &self,
+    ) -> MultimapTableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>> {
+        self.definition
+    }
+}
+
 /// Table with [`EventId`] keys.
 ///
 /// Infrastructure primitive for event-log table definitions keyed by
@@ -254,15 +309,15 @@ impl<K: Key + 'static, V: Value + 'static> Table<K, V> {
     dead_code,
     reason = "Infrastructure wrapper consumed in upcoming slices"
 )]
-pub(crate) struct EventTable<V: Value + 'static> {
-    definition: TableDefinition<'static, EventId, V>,
+pub(crate) struct EventTable<V: 'static> {
+    definition: TableDefinition<'static, EventId, DbRkyvType<V>>,
 }
 
 #[allow(
     dead_code,
     reason = "Infrastructure wrapper API consumed in upcoming slices"
 )]
-impl<V: Value + 'static> EventTable<V> {
+impl<V: 'static> EventTable<V> {
     /// Create a new event-id keyed table definition.
     #[inline]
     #[must_use]
@@ -277,7 +332,7 @@ impl<V: Value + 'static> EventTable<V> {
     #[must_use]
     pub(crate) const fn definition(
         &self,
-    ) -> TableDefinition<'static, EventId, V> {
+    ) -> TableDefinition<'static, EventId, DbRkyvType<V>> {
         self.definition
     }
 }
@@ -424,21 +479,52 @@ mod tests {
         }
     }
 
+    mod rkyv_table {
+        use super::*;
+        use crate::DbRkyvType;
+
+        #[test]
+        fn constructor_returns_db_rkyv_type_table_definition() {
+            const TABLE: RkyvTable<u64, u32> = RkyvTable::new("entities");
+
+            let _definition: TableDefinition<
+                'static,
+                DbRkyvType<u64>,
+                DbRkyvType<u32>,
+            > = TABLE.definition();
+        }
+
+        #[test]
+        fn multimap_constructor_returns_db_rkyv_type_definition() {
+            const TABLE: RkyvMultimap<u64, u32> =
+                RkyvMultimap::new("entity_index");
+
+            let _definition: MultimapTableDefinition<
+                'static,
+                DbRkyvType<u64>,
+                DbRkyvType<u32>,
+            > = TABLE.definition();
+        }
+    }
+
     mod event_table {
         use super::*;
-        use crate::EventId;
+        use crate::{DbRkyvType, EventId, RkyvBytes};
 
         #[test]
         fn constructor_returns_eventid_keyed_table_definition() {
             const EVENTS: EventTable<u64> = EventTable::new("events");
 
-            let _definition: TableDefinition<'static, EventId, u64> =
-                EVENTS.definition();
+            let _definition: TableDefinition<
+                'static,
+                EventId,
+                DbRkyvType<u64>,
+            > = EVENTS.definition();
         }
 
         #[test]
         fn constructor_supports_const_construction() {
-            const EVENTS: EventTable<&str> = EventTable::new("events");
+            const EVENTS: EventTable<u64> = EventTable::new("events");
 
             let _definition = EVENTS.definition();
         }
@@ -447,17 +533,18 @@ mod tests {
         fn definition_supports_eventid_keyed_integration_flow() {
             use redb::ReadableDatabase;
 
-            const EVENTS: EventTable<&str> = EventTable::new("events");
+            const EVENTS: EventTable<u64> = EventTable::new("events");
 
             let temp = tempfile::NamedTempFile::new().expect("tmpfile");
             let db = redb::Database::create(temp.path()).expect("db");
             let event_id = EventId::try_from_raw(1).expect("event id");
+            let event = RkyvBytes::<u64>::encode(&42).expect("encode");
 
             let write_tx = db.begin_write().expect("tx");
             {
                 let mut table =
                     write_tx.open_table(EVENTS.definition()).expect("open");
-                table.insert(&event_id, &"created").expect("insert");
+                table.insert(&event_id, &event).expect("insert");
             }
             write_tx.commit().expect("commit");
 
@@ -465,7 +552,7 @@ mod tests {
             let table = read_tx.open_table(EVENTS.definition()).expect("open");
             let stored = table.get(&event_id).expect("get").expect("value");
 
-            assert_eq!(stored.value(), "created");
+            assert_eq!(stored.value().decode().expect("decode"), 42);
         }
     }
 }

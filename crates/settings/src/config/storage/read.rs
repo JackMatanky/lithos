@@ -5,6 +5,8 @@
 //! [`ReadTx::try_open_table`](traces_db::ReadTx::try_open_table)
 //! to handle uninitialized tables gracefully.
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable as _;
 use traces_db::ArchivedEntity;
 

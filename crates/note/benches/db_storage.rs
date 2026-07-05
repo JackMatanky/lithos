@@ -204,6 +204,7 @@
     clippy::excessive_nesting,
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
+#![allow(deprecated, reason = "benchmark migration pending")]
 
 use std::hint::black_box;
 

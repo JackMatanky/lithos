@@ -65,6 +65,8 @@
 //! }
 //! ```
 
+#![allow(deprecated, reason = "legacy error compatibility tests")]
+
 use std::path::PathBuf;
 
 use traces_db::DbError;

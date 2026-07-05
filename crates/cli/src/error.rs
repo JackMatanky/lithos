@@ -16,6 +16,8 @@
 //! - `2` — invalid explicit path or configuration error (user error)
 //! - `3` — filesystem permission denied or unreadable directory (I/O error)
 
+#![allow(deprecated, reason = "legacy error compatibility test")]
+
 use std::path::PathBuf;
 
 use traces_app::error::AppError;

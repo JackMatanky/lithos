@@ -36,6 +36,8 @@
 //! [`PROPERTY_BANK`]: crate::storage::tables::PROPERTY_BANK
 //! [`SCHEMA_TOPOLOGICAL_GRAPH`]: crate::storage::tables::SCHEMA_TOPOLOGICAL_GRAPH
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use std::collections::{HashMap, HashSet};
 
 use redb::ReadableTable;

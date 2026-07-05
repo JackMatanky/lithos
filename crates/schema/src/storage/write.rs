@@ -35,6 +35,8 @@
 //! [`SCHEMAS`]: crate::storage::tables::SCHEMAS
 //! [`SCHEMA_ID_BY_NAME`]: crate::storage::tables::SCHEMA_ID_BY_NAME
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable;
 use traces_db::{ArchivedEntity, DbError, DbPathKey};
 use traces_fs::PathKey;

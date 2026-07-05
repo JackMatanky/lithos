@@ -44,6 +44,7 @@
     reason = "Test file organization prioritizes readability over arbitrary \
               ordering rules."
 )]
+#![allow(deprecated, reason = "storage adapter migration pending")]
 
 mod common;
 

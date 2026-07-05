@@ -647,7 +647,7 @@ Minimum tests for the first implementation slice:
 
 ### Phase 1: Error Seam
 
-Status: pending
+Status: complete
 
 - Add `CodecError`.
 - Add `DbError::Codec`.
@@ -656,7 +656,7 @@ Status: pending
 
 ### Phase 2: Codec Bytes
 
-Status: pending
+Status: complete
 
 - Add `RkyvBytes<'a, T>`.
 - Add `RkyvEncode` / `RkyvDecode`.
@@ -665,7 +665,7 @@ Status: pending
 
 ### Phase 3: Compatibility Shim
 
-Status: pending
+Status: complete
 
 - Keep `ArchivedEntity` temporarily.
 - Re-implement it in terms of new codec functions.
@@ -674,16 +674,15 @@ Status: pending
 
 ### Phase 4: redb Adapters
 
-Status: pending
+Status: complete
 
-- Add `RkyvValue<T>`.
-- Add `RkyvKey<T>`.
+- Add `DbRkyvType<T>`.
 - Implement `redb::Value` and `redb::Key`.
 - Use decode-and-compare for keys initially, with a ponytail comment naming the performance ceiling.
 
 ### Phase 5: Table Wrappers
 
-Status: pending
+Status: complete
 
 - Add `RkyvTable<K, V>`.
 - Add `RkyvMultimap<K, V>`.
@@ -691,7 +690,7 @@ Status: pending
 
 ### Phase 6: First Vertical Migration
 
-Status: pending
+Status: complete
 
 - Pick one low-risk table.
 - Migrate its table definition to `RkyvTable` or `RkyvMultimap`.
@@ -700,12 +699,24 @@ Status: pending
 
 ### Phase 7: Broader Cleanup
 
-Status: pending
+Status: partial
 
 - Migrate remaining storage adapters gradually.
 - Remove per-domain redb trait impls replaced by generic adapters.
 - Remove `ArchivedEntity` when unused.
 - Remove generic string serialization/deserialization variants when unused.
+
+## Adapter Collapse Update
+
+Use a single redb adapter type:
+
+```rust
+pub struct DbRkyvType<T>(PhantomData<T>);
+```
+
+`DbRkyvType<T>` implements `redb::Value` for all `'static` `T` and `redb::Key` when `T: RkyvDecode + Ord + 'static`. This replaces the earlier split `RkyvValue<T>` / `RkyvKey<T>` design.
+
+Keep `RkyvBytes<'a, T>` separate as the typed byte carrier and validation/decode surface.
 
 ## Errors Encountered
 

@@ -39,6 +39,8 @@
 //! let all_notes = repo.list()?;
 //! ```
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable;
 use traces_db::{ArchivedEntity, path::DbPathKey};
 

@@ -12,6 +12,8 @@
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable;
 use traces_db::{DbError, path::DbPathKey};
 use traces_fs::path::PathKey;

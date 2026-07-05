@@ -207,7 +207,7 @@ mod tests {
             let result: Result<(), DbError> = store.write(|tx| {
                 let mut table = tx.inner.open_table(TEST_TABLE)?;
                 table.insert("new_key", "new_value")?;
-                Err(DbError::Serialization("intentional error".to_owned()))
+                Err(DbError::Corruption("intentional error".to_owned()))
             });
             assert!(result.is_err());
             drop(store);

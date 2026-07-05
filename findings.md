@@ -330,3 +330,91 @@ Avoid adding `T: Debug` if possible; manual `Debug` impls can avoid leaking unne
 ### Public Export Correction
 
 The public exports section must not export private codec free functions by default. Public API should prefer `RkyvBytes` methods; free functions stay private unless a real caller requires them.
+
+## Missing Implementation Inventory
+
+Checked against `task_plan.md` after the first codec/table-wrapper slices.
+
+Implemented:
+
+- `CodecError` and `CodecErrorKind`.
+- `DbError::Codec` and `DbErrorKind::Codec`.
+- `RkyvBytes<'a, T>` with borrowed/owned/as_bytes/encode/decode/with_archived.
+- Private `encode_rkyv`, `decode_rkyv`, and `with_archived_rkyv`.
+- `RkyvValue<T>` redb `Value` adapter.
+- `RkyvKey<T>` redb `Value + Key` adapter.
+- Minimal `RkyvTable<K,V>` and `RkyvMultimap<K,V>` wrappers.
+- `ArchivedEntity` compatibility shim routes through typed codec errors for reads and archived access.
+
+Not implemented or incomplete:
+
+- `RkyvDecode` trait is not implemented/exported. Current code repeats long decode bounds directly on public methods and helpers.
+- `RkyvKey<T>::compare` does bytewise comparison, not plan-required decode-and-compare with `T: Ord` and invalid-byte panic.
+- `RkyvKey<T>::compare` has no `ponytail:` comment documenting the performance ceiling and upgrade path.
+- `RkyvTable<K,V>` currently wraps `TableDefinition<'static, K, RkyvValue<V>>`, not planned `TableDefinition<'static, RkyvKey<K>, RkyvValue<V>>`.
+- `RkyvMultimap<K,V>` currently wraps `MultimapTableDefinition<'static, K, RkyvKey<V>>`, not planned `MultimapTableDefinition<'static, RkyvKey<K>, RkyvKey<V>>`.
+- `ArchivedEntity` is not marked deprecated.
+- `ArchivedEntity::to_bytes` still calls `rkyv::to_bytes` directly instead of delegating to `RkyvBytes::encode`/`encode_rkyv`; this preserves the `AlignedVec` return but duplicates encode mapping.
+- `ArchivedEntity` doc comments still mention `DbError::Serialization` / `DbError::Deserialization` instead of `DbError::Codec`.
+- `DbError::Serialization(String)` and `DbError::Deserialization(String)` are not deprecated.
+- No first vertical migration has been done. Existing repository adapters still mostly use `ArchivedEntity::{to_bytes, from_bytes, with_archived}` or direct `rkyv::to_bytes`.
+- No per-domain redb trait impls have been removed.
+- No broad cleanup has removed `ArchivedEntity` or legacy string serialization/deserialization variants.
+- No value-only migrated table using an optimized key (`UuidTable<K, RkyvValue<V>>`, `PathTable<RkyvValue<V>>`, or equivalent) has been added.
+
+Test gaps from the plan:
+
+- No direct tests for `CodecError::kind()` returning all of `Encode`, `Access`, and `Decode`.
+- No direct `DbError::Codec` kind test, only legacy variants and codec-returning invalid-byte paths.
+- No direct `RkyvBytes::with_archived()` test through the new `RkyvBytes` API; current zero-copy tests still use `ArchivedEntity::with_archived`.
+- Invalid/truncated bytes are tested through `ArchivedEntity::from_bytes`, not directly through `RkyvBytes::borrowed(...).decode()` and `CodecError::RkyvAccess`/`RkyvDeserialize`.
+- No `RkyvKey<T>::compare` test against semantic `T::cmp`.
+- Debug no-`T: Debug` requirement is implemented manually but not covered by a compile test using a non-`Debug` `T`.
+
+## Full Implementation Follow-up
+
+Completed after the gap review:
+
+- Added public sealed `RkyvDecode` with codec methods so public `RkyvBytes` APIs no longer expose long rkyv bounds.
+- Added direct tests for `CodecError::kind`, `DbError::Codec`, `RkyvBytes::with_archived`, direct invalid-byte decode, no-`T: Debug` debug impls, semantic `RkyvKey::compare`, and fully generic `RkyvTable`/`RkyvMultimap` definitions.
+- Changed `RkyvKey<T>::compare` to decode-and-compare with `T: Ord`, with the planned ponytail performance-ceiling comment.
+- Changed `RkyvTable<K,V>` and `RkyvMultimap<K,V>` to use `RkyvKey<K>` for their redb key side.
+- Migrated `EventTable<V>` to the value-only optimized-key shape: `TableDefinition<'static, EventId, RkyvValue<V>>`.
+- Changed `EventStore<E>` bounds from `ArchivedEntity` to `RkyvEncode + RkyvDecode`.
+- Deprecated `ArchivedEntity` and legacy string codec error variants, with local compatibility allows where old behavior is intentionally tested.
+- Updated `ArchivedEntity` docs to report `DbError::Codec` and routed `to_bytes` through the new codec helper.
+
+Still intentionally not done:
+
+- Broad migration of all workspace repository adapters off `ArchivedEntity`.
+- Removal of `ArchivedEntity`, `DbError::Serialization`, and `DbError::Deserialization`; they remain migration shims.
+- Removal of per-domain redb trait impls outside the first DB-owned `EventTable` migration.
+
+## Adapter Collapse Update
+
+`RkyvValue<T>` and `RkyvKey<T>` were collapsed into `DbRkyvType<T>` after review. The split exposed two names for the same redb byte adapter; the only extra behavior was `redb::Key`.
+
+Current shape:
+
+```rust
+pub struct DbRkyvType<T>(PhantomData<T>);
+
+impl<T: 'static> redb::Value for DbRkyvType<T> { /* typed RkyvBytes */ }
+
+impl<T> redb::Key for DbRkyvType<T>
+where
+    T: RkyvDecode + Ord + 'static,
+{
+    /* decode-and-compare */
+}
+```
+
+`RkyvBytes<'a, T>` remains separate because it is the byte carrier and validation/decode interface, not the redb adapter type.
+
+Updated table shapes:
+
+```rust
+TableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>>
+MultimapTableDefinition<'static, DbRkyvType<K>, DbRkyvType<V>>
+TableDefinition<'static, EventId, DbRkyvType<V>>
+```

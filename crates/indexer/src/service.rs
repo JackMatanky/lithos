@@ -5,6 +5,8 @@
 //! `EntryBuilder<IsDir, Scanned>`, deriving `parent_id` from the accumulated
 //! `dir_ids` map via `FilePath::parent()` / `DirPath::parent()`.
 
+#![allow(deprecated, reason = "legacy error compatibility tests")]
+
 use std::collections::{HashMap, HashSet};
 
 use traces_fs::{DirPath, path::PathKey};

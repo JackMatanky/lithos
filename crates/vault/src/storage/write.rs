@@ -31,6 +31,8 @@
 //! The trait defines per-method documentation; this file contains the
 //! concrete [`redb`] access patterns for each operation.
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable as _;
 use traces_db::{ArchivedEntity, DbError, WriteTx, path::DbPathKey};
 use traces_fs::{BaseName, PathKey};

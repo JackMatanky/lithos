@@ -7,6 +7,8 @@
 //! appropriately. The `Path` arm is the linchpin of the soft-fail model:
 //! per-entry path errors are recoverable, while repository errors are fatal.
 
+#![allow(deprecated, reason = "legacy error compatibility tests")]
+
 use std::path::PathBuf;
 
 use traces_db::DbError;

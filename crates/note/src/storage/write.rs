@@ -32,6 +32,8 @@
 //! The trait defines per-method documentation; this file contains the
 //! concrete [`redb`] access patterns for each operation.
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use traces_db::{ArchivedEntity, path::DbPathKey};
 
 use super::{NOTES, RedbRepository};

@@ -4,6 +4,8 @@
 //! method opens a single write transaction and operates on the required tables
 //! within that transaction.
 
+#![allow(deprecated, reason = "storage adapter migration pending")]
+
 use redb::ReadableTable as _;
 use traces_db::ArchivedEntity;
 
