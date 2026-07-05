@@ -11,7 +11,6 @@
     reason = "Rust 2024 lint — crate-internal API uses impl Trait"
 )]
 
-pub(crate) mod artifact;
 pub(crate) mod engine;
 /// Error types for the template system.
 pub mod error;
