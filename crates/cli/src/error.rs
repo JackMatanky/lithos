@@ -169,13 +169,6 @@ pub(crate) enum TemplateCommandError {
         "Ensure `[template]` is configured in traces.toml with a valid \
          `directory` setting, and that the directory exists."
     ))]
-    // ponytail: added for future mapping from AppError, not yet
-    // constructed by any code path
-    #[allow(
-        dead_code,
-        reason = "ponytail: added for future use, not yet constructed by any \
-                  code path"
-    )]
     ConfigInvalid {
         detail: String,
     },

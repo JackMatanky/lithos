@@ -5,11 +5,19 @@ use minijinja::{AutoEscape, Environment, UndefinedBehavior, path_loader};
 use super::{RenderedTemplate, TemplateEngine};
 use crate::error::TemplateEngineError;
 
+/// Minijinja-backed [`TemplateEngine`] implementation.
+///
+/// Loads templates from a filesystem root using minijinja's [`path_loader`].
+/// Configured with strict undefined-behaviour and no auto-escape for
+/// plain-text output (markdown/code generation).
 pub struct MiniJinjaEngine {
     env: Environment<'static>,
 }
 
 impl MiniJinjaEngine {
+    /// Creates a new engine that loads templates from `root`.
+    ///
+    /// The root directory is scanned at render time — no upfront compilation.
     #[inline]
     #[must_use]
     pub fn new(root: &Path) -> Self {
@@ -112,6 +120,23 @@ mod tests {
             let result = engine.render("nonexistent.md", &HashMap::new());
 
             assert!(result.is_err());
+        }
+
+        /// Verifies that rendering `Hello {{ name }}` with an empty variable
+        /// value succeeds and produces `Hello ` (with trailing space).
+        #[test]
+        fn renders_empty_variable_value() {
+            let dir = tempfile::tempdir().unwrap();
+            write_template(dir.path(), "greeting.md", "Hello {{ name }}");
+            let engine = engine(dir.path());
+
+            let result = engine.render(
+                "greeting.md",
+                &HashMap::from([("name".to_owned(), String::new())]),
+            );
+
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().as_str(), "Hello ");
         }
     }
 }

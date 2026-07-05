@@ -1,7 +1,6 @@
-use traces_fs::FsWriter;
 use traces_settings::AppConfig;
+use traces_template::TemplateService;
 pub use traces_template::{CreateTemplateInput, CreateTemplateOutcome};
-use traces_template::{MiniJinjaEngine, TemplateService};
 
 use crate::error::AppError;
 
@@ -16,14 +15,8 @@ pub fn run_template_create(
     input: &CreateTemplateInput,
 ) -> Result<CreateTemplateOutcome, AppError> {
     let spec = config.to_template_spec().map_err(AppError::Config)?;
-    let template_root = spec.to_dir_path().map_err(|e| {
-        AppError::Config(traces_settings::error::ConfigError::Ingestion(
-            format!("Invalid template directory: {e}").into(),
-        ))
-    })?;
-    let engine = MiniJinjaEngine::new(template_root.as_path());
-    let writer = FsWriter::new(spec.root().as_path());
-    let service = TemplateService::new(engine, writer);
+    let service =
+        TemplateService::from_spec(&spec).map_err(AppError::Template)?;
     service.render(input).map_err(AppError::Template)
 }
 

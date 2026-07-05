@@ -9,16 +9,16 @@ pub fn resolve_target(raw: &str) -> Result<WriteTarget, TemplateArtifactError> {
 
 #[inline]
 pub fn commit(
-    target: WriteTarget,
+    target: &WriteTarget,
     content: &str,
     writer: &impl FileWriter,
-) -> Result<WriteTarget, TemplateArtifactError> {
-    writer.create_new(&target, content.as_bytes())?;
-    Ok(target)
+) -> Result<(), TemplateArtifactError> {
+    writer.create_new(target, content.as_bytes())?;
+    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+mod resolve_target {
     use std::path::PathBuf;
 
     use pretty_assertions::assert_eq;
@@ -42,16 +42,22 @@ mod tests {
         let err = resolve_target("../escape.md").unwrap_err();
         assert!(matches!(err, TemplateArtifactError::Path(_)));
     }
+}
+
+#[cfg(test)]
+mod commit {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
 
     #[test]
-    fn commits_content_through_writer() {
+    fn writes_content_through_writer() {
         let dir = tempfile::tempdir().unwrap();
         let writer = traces_fs::FsWriter::new(dir.path());
         let target = resolve_target("out.md").unwrap();
 
-        let result = commit(target, "hello", &writer);
+        commit(&target, "hello", &writer).unwrap();
 
-        assert!(result.is_ok());
         let content =
             std::fs::read_to_string(dir.path().join("out.md")).unwrap();
         assert_eq!(content, "hello");
@@ -64,8 +70,24 @@ mod tests {
         let writer = traces_fs::FsWriter::new(dir.path());
         let target = resolve_target("out.md").unwrap();
 
-        let err = commit(target, "new", &writer).unwrap_err();
+        let err = commit(&target, "new", &writer).unwrap_err();
 
         assert!(matches!(err, TemplateArtifactError::Write(_)));
+    }
+
+    /// Verifies that committing to a nested path like `subdir/out.md` creates
+    /// the intermediate directory and writes the file at the expected location.
+    #[test]
+    fn creates_intermediate_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = traces_fs::FsWriter::new(dir.path());
+        let target = resolve_target("subdir/out.md").unwrap();
+
+        commit(&target, "content", &writer).unwrap();
+
+        let path = dir.path().join("subdir/out.md");
+        assert!(path.exists());
+        let content = std::fs::read_to_string(path).unwrap();
+        assert_eq!(content, "content");
     }
 }

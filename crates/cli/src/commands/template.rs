@@ -55,7 +55,7 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         traces_settings::InMemoryRepository::new(),
     )?;
     let template_input = normalize_template_input(&args.input);
-    let name = TemplateName::unchecked(format!("{template_input}.md"));
+    let name = TemplateName::unchecked(&format!("{template_input}.md"));
     let output_path =
         args.output.unwrap_or_else(|| format!("{template_input}.md"));
 
@@ -125,6 +125,12 @@ fn normalize_template_input(input: &str) -> &str {
 
 fn map_template_error(err: AppError) -> CliError {
     match err {
+        AppError::Template(TemplateError::Config(detail)) => {
+            TemplateCommandError::ConfigInvalid {
+                detail,
+            }
+            .into()
+        }
         AppError::Template(TemplateError::NotFound {
             name,
         }) => TemplateCommandError::TemplateNotFound {
@@ -184,7 +190,7 @@ mod tests {
     };
 
     fn template_name(name: &str) -> TemplateName {
-        TemplateName::unchecked(format!("{name}.md"))
+        TemplateName::unchecked(&format!("{name}.md"))
     }
 
     fn make_vault()
