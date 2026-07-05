@@ -17,7 +17,7 @@ I/O operations and file metadata.
 ### Functions
 - **file.read(path)**: Reads the contents of a file into a string.
 - **file.read_lines(path)**: Reads a file and returns an array of strings (one per line).
-- **file.write(path)**: Sets the intended output path for the rendered template (stateful side-effect, executed post-render).
+- **file.write_to(path)**: Sets the intended output path for the rendered template (stateful side-effect, executed post-render).
 - **file.size(path)**: Returns the size of the file in bytes.
 
 ### Filters
