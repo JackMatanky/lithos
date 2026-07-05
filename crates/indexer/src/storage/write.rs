@@ -9,10 +9,8 @@
 //!
 //! [`WriteRepository`]: crate::repository::WriteRepository
 
-#![allow(deprecated, reason = "storage adapter migration pending")]
-
 use redb::ReadableTable;
-use traces_db::{DbError, path::DbPathKey};
+use traces_db::{DbError, RkyvBytes, path::DbPathKey};
 
 use crate::{
     error::IndexerRepositoryError,
@@ -36,12 +34,7 @@ impl RedbRepository {
         let table = tx.inner.open_table(FILES.definition())?;
         table
             .get(id)?
-            .map(|guard| {
-                rkyv::from_bytes::<FileRecord, rkyv::rancor::Error>(
-                    guard.value(),
-                )
-                .map_err(|e| DbError::Deserialization(e.to_string()))
-            })
+            .map(|guard| guard.value().decode().map_err(DbError::from))
             .transpose()
     }
 
@@ -52,12 +45,7 @@ impl RedbRepository {
         let table = tx.inner.open_table(DIRS.definition())?;
         table
             .get(id)?
-            .map(|guard| {
-                rkyv::from_bytes::<DirRecord, rkyv::rancor::Error>(
-                    guard.value(),
-                )
-                .map_err(|e| DbError::Deserialization(e.to_string()))
-            })
+            .map(|guard| guard.value().decode().map_err(DbError::from))
             .transpose()
     }
 
@@ -139,7 +127,7 @@ impl RedbRepository {
     fn save_file_in_tx(
         tx: &traces_db::WriteTx,
         record: &FileRecord,
-        bytes: &[u8],
+        bytes: &RkyvBytes<'_, FileRecord>,
     ) -> Result<(), DbError> {
         // If this is an update, clean up stale graph entries
         if let Some(old) = Self::load_file_delete_context(tx, record.id())? {
@@ -175,7 +163,7 @@ impl RedbRepository {
     fn save_dir_in_tx(
         tx: &traces_db::WriteTx,
         record: &DirRecord,
-        bytes: &[u8],
+        bytes: &RkyvBytes<'_, DirRecord>,
     ) -> Result<(), DbError> {
         // If this is an update, clean up stale graph entries
         if let Some(old) = Self::load_dir_delete_context(tx, record.id())? {
@@ -233,19 +221,26 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &FileRecord,
     ) -> Result<(), IndexerRepositoryError> {
-        tracing::debug!(id = %record.id(), path = %record.path(), "saving file record");
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        tracing::debug!(
+            id = %record.id(),
+            path = %record.path(),
+            "saving file record"
+        );
+        let bytes = RkyvBytes::encode(record).map_err(DbError::from)?;
         self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             // Reject before writing: returning Err rolls the transaction back,
             // so a conflict changes nothing (no no-op commit).
             if Self::file_path_taken_by_other(tx, record.path(), record.id())? {
-                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate file path detected");
+                tracing::warn!(
+                    id = %record.id(),
+                    path = %record.path(),
+                    "duplicate file path detected"
+                );
                 return Err(IndexerRepositoryError::DuplicatePath(
                     record.path().clone(),
                 ));
             }
-            Self::save_file_in_tx(tx, record, bytes.as_slice())?;
+            Self::save_file_in_tx(tx, record, &bytes)?;
             Ok(())
         })
     }
@@ -255,17 +250,24 @@ impl WriteRepository for RedbRepository {
         &self,
         record: &DirRecord,
     ) -> Result<(), IndexerRepositoryError> {
-        tracing::debug!(id = %record.id(), path = %record.path(), "saving dir record");
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(record)
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        tracing::debug!(
+            id = %record.id(),
+            path = %record.path(),
+            "saving dir record"
+        );
+        let bytes = RkyvBytes::encode(record).map_err(DbError::from)?;
         self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             if Self::dir_path_taken_by_other(tx, record.path(), record.id())? {
-                tracing::warn!(id = %record.id(), path = %record.path(), "duplicate dir path detected");
+                tracing::warn!(
+                    id = %record.id(),
+                    path = %record.path(),
+                    "duplicate dir path detected"
+                );
                 return Err(IndexerRepositoryError::DuplicatePath(
                     record.path().clone(),
                 ));
             }
-            Self::save_dir_in_tx(tx, record, bytes.as_slice())?;
+            Self::save_dir_in_tx(tx, record, &bytes)?;
             Ok(())
         })
     }
@@ -302,21 +304,25 @@ impl WriteRepository for RedbRepository {
         );
         let file_archives: Vec<_> = files
             .iter()
-            .map(rkyv::to_bytes::<rkyv::rancor::Error>)
+            .map(RkyvBytes::encode)
             .collect::<Result<_, _>>()
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
+            .map_err(DbError::from)?;
         let dir_archives: Vec<_> = dirs
             .iter()
-            .map(rkyv::to_bytes::<rkyv::rancor::Error>)
+            .map(RkyvBytes::encode)
             .collect::<Result<_, _>>()
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
+            .map_err(DbError::from)?;
 
         self.store.write(|tx| -> Result<(), IndexerRepositoryError> {
             // Validate every path before writing any record so a conflict
             // rejects the whole batch (Err rolls back) with no partial writes.
             for file in files {
                 if Self::file_path_taken_by_other(tx, file.path(), file.id())? {
-                    tracing::warn!(id = %file.id(), path = %file.path(), "duplicate file path detected in batch");
+                    tracing::warn!(
+                        id = %file.id(),
+                        path = %file.path(),
+                        "duplicate file path detected in batch"
+                    );
                     return Err(IndexerRepositoryError::DuplicatePath(
                         file.path().clone(),
                     ));
@@ -324,7 +330,11 @@ impl WriteRepository for RedbRepository {
             }
             for dir in dirs {
                 if Self::dir_path_taken_by_other(tx, dir.path(), dir.id())? {
-                    tracing::warn!(id = %dir.id(), path = %dir.path(), "duplicate dir path detected in batch");
+                    tracing::warn!(
+                        id = %dir.id(),
+                        path = %dir.path(),
+                        "duplicate dir path detected in batch"
+                    );
                     return Err(IndexerRepositoryError::DuplicatePath(
                         dir.path().clone(),
                     ));
@@ -332,10 +342,10 @@ impl WriteRepository for RedbRepository {
             }
 
             for (file, archive) in files.iter().zip(file_archives.iter()) {
-                Self::save_file_in_tx(tx, file, archive.as_slice())?;
+                Self::save_file_in_tx(tx, file, archive)?;
             }
             for (dir, archive) in dirs.iter().zip(dir_archives.iter()) {
-                Self::save_dir_in_tx(tx, dir, archive.as_slice())?;
+                Self::save_dir_in_tx(tx, dir, archive)?;
             }
             Ok(())
         })

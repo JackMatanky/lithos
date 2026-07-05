@@ -42,7 +42,7 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable;
-use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_db::{DbError, path::DbPathKey};
 
 use super::{NOTES, RedbRepository};
 use crate::{
@@ -79,7 +79,7 @@ impl ReadRepository for RedbRepository {
                 let Some(guard) = table.get(&id)? else {
                     return Ok(None);
                 };
-                let note = Note::from_bytes(guard.value())?;
+                let note = guard.value().decode().map_err(DbError::from)?;
                 Ok(Some(note))
             })
             .map_err(NoteRepositoryError::from)
@@ -128,7 +128,8 @@ impl ReadRepository for RedbRepository {
                 let Some(note_guard) = note_table.get(&id)? else {
                     return Ok(None);
                 };
-                let note = Note::from_bytes(note_guard.value())?;
+                let note =
+                    note_guard.value().decode().map_err(DbError::from)?;
                 Ok(Some(note))
             })
             .map_err(NoteRepositoryError::from)
@@ -167,7 +168,9 @@ impl ReadRepository for RedbRepository {
                 let mut notes = Vec::with_capacity(ids.len());
                 for id in ids {
                     if let Some(guard) = table.get(id)? {
-                        notes.push(Note::from_bytes(guard.value())?);
+                        notes.push(
+                            guard.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -204,7 +207,9 @@ impl ReadRepository for RedbRepository {
                 let mut notes = Vec::new();
                 for result in table.iter()? {
                     let (_id_guard, note_guard) = result?;
-                    notes.push(Note::from_bytes(note_guard.value())?);
+                    notes.push(
+                        note_guard.value().decode().map_err(DbError::from)?,
+                    );
                 }
 
                 Ok(notes)
@@ -244,7 +249,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let view = ListView::from_bytes(guard.value())?;
+                let view = guard.value().decode().map_err(DbError::from)?;
                 Ok(Some(view))
             })
             .map_err(NoteRepositoryError::from)

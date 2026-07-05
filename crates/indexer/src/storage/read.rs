@@ -1,9 +1,7 @@
 //! Redb-backed read repository implementation.
 //!
-//! Records are stored as raw rkyv-archived bytes (`&[u8]`) in redb tables and
-//! deserialized on read via [`rkyv::from_bytes`]. This follows the same pattern
-//! used by all other contexts (vault, template, schema, config, note) and
-//! avoids coupling entity types to the [`redb::Value`] trait.
+//! Records are stored through typed rkyv redb adapters and decoded at the
+//! storage boundary.
 //!
 //! The [`ReadRepository`] trait returns owned values, so full materialization
 //! occurs at the storage boundary. Zero-copy access via [`rkyv::access`] is
@@ -11,8 +9,6 @@
 //! materializing the full record.
 //!
 //! [`ReadRepository`]: crate::repository::ReadRepository
-
-#![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable;
 use traces_db::{DbError, path::DbPathKey};
@@ -32,18 +28,6 @@ use crate::{
     },
 };
 
-#[inline]
-fn deserialize_file(bytes: &[u8]) -> Result<FileRecord, DbError> {
-    rkyv::from_bytes::<FileRecord, rkyv::rancor::Error>(bytes)
-        .map_err(|e| DbError::Deserialization(e.to_string()))
-}
-
-#[inline]
-fn deserialize_dir(bytes: &[u8]) -> Result<DirRecord, DbError> {
-    rkyv::from_bytes::<DirRecord, rkyv::rancor::Error>(bytes)
-        .map_err(|e| DbError::Deserialization(e.to_string()))
-}
-
 impl ReadRepository for RedbRepository {
     #[inline]
     fn find_file(
@@ -54,7 +38,8 @@ impl ReadRepository for RedbRepository {
             .read(|tx| {
                 let table = tx.inner.open_table(FILES.definition())?;
                 let file = table.get(id)?;
-                file.map(|v| deserialize_file(v.value())).transpose()
+                file.map(|v| v.value().decode().map_err(DbError::from))
+                    .transpose()
             })
             .map_err(Into::into)
     }
@@ -68,7 +53,8 @@ impl ReadRepository for RedbRepository {
             .read(|tx| {
                 let table = tx.inner.open_table(DIRS.definition())?;
                 let dir = table.get(id)?;
-                dir.map(|v| deserialize_dir(v.value())).transpose()
+                dir.map(|v| v.value().decode().map_err(DbError::from))
+                    .transpose()
             })
             .map_err(Into::into)
     }
@@ -87,7 +73,9 @@ impl ReadRepository for RedbRepository {
                 if let Some(id_value) = id {
                     let file_table = tx.inner.open_table(FILES.definition())?;
                     let file = file_table.get(id_value.value())?;
-                    Ok(file.map(|v| deserialize_file(v.value())).transpose()?)
+                    Ok(file
+                        .map(|v| v.value().decode().map_err(DbError::from))
+                        .transpose()?)
                 } else {
                     Ok(None)
                 }
@@ -109,7 +97,9 @@ impl ReadRepository for RedbRepository {
                 if let Some(id_value) = id {
                     let dir_table = tx.inner.open_table(DIRS.definition())?;
                     let dir = dir_table.get(id_value.value())?;
-                    Ok(dir.map(|v| deserialize_dir(v.value())).transpose()?)
+                    Ok(dir
+                        .map(|v| v.value().decode().map_err(DbError::from))
+                        .transpose()?)
                 } else {
                     Ok(None)
                 }
@@ -133,7 +123,9 @@ impl ReadRepository for RedbRepository {
                 let iter = id_table.get(parent_id.to_storage_key())?;
                 for id in iter {
                     if let Some(record) = file_table.get(id?.value())? {
-                        records.push(deserialize_file(record.value())?);
+                        records.push(
+                            record.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -158,7 +150,9 @@ impl ReadRepository for RedbRepository {
                 let iter = id_table.get(parent_id.to_storage_key())?;
                 for id in iter {
                     if let Some(record) = dir_table.get(id?.value())? {
-                        records.push(deserialize_dir(record.value())?);
+                        records.push(
+                            record.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -182,7 +176,9 @@ impl ReadRepository for RedbRepository {
                 let iter = id_table.get(format.as_str())?;
                 for id in iter {
                     if let Some(record) = file_table.get(id?.value())? {
-                        records.push(deserialize_file(record.value())?);
+                        records.push(
+                            record.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -206,7 +202,9 @@ impl ReadRepository for RedbRepository {
                 let iter = id_table.get(basename)?;
                 for id in iter {
                     if let Some(record) = file_table.get(id?.value())? {
-                        records.push(deserialize_file(record.value())?);
+                        records.push(
+                            record.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -259,7 +257,7 @@ mod tests {
 
     #[allow(unused_imports, reason = "added globally for ease")]
     use pretty_assertions::{assert_eq, assert_ne};
-    use traces_db::{DbPathKey, Store};
+    use traces_db::{DbPathKey, RkyvBytes, Store};
     use traces_fs::{
         FileFormat,
         metadata::{FileMetadata, FsTimes},
@@ -274,12 +272,12 @@ mod tests {
         storage::tables::FILES,
     };
 
-    fn file_bytes(record: &FileRecord) -> Vec<u8> {
-        rkyv::to_bytes::<rkyv::rancor::Error>(record).unwrap().to_vec()
+    fn file_bytes(record: &FileRecord) -> RkyvBytes<'static, FileRecord> {
+        RkyvBytes::encode(record).unwrap()
     }
 
-    fn dir_bytes(record: &DirRecord) -> Vec<u8> {
-        rkyv::to_bytes::<rkyv::rancor::Error>(record).unwrap().to_vec()
+    fn dir_bytes(record: &DirRecord) -> RkyvBytes<'static, DirRecord> {
+        RkyvBytes::encode(record).unwrap()
     }
 
     fn setup_repo() -> (tempfile::TempDir, RedbRepository) {
@@ -327,7 +325,7 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(FILES.definition()).unwrap();
-                    table.insert(id, file_bytes(&record).as_slice()).unwrap();
+                    table.insert(id, &file_bytes(&record)).unwrap();
                     Ok(())
                 })
                 .unwrap();
@@ -365,7 +363,7 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
-                    table.insert(id, dir_bytes(&record).as_slice()).unwrap();
+                    table.insert(id, &dir_bytes(&record)).unwrap();
                     Ok(())
                 })
                 .unwrap();
@@ -399,7 +397,7 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
-                    f_table.insert(id, file_bytes(&record).as_slice()).unwrap();
+                    f_table.insert(id, &file_bytes(&record)).unwrap();
                     let mut p_table = tx
                         .inner
                         .open_table(FILE_ID_BY_PATH.definition())
@@ -436,7 +434,7 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
-                    d_table.insert(id, dir_bytes(&record).as_slice()).unwrap();
+                    d_table.insert(id, &dir_bytes(&record)).unwrap();
                     let mut p_table = tx
                         .inner
                         .open_table(DIR_ID_BY_PATH.definition())
@@ -480,12 +478,8 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
-                    f_table
-                        .insert(file1_id, file_bytes(&file1).as_slice())
-                        .unwrap();
-                    f_table
-                        .insert(file2_id, file_bytes(&file2).as_slice())
-                        .unwrap();
+                    f_table.insert(file1_id, &file_bytes(&file1)).unwrap();
+                    f_table.insert(file2_id, &file_bytes(&file2)).unwrap();
 
                     let mut p_table = tx
                         .inner
@@ -554,15 +548,9 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
-                    f_table
-                        .insert(file1_id, file_bytes(&file1).as_slice())
-                        .unwrap();
-                    f_table
-                        .insert(file2_id, file_bytes(&file2).as_slice())
-                        .unwrap();
-                    f_table
-                        .insert(other_id, file_bytes(&other_file).as_slice())
-                        .unwrap();
+                    f_table.insert(file1_id, &file_bytes(&file1)).unwrap();
+                    f_table.insert(file2_id, &file_bytes(&file2)).unwrap();
+                    f_table.insert(other_id, &file_bytes(&other_file)).unwrap();
 
                     let mut p_table = tx
                         .inner
@@ -620,15 +608,9 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut d_table =
                         tx.inner.open_table(DIRS.definition()).unwrap();
-                    d_table
-                        .insert(dir1_id, dir_bytes(&dir1).as_slice())
-                        .unwrap();
-                    d_table
-                        .insert(dir2_id, dir_bytes(&dir2).as_slice())
-                        .unwrap();
-                    d_table
-                        .insert(other_id, dir_bytes(&other_dir).as_slice())
-                        .unwrap();
+                    d_table.insert(dir1_id, &dir_bytes(&dir1)).unwrap();
+                    d_table.insert(dir2_id, &dir_bytes(&dir2)).unwrap();
+                    d_table.insert(other_id, &dir_bytes(&other_dir)).unwrap();
 
                     let mut p_table = tx
                         .inner
@@ -773,12 +755,8 @@ mod tests {
                 .write(|tx| -> Result<(), DbError> {
                     let mut f_table =
                         tx.inner.open_table(FILES.definition()).unwrap();
-                    f_table
-                        .insert(file1_id, file_bytes(&file1).as_slice())
-                        .unwrap();
-                    f_table
-                        .insert(file2_id, file_bytes(&file2).as_slice())
-                        .unwrap();
+                    f_table.insert(file1_id, &file_bytes(&file1)).unwrap();
+                    f_table.insert(file2_id, &file_bytes(&file2)).unwrap();
 
                     let mut p_table = tx
                         .inner

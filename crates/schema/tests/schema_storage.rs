@@ -810,7 +810,7 @@ mod regression {
     /// bug was wrong API usage.
     #[test]
     fn returns_deserialized_schemas_when_scanned_sequentially() -> TestResult {
-        use traces_db::ArchivedEntity;
+        use traces_db::RkyvBytes;
 
         // Create 2 schemas
         let (seq_field1_name, seq_field1) =
@@ -838,8 +838,8 @@ mod regression {
         );
 
         // Serialize both
-        let bytes1 = schema1.to_bytes()?;
-        let bytes2 = schema2.to_bytes()?;
+        let bytes1 = RkyvBytes::encode(&schema1).unwrap().as_bytes().to_vec();
+        let bytes2 = RkyvBytes::encode(&schema2).unwrap().as_bytes().to_vec();
 
         // Simulate table scan: collect all bytes first
         let all_bytes = vec![bytes1, bytes2];
@@ -847,7 +847,7 @@ mod regression {
 
         // Then deserialize sequentially (2-phase pattern)
         for bytes in &all_bytes {
-            let deserialized = Schema::from_bytes(bytes)?;
+            let deserialized = RkyvBytes::<Schema>::borrowed(bytes).decode()?;
             results.push(deserialized);
         }
 

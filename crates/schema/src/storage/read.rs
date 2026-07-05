@@ -41,7 +41,7 @@
 use std::collections::{HashMap, HashSet};
 
 use redb::ReadableTable;
-use traces_db::{ArchivedEntity, DbPathKey, UuidTableReadExt};
+use traces_db::{DbPathKey, UuidTableReadExt};
 use traces_fs::PathKey;
 
 use crate::{
@@ -82,7 +82,8 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let schema = Schema::from_bytes(guard.value())?;
+                let schema =
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(schema))
             })
             .map_err(SchemaRepositoryError::from)
@@ -105,7 +106,11 @@ impl ReadRepository for RedbRepository {
                     .into_iter()
                     .map(|guard_opt| {
                         guard_opt
-                            .map(|g| Schema::from_bytes(g.value()))
+                            .map(|g| {
+                                g.value()
+                                    .decode()
+                                    .map_err(traces_db::DbError::from)
+                            })
                             .transpose()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -136,7 +141,12 @@ impl ReadRepository for RedbRepository {
                 let mut schemas = Vec::new();
                 for result in table.iter()? {
                     let (_id_guard, schema_guard) = result?;
-                    schemas.push(Schema::from_bytes(schema_guard.value())?);
+                    schemas.push(
+                        schema_guard
+                            .value()
+                            .decode()
+                            .map_err(traces_db::DbError::from)?,
+                    );
                 }
 
                 Ok(schemas)
@@ -186,7 +196,8 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let view = RawSchemaView::from_bytes(guard.value())?;
+                let view =
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(view))
             })
             .map_err(SchemaRepositoryError::from)
@@ -214,13 +225,16 @@ impl ReadRepository for RedbRepository {
                 else {
                     return Ok(None);
                 };
-                let id = SchemaId::from_bytes(id_guard.value())?;
+                let id = id_guard.value();
 
                 let Some(view_guard) = view_table.get(id)? else {
                     return Ok(None);
                 };
 
-                let view = RawSchemaView::from_bytes(view_guard.value())?;
+                let view = view_guard
+                    .value()
+                    .decode()
+                    .map_err(traces_db::DbError::from)?;
                 Ok(Some(view))
             })
             .map_err(SchemaRepositoryError::from)
@@ -247,15 +261,26 @@ impl ReadRepository for RedbRepository {
 
                 let mut results = Vec::with_capacity(paths.len());
                 for path in paths {
+                    #[allow(
+                        clippy::excessive_nesting,
+                        reason = "closure formatting tripped nesting limit"
+                    )]
                     // Step 1: path → SchemaId lookup
                     let id_guard = path_table.get(DbPathKey::from(path))?;
 
                     let view = if let Some(id_bytes) = id_guard {
-                        // Step 2: SchemaId → RawSchemaView lookup
-                        let id = SchemaId::from_bytes(id_bytes.value())?;
-                        let view_guard = view_table.get(&id)?;
-                        view_guard
-                            .map(|g| RawSchemaView::from_bytes(g.value()))
+                        let id = id_bytes.value();
+                        #[allow(
+                            clippy::excessive_nesting,
+                            reason = "closure formatting tripped nesting limit"
+                        )]
+                        view_table
+                            .get(&id)?
+                            .map(|g| {
+                                g.value()
+                                    .decode()
+                                    .map_err(traces_db::DbError::from)
+                            })
                             .transpose()?
                     } else {
                         None
@@ -284,7 +309,8 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let bank = PropertyBank::from_bytes(guard.value())?;
+                let bank =
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(bank))
             })
             .map_err(SchemaRepositoryError::from)
@@ -310,9 +336,7 @@ impl ReadRepository for RedbRepository {
                 };
 
                 let graph =
-                    crate::inheritance::InheritanceGraph::<()>::from_bytes(
-                        guard.value(),
-                    )?;
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(graph))
             })
             .map_err(SchemaRepositoryError::from)
@@ -335,7 +359,8 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let view = RawPropertyBankView::from_bytes(guard.value())?;
+                let view =
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(view))
             })
             .map_err(SchemaRepositoryError::from)
@@ -358,7 +383,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let id = SchemaId::from_bytes(guard.value())?;
+                let id = guard.value();
                 Ok(Some(id))
             })
             .map_err(SchemaRepositoryError::from)
@@ -381,7 +406,7 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let id = SchemaId::from_bytes(guard.value())?;
+                let id = guard.value();
                 Ok(Some(id))
             })
             .map_err(SchemaRepositoryError::from)
@@ -404,7 +429,7 @@ impl ReadRepository for RedbRepository {
                 for path in paths {
                     match table.get(DbPathKey::from(path))? {
                         Some(guard) => {
-                            let id = SchemaId::from_bytes(guard.value())?;
+                            let id = guard.value();
                             results.push(Some(id));
                         }
                         None => results.push(None),
@@ -431,7 +456,7 @@ impl ReadRepository for RedbRepository {
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
                     let name = parse_schema_name_key(k_guard.value())?;
-                    let id = SchemaId::from_bytes(v_guard.value())?;
+                    let id = v_guard.value();
                     pairs.push((name, id));
                 }
                 Ok(pairs)
@@ -455,7 +480,7 @@ impl ReadRepository for RedbRepository {
                 for result in table.iter()? {
                     let (k_guard, v_guard) = result?;
                     let path = parse_path_key(k_guard.value().as_str())?;
-                    let id = SchemaId::from_bytes(v_guard.value())?;
+                    let id = v_guard.value();
                     pairs.push((path, id));
                 }
                 Ok(pairs)
@@ -496,7 +521,8 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                let base_schema = BaseSchema::from_bytes(guard.value())?;
+                let base_schema =
+                    guard.value().decode().map_err(traces_db::DbError::from)?;
                 Ok(Some(base_schema))
             })
             .map_err(SchemaRepositoryError::from)
@@ -518,7 +544,12 @@ impl ReadRepository for RedbRepository {
                 let mut results = Vec::with_capacity(ids.len());
                 for id in ids {
                     if let Some(guard) = table.get(*id)? {
-                        results.push(BaseSchema::from_bytes(guard.value())?);
+                        results.push(
+                            guard
+                                .value()
+                                .decode()
+                                .map_err(traces_db::DbError::from)?,
+                        );
                     }
                 }
                 Ok(results)
@@ -593,7 +624,7 @@ fn parse_path_key(key: &str) -> Result<PathKey, traces_db::DbError> {
 mod tests {
     use std::sync::Arc;
 
-    use traces_db::{ArchivedEntity, DbPathKey, Store};
+    use traces_db::{DbPathKey, Store};
     use traces_fs::{
         PathKey,
         metadata::{FileMetadata, FsTimes},
@@ -898,18 +929,10 @@ mod tests {
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
-                    name_table
-                        .insert(name1.as_str(), id1.to_bytes()?.as_slice())?;
-                    name_table
-                        .insert(name2.as_str(), id2.to_bytes()?.as_slice())?;
-                    path_table.insert(
-                        DbPathKey::from(&path1),
-                        id1.to_bytes()?.as_slice(),
-                    )?;
-                    path_table.insert(
-                        DbPathKey::from(&path2),
-                        id2.to_bytes()?.as_slice(),
-                    )?;
+                    name_table.insert(name1.as_str(), id1)?;
+                    name_table.insert(name2.as_str(), id2)?;
+                    path_table.insert(DbPathKey::from(&path1), id1)?;
+                    path_table.insert(DbPathKey::from(&path2), id2)?;
                     Ok(())
                 })
                 .unwrap();
@@ -957,10 +980,8 @@ mod tests {
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut name_table =
                         tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
-                    name_table.insert(
-                        "bad name with spaces",
-                        SchemaId::new().to_bytes()?.as_slice(),
-                    )?;
+                    name_table
+                        .insert("bad name with spaces", SchemaId::new())?;
                     Ok(())
                 })
                 .unwrap();
@@ -1030,10 +1051,7 @@ mod tests {
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut path_table =
                         tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
-                    path_table.insert(
-                        DbPathKey::from(&path),
-                        id.to_bytes()?.as_slice(),
-                    )?;
+                    path_table.insert(DbPathKey::from(&path), id)?;
                     Ok(())
                 })
                 .unwrap();

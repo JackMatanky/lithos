@@ -29,9 +29,12 @@
 //! let note_bytes = table.get(&note_id)?;
 //! ```
 
-use traces_db::{PathUuidTable, UuidTable, impl_redb_uuid};
+use traces_db::{DbRkyvType, PathUuidTable, UuidTable, impl_redb_uuid};
 
-use crate::aggregate::NoteId;
+use crate::{
+    aggregate::{Note, NoteId},
+    views::ListView,
+};
 
 impl_redb_uuid!(NoteId);
 
@@ -46,7 +49,7 @@ impl_redb_uuid!(NoteId);
 /// Value: rkyv-serialized [`Note`](crate::aggregate::Note)
 ///
 /// See also: [`NOTE_ID_BY_PATH`] for path-based lookups.
-pub const NOTES: UuidTable<NoteId, &[u8]> = UuidTable::new("notes");
+pub const NOTES: UuidTable<NoteId, DbRkyvType<Note>> = UuidTable::new("notes");
 
 /// Materialized list view cache.
 ///
@@ -62,7 +65,8 @@ pub const NOTES: UuidTable<NoteId, &[u8]> = UuidTable::new("notes");
 /// - Written by the processor after extracting list items from a note.
 /// - Read by the query layer for O(1) list view access.
 /// - Not guaranteed to exist for any given note — always handle `None`.
-pub const LIST_VIEWS: UuidTable<NoteId, &[u8]> = UuidTable::new("list_views");
+pub const LIST_VIEWS: UuidTable<NoteId, DbRkyvType<ListView>> =
+    UuidTable::new("list_views");
 
 /// Path-to-ID index for path-based note lookup.
 ///

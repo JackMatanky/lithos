@@ -38,7 +38,7 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable;
-use traces_db::{ArchivedEntity, DbError, DbPathKey};
+use traces_db::{DbError, DbPathKey};
 use traces_fs::PathKey;
 
 use crate::{
@@ -46,7 +46,7 @@ use crate::{
     bank::PropertyBank,
     base::BaseSchema,
     error::SchemaRepositoryError,
-    identifier::{SchemaId, SchemaName},
+    identifier::SchemaName,
     inheritance::InheritanceGraph,
     repository::WriteRepository,
     storage::{
@@ -58,7 +58,7 @@ use crate::{
             TOPOLOGICAL_GRAPH_KEY,
         },
     },
-    views::{RawPropertyBankView, RawSchemaView},
+    views::raw::{RawPropertyBankView, RawSchemaView},
 };
 
 impl WriteRepository for RedbRepository {
@@ -67,19 +67,17 @@ impl WriteRepository for RedbRepository {
         &self,
         schema: &Schema,
     ) -> Result<(), SchemaRepositoryError> {
-        let bytes = schema.to_bytes().map_err(SchemaRepositoryError::from)?;
-        let id_bytes =
-            schema.id().to_bytes().map_err(SchemaRepositoryError::from)?;
+        let bytes = traces_db::RkyvBytes::encode(schema)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(SCHEMAS.definition())?;
-                table.insert(*schema.id(), bytes.as_slice())?;
+                table.insert(*schema.id(), &bytes)?;
 
                 let mut name_table =
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
-                name_table
-                    .insert(schema.name().as_str(), id_bytes.as_slice())?;
+                name_table.insert(schema.name().as_str(), *schema.id())?;
 
                 Ok(())
             })
@@ -98,13 +96,12 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(SCHEMA_ID_BY_NAME.definition())?;
 
                 for schema in schemas {
-                    let bytes = schema.to_bytes()?;
-                    let id_bytes = schema.id().to_bytes()?;
+                    let bytes = traces_db::RkyvBytes::encode(schema)
+                        .map_err(traces_db::DbError::from)?;
 
-                    table.insert(*schema.id(), bytes.as_slice())?;
+                    table.insert(*schema.id(), &bytes)?;
 
-                    name_table
-                        .insert(schema.name().as_str(), id_bytes.as_slice())?;
+                    name_table.insert(schema.name().as_str(), *schema.id())?;
                 }
                 Ok(())
             })
@@ -116,13 +113,14 @@ impl WriteRepository for RedbRepository {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaRepositoryError> {
-        let bytes = bank.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let bytes = traces_db::RkyvBytes::encode(bank)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(PROPERTY_BANK.definition())?;
-                table.insert(PROPERTY_BANK_KEY, bytes.as_slice())?;
+                table.insert(PROPERTY_BANK_KEY, &bytes)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -134,13 +132,14 @@ impl WriteRepository for RedbRepository {
         path: &PathKey,
         view: &RawPropertyBankView,
     ) -> Result<(), SchemaRepositoryError> {
-        let bytes = view.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let bytes = traces_db::RkyvBytes::encode(view)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_PROPERTY_BANK_VIEW.definition())?;
-                table.insert(DbPathKey::from(path), bytes.as_slice())?;
+                table.insert(DbPathKey::from(path), &bytes)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -152,9 +151,8 @@ impl WriteRepository for RedbRepository {
         id: crate::identifier::SchemaId,
         view: &RawSchemaView,
     ) -> Result<(), SchemaRepositoryError> {
-        let view_bytes =
-            view.to_bytes().map_err(SchemaRepositoryError::from)?;
-        let id_bytes = id.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let view_bytes = traces_db::RkyvBytes::encode(view)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
@@ -164,19 +162,18 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(SCHEMA_ID_BY_PATH.definition())?;
 
                 if let Some(existing) = view_table.get(id)? {
-                    let existing_view =
-                        RawSchemaView::from_bytes(existing.value())?;
+                    let existing_view = existing
+                        .value()
+                        .decode()
+                        .map_err(traces_db::DbError::from)?;
                     if existing_view.path() != view.path() {
                         let _ = path_table
                             .remove(DbPathKey::from(existing_view.path()))?;
                     }
                 }
 
-                view_table.insert(id, view_bytes.as_slice())?;
-                path_table.insert(
-                    DbPathKey::from(view.path()),
-                    id_bytes.as_slice(),
-                )?;
+                view_table.insert(id, &view_bytes)?;
+                path_table.insert(DbPathKey::from(view.path()), id)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -187,13 +184,14 @@ impl WriteRepository for RedbRepository {
         &self,
         graph: &InheritanceGraph<()>,
     ) -> Result<(), SchemaRepositoryError> {
-        let bytes = graph.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let bytes = traces_db::RkyvBytes::encode(graph)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(SCHEMA_TOPOLOGICAL_GRAPH.definition())?;
-                table.insert(TOPOLOGICAL_GRAPH_KEY, bytes.as_slice())?;
+                table.insert(TOPOLOGICAL_GRAPH_KEY, &bytes)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -224,13 +222,14 @@ impl WriteRepository for RedbRepository {
         &self,
         schema: &BaseSchema,
     ) -> Result<(), SchemaRepositoryError> {
-        let bytes = schema.to_bytes().map_err(SchemaRepositoryError::from)?;
+        let bytes = traces_db::RkyvBytes::encode(schema)
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
-                table.insert(*schema.id(), bytes.as_slice())?;
+                table.insert(*schema.id(), &bytes)?;
                 Ok(())
             })
             .map_err(SchemaRepositoryError::from)
@@ -244,10 +243,11 @@ impl WriteRepository for RedbRepository {
         let serialized = schemas
             .iter()
             .map(|schema| {
-                schema.to_bytes().map(|bytes| (*schema.id(), bytes.to_vec()))
+                traces_db::RkyvBytes::encode(schema)
+                    .map(|bytes| (*schema.id(), bytes))
             })
-            .collect::<Result<Vec<(SchemaId, Vec<u8>)>, _>>()
-            .map_err(SchemaRepositoryError::from)?;
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(traces_db::DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
@@ -255,7 +255,7 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(BASE_SCHEMA_BY_ID.definition())?;
 
                 for (id, bytes) in &serialized {
-                    let _ = table.insert(*id, bytes.as_slice())?;
+                    let _ = table.insert(*id, bytes)?;
                 }
                 Ok(())
             })
@@ -302,14 +302,16 @@ fn load_delete_context(
     let raw_views = tx.try_open_table(RAW_SCHEMA_VIEWS.definition())?;
 
     let schema_name = if let Some(schema_guard) = schemas.get(id)? {
-        let schema = Schema::from_bytes(schema_guard.value())?;
+        let schema =
+            schema_guard.value().decode().map_err(traces_db::DbError::from)?;
         Some(schema.name().clone())
     } else {
         None
     };
 
     let view_path = if let Some(view_guard) = raw_views.get(id)? {
-        let view = RawSchemaView::from_bytes(view_guard.value())?;
+        let view =
+            view_guard.value().decode().map_err(traces_db::DbError::from)?;
         Some(view.path().clone())
     } else {
         None
@@ -394,7 +396,7 @@ mod tests {
     mod save_schema {
         use std::sync::Arc;
 
-        use traces_db::{ArchivedEntity, Store};
+        use traces_db::Store;
 
         use crate::{
             aggregate::Schema,
@@ -468,8 +470,9 @@ mod tests {
                     vec![],
                     PropertyMap::new(),
                 );
-                let bytes = schema2.to_bytes()?;
-                table.insert(*schema2.id(), bytes.as_slice())?;
+                let bytes = traces_db::RkyvBytes::encode(&schema2)
+                    .map_err(traces_db::DbError::from)?;
+                table.insert(*schema2.id(), &bytes)?;
                 Err(traces_db::DbError::Serialization(
                     "forced failure".to_owned(),
                 ))

@@ -34,7 +34,7 @@
 
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
-use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_db::{DbError, RkyvBytes, path::DbPathKey};
 
 use super::{NOTES, RedbRepository};
 use crate::{
@@ -98,14 +98,14 @@ impl WriteRepository for RedbRepository {
     fn save(&self, note: &Note) -> Result<NoteId, NoteRepositoryError> {
         let id = note.id();
         self.assert_path_available(note.path(), id)?;
-        let note_bytes = note.to_bytes()?;
+        let note_bytes = RkyvBytes::encode(note).map_err(DbError::from)?;
 
         self.store
-            .write(|tx| -> Result<NoteId, traces_db::DbError> {
+            .write(|tx| -> Result<NoteId, DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
-                note_table.insert(&id, note_bytes.as_slice())?;
+                note_table.insert(&id, &note_bytes)?;
                 path_table
                     .insert(DbPathKey::from(note.path().as_path_key()), &id)?;
                 Ok(id)
@@ -123,7 +123,7 @@ impl WriteRepository for RedbRepository {
         }
 
         self.store
-            .write(|tx| -> Result<Vec<NoteId>, traces_db::DbError> {
+            .write(|tx| -> Result<Vec<NoteId>, DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
@@ -131,8 +131,9 @@ impl WriteRepository for RedbRepository {
                 let mut ids = Vec::with_capacity(notes.len());
                 for note in notes {
                     let id = note.id();
-                    let note_bytes = note.to_bytes()?;
-                    note_table.insert(&id, note_bytes.as_slice())?;
+                    let note_bytes =
+                        RkyvBytes::encode(note).map_err(DbError::from)?;
+                    note_table.insert(&id, &note_bytes)?;
                     path_table.insert(
                         DbPathKey::from(note.path().as_path_key()),
                         &id,
@@ -148,13 +149,14 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn delete(&self, id: NoteId) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| -> Result<(), traces_db::DbError> {
+            .write(|tx| -> Result<(), DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
 
                 if let Some(existing) = note_table.remove(&id)? {
-                    let note = Note::from_bytes(existing.value())?;
+                    let note =
+                        existing.value().decode().map_err(DbError::from)?;
                     let _ = path_table
                         .remove(DbPathKey::from(note.path().as_path_key()))?;
                 }
@@ -167,14 +169,15 @@ impl WriteRepository for RedbRepository {
     #[inline]
     fn delete_many(&self, ids: &[NoteId]) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| -> Result<(), traces_db::DbError> {
+            .write(|tx| -> Result<(), DbError> {
                 let mut note_table = tx.try_open_table(NOTES.definition())?;
                 let mut path_table =
                     tx.try_open_table(super::NOTE_ID_BY_PATH.definition())?;
 
                 for id in ids {
                     if let Some(existing) = note_table.remove(id)? {
-                        let note = Note::from_bytes(existing.value())?;
+                        let note =
+                            existing.value().decode().map_err(DbError::from)?;
                         #[allow(
                             clippy::excessive_nesting,
                             reason = "TODO: Refactor to reduce nesting depth"
@@ -195,14 +198,14 @@ impl WriteRepository for RedbRepository {
         &self,
         view: &ListView,
     ) -> Result<(), NoteRepositoryError> {
-        let bytes = view.to_bytes()?;
+        let bytes = RkyvBytes::encode(view).map_err(DbError::from)?;
         let note_id = view.note_id();
 
         self.store
-            .write(|tx| -> Result<(), traces_db::DbError> {
+            .write(|tx| -> Result<(), DbError> {
                 let mut table =
                     tx.try_open_table(super::LIST_VIEWS.definition())?;
-                table.insert(&note_id, bytes.as_slice())?;
+                table.insert(&note_id, &bytes)?;
                 Ok(())
             })
             .map_err(NoteRepositoryError::from)
@@ -214,7 +217,7 @@ impl WriteRepository for RedbRepository {
         note_id: NoteId,
     ) -> Result<(), NoteRepositoryError> {
         self.store
-            .write(|tx| -> Result<(), traces_db::DbError> {
+            .write(|tx| -> Result<(), DbError> {
                 let mut table =
                     tx.try_open_table(super::LIST_VIEWS.definition())?;
                 let _ = table.remove(&note_id)?;

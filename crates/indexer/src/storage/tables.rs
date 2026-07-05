@@ -6,16 +6,20 @@
 //! wrappers to avoid coupling entity types to the [`redb::Value`] trait.
 
 use redb::MultimapTableDefinition;
-use traces_db::{PathUuidTable, UuidMultimap, UuidTable, impl_redb_uuid};
+use traces_db::{
+    DbRkyvType, PathUuidTable, UuidMultimap, UuidTable, impl_redb_uuid,
+};
 
-use crate::model::FsRecordId;
+use crate::model::{DirRecord, FileRecord, FsRecordId};
 
 impl_redb_uuid!(FsRecordId);
 
 /// Primary table mapping file record IDs to their archived bytes.
-pub(crate) const FILES: UuidTable<FsRecordId, &[u8]> = UuidTable::new("files");
+pub(crate) const FILES: UuidTable<FsRecordId, DbRkyvType<FileRecord>> =
+    UuidTable::new("files");
 /// Primary table mapping directory record IDs to their archived bytes.
-pub(crate) const DIRS: UuidTable<FsRecordId, &[u8]> = UuidTable::new("dirs");
+pub(crate) const DIRS: UuidTable<FsRecordId, DbRkyvType<DirRecord>> =
+    UuidTable::new("dirs");
 
 /// Secondary index: file record ID by path (unique).
 pub(crate) const FILE_ID_BY_PATH: PathUuidTable<FsRecordId> =
@@ -43,6 +47,20 @@ mod tests {
     use traces_db::{DbError, Store};
 
     use super::*;
+
+    #[test]
+    fn primary_tables_use_typed_rkyv_values() {
+        let _files: redb::TableDefinition<
+            'static,
+            FsRecordId,
+            DbRkyvType<FileRecord>,
+        > = FILES.definition();
+        let _dirs: redb::TableDefinition<
+            'static,
+            FsRecordId,
+            DbRkyvType<DirRecord>,
+        > = DIRS.definition();
+    }
 
     #[test]
     fn opens_all_index_tables() {

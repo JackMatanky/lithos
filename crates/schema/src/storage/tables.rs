@@ -1,8 +1,17 @@
 //! Table definitions for schema storage.
 
-use traces_db::{PathTable, Table, UuidTable, impl_redb_uuid};
+use traces_db::{
+    DbRkyvType, PathTable, PathUuidTable, Table, UuidTable, impl_redb_uuid,
+};
 
-use crate::identifier::SchemaId;
+use crate::{
+    aggregate::Schema,
+    bank::PropertyBank,
+    base::BaseSchema,
+    identifier::SchemaId,
+    inheritance::InheritanceGraph,
+    views::raw::{RawPropertyBankView, RawSchemaView},
+};
 
 impl_redb_uuid!(SchemaId);
 /// Schema aggregates with zero-copy serialization.
@@ -12,7 +21,8 @@ impl_redb_uuid!(SchemaId);
 ///
 /// Key: `SchemaId`
 /// Value: rkyv-serialized `Schema`
-pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas");
+pub const SCHEMAS: UuidTable<SchemaId, DbRkyvType<Schema>> =
+    UuidTable::new("schemas");
 
 /// Raw schema views indexed by schema ID.
 ///
@@ -21,7 +31,7 @@ pub const SCHEMAS: UuidTable<SchemaId, &[u8]> = UuidTable::new("schemas");
 ///
 /// Key: `SchemaId`
 /// Value: serialized `RawSchemaView`
-pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]> =
+pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, DbRkyvType<RawSchemaView>> =
     UuidTable::new("raw_schema_views");
 
 /// Property Bank singleton with all registered property definitions.
@@ -31,7 +41,8 @@ pub const RAW_SCHEMA_VIEWS: UuidTable<SchemaId, &[u8]> =
 ///
 /// Key: `PROPERTY_BANK_KEY` (constant string)
 /// Value: serialized `PropertyBank`
-pub const PROPERTY_BANK: Table<&str, &[u8]> = Table::new("property_bank");
+pub const PROPERTY_BANK: Table<&str, DbRkyvType<PropertyBank>> =
+    Table::new("property_bank");
 
 /// Constant key for the Property Bank singleton table.
 pub const PROPERTY_BANK_KEY: &str = "singleton";
@@ -44,7 +55,7 @@ pub const PROPERTY_BANK_KEY: &str = "singleton";
 ///
 /// Key: path string
 /// Value: serialized `RawPropertyBankView`
-pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
+pub const RAW_PROPERTY_BANK_VIEW: PathTable<DbRkyvType<RawPropertyBankView>> =
     PathTable::new("raw_property_bank_view");
 
 /// Topological inheritance graph singleton with DAG structure.
@@ -55,8 +66,10 @@ pub const RAW_PROPERTY_BANK_VIEW: PathTable<&[u8]> =
 ///
 /// Key: `TOPOLOGICAL_GRAPH_KEY` (constant string)
 /// Value: serialized `InheritanceGraph<()>`
-pub const SCHEMA_TOPOLOGICAL_GRAPH: Table<&str, &[u8]> =
-    Table::new("schema_topological_graph");
+pub const SCHEMA_TOPOLOGICAL_GRAPH: Table<
+    &str,
+    DbRkyvType<InheritanceGraph<()>>,
+> = Table::new("schema_topological_graph");
 
 /// Constant key for the topological inheritance graph singleton table.
 pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
@@ -68,7 +81,7 @@ pub const TOPOLOGICAL_GRAPH_KEY: &str = "graph_singleton";
 ///
 /// Key: schema name string
 /// Value: serialized `SchemaId`
-pub const SCHEMA_ID_BY_NAME: Table<&str, &[u8]> =
+pub const SCHEMA_ID_BY_NAME: Table<&str, SchemaId> =
     Table::new("schema_id_by_name");
 
 /// Path-to-SchemaId index for raw view lookup.
@@ -78,8 +91,8 @@ pub const SCHEMA_ID_BY_NAME: Table<&str, &[u8]> =
 ///
 /// Key: path string with extension
 /// Value: `SchemaId`
-pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
-    PathTable::new("schema_id_by_path");
+pub const SCHEMA_ID_BY_PATH: PathUuidTable<SchemaId> =
+    PathUuidTable::new("schema_id_by_path");
 
 /// Base schemas (pre-resolution aggregates) indexed by schema ID.
 ///
@@ -88,5 +101,5 @@ pub const SCHEMA_ID_BY_PATH: PathTable<&[u8]> =
 ///
 /// Key: `SchemaId`
 /// Value: rkyv-serialized `BaseSchema`
-pub const BASE_SCHEMA_BY_ID: UuidTable<SchemaId, &[u8]> =
+pub const BASE_SCHEMA_BY_ID: UuidTable<SchemaId, DbRkyvType<BaseSchema>> =
     UuidTable::new("base_schema_by_id");
