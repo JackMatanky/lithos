@@ -88,6 +88,12 @@
       "skillPath": "skills/mermaid-diagrams/SKILL.md",
       "computedHash": "6d36e69adad781f106a2fb4b19ebc22bf0c211babdc0d1ae5822fa65abb48bd8"
     },
+    "okf": {
+      "source": "scaccogatto/okf-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okf/SKILL.md",
+      "computedHash": "e9e933fd2dcbc800e37e6c8f97677d57efae1859a76fe89890d9da51903cd95f"
+    },
     "prototype": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -146,6 +152,18 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/triage/SKILL.md",
       "computedHash": "b77ea99c2e6e97815b373cc476ad4cc1835d3e736867b764602147be71f6c131"
+    },
+    "validate": {
+      "source": "scaccogatto/okf-skills",
+      "sourceType": "github",
+      "skillPath": "skills/validate/SKILL.md",
+      "computedHash": "df8b62b808fafecadb90efed41936dc46516c7aa4b73c0cdd44f92d085f3cb7e"
+    },
+    "visualize": {
+      "source": "scaccogatto/okf-skills",
+      "sourceType": "github",
+      "skillPath": "skills/visualize/SKILL.md",
+      "computedHash": "691313a8c3a58fd7454cf12b57d3b316c54239ffa46c404899e53be98ce95128"
     },
     "write-a-skill": {
       "source": "mattpocock/skills",
