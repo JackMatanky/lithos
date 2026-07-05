@@ -210,7 +210,8 @@ mod tests {
     fn save_vault_persists_config() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = LocalConfig::default();
+        let (_base, _file, vault) =
+            crate::config::vault::fixtures::local_config();
 
         repo.save_vault(vault_id, &vault).unwrap();
 

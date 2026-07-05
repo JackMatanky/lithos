@@ -354,7 +354,8 @@ mod tests {
         fn vault_roundtrip() {
             let repo = InMemoryRepository::new();
             let vault_id = VaultId::new();
-            let vault = LocalConfig::default();
+            let (_base, _file, vault) =
+                crate::config::vault::fixtures::local_config();
 
             repo.save_vault(vault_id, &vault).expect("Save vault failed");
             let retrieved = repo.get_vault(vault_id).expect("Get vault failed");
@@ -412,7 +413,9 @@ mod tests {
             repo.get_global().unwrap();
             repo.save_global(&global).unwrap();
             repo.get_vault(vault_id).unwrap();
-            repo.save_vault(vault_id, &LocalConfig::default()).unwrap();
+            let (_base, _file, vault) =
+                crate::config::vault::fixtures::local_config();
+            repo.save_vault(vault_id, &vault).unwrap();
 
             let snapshot = repo.counters().snapshot();
             assert_eq!(snapshot.reads, 2);

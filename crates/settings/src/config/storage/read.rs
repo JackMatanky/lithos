@@ -314,7 +314,8 @@ mod tests {
     fn get_vault_returns_latest_for_id() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = LocalConfig::default();
+        let (_base, _file, vault) =
+            crate::config::vault::fixtures::local_config();
         let bytes = vault.to_bytes().unwrap();
 
         repo.store
