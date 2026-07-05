@@ -125,6 +125,33 @@ enum FsParentId { Root, Id(FsNodeId) }
 
 Two conversion functions at the repository boundary. App code never sees ZERO, DB queries use `WHERE parent_id = ?` uniformly. This avoids both the sentinel-footgun class (in-memory) and the enum-overhead-on-query problem (storage).
 
+### Storage Schema
+
+The 8-table file/dir split consolidates into 5 unified tables:
+
+| Table | Type | Key → Value | Replaces |
+|---|---|---|---|
+| `FS_NODES` | primary | `FsNodeId → archived FsNode` | `FILES` + `DIRS` |
+| `FS_ID_BY_PATH` | unique | `Utf8UnixPathBuf → FsNodeId` | `FILE_ID_BY_PATH` + `DIR_ID_BY_PATH` |
+| `FS_IDS_BY_PARENT` | multimap | `FsNodeId → [FsNodeId]` | `FILE_IDS_BY_PARENT` + `DIR_IDS_BY_PARENT` |
+| `FS_IDS_BY_FORMAT` | multimap | `format_str → [FsNodeId]` | `FILE_IDS_BY_FORMAT` (dirs not indexed) |
+| `FS_IDS_BY_NAME` | multimap | `name_str → [FsNodeId]` | `FILE_IDS_BY_BASENAME` (now covers dirs too) |
+
+Repository trait collapses from 20 methods (10 file + 10 dir) to ~10 — single `find`, `find_by_path`, `list_by_parent`, `save`, `delete` instead of paired file/dir variants.
+
+### Builder & Entry Simplification
+
+The unified `FsNode` type eliminates the parallel file/dir branches throughout the indexer pipeline:
+
+| Current (split) | Consolidated |
+|---|---|---|
+| `ScanEntry { File(FileNode), Dir(DirNode), Skipped }` | `FsEntry { kind: FsEntryType, path, metadata }` — `Skipped` is a variant of `FsEntryType` |
+| `FileIndexEntry` / `DirIndexEntry` | single `IndexEntry { id, node: FsNode, status }` — `FsNodeType::File`/`Dir` on `node.kind` replaces the type-level split |
+| `DeletedNodes { files, dirs }` | `DeletedNodes { ids }` |
+| `CompletionKind { File, Dir, Skipped }` | `CompletionKind::Node { entry, path_key, id }` |
+
+The builder's 5-state typestate drops from 10 state types to 5. The `Init → into_branch` match on `ScanEntry::File`/`ScanEntry::Dir` becomes a single path — `FsEntryType::Skipped` is filtered early and routes directly to `Completion`, while `File`/`Dir`/`SymFile`/`SymDir` all proceed through the same `Comparison → Persistence → Indexed → Completion` pipeline. Comparison logic (metadata vs stored record) is uniform since `FsNode` inlines all metadata fields regardless of kind.
+
 ### Dataview Implicit Field Alignment
 
 The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
@@ -160,7 +187,7 @@ The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
 2. **`traces-settings` moves into `traces-core`**: The SettingsService, AppConfig, config types, discovery pipeline all move. No API changes.
 3. **`traces-indexer` moves into `traces-core`**: The IndexerService, scan pipeline, `IndexEvent`, `IndexStatus` all move. No API changes. `FsRecordId` → `FsNodeId`.
 4. **`traces-fs` loses its domain types but keeps infrastructure**: `FileReader`, `DirScanner`, `PathValidator`, `Writer` remain. The `*Node` and `*Metadata` types move to core (or are eliminated, in the case of `*Metadata`).
-5. **No `traces-fs` infrastructure types change**: `FileReader` and `DirScanner` continue to work with `Utf8UnixPathBuf` for I/O. The `ScannerPort` trait is updated to return `FsEntry` instead of `walkdir::DirEntry` (already planned per PRD review).
+5. **ScannerPort returns `FsEntry`**: Replaces the current `ScanEntry { File(FileNode), Dir(DirNode), Skipped }` enum. The WalkdirAdapter converts `walkdir::DirEntry` directly into `FsEntry` with `Utf8UnixPathBuf` and `std::fs::Metadata` — no intermediate `FileNode`/`DirNode` construction.
 6. **`FsParentId { Root, Id(FsNodeId) }`**: Dual representation — in-memory enum for compiler safety, DB stores flat `FsNodeId` (ZERO for root) with conversion at the repository boundary.
 7. **`DeletedNode` is `{ id: FsNodeId, path: Utf8UnixPathBuf }`**: Deliberately minimal — no metadata, no status.
 8. **`FileFormat` moves to `traces-core`**: Part of `FsNodeType::File(FileFormat)` — core already depends on `traces-fs` for infrastructure, but `FileFormat` is a domain enum, not I/O, and belongs alongside its consumer.
@@ -170,7 +197,7 @@ The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
 ## Testing Decisions
 
 - **Integration-level testing**: The `FsEntry → FsNode` pipeline does not need isolated unit tests. Every field is extractable from path + metadata — the conversion is a pure projection that cannot fail in ways worth isolating.
-- **Indexer service tests**: Existing tempdir-backed indexer tests (scan a vault, assert produced records) continue to work with `FsNode` replacing `FileRecord`/`DirRecord`. The assertion shift is mechanical: `FileRecord::id()` → `FsNode::id`, `FileRecord::path()` → `FsNode::path`.
+- **Indexer service tests**: Existing tempdir-backed indexer tests continue with `FsNode` replacing `FileRecord`/`DirRecord`. The assertion shift is mechanical: `result.indexed().files()` → `result.indexed().nodes()`, `DeletedNodes { files, dirs }` → `DeletedNodes { ids }`.
 - **typed-path wrapper tests**: The hidden-file blocking wrapper around `join_checked()` is the one piece of new validation logic. Test with known traversal-attack inputs (leading `.`, `..`, absolute paths, backslash→forward-slash conversion).
 - **No regression testing needed for removed types**: `FileName`, `BaseName`, `DirName`, `RelativeFilePath`, `RelativeDirPath`, `FileMetadata`, `DirMetadata`, `FsTimes`, `FsMetadata` are deleted, not deprecated. Their callers are updated to use the replacement types directly.
 - **Existing `traces-fs` infrastructure tests**: `FileReader`, `DirScanner`, `PathValidator`, `Writer` tests continue unchanged since the infrastructure API surface doesn't change.
