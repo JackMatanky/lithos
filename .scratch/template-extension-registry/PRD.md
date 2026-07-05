@@ -1,84 +1,61 @@
 # Template Extension Registry PRD
 
-Status: draft
+Status: ready
 
 ## Problem Statement
 
-The Template foundation intentionally supports MiniJinja built-ins only. Users will need Traces-owned functions and filters for dates, strings, paths, files, numbers, and future prompt/query modules, but adding those directly to foundation would couple extension policy to core rendering before extension boundaries are understood.
-
-Traces needs a dedicated extension registry design that can classify pure and effectful extensions, define module namespaces, preserve Template Engine isolation, and prepare first-party extension modules without turning Templates into arbitrary scripts.
+Traces needs a robust templating system to generate notes based on Markdown files. While the Template foundation deliberately uses MiniJinja built-ins only, users require an ecosystem of domain-specific helpers (dates, paths, files, strings, numbers) to automate note generation. Because some operations are pure data transformations and others perform side effects (like defining where a file is saved), injecting these directly into the engine without a formal architecture risks coupling the infrastructure layer to application logic, violating Hexagonal Architecture.
 
 ## Solution
 
-Design and implement a Template Extension Registry that registers Traces-owned functions and filters with the configured Template Engine through an adapter-local boundary. The registry defines first-party namespaces, extension capabilities, pure versus effectful behavior, and rules for which render modes can use which extensions.
+Design and implement a Template Extension Registry that registers Traces-owned functions, filters, and tests into the Template Engine. The registry cleanly separates "pure" extensions (which require no I/O) from "effectful" extensions (which require host capabilities like file access).
 
-The first implementation should focus on safe, deterministic, non-interactive extension modules that build on foundation rendering. Prompt extensions and query/frontmatter extensions remain separate follow-up PRDs.
+To preserve the Template Engine as an isolated infrastructure port, the Application layer (`TemplateService`) will assemble the `ExtensionRegistry` and its capability traits (e.g., `FileProvider`), and inject them into the `MiniJinjaEngine`. Effectful commands will be handled natively via MiniJinja's lock-free `State` temps and extracted post-render using `render_captured()`, allowing complex templating (such as `file.write_to`) without exposing internal state complexity to the template author.
 
 ## User Stories
 
-1. As a Traces user, I want date helpers in Templates, so that generated notes can include current and derived dates.
-2. As a Traces user, I want string filters in Templates, so that generated note text can be normalized without external scripts.
-3. As a Traces user, I want path helpers in Templates, so that paths can be inspected and formatted safely.
-4. As a Traces user, I want numeric filters in Templates, so that simple calculations and formatting can happen during rendering.
-5. As a Traces user, I want file helpers only when explicitly allowed, so that Templates do not gain surprising side effects.
-6. As a Traces user, I want extension names grouped by module namespace, so that functions and filters are discoverable.
-7. As a Traces user, I want consistent function call syntax, so that extension behavior is predictable.
-8. As a Traces user, I want consistent filter syntax, so that transformations compose naturally in MiniJinja pipelines.
-9. As a Traces user, I want unsupported extensions to fail clearly, so that broken Templates are easy to fix.
-10. As a Traces user, I want extension behavior documented, so that Templates can be written without reading implementation code.
-11. As a developer, I want extension registration separate from Template foundation, so that foundation remains a minimal rendering slice.
-12. As a developer, I want `TemplateExtension` or equivalent abstractions designed around Traces use cases, so that MiniJinja registration APIs do not leak into service code.
-13. As a developer, I want pure extensions separated from effectful extensions, so that render modes can enforce safety boundaries.
-14. As a developer, I want module namespaces such as `date`, `str`, `path`, `file`, and `num`, so that first-party extensions stay organized.
-15. As a developer, I want extension signatures specified, so that validation can catch incorrect usage where possible.
-16. As a developer, I want extension registration to be adapter-local, so that Template domain models do not depend on MiniJinja extension types.
-17. As a developer, I want extension errors to map into Template error types, so that users receive Rust-native error chains.
-18. As a developer, I want extension tests independent from Template Service tests, so that extension behavior can be validated in isolation.
-19. As a maintainer, I want first-party modules to avoid arbitrary hooks and script execution, so that Templates stay safe.
-20. As a maintainer, I want effectful extensions to be explicit, so that future render modes can restrict them.
-21. As a maintainer, I want prompt and query modules deferred, so that this phase does not absorb interactive or data-query concerns.
-22. As a maintainer, I want compatibility with MiniJinja built-ins, so that custom extensions do not duplicate behavior unnecessarily.
-23. As a maintainer, I want stable names for first-party modules, so that Templates remain portable across Traces versions.
-24. As a maintainer, I want extension registry decisions documented, so that future modules follow the same rules.
+1. As a Traces user, I want a `date.*` module, so that I can insert and manipulate current and future dates into my templates.
+2. As a Traces user, I want a `str.*` module, so that I can format, split, replace, and normalize text pipelines seamlessly.
+3. As a Traces user, I want a `path.*` module, so that I can manipulate file paths (getting basenames, extensions, joining paths) predictably.
+4. As a Traces user, I want a `num.*` module, so that I can perform basic math and numeric coercion inside my templates.
+5. As a Traces user, I want to use `{{ file.write_to("custom.md") }}`, so that my template can dynamically define where its output should be saved.
+6. As a Traces user, I want functions like `date.now()` to be callable without `do` syntax silently, so that my templates remain clean and readable.
+7. As a Traces user, I want to use standard `{% set %}` to capture the results of effectful functions, so that I can reuse them later in my template.
+8. As a Traces user, I want `if` blocks to naturally allow variable mutation without restrictive scoping tricks, so that I can easily build conditionally generated metadata.
+9. As a Traces user, I want clear and distinct syntax for functions (`date.now()`), filters (`| str.slugify`), and tests (`is path.is_file`), so that template operations feel idiomatic to the Jinja ecosystem.
+10. As a Traces user, I want templates that error out when an effectful operation fails, so that partial renders don't corrupt my vault.
+11. As a developer, I want an `ExtensionRegistry`, so that the `MiniJinjaEngine` infrastructure port remains generic and agnostic of domain operations.
+12. As a developer, I want granular capability traits (e.g., `FileProvider`), so that I don't have to mock a monolithic `TemplateHost` when writing tests.
+13. As a developer, I want effectful state tracking handled via MiniJinja's `State` temps and `render_captured()`, so that the template rendering remains strictly thread-safe and lock-free.
+14. As a developer, I want pure extensions implemented separately from effectful ones, so that future render modes can easily restrict or mock side-effects.
+15. As a developer, I want template evaluation errors to fail fast and abort rendering, so that I can reliably catch template logic bugs during test validation.
 
 ## Implementation Decisions
 
-- Build this phase after Template foundation.
-- Introduce an extension registry boundary dedicated to Template Engine configuration.
-- Keep extension registration out of Template domain models, repository traits, service requests, and service responses.
-- Preserve MiniJinja as an adapter detail where registration happens.
-- Define functions as direct calls that generate data or perform controlled side effects.
-- Define filters as transformations that take the piped value as their first input.
-- Group operations into modules with explicit namespaces.
-- Start with deterministic pure modules where possible: date, string, path, and numeric helpers.
-- Treat file helpers as effectful or capability-gated unless a specific helper is pure metadata inspection.
-- Defer prompt helpers to the interactive prompt extension PRD.
-- Defer query and frontmatter helpers to the query extension PRD.
-- Prefer wrappers around MiniJinja built-ins only when Traces needs stable naming, constraints, or future documentation.
-- Do not add arbitrary script execution or hooks.
+- **Extension Categories**: Operations are strictly defined as either Functions (generate data/effects), Filters (transform data), or Tests (evaluate conditions), aligning with native Jinja semantics.
+- **Namespacing**: Extensions belong to core modules (`date`, `str`, `path`, `num`, `file`). MiniJinja natively supports dot-syntax, so functions will use `module.function()` and filters will use `| module.function` syntax.
+- **Classification**:
+  - *Pure Extensions* perform no I/O and rely purely on input data.
+  - *Effectful Extensions* require I/O capabilities and rely on "State Injection".
+- **Interface Segregation**: Effectful capabilities are delivered through granular Application layer traits (e.g., `FileProvider`) rather than a single massive God-object.
+- **Side-Channel Tracking**: Effectful commands (like `file.write_to`) log their instructions directly into MiniJinja's `State` temporary object cache. The `TemplateService` will execute `render_captured()` to safely extract these commands after the template renders.
+- **Variable State**: We will rely entirely on native MiniJinja syntax (`{% set %}`) for caching data across the template. No custom global `var.*` module will be built.
+- **Output of side effects**: Void functions like `file.write_to()` will return an empty string rather than requiring `{% do %}` syntax, lowering the friction for template authors.
 
 ## Testing Decisions
 
-- Tests should assert extension behavior through Template Engine rendering, not MiniJinja internals.
-- Registry tests should verify enabled modules register the expected function/filter names.
-- Pure function/filter tests should use deterministic inputs and outputs.
-- Date tests should isolate current-time behavior behind an injectable clock or deterministic test seam where needed.
-- Path tests should verify safe normalization and platform expectations.
-- File tests should verify capability and FS context boundaries before any effectful behavior is allowed.
-- Error tests should verify unsupported names, invalid argument shapes, and extension failures map to Template errors.
-- Compatibility tests should ensure MiniJinja built-ins still work after registry configuration.
+- **Pure Extension Tests**: Standard unit tests against an isolated `MiniJinjaEngine` containing the pure modules, passing deterministic inputs and asserting deterministic outputs.
+- **Effectful Extension Tests**: Integration tests against `TemplateService` using in-memory implementations of `FileProvider` or similar traits to verify the side-channel queue correctly logs `file.write_to` operations.
+- **State Seams**: Because we use `State` temps, we only need a single seam (the injected `Provider` traits) to test effectful extensions. We will not mock MiniJinja internals.
 
 ## Out of Scope
 
-- Template foundation ingestion, repositories, artifact commit pipeline, and CLI vertical slice.
-- Prompt interaction and blocking UI behavior.
-- Query runtime objects, Dataview-style queries, and frontmatter handlers.
-- Multi-file template packs.
-- Arbitrary scripts, hooks, shell execution, or plugin loading from user code.
-- Rich diagnostics beyond Rust error types and logging.
+- **Prompt Extensions (`prompt.*`)**: Blocking user interaction is deferred to a future PRD, as it requires a UI orchestrator.
+- **Query Extensions (`query.*`)**: Vault metadata querying (replacing Obsidian's `metadataCache`) is deferred to a future PRD.
+- **User Plugins**: This slice covers first-party Traces extensions only. Dynamic user scripts (WASM/Lua/JS) are strictly out of scope.
+- **Multi-file Template Packs**: Advanced template generation orchestrations spanning multiple output files.
 
 ## Further Notes
 
-- This PRD is a draft and should be grilled after foundation implementation pressure is known.
-- The planned module list comes from the existing function registry planning surface and may be trimmed before implementation.
-- The registry should make later prompt/query modules possible without deciding their behavior here.
+- The architecture avoids a "Push" model (pre-loading everything before rendering) in favor of a "Pull" model where templates request I/O capabilities dynamically.
+- The use of `State::get_or_set_temp_object` means the engine can run fully concurrent renders across multiple threads with absolute state isolation.
