@@ -196,12 +196,7 @@ mod tests {
         traces_settings::builder::build_from_layers(
             None,
             None,
-            traces_settings::vault::VaultId::new(),
-            traces_settings::vault::VaultRoot::try_new(
-                temp.path().to_path_buf(),
-            )
-            .unwrap(),
-            traces_settings::aggregate::Version::initial(),
+            DirPath::try_new(temp.path().to_path_buf()).unwrap(),
         )
         .unwrap()
     }

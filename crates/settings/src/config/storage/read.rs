@@ -358,7 +358,8 @@ mod tests {
     fn find_vault_id_by_path_works() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let root = config_fixtures::vault_root("/test");
+        let root =
+            VaultRoot::from_dir_path(config_fixtures::vault_root("/test"));
         let id_bytes = vault_id.to_bytes().unwrap();
 
         repo.store

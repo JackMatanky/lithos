@@ -30,16 +30,12 @@ mod tests {
     };
 
     use traces_db::testing::TestDb;
+    use traces_fs::DirPath;
     use traces_note::{
         aggregate::Note, repository::ReadRepository as _,
         storage::RedbRepository, tag::Tag as NoteTag, task::Task,
     };
-    use traces_settings::{
-        aggregate::{AppConfig, Version},
-        builder,
-        task::StatusSymbol,
-        vault::{VaultId, VaultRoot},
-    };
+    use traces_settings::{aggregate::AppConfig, builder, task::StatusSymbol};
     use traces_vault::VaultProcessor;
 
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
@@ -51,14 +47,8 @@ mod tests {
     }
 
     fn test_config(root: PathBuf) -> TestResult<AppConfig> {
-        let root = VaultRoot::try_new(root)?;
-        Ok(builder::build_from_layers(
-            None,
-            None,
-            VaultId::new(),
-            root,
-            Version::initial(),
-        )?)
+        let root = DirPath::try_new(root)?;
+        Ok(builder::build_from_layers(None, None, root)?)
     }
 
     fn build_fixture(markdown: &str) -> TestResult<Fixture> {

@@ -46,13 +46,7 @@ mod tests {
     use std::collections::HashMap;
 
     use traces_fs::DirPath;
-    use traces_settings::{
-        builder::build_from_layers,
-        config::{
-            aggregate::Version,
-            vault::{VaultId, VaultRoot},
-        },
-    };
+    use traces_settings::builder::build_from_layers;
     use traces_template::{
         CreateTemplateInput, CreateTemplateOutcome, TemplateName,
     };
@@ -61,14 +55,8 @@ mod tests {
     use crate::error::AppError;
 
     fn config(root: &DirPath) -> traces_settings::AppConfig {
-        build_from_layers(
-            None,
-            None,
-            VaultId::new(),
-            VaultRoot::from_dir_path(root.clone()),
-            Version::initial(),
-        )
-        .expect("expected test config to build")
+        build_from_layers(None, None, root.clone())
+            .expect("expected test config to build")
     }
 
     fn input(name: TemplateName, dry_run: bool) -> CreateTemplateInput {
@@ -180,9 +168,8 @@ mod tests {
             let config = build_from_layers(
                 None,
                 None,
-                VaultId::new(),
-                VaultRoot::default(),
-                Version::initial(),
+                DirPath::try_new(std::path::PathBuf::from("/"))
+                    .expect("root path is a valid DirPath"),
             )
             .expect("expected root config to build");
 
