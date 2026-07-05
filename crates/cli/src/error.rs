@@ -169,13 +169,6 @@ pub(crate) enum TemplateCommandError {
         "Ensure `[template]` is configured in traces.toml with a valid \
          `directory` setting, and that the directory exists."
     ))]
-    // ponytail: added for future mapping from AppError, not yet
-    // constructed by any code path
-    #[allow(
-        dead_code,
-        reason = "ponytail: added for future use, not yet constructed by any \
-                  code path"
-    )]
     ConfigInvalid {
         detail: String,
     },
@@ -717,11 +710,7 @@ mod tests {
 
         #[test]
         fn returns_2_when_template_error() {
-            let name = traces_template::TemplateName::try_new(
-                std::path::Path::new("templates/missing.md"),
-                std::path::Path::new("templates"),
-            )
-            .expect("expected template name");
+            let name = traces_template::TemplateName::unchecked("missing.md");
             let err = CliError::Bootstrap(AppError::Template(
                 traces_template::TemplateError::NotFound {
                     name,

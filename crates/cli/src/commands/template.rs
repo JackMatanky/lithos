@@ -54,36 +54,8 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         anchor,
         traces_settings::InMemoryRepository::new(),
     )?;
-    #[expect(
-        deprecated,
-        reason = "Currently migrating to new cache_root extraction method, \
-                  but tests rely on Config::to_cache_spec()"
-    )]
-    let cache_spec = bootstrap
-        .config
-        .to_cache_spec()
-        .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
-    let cache_dir = cache_spec.to_dir_path().map_err(|e| {
-        TemplateCommandError::ConfigInvalid {
-            detail: format!("Cache directory from config is invalid: {e}"),
-        }
-    })?;
-    let spec = bootstrap
-        .config
-        .to_template_spec()
-        .map_err(|e| CliError::Bootstrap(AppError::Config(e)))?;
-    let template_root = spec.to_dir_path().map_err(|e| {
-        TemplateCommandError::ConfigInvalid {
-            detail: format!("Template directory from config is invalid: {e}"),
-        }
-    })?;
     let template_input = normalize_template_input(&args.input);
-    let template_path =
-        template_root.as_path().join(format!("{template_input}.md"));
-    let name = TemplateName::try_new(&template_path, template_root.as_path())
-        .map_err(|e| TemplateCommandError::OutputPathInvalid {
-        detail: format!("name: {e}"),
-    })?;
+    let name = TemplateName::unchecked(&format!("{template_input}.md"));
     let output_path =
         args.output.unwrap_or_else(|| format!("{template_input}.md"));
 
@@ -93,9 +65,8 @@ pub(crate) fn run_template<D: DiscoveryPort>(
         context,
         dry_run: args.dry_run,
     };
-    let outcome =
-        app_run_template_create(&bootstrap.config, &cache_dir, &input)
-            .map_err(map_template_error)?;
+    let outcome = app_run_template_create(&bootstrap.config, &input)
+        .map_err(map_template_error)?;
 
     match outcome {
         CreateTemplateOutcome::Preview {
@@ -116,13 +87,13 @@ pub(crate) fn run_template<D: DiscoveryPort>(
             ..
         } => match format {
             OutputFormat::Human => {
-                writeln!(out, "{}", created_path.as_path().display())
+                writeln!(out, "{created_path}")
                     .map_err(crate::output::stdout_err)?;
             }
             OutputFormat::Json => writeln!(
                 out,
                 "{}",
-                serde_json::json!({ "output": created_path.as_path().display().to_string() })
+                serde_json::json!({ "output": created_path })
             )
             .map_err(crate::output::stdout_err)?,
         },
@@ -154,6 +125,12 @@ fn normalize_template_input(input: &str) -> &str {
 
 fn map_template_error(err: AppError) -> CliError {
     match err {
+        AppError::Template(TemplateError::Config(detail)) => {
+            TemplateCommandError::ConfigInvalid {
+                detail,
+            }
+            .into()
+        }
         AppError::Template(TemplateError::NotFound {
             name,
         }) => TemplateCommandError::TemplateNotFound {
@@ -163,12 +140,6 @@ fn map_template_error(err: AppError) -> CliError {
         AppError::Template(TemplateError::Engine(e)) => {
             TemplateCommandError::RenderFailed {
                 detail: e.to_string(),
-            }
-            .into()
-        }
-        AppError::Template(TemplateError::Path(e)) => {
-            TemplateCommandError::ConfigInvalid {
-                detail: format!("path: {e}"),
             }
             .into()
         }
@@ -197,42 +168,6 @@ fn map_template_error(err: AppError) -> CliError {
             detail: format!("{}: {source}", path.display()),
         }
         .into(),
-        AppError::Template(TemplateError::Name(e)) => {
-            TemplateCommandError::RenderFailed {
-                detail: format!("Name derivation failed: {e}"),
-            }
-            .into()
-        }
-        AppError::Template(TemplateError::Body(e)) => {
-            TemplateCommandError::RenderFailed {
-                detail: format!("Template body is invalid: {e}"),
-            }
-            .into()
-        }
-        AppError::Template(TemplateError::Read(e)) => {
-            TemplateCommandError::RenderFailed {
-                detail: format!("Could not read template: {e}"),
-            }
-            .into()
-        }
-        AppError::Template(TemplateError::Repository(e)) => {
-            TemplateCommandError::RenderFailed {
-                detail: format!(
-                    "Template repository failed: {e}. Run 'traces index' to \
-                     rebuild template metadata."
-                ),
-            }
-            .into()
-        }
-        AppError::Template(TemplateError::Scan(e)) => {
-            TemplateCommandError::ConfigInvalid {
-                detail: format!(
-                    "Template directory scan failed: {e}. Check directory \
-                     permissions and retry."
-                ),
-            }
-            .into()
-        }
         other => CliError::Bootstrap(other),
     }
 }
@@ -245,9 +180,7 @@ mod tests {
     use traces_fs::error::{WriteError, WriteTargetError};
     use traces_settings::{DiscoveryFlags, DiscoveryService};
     use traces_template::{
-        TemplateArtifactError, TemplateBodyError, TemplateDirScanError,
-        TemplateEngineError, TemplateError, TemplateName, TemplateNameError,
-        TemplateReadError, TemplateRepositoryError,
+        TemplateArtifactError, TemplateEngineError, TemplateError, TemplateName,
     };
 
     use super::{map_template_error, parse_vars, run_template};
@@ -257,11 +190,7 @@ mod tests {
     };
 
     fn template_name(name: &str) -> TemplateName {
-        TemplateName::try_new(
-            std::path::Path::new(&format!("templates/{name}.md")),
-            std::path::Path::new("templates"),
-        )
-        .expect("template name")
+        TemplateName::unchecked(&format!("{name}.md"))
     }
 
     fn make_vault()
@@ -489,7 +418,10 @@ mod tests {
             );
 
             let message = result.unwrap_err().to_string();
-            assert!(message.starts_with("Template 'missing' not found."));
+            assert!(
+                message.starts_with("Template rendering failed:"),
+                "expected render failure, got: {message}"
+            );
         }
 
         #[test]
@@ -617,7 +549,7 @@ mod tests {
                 name: template_name("missing"),
             });
             assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::TemplateNotFound { name }) if name == "missing")
+                matches!(template_command_error(err), Some(TemplateCommandError::TemplateNotFound { name }) if name == "missing.md")
             );
         }
 
@@ -670,69 +602,6 @@ mod tests {
             ));
             assert!(
                 matches!(template_command_error(err), Some(TemplateCommandError::WriteFailed { detail }) if detail == "notes/out.md: disk full")
-            );
-        }
-
-        #[test]
-        fn maps_name_error_without_raw_template_display() {
-            let err = AppError::Template(TemplateError::Name(
-                TemplateNameError::Derivation,
-            ));
-
-            assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail })                 if detail.starts_with("Name derivation failed:"))
-            );
-        }
-
-        #[test]
-        fn maps_body_error() {
-            let err = AppError::Template(TemplateError::Body(
-                TemplateBodyError::Empty,
-            ));
-            assert!(matches!(
-                template_command_error(err),
-                Some(TemplateCommandError::RenderFailed { .. })
-            ));
-        }
-
-        #[test]
-        fn maps_read_error() {
-            let path = std::path::PathBuf::from("test.md");
-            let source = std::io::Error::other("permission denied");
-            let read_err = TemplateReadError::from(traces_fs::ReadError::Io {
-                path,
-                source,
-            });
-            let err = AppError::Template(TemplateError::Read(read_err));
-            assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Could not read"))
-            );
-        }
-
-        #[test]
-        fn maps_repository_error() {
-            let err = AppError::Template(TemplateError::Repository(
-                TemplateRepositoryError::NotFoundByPath(
-                    traces_fs::PathKey::try_new("templates/test.md")
-                        .expect("valid PathKey"),
-                ),
-            ));
-            assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::RenderFailed { detail }) if detail.contains("Run 'traces index'"))
-            );
-        }
-
-        #[test]
-        fn maps_scan_error() {
-            let scan_err = TemplateDirScanError::from(
-                traces_fs::error::ScanError::Traversal {
-                    path: std::path::PathBuf::from("templates"),
-                    source: std::io::Error::other("permission denied"),
-                },
-            );
-            let err = AppError::Template(TemplateError::Scan(scan_err));
-            assert!(
-                matches!(template_command_error(err), Some(TemplateCommandError::ConfigInvalid { detail }) if detail.contains("Template directory scan failed:"))
             );
         }
 

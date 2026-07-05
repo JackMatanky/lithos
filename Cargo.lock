@@ -1855,26 +1855,12 @@ dependencies = [
 name = "traces-template"
 version = "0.1.0"
 dependencies = [
- "base64",
- "chrono",
- "dirs",
  "minijinja",
  "pretty_assertions",
- "redb",
- "rkyv",
- "serde",
- "serde_json",
  "tempfile",
  "thiserror",
- "toml",
- "traces-db",
  "traces-fs",
  "traces-settings",
- "traces-support",
- "traces-utils",
- "tracing",
- "uuid",
- "walkdir",
 ]
 
 [[package]]
