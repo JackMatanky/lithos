@@ -440,6 +440,15 @@ mod tests {
         is_send_sync::<ConfigError>();
     }
 
+    #[test]
+    fn shim_variants_still_construct() {
+        let _s = ConfigError::Storage("x".into());
+        let _i = ConfigError::Ingestion("x".into());
+        let _io = ConfigError::Io("x".into());
+        // display is non-empty
+        assert!(!ConfigError::Storage("x".into()).to_string().is_empty());
+    }
+
     #[rstest]
     #[case::validation_field(
         ConfigError::ValidationFailed {

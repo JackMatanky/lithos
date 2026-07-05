@@ -291,9 +291,12 @@ impl TryFrom<(RawConfig, FilePath)> for GlobalConfig {
         if raw.cache.is_some() {
             return Err(ConfigError::ValidationFailed {
                 field: "cache".into(),
-                message: "cache is forbidden in global config; it is \
-                          vault-scoped"
-                    .into(),
+                message: format!(
+                    "cache is forbidden in global config ({}); it is \
+                     vault-scoped",
+                    path.as_path().display()
+                )
+                .into(),
             });
         }
 
@@ -827,16 +830,19 @@ mod tests {
                 ..RawConfig::default()
             };
 
+            let expected_path = path.as_path().display().to_string();
             let error = GlobalConfig::try_from((raw, path))
                 .expect_err("cache must be rejected in global config");
 
             assert!(
                 matches!(
                     &error,
-                    ConfigError::ValidationFailed { field, .. }
+                    ConfigError::ValidationFailed { field, message }
                         if &**field == "cache"
+                            && message.contains(&expected_path)
                 ),
-                "expected ValidationFailed on 'cache', got {error:?}"
+                "expected ValidationFailed on 'cache' including source path \
+                 {expected_path:?}, got {error:?}"
             );
         }
 

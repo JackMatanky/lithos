@@ -349,9 +349,12 @@ impl TryFrom<(RawConfig, DirPath, FilePath)> for LocalConfig {
         if raw.trusted_vaults.is_some() {
             return Err(ConfigError::ValidationFailed {
                 field: "trusted_vaults".into(),
-                message: "trusted_vaults is forbidden in local/vault config; \
-                          it is global-scoped"
-                    .into(),
+                message: format!(
+                    "trusted_vaults is forbidden in local config ({}); it is \
+                     global-scoped",
+                    path.as_path().display()
+                )
+                .into(),
             });
         }
 
@@ -1123,16 +1126,19 @@ mod tests {
                 ..RawConfig::default()
             };
 
+            let expected_path = path.as_path().display().to_string();
             let error = LocalConfig::try_from((raw, base, path))
                 .expect_err("trusted_vaults must be rejected in local config");
 
             assert!(
                 matches!(
                     &error,
-                    ConfigError::ValidationFailed { field, .. }
+                    ConfigError::ValidationFailed { field, message }
                         if &**field == "trusted_vaults"
+                            && message.contains(&expected_path)
                 ),
-                "expected ValidationFailed on 'trusted_vaults', got {error:?}"
+                "expected ValidationFailed on 'trusted_vaults' including \
+                 source path {expected_path:?}, got {error:?}"
             );
         }
 
