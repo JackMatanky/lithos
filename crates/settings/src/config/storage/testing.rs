@@ -341,7 +341,8 @@ mod tests {
         #[test]
         fn global_roundtrip() {
             let repo = InMemoryRepository::new();
-            let global = GlobalConfig::default();
+            let (_guard, global) =
+                crate::config::global::fixtures::global_config();
 
             repo.save_global(&global).expect("Save global failed");
             let retrieved = repo.get_global().expect("Get global failed");
@@ -406,8 +407,10 @@ mod tests {
             let repo = InMemoryRepository::new();
             let vault_id = VaultId::new();
 
+            let (_guard, global) =
+                crate::config::global::fixtures::global_config();
             repo.get_global().unwrap();
-            repo.save_global(&GlobalConfig::default()).unwrap();
+            repo.save_global(&global).unwrap();
             repo.get_vault(vault_id).unwrap();
             repo.save_vault(vault_id, &LocalConfig::default()).unwrap();
 
@@ -440,7 +443,9 @@ mod tests {
             let res = repo.get_global();
             assert!(res.is_err());
 
-            let res_save = repo.save_global(&GlobalConfig::default());
+            let (_guard, global) =
+                crate::config::global::fixtures::global_config();
+            let res_save = repo.save_global(&global);
             assert!(res_save.is_err());
         }
     }

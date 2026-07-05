@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn save_global_persists_config() {
         let (_temp, repo) = temp_repo();
-        let global = GlobalConfig::default();
+        let (_guard, global) = crate::config::global::fixtures::global_config();
 
         repo.save_global(&global).unwrap();
 

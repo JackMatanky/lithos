@@ -280,9 +280,11 @@ mod tests {
     #[test]
     fn get_global_returns_latest_version() {
         let (_temp, repo) = temp_repo();
-        let global1 = GlobalConfig::default();
+        let (_guard, global1) =
+            crate::config::global::fixtures::global_config();
         let global2 = GlobalConfig::new(
             global1.version().next().unwrap(),
+            global1.path().clone(),
             global1.logging().clone(),
             global1.template().cloned(),
             global1.schema().cloned(),
