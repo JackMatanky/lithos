@@ -280,3 +280,53 @@ let value = guard.value().decode()?;
 - Migrate one table vertically first.
 - Keep `RkyvTable`/`RkyvMultimap` minimal until usage proves helper methods are worth adding.
 - Keep ordered-byte key specialization out until profiling proves decode-and-compare is too slow.
+
+## GitNexus and Rust-Skills Review Gaps
+
+### Duplicate Planning Sections
+
+`task_plan.md` had duplicate `CodecError` / `CodecErrorKind` sections after iterative updates. This was cleaned up. Keep only one source of truth per component.
+
+### Graph Impact Blind Spot
+
+GitNexus impact reports LOW for `ArchivedEntity` and `DbError`, but text usage is broad. This is likely because blanket trait methods and enum variants are not fully represented as direct graph edges.
+
+Planning should continue to use both GitNexus and text search for this refactor.
+
+### Existing Optimized Keys Must Stay
+
+Rust/API review identified a key design risk: generic `RkyvTable<K, V>` would replace optimized key encodings if used everywhere.
+
+Existing key integrations should generally remain:
+
+- `impl_redb_uuid!` / `UuidV7DbType`
+- `DbPathKey`
+- `EventId`
+
+The first migration should likely use `RkyvValue<V>` behind an existing optimized key wrapper, not `RkyvKey<K>` for everything.
+
+### Value-Only Wrapper Gap
+
+The plan now needs to consider value-only wrappers such as:
+
+```rust
+TableDefinition<'static, K, RkyvValue<V>>
+```
+
+This may be exposed as existing wrappers with `RkyvValue<V>` or a small dedicated wrapper only if repetition appears.
+
+### Debug Bound Requirement
+
+`redb::Value` requires both the redb value type and `SelfType<'a>` to implement `Debug`.
+
+Therefore these must implement `Debug`:
+
+- `RkyvValue<T>`
+- `RkyvKey<T>`
+- `RkyvBytes<'a, T>`
+
+Avoid adding `T: Debug` if possible; manual `Debug` impls can avoid leaking unnecessary bounds.
+
+### Public Export Correction
+
+The public exports section must not export private codec free functions by default. Public API should prefer `RkyvBytes` methods; free functions stay private unless a real caller requires them.

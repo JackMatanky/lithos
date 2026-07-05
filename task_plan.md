@@ -215,63 +215,6 @@ impl CodecError {
 }
 ```
 
-### `CodecError`
-
-Add a codec-specific error enum embedded in `DbError`:
-
-```rust
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum CodecError {
-    #[error("failed to serialize {type_name} with rkyv")]
-    RkyvSerialize {
-        type_name: &'static str,
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    #[error("failed to validate archived {type_name}")]
-    RkyvAccess {
-        type_name: &'static str,
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    #[error("failed to deserialize archived {type_name}")]
-    RkyvDeserialize {
-        type_name: &'static str,
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-}
-```
-
-Add `DbError::Codec(#[from] CodecError)` and update `DbErrorKind` to include `Codec`.
-
-### `CodecErrorKind`
-
-Add a narrow codec-specific kind enum for callers/tests that need to distinguish encode/access/decode failures without matching rkyv internals:
-
-```rust
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodecErrorKind {
-    Encode,
-    Access,
-    Decode,
-}
-
-impl CodecError {
-    pub const fn kind(&self) -> CodecErrorKind {
-        match self {
-            Self::RkyvSerialize { .. } => CodecErrorKind::Encode,
-            Self::RkyvAccess { .. } => CodecErrorKind::Access,
-            Self::RkyvDeserialize { .. } => CodecErrorKind::Decode,
-        }
-    }
-}
-```
-
 ### `DbError` and `DbErrorKind`
 
 Update `DbErrorKind` so codec failures are classified as codec failures, not generic serialization/deserialization:
@@ -399,6 +342,8 @@ Responsibilities:
 - Implement `redb::Value` generically for rkyv-backed values.
 - Implement `redb::Key` generically for rkyv-backed keys.
 - Use `redb::TypeName::new(std::any::type_name::<Self>())` for distinct per-wrapper/per-type names.
+- Implement `Debug` for `RkyvValue<T>`, `RkyvKey<T>`, and `RkyvBytes<'a, T>` because `redb::Value` requires the value type and `SelfType<'a>` to implement `Debug`.
+- Avoid adding unnecessary `T: Debug` bounds. If `derive(Debug)` adds unwanted bounds, write manual `Debug` impls that print the wrapper type and byte length only.
 
 `RkyvValue<T>: redb::Value`:
 
@@ -418,6 +363,20 @@ Responsibilities:
 - Include a `ponytail:` comment naming the performance ceiling and upgrade path.
 
 Do not add ordered-byte key specialization in the first pass. Add only if profiling shows decode-and-compare is hot.
+
+### Existing Optimized Key Types
+
+Do not assume `RkyvKey<T>` should replace every existing redb key implementation.
+
+Existing optimized/stable key integrations include:
+
+- `impl_redb_uuid!` / `UuidV7DbType` for UUID-backed IDs.
+- `DbPathKey` for validated path keys.
+- `EventId` for monotonic event-log keys.
+
+These keys have direct sortable byte encodings and should generally stay as keys. The generic `RkyvKey<T>` is for key types that do not already have a better ordered encoding.
+
+This means a migration may use `RkyvValue<V>` without using `RkyvKey<K>`.
 
 ### Optional `RkyvTable` and `RkyvMultimap`
 
@@ -503,6 +462,38 @@ Reason: redb multimap values must implement `Key`, not just `Value`.
 
 Question to verify during implementation: whether every multimap value type has meaningful `Ord`. If not, some multimaps should stay on explicit table definitions or use domain-specific key encodings.
 
+### Specialized Rkyv Value Table Wrappers
+
+Because many existing tables use optimized UUID/path/event keys, consider value-only rkyv wrappers before forcing `RkyvKey<K>` everywhere.
+
+Possible wrappers:
+
+```rust
+pub struct RkyvValueTable<K, V> {
+    definition: TableDefinition<'static, K, RkyvValue<V>>,
+}
+```
+
+Specialized aliases/wrappers may be clearer if usage is common:
+
+```rust
+pub struct UuidRkyvTable<K, V> {
+    definition: TableDefinition<'static, K, RkyvValue<V>>,
+}
+
+pub struct PathRkyvTable<V> {
+    definition: TableDefinition<'static, DbPathKey, RkyvValue<V>>,
+}
+```
+
+Do not add all of these upfront. Pick the first vertical migration and add only the wrapper that removes real repetition.
+
+Decision rule:
+
+- Use existing optimized key wrappers when key encoding already exists (`UuidTable<K, RkyvValue<V>>`, `PathTable<RkyvValue<V>>`, etc.).
+- Use `RkyvTable<K, V>` only when both key and value should be rkyv-backed generically.
+- Use `RkyvMultimap<K, V>` only when both key and multimap value can tolerate decode-and-compare ordering.
+
 ### `ArchivedEntity` Compatibility Shim
 
 Do not delete `ArchivedEntity` first.
@@ -531,7 +522,6 @@ with:
 ```rust
 pub use codec::{
     CodecError, CodecErrorKind, RkyvBytes, RkyvDecode, RkyvEncode,
-    decode_rkyv, encode_rkyv, with_archived_rkyv,
 };
 pub use table::{RkyvMultimap, RkyvTable};
 ```
@@ -609,6 +599,17 @@ let schema = guard.value().decode()?;
 
 Exact insert ergonomics must be verified against redb's `insert` bounds for `V::SelfType<'_>` and key borrowing behavior. Keep first vertical migration small to discover this safely.
 
+If keeping an optimized key wrapper, the post-migration form is less disruptive:
+
+```rust
+let bytes = RkyvBytes::<Schema>::encode(schema)?;
+table.insert(*schema.id(), bytes)?;
+
+let schema = guard.value().decode()?;
+```
+
+This is likely the first migration shape for UUID-keyed tables.
+
 ### Event Store Bounds
 
 Replace:
@@ -639,6 +640,8 @@ Minimum tests for the first implementation slice:
 - `RkyvKey<T>::compare` matches `T::cmp` for a test key.
 - `RkyvTable<K, V>::definition()` has the expected `TableDefinition<'static, RkyvKey<K>, RkyvValue<V>>` type.
 - `RkyvMultimap<K, V>::definition()` has the expected `MultimapTableDefinition<'static, RkyvKey<K>, RkyvKey<V>>` type.
+- `RkyvValue<T>`, `RkyvKey<T>`, and `RkyvBytes<'_, T>` satisfy redb's `Debug` requirements without requiring `T: Debug` unless unavoidable.
+- A value-only migrated table using an existing optimized key (`UuidTable<K, RkyvValue<V>>` or equivalent) round-trips.
 
 ## Migration Phases
 
@@ -716,3 +719,5 @@ Status: pending
 - Which table should be the first vertical migration?
 - Should `RkyvMultimap<K, V>` require `V: Ord` because redb multimap values are keys?
 - Should `RkyvKey<T>::compare` panic on invalid bytes, or should hot key types use ordered byte encodings instead?
+- Do we need `RkyvTable<K, V>` immediately, or should the first slice only add `RkyvValue<V>` behind existing optimized key wrappers?
+- Should any public wrapper names be value-only (`RkyvValueTable`, `UuidRkyvTable`) rather than fully generic (`RkyvTable`) for the first migration?

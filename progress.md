@@ -49,3 +49,12 @@ Add `RkyvTable<K, V>` and `RkyvMultimap<K, V>` as minimal table-definition wrapp
 ## Next Step
 
 Before implementation, choose the first low-risk table for a vertical migration and run GitNexus impact on the concrete symbols to be edited.
+
+### 2026-07-05 GitNexus/Rust-Skills Artifact Review
+
+- Loaded `gitnexus-impact-analysis` and `rust-skills`.
+- Re-read `task_plan.md`, `findings.md`, and `progress.md` before making decisions.
+- Re-ran GitNexus impact for `ArchivedEntity`: graph risk LOW, but text search remains necessary due blanket method syntax.
+- Ran GitNexus impact/context for `DbError`: graph risk LOW/empty, but this is a known blind spot for enum variant usage.
+- Searched existing redb integrations and found optimized key implementations: `impl_redb_uuid!`, `DbPathKey`, and `EventId`.
+- Updated artifacts with missing concerns: duplicate section cleanup, optimized-key coexistence, value-only rkyv table migration path, `Debug` requirements, and public export correction.
