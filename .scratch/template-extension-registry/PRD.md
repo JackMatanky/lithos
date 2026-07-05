@@ -19,26 +19,27 @@ To preserve the Template Engine as an isolated infrastructure port, the Applicat
 3. As a Traces user, I want a `path.*` module, so that I can manipulate file paths (getting basenames, extensions, joining paths) predictably.
 4. As a Traces user, I want a `num.*` module, so that I can perform basic math and numeric coercion inside my templates.
 5. As a Traces user, I want to use `{{ file.write_to("custom.md") }}`, so that my template can dynamically define where its output should be saved.
-6. As a Traces user, I want functions like `date.now()` to be callable without `do` syntax silently, so that my templates remain clean and readable.
-7. As a Traces user, I want to use standard `{% set %}` to capture the results of effectful functions, so that I can reuse them later in my template.
-8. As a Traces user, I want `if` blocks to naturally allow variable mutation without restrictive scoping tricks, so that I can easily build conditionally generated metadata.
-9. As a Traces user, I want clear and distinct syntax for functions (`date.now()`), filters (`| str.slugify`), and tests (`is path.is_file`), so that template operations feel idiomatic to the Jinja ecosystem.
-10. As a Traces user, I want templates that error out when an effectful operation fails, so that partial renders don't corrupt my vault.
-11. As a developer, I want an `ExtensionRegistry`, so that the `MiniJinjaEngine` infrastructure port remains generic and agnostic of domain operations.
-12. As a developer, I want granular capability traits (e.g., `FileProvider`), so that I don't have to mock a monolithic `TemplateHost` when writing tests.
-13. As a developer, I want effectful state tracking handled via MiniJinja's `State` temps and `render_captured()`, so that the template rendering remains strictly thread-safe and lock-free.
-14. As a developer, I want pure extensions implemented separately from effectful ones, so that future render modes can easily restrict or mock side-effects.
-15. As a developer, I want template evaluation errors to fail fast and abort rendering, so that I can reliably catch template logic bugs during test validation.
+6. As a Traces user, I want effectful functions like `file.write_to()` to return empty strings, so that they execute silently without requiring cumbersome `do` syntax.
+7. As a Traces user, I want an `id.uuid()` pure extension, so that I can generate unique identifiers within my templates automatically.
+8. As a Traces user, I want to use standard `{% set %}` to capture the results of extensions, so that I can reuse them later in my template.
+9. As a Traces user, I want `if` blocks to naturally allow variable mutation without restrictive scoping tricks, so that I can easily build conditionally generated metadata.
+10. As a Traces user, I want clear and distinct syntax for functions (`date.now()`), filters (`| str.slugify`), and tests (`is path.is_file`), so that template operations feel idiomatic to the Jinja ecosystem.
+11. As a Traces user, I want templates that error out when an effectful operation fails, so that partial renders don't corrupt my vault.
+12. As a developer, I want an `ExtensionRegistry`, so that the `MiniJinjaEngine` infrastructure port remains generic and agnostic of domain operations.
+13. As a developer, I want granular capability traits (e.g., `FileProvider`), so that I don't have to mock a monolithic `TemplateHost` when writing tests.
+14. As a developer, I want effectful state tracking handled via MiniJinja's `State` temps and `render_captured()`, so that the template rendering remains strictly thread-safe and lock-free.
+15. As a developer, I want pure extensions implemented separately from effectful ones, so that future render modes can easily restrict or mock side-effects.
+16. As a developer, I want template evaluation errors to fail fast and abort rendering, so that I can reliably catch template logic bugs during test validation.
 
 ## Implementation Decisions
 
 - **Extension Categories**: Operations are strictly defined as either Functions (generate data/effects), Filters (transform data), or Tests (evaluate conditions), aligning with native Jinja semantics.
-- **Namespacing**: Extensions belong to core modules (`date`, `str`, `path`, `num`, `file`). MiniJinja natively supports dot-syntax, so functions will use `module.function()` and filters will use `| module.function` syntax.
+- **Namespacing**: Extensions belong to core modules (`date`, `str`, `path`, `num`, `file`, `id`). MiniJinja natively supports dot-syntax, so functions will use `module.function()` and filters will use `| module.function` syntax.
 - **Classification**:
   - *Pure Extensions* perform no I/O and rely purely on input data.
   - *Effectful Extensions* require I/O capabilities and rely on "State Injection".
 - **Interface Segregation**: Effectful capabilities are delivered through granular Application layer traits (e.g., `FileProvider`) rather than a single massive God-object.
-- **Side-Channel Tracking**: Effectful commands (like `file.write_to`) log their instructions directly into MiniJinja's `State` temporary object cache. The `TemplateService` will execute `render_captured()` to safely extract these commands after the template renders.
+- **Side-Channel Commands**: Effectful extensions (like `file.write_to`) log instructions as Side Channel Commands directly into MiniJinja's `State` temporary object cache. The `TemplateService` will execute `render_captured()` to safely extract and act on these commands after the template renders.
 - **Variable State**: We will rely entirely on native MiniJinja syntax (`{% set %}`) for caching data across the template. No custom global `var.*` module will be built.
 - **Output of side effects**: Void functions like `file.write_to()` will return an empty string rather than requiring `{% do %}` syntax, lowering the friction for template authors.
 
