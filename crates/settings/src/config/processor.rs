@@ -794,8 +794,6 @@ mod tests {
             template: None,
             schema: None,
             cache: None,
-            name: None,
-            version: None,
             trusted_vaults: None,
             frontmatter: None,
             task: None,
@@ -811,8 +809,6 @@ mod tests {
         let now = SystemTime::now();
         RawConfig {
             trusted_vaults: None,
-            name: Some("Test Vault".to_owned()),
-            version: None,
             logging: None,
             cache: None,
             template: None,

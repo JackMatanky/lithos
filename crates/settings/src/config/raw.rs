@@ -8,20 +8,47 @@
     reason = "Raw config DTOs mirror file schema; field docs pending."
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use traces_fs::metadata::FileMetadata;
+
+use super::error::ConfigError;
+
+/// Deserializes raw config [`RawConfig`] from file `content`, dispatching on
+/// the `path` extension.
+///
+/// `.json` (feature `json`) uses JSON, `.yaml`/`.yml` (feature `yaml`) use
+/// YAML, and every other extension — including none — defaults to TOML.
+///
+/// # Errors
+///
+/// Returns [`ConfigError::ValidationFailed`] with `field: "config"` if the
+/// content fails to parse in the selected format.
+#[inline]
+pub fn deserialize_config(
+    path: &Path,
+    content: &str,
+) -> Result<RawConfig, ConfigError> {
+    let parse_error = |message: String| ConfigError::ValidationFailed {
+        field: "config".into(),
+        message: message.into(),
+    };
+
+    match path.extension().and_then(|e| e.to_str()) {
+        #[cfg(feature = "json")]
+        Some("json") => serde_json::from_str(content)
+            .map_err(|e| parse_error(e.to_string())),
+        #[cfg(feature = "yaml")]
+        Some("yaml" | "yml") => serde_yaml::from_str(content)
+            .map_err(|e| parse_error(e.to_string())),
+        _ => toml::from_str(content).map_err(|e| parse_error(e.to_string())),
+    }
+}
 
 /// Raw config parsed from a config file.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
-    /// `LocalConfig` name override (vault-only).
-    pub name: Option<String>,
-
-    /// Version override.
-    pub version: Option<String>,
-
     /// Logging configuration.
     pub logging: Option<RawLogging>,
 
@@ -47,6 +74,9 @@ pub struct RawConfig {
     /// File metadata for staleness detection.
     ///
     /// Populated during discovery/parsing. Not serialized to TOML.
+    ///
+    /// TODO(issue-07): compat shim still consumed by `builder.rs`; remove once
+    /// metadata is threaded through discovery rather than carried on the DTO.
     #[serde(skip)]
     pub metadata: Option<FileMetadata>,
 }
@@ -267,6 +297,116 @@ mod tests {
         }
     }
 
+    mod deserialize_dispatch {
+        use std::path::Path;
+
+        use super::*;
+
+        #[test]
+        fn toml_extension_parses_as_toml() {
+            let content = r#"
+                [logging]
+                log_level = "debug"
+            "#;
+
+            let raw = deserialize_config(Path::new("traces.toml"), content)
+                .expect("toml should parse");
+
+            assert_eq!(
+                raw.logging.and_then(|l| l.log_level).as_deref(),
+                Some("debug")
+            );
+        }
+
+        #[test]
+        fn unknown_extension_defaults_to_toml() {
+            let content = r#"
+                [cache]
+                directory = ".cache"
+            "#;
+
+            let raw = deserialize_config(Path::new("traces.conf"), content)
+                .expect("unknown extension should default to toml");
+
+            assert_eq!(
+                raw.cache.and_then(|c| c.directory).as_deref(),
+                Some(".cache")
+            );
+        }
+
+        #[test]
+        fn no_extension_defaults_to_toml() {
+            let content = r#"
+                [cache]
+                directory = ".cache"
+            "#;
+
+            let raw = deserialize_config(Path::new("traces"), content)
+                .expect("missing extension should default to toml");
+
+            assert!(raw.cache.is_some());
+        }
+
+        #[test]
+        fn invalid_content_maps_to_validation_failed() {
+            let content = "this is = = not valid toml";
+
+            let error = deserialize_config(Path::new("traces.toml"), content)
+                .expect_err("invalid toml should error");
+
+            assert!(
+                matches!(
+                    &error,
+                    ConfigError::ValidationFailed { field, .. }
+                        if &**field == "config"
+                ),
+                "expected ValidationFailed on 'config' field, got {error:?}"
+            );
+        }
+
+        #[cfg(feature = "json")]
+        #[test]
+        fn json_extension_parses_as_json() {
+            let content = r#"{ "logging": { "log_level": "debug" } }"#;
+
+            let raw = deserialize_config(Path::new("traces.json"), content)
+                .expect("json should parse");
+
+            assert_eq!(
+                raw.logging.and_then(|l| l.log_level).as_deref(),
+                Some("debug")
+            );
+        }
+
+        #[cfg(feature = "yaml")]
+        #[test]
+        fn yaml_extension_parses_as_yaml() {
+            let content = "logging:\n  log_level: debug\n";
+
+            let raw = deserialize_config(Path::new("traces.yaml"), content)
+                .expect("yaml should parse");
+
+            assert_eq!(
+                raw.logging.and_then(|l| l.log_level).as_deref(),
+                Some("debug")
+            );
+        }
+
+        #[cfg(feature = "yaml")]
+        #[test]
+        fn yml_extension_parses_as_yaml() {
+            let content = "cache:\n  directory: .cache\n";
+
+            let raw = deserialize_config(Path::new("traces.yml"), content)
+                .expect("yml should parse");
+
+            assert_eq!(
+                raw.cache.and_then(|c| c.directory).as_deref(),
+                Some(".cache")
+            );
+        }
+    }
+
     mod raw_config_files {
         use super::*;
 
@@ -391,8 +531,6 @@ mod tests {
                 template: Some(RawTemplateConfig {
                     directory: Some("templates".to_owned()),
                 }),
-                name: None,
-                version: None,
                 frontmatter: None,
                 logging: None,
                 task: None,
