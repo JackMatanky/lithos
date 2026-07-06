@@ -1,8 +1,33 @@
-//! rkyv serialization helpers for db module.
+//! rkyv serialization helpers for the [`Store`](crate::Store) persistence
+//! layer.
 //!
-//! These helpers provide safe serialization/deserialization for persistent
-//! storage. They enforce strict validation and handle memory alignment
-//! automatically.
+//! The central type is [`RkyvBytes<T>`] — a zero-copy, alignment-aware wrapper
+//! around rkyv-archived byte slices. Domain types derive [`Archive`] and are
+//! stored in redb tables via [`DbRkyvType<T>`], which implements
+//! [`redb::Value`] and [`redb::Key`].
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! # use traces_db::{RkyvBytes, CodecError};
+//! # use rkyv::{Archive, Serialize, Deserialize};
+//! #
+//! # #[derive(Archive, Serialize, Deserialize, Debug, PartialEq)]
+//! # #[rkyv(derive(Debug))]
+//! # struct Note { id: u32, title: String }
+//! #
+//! let original = Note {
+//!     id: 1,
+//!     title: "hello".into(),
+//! };
+//!
+//! let bytes = RkyvBytes::<Note>::encode(&original)?;
+//! let decoded: Note = bytes.decode()?;
+//! assert_eq!(decoded, original);
+//!
+//! bytes.with_archived(|a| assert_eq!(&a.title, "hello"))?;
+//! # Ok::<(), CodecError>(())
+//! ```
 //!
 //! # Architecture Constraints
 //!
@@ -10,7 +35,7 @@
 //!   invokes bytecheck). `access_unchecked` is explicitly forbidden to prevent
 //!   undefined behavior from corrupt database pages.
 //! - **Alignment**: `rkyv` 0.8 requires 16-byte alignment. These helpers
-//!   abstract the complexity of `AlignedVec` and pointer arithmetic away from
+//!   abstract the complexity of [`AlignedVec`] and pointer arithmetic away from
 //!   domain code.
 
 use std::{borrow::Cow, fmt, marker::PhantomData};
@@ -27,7 +52,14 @@ mod private {
 
 use crate::error::CodecError;
 
-/// Types that can be encoded to rkyv bytes.
+/// Marker trait for types that can be serialized to rkyv bytes.
+///
+/// This trait is **automatically implemented** for any type that derives
+/// [`Archive`] and [`Serialize`](rkyv::Serialize). You never need to
+/// implement it manually.
+///
+/// It gates the [`RkyvBytes::encode`] method. See [`RkyvBytes`] for usage
+/// examples.
 pub trait RkyvEncode:
     private::Sealed
     + Archive
@@ -56,14 +88,33 @@ impl<T> RkyvEncode for T where
 }
 
 /// Types that can be decoded from validated rkyv bytes.
+///
+/// This trait is **automatically implemented** for any type that derives
+/// [`Archive`] plus [`Deserialize`](rkyv::Deserialize) and satisfies the
+/// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. It provides two
+/// decoding strategies:
+///
+/// | Method | Allocation | When to use |
+/// |---|---|---|
+/// | [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes) | Owned value | Short-lived reads, mutation, or returning across a borrow boundary |
+/// | [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) | Zero-copy | Read-only field access on a hot path |
+///
+/// See [`RkyvBytes`] for the type-safe wrapper that is the recommended API.
 pub trait RkyvDecode: private::Sealed + Archive + Sized {
     /// Decode bytes into an owned value.
+    ///
+    /// Allocates a new `Self`. Prefer
+    /// [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes)
+    /// for read-only access.
     ///
     /// # Errors
     /// Returns [`CodecError`] if validation or deserialization fails.
     fn decode_from_rkyv_bytes(bytes: &[u8]) -> Result<Self, CodecError>;
 
     /// Access an archived value without materializing it.
+    ///
+    /// The closure receives a validated reference to the archived
+    /// representation. No allocation occurs.
     ///
     /// # Errors
     /// Returns [`CodecError`] if archived byte validation fails.
@@ -85,7 +136,14 @@ where
 {
     #[inline]
     fn decode_from_rkyv_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
-        decode_rkyv(bytes)
+        with_archived_rkyv::<T, _, _>(bytes, |archived| {
+            rkyv::deserialize::<T, rkyv::rancor::Error>(archived).map_err(
+                |source| CodecError::RkyvDeserialize {
+                    type_name: std::any::type_name::<T>(),
+                    source,
+                },
+            )
+        })?
     }
 
     #[inline]
@@ -101,23 +159,63 @@ where
 }
 
 /// Typed rkyv byte storage for borrowed database reads and owned insert values.
+///
+/// `RkyvBytes` wraps an rkyv-archived byte slice with a static type tag.
+/// The type parameter `T` ensures that encode and decode are type-safe:
+/// you cannot decode bytes tagged as one type into another.
+///
+/// The lifetime `'a` distinguishes two modes:
+/// * **Borrowed** (`'a` tied to a database guard) — zero-copy reads from a
+///   table.
+/// * **Owned** (`RkyvBytes<'static, T>`) — values built for insertion or cache
+///   storage.
+///
+/// # Examples
+///
+/// ```rust
+/// # use traces_db::{RkyvBytes, CodecError};
+/// # use rkyv::{Archive, Serialize, Deserialize};
+/// # #[derive(Archive, Serialize, Deserialize, Debug, PartialEq)]
+/// # #[rkyv(derive(Debug))]
+/// # struct Point { x: f32, y: f32 }
+/// #
+/// let p = Point {
+///     x: 1.0,
+///     y: 2.0,
+/// };
+/// let bytes = RkyvBytes::<Point>::encode(&p)?;
+///
+/// // Borrowed view (simulating a database read).
+/// let borrowed = RkyvBytes::<Point>::borrowed(bytes.as_bytes());
+/// let decoded: Point = borrowed.decode()?;
+/// assert_eq!(decoded, p);
+/// # Ok::<(), CodecError>(())
+/// ```
 pub struct RkyvBytes<'a, T> {
+    /// The underlying byte storage — borrowed when read from a table, owned
+    /// when constructed for insertion.
     bytes: Cow<'a, [u8]>,
+    /// Static type tag; never constructed at runtime.
     _ty: PhantomData<T>,
 }
 
-impl<T> fmt::Debug for RkyvBytes<'_, T> {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RkyvBytes")
-            .field("type_name", &std::any::type_name::<T>())
-            .field("len", &self.bytes.len())
-            .finish()
-    }
-}
-
 impl<'a, T> RkyvBytes<'a, T> {
-    /// Borrow typed rkyv bytes from database storage.
+    /// Wrap a borrowed byte slice as typed rkyv bytes.
+    ///
+    /// The returned value borrows from the input slice — typically a
+    /// database page guard. No copying or allocation occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use traces_db::RkyvBytes;
+    /// # use rkyv::{Archive, Serialize, Deserialize};
+    /// # #[derive(Archive, Serialize, Deserialize)]
+    /// # #[rkyv(derive(Debug))]
+    /// # struct T;
+    /// let raw: &[u8] = &[];
+    /// let bytes: RkyvBytes<'_, T> = RkyvBytes::borrowed(raw);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn borrowed(bytes: &'a [u8]) -> Self {
@@ -127,7 +225,18 @@ impl<'a, T> RkyvBytes<'a, T> {
         }
     }
 
-    /// Own typed rkyv bytes for insertion.
+    /// Wrap an owned byte vector as typed rkyv bytes.
+    ///
+    /// The returned value has a `'static` lifetime, making it suitable for
+    /// insertion into a database table or long-lived cache.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use traces_db::RkyvBytes;
+    /// let raw = vec![0u8; 16];
+    /// let bytes: RkyvBytes<'static, ()> = RkyvBytes::owned(raw);
+    /// ```
     #[inline]
     #[must_use]
     pub fn owned(bytes: Vec<u8>) -> RkyvBytes<'static, T> {
@@ -138,6 +247,22 @@ impl<'a, T> RkyvBytes<'a, T> {
     }
 
     /// Borrow the raw stored bytes.
+    ///
+    /// The returned slice is the underlying rkyv archive. It is *not*
+    /// validated — call [`decode`](RkyvBytes::decode) or
+    /// [`with_archived`](RkyvBytes::with_archived) for typed access.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use traces_db::RkyvBytes;
+    /// # use rkyv::{Archive, Serialize, Deserialize};
+    /// # #[derive(Archive, Serialize, Deserialize)]
+    /// # #[rkyv(derive(Debug))]
+    /// # struct T(i32);
+    /// let bytes = RkyvBytes::<T>::encode(&T(42)).unwrap();
+    /// assert!(!bytes.as_bytes().is_empty());
+    /// ```
     #[inline]
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
@@ -146,8 +271,14 @@ impl<'a, T> RkyvBytes<'a, T> {
 
     /// Decode bytes into an owned value.
     ///
+    /// Validates the archive, then deserializes into an owned `T`. Use this
+    /// when you need to return the value or mutate it. For read-only field
+    /// access, prefer [`with_archived`](RkyvBytes::with_archived) to avoid
+    /// allocation.
+    ///
     /// # Errors
-    /// Returns [`CodecError`] if validation or deserialization fails.
+    /// Returns [`CodecError`] if the archived bytes are corrupt or
+    /// deserialization fails.
     #[inline]
     pub fn decode(&self) -> Result<T, CodecError>
     where
@@ -157,6 +288,10 @@ impl<'a, T> RkyvBytes<'a, T> {
     }
 
     /// Access the archived value without materializing it.
+    ///
+    /// The closure receives a validated reference to the archived
+    /// representation. No `T` is allocated — useful for reading a few fields
+    /// on a hot path.
     ///
     /// # Errors
     /// Returns [`CodecError`] if archived byte validation fails.
@@ -171,20 +306,56 @@ impl<'a, T> RkyvBytes<'a, T> {
 }
 
 impl<T> RkyvBytes<'static, T> {
-    /// Encode a value to owned rkyv bytes.
+    /// Serialize a value to owned rkyv bytes.
+    ///
+    /// The returned [`RkyvBytes`] has a `'static` lifetime and can be
+    /// inserted directly into a database table via [`DbRkyvType`].
     ///
     /// # Errors
-    /// Returns [`CodecError`] if serialization fails.
+    /// Returns [`CodecError`] if serialization fails (e.g. for unrepresentable
+    /// enum values).
     #[inline]
     pub fn encode(value: &T) -> Result<Self, CodecError>
     where
         T: RkyvEncode,
     {
-        encode_rkyv(value)
+        rkyv::to_bytes::<rkyv::rancor::Error>(value)
+            .map(|bytes| RkyvBytes::owned(bytes.into_vec()))
+            .map_err(|source| CodecError::RkyvSerialize {
+                type_name: std::any::type_name::<T>(),
+                source,
+            })
     }
 }
 
-/// redb adapter for typed rkyv bytes.
+impl<T> fmt::Debug for RkyvBytes<'_, T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RkyvBytes")
+            .field("type_name", &std::any::type_name::<T>())
+            .field("len", &self.bytes.len())
+            .finish()
+    }
+}
+
+/// Zero-sized adapter that enables [`RkyvBytes<T>`] to be stored in redb tables
+/// as either a [`Value`](redb::Value) or a [`Key`](redb::Key).
+///
+/// Use this type as the value or key type parameter in redb table definitions:
+///
+/// ```rust
+/// # use redb::TableDefinition;
+/// # use traces_db::{RkyvBytes, DbRkyvType};
+/// # use rkyv::{Archive, Serialize, Deserialize};
+/// # #[derive(Archive, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// # #[rkyv(derive(Debug, PartialEq))]
+/// # struct Note { id: u32, title: String }
+/// const TABLE: TableDefinition<&str, DbRkyvType<Note>> =
+///     TableDefinition::new("notes");
+/// ```
+///
+/// The adapter never allocates — it wraps the raw bytes passed by redb into
+/// [`RkyvBytes::borrowed`] and unwraps them back on write.
 #[derive(Clone, Copy)]
 pub struct DbRkyvType<T>(PhantomData<T>);
 
@@ -238,6 +409,11 @@ where
         reason = "redb::Key::compare cannot return Result for invalid stored \
                   bytes"
     )]
+    /// Compare two archived keys by decoding them.
+    ///
+    /// # Panics
+    /// Panics if either byte slice contains corrupt or non-archived data,
+    /// because the `redb::Key` interface cannot return a `Result`.
     fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
         // ponytail: decode-on-compare; specialize hot keys only after
         // profiling.
@@ -249,36 +425,6 @@ where
             .expect("invalid rkyv key bytes");
         left.cmp(&right)
     }
-}
-
-fn encode_rkyv<T>(value: &T) -> Result<RkyvBytes<'static, T>, CodecError>
-where
-    T: RkyvEncode,
-{
-    rkyv::to_bytes::<rkyv::rancor::Error>(value)
-        .map(|bytes| RkyvBytes::owned(bytes.into_vec()))
-        .map_err(|source| CodecError::RkyvSerialize {
-            type_name: std::any::type_name::<T>(),
-            source,
-        })
-}
-
-fn decode_rkyv<T>(bytes: &[u8]) -> Result<T, CodecError>
-where
-    T: Archive,
-    T::Archived: Portable
-        + for<'archived> rkyv::bytecheck::CheckBytes<
-            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
-        > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
-{
-    with_archived_rkyv::<T, _, _>(bytes, |archived| {
-        rkyv::deserialize::<T, rkyv::rancor::Error>(archived).map_err(
-            |source| CodecError::RkyvDeserialize {
-                type_name: std::any::type_name::<T>(),
-                source,
-            },
-        )
-    })?
 }
 
 fn with_archived_rkyv<T, R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
