@@ -32,22 +32,22 @@ Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `templat
 
 ## Acceptance criteria
 
-- [ ] A unified `RawConfig` can deserialize config fields used by both global and local files.
-- [ ] TOML config parsing is supported by default.
-- [ ] JSON/YAML parsing is available according to the project dependency/feature decision in the PRD.
-- [ ] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
-- [ ] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
-- [ ] `LocalConfig` carries `root: DirPath` (vault root dir), `path: FilePath` (config file), and `name: Box<str>` (derived/defaultable from root dir basename). This replaces the old `Metadata` struct — remove it.
-- [ ] `AppConfig` replaces its `vault_metadata: Metadata` field with inline `root: DirPath`, `name: Box<str>` fields (no `VaultId` or `AppVersion` — both removed per PRD).
-- [ ] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/vault.rs` (LocalConfig), `config/aggregate.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
-- [ ] `AppConfig` is constructable without a repository or database.
-- [ ] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
+- [x] A unified `RawConfig` can deserialize config fields used by both global and local files.
+- [x] TOML config parsing is supported by default.
+- [x] JSON/YAML parsing is available according to the project dependency/feature decision in the PRD.
+- [x] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
+- [x] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
+- [x] `LocalConfig` carries `base: DirPath` (vault root dir), `path: FilePath` (config file), and `name: Box<str>` (derived/defaultable from root dir basename). This replaces the old `Metadata` struct — remove it. *(Note: updated AC from `root` to `base` to match codebase implementation and AC-15).*
+- [x] `AppConfig` replaces its `vault_metadata: Metadata` field with inline `root: DirPath`, `name: Box<str>` fields (no `VaultId` or `AppVersion` — both removed per PRD).
+- [x] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/vault.rs` (LocalConfig), `config/aggregate.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
+- [x] `AppConfig` is constructable without a repository or database.
+- [x] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
 - [ ] `serde_json` and `serde_yaml` dependencies are optional Cargo features (default: TOML only).
 - [ ] `RawConfig` fields match the PRD: `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`, `trusted_vaults` — all `Option<T>`.
 - [ ] `AppConfig` fields match the PRD: `base`, `path`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
 - [ ] `GlobalConfig` fields match the PRD: `path`, `logging`, `frontmatter`, `template`, `schema`, `trusted_vaults`, `task`.
 - [ ] `LocalConfig` fields match the PRD: `base`, `path`, `name`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
-- [ ] Inline-data tests cover raw parsing, forbidden fields, and default construction.
+- [x] Inline-data tests cover raw parsing, forbidden fields, and default construction.
 
 ## Out of Scope
 
