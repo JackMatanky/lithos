@@ -48,16 +48,6 @@ pub enum DbError {
     #[error(transparent)]
     Codec(#[from] CodecError),
 
-    /// Serialization failed.
-    #[deprecated(note = "use DbError::Codec")]
-    #[error("serialization error: {0}")]
-    Serialization(String),
-
-    /// Deserialization or validation failed.
-    #[deprecated(note = "use DbError::Codec")]
-    #[error("deserialization error: {0}")]
-    Deserialization(String),
-
     /// TECHNICAL DEBT: Compatibility variant for mock testing and setup
     /// failures.
     ///
@@ -94,15 +84,11 @@ impl DbError {
     /// ```
     /// use traces_db::{DbError, DbErrorKind};
     ///
-    /// let err = DbError::Serialization("failed".into());
-    /// assert_eq!(err.kind(), DbErrorKind::Codec);
+    /// let err = DbError::Corruption("test error".into());
+    /// assert_eq!(err.kind(), DbErrorKind::Storage);
     /// ```
     #[inline]
     #[must_use]
-    #[allow(
-        deprecated,
-        reason = "legacy variants classify as Codec during migration"
-    )]
     pub fn kind(&self) -> DbErrorKind {
         match self {
             Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
@@ -110,9 +96,7 @@ impl DbError {
             Self::Commit(_) => DbErrorKind::Commit,
             Self::Transaction(_) => DbErrorKind::Transaction,
             Self::Table(_) => DbErrorKind::Table,
-            Self::Codec(_)
-            | Self::Serialization(_)
-            | Self::Deserialization(_) => DbErrorKind::Codec,
+            Self::Codec(_) => DbErrorKind::Codec,
         }
     }
 
@@ -194,11 +178,7 @@ impl DbError {
                     || msg.contains("i/o error")
             }
             // All other errors are permanent (not retryable)
-            Self::Corruption(_)
-            | Self::Codec(_)
-            | Self::Deserialization(_)
-            | Self::Serialization(_)
-            | Self::Open(_) => false,
+            Self::Corruption(_) | Self::Codec(_) | Self::Open(_) => false,
         }
     }
 }
@@ -249,24 +229,6 @@ mod tests {
             assert_eq!(err.kind(), DbErrorKind::Table);
         }
 
-        /// `DbError::kind()` returns `DbErrorKind::Codec` for the legacy
-        /// Serialization variant during migration.
-        #[test]
-        #[allow(deprecated, reason = "legacy variant compatibility test")]
-        fn serialization_variant_returns_codec_kind() {
-            let err = DbError::Serialization("test error".to_owned());
-            assert_eq!(err.kind(), DbErrorKind::Codec);
-        }
-
-        /// `DbError::kind()` returns `DbErrorKind::Codec` for the legacy
-        /// Deserialization variant during migration.
-        #[test]
-        #[allow(deprecated, reason = "legacy variant compatibility test")]
-        fn deserialization_variant_returns_codec_kind() {
-            let err = DbError::Deserialization("test error".to_owned());
-            assert_eq!(err.kind(), DbErrorKind::Codec);
-        }
-
         /// `DbError::kind()` returns `DbErrorKind::Storage` for Corruption
         /// variant.
         #[test]
@@ -283,22 +245,6 @@ mod tests {
         #[test]
         fn corruption_is_not_transient() {
             let err = DbError::Corruption("data corrupted".to_owned());
-            assert!(!err.is_transient());
-        }
-
-        /// Deserialization errors are never transient.
-        #[test]
-        #[allow(deprecated, reason = "legacy variant compatibility test")]
-        fn deserialization_is_not_transient() {
-            let err = DbError::Deserialization("invalid data".to_owned());
-            assert!(!err.is_transient());
-        }
-
-        /// Serialization errors are never transient.
-        #[test]
-        #[allow(deprecated, reason = "legacy variant compatibility test")]
-        fn serialization_is_not_transient() {
-            let err = DbError::Serialization("cannot serialize".to_owned());
             assert!(!err.is_transient());
         }
 

@@ -21,8 +21,6 @@ use rkyv::{
     util::AlignedVec,
 };
 
-use crate::DbError;
-
 mod private {
     pub trait Sealed {}
 }
@@ -382,82 +380,6 @@ where
     }
 }
 
-/// A trait for types that can be safely serialized and deserialized to/from the
-/// database.
-///
-/// This trait acts as a codec boundary, hiding the complex `rkyv` trait bounds
-/// and validation logic from domain storage adapters. It provides both owned
-/// (`from_bytes`) and zero-copy (`with_archived`) read paths.
-#[deprecated(note = "use RkyvBytes with RkyvEncode/RkyvDecode")]
-pub trait ArchivedEntity: Sized {
-    /// The zero-copy view of the entity.
-    type View<'a>
-    where
-        Self: 'a;
-
-    /// Serializes the entity to bytes, ensuring correct alignment.
-    ///
-    /// # Errors
-    /// Returns [`DbError::Codec`] if serialization fails.
-    fn to_bytes(&self) -> Result<AlignedVec, DbError>;
-
-    /// Deserializes the entity from bytes, validating them first.
-    ///
-    /// # Errors
-    /// Returns [`DbError::Codec`] if validation or deserialization fails.
-    fn from_bytes(bytes: &[u8]) -> Result<Self, DbError>;
-
-    /// Accesses the zero-copy view of the entity from bytes.
-    ///
-    /// # Errors
-    /// Returns [`DbError::Codec`] if validation fails.
-    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
-    where
-        F: FnOnce(Self::View<'_>) -> R;
-}
-
-// Blanket implementation for any type that derives the necessary rkyv traits.
-#[allow(deprecated, reason = "compatibility shim implements deprecated trait")]
-impl<T> ArchivedEntity for T
-where
-    T: 'static
-        + Archive
-        + for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
-    T::Archived: Portable
-        + for<'archived> rkyv::bytecheck::CheckBytes<
-            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
-        > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
-{
-    type View<'a> = &'a T::Archived;
-
-    #[inline]
-    fn to_bytes(&self) -> Result<AlignedVec, DbError> {
-        let bytes = encode_rkyv(self).map_err(DbError::from)?;
-        let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes.as_bytes());
-        Ok(aligned)
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Result<Self, DbError> {
-        decode_rkyv(bytes).map_err(DbError::from)
-    }
-
-    #[inline]
-    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, DbError>
-    where
-        F: FnOnce(Self::View<'_>) -> R,
-    {
-        with_archived_rkyv::<T, R, F>(bytes, f).map_err(DbError::from)
-    }
-}
-
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -497,6 +419,7 @@ mod tests {
 
     mod codec_error {
         use super::*;
+        use crate::DbError;
 
         #[test]
         fn kind_classifies_codec_error_variants() {
@@ -658,129 +581,6 @@ mod tests {
                 DbRkyvType::<TestKey>::compare(low.as_bytes(), high.as_bytes());
 
             assert!(ordering.is_lt());
-        }
-
-        #[test]
-        #[allow(deprecated, reason = "compatibility shim test")]
-        fn produces_aligned_bytes() {
-            let data = TestData {
-                id: 42,
-                name: "test".to_owned(),
-            };
-            let result = data.to_bytes();
-            assert!(result.is_ok());
-            let bytes = result.unwrap();
-            assert!(!bytes.is_empty());
-        }
-    }
-
-    mod from_bytes {
-        #![allow(deprecated, reason = "compatibility shim tests")]
-
-        use super::*;
-
-        #[test]
-        fn roundtrips_valid_entity() {
-            let original = TestData {
-                id: 123,
-                name: "hello".to_owned(),
-            };
-            let bytes = original.to_bytes().unwrap();
-            let deserialized: TestData = TestData::from_bytes(&bytes).unwrap();
-            assert_eq!(original, deserialized);
-        }
-
-        #[test]
-        fn returns_error_for_invalid_bytes() {
-            let invalid_bytes = &[0u8, 1, 2, 3];
-            let result: Result<TestData, DbError> =
-                TestData::from_bytes(invalid_bytes);
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            assert!(matches!(err, DbError::Codec(_)));
-            assert_eq!(err.kind(), crate::DbErrorKind::Codec);
-        }
-
-        #[test]
-        #[expect(
-            clippy::indexing_slicing,
-            clippy::integer_division,
-            clippy::integer_division_remainder_used,
-            reason = "Test intentionally truncates bytes to verify error \
-                      handling"
-        )]
-        fn returns_error_for_truncated_bytes() {
-            let original = TestData {
-                id: 1,
-                name: "test".to_owned(),
-            };
-            let bytes = original.to_bytes().unwrap();
-            let truncated = &bytes[..bytes.len() / 2];
-            let result: Result<TestData, DbError> =
-                TestData::from_bytes(truncated);
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            assert!(matches!(err, DbError::Codec(_)));
-            assert_eq!(err.kind(), crate::DbErrorKind::Codec);
-        }
-    }
-
-    mod with_archived {
-        #![allow(deprecated, reason = "compatibility shim tests")]
-
-        use super::*;
-
-        #[test]
-        fn provides_zero_copy_access() {
-            let original = TestData {
-                id: 999,
-                name: "zero-copy".to_owned(),
-            };
-            let bytes = original.to_bytes().unwrap();
-            let result = TestData::with_archived(&bytes, |archived| {
-                assert_eq!(archived.id, 999);
-                archived.name.as_str().to_owned()
-            });
-            assert_eq!(result.unwrap(), "zero-copy");
-        }
-
-        #[test]
-        fn uses_fast_path_when_aligned() {
-            let original = TestData {
-                id: 1,
-                name: "aligned".to_owned(),
-            };
-            let bytes = original.to_bytes().unwrap();
-            #[expect(
-                clippy::as_conversions,
-                reason = "Pointer to usize conversion required for alignment \
-                          check"
-            )]
-            let ptr = bytes.as_ptr() as usize;
-            if ptr.is_multiple_of(16) {
-                let result =
-                    TestData::with_archived(&bytes, |archived| archived.id);
-                assert_eq!(result.unwrap(), 1);
-            }
-        }
-
-        #[test]
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "Test intentionally uses unaligned slice to verify error \
-                      handling"
-        )]
-        fn returns_error_for_invalid_unaligned_data() {
-            let original = TestData {
-                id: 2,
-                name: "unaligned".to_owned(),
-            };
-            let bytes = original.to_bytes().unwrap();
-            let unaligned: Vec<u8> = bytes.iter().copied().collect();
-            let result = TestData::with_archived(&unaligned[1..], |archived| {
-                archived.id
-            });
-            result.unwrap_err();
         }
     }
 }

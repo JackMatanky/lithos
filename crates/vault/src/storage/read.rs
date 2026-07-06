@@ -12,7 +12,7 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable as _;
-use traces_db::{ArchivedEntity, path::DbPathKey};
+use traces_db::{DbError, path::DbPathKey};
 use traces_fs::{FileFormat, PathKey};
 
 use super::{
@@ -42,7 +42,7 @@ impl ReadRepository for RedbRepository {
                 };
                 table
                     .get(&id)?
-                    .map(|g| FileView::from_bytes(g.value()))
+                    .map(|g| g.value().decode().map_err(DbError::from))
                     .transpose()
             })
             .map_err(VaultRepositoryError::from)
@@ -61,7 +61,7 @@ impl ReadRepository for RedbRepository {
                 };
                 table
                     .get(&id)?
-                    .map(|g| DirView::from_bytes(g.value()))
+                    .map(|g| g.value().decode().map_err(DbError::from))
                     .transpose()
             })
             .map_err(VaultRepositoryError::from)
@@ -90,7 +90,7 @@ impl ReadRepository for RedbRepository {
                     .map(|id| file_table.get(&id.value()))
                     .transpose()?
                     .flatten()
-                    .map(|g| FileView::from_bytes(g.value()))
+                    .map(|g| g.value().decode().map_err(DbError::from))
                     .transpose()
             })
             .map_err(VaultRepositoryError::from)
@@ -119,7 +119,7 @@ impl ReadRepository for RedbRepository {
                     .map(|id| dir_table.get(&id.value()))
                     .transpose()?
                     .flatten()
-                    .map(|g| DirView::from_bytes(g.value()))
+                    .map(|g| g.value().decode().map_err(DbError::from))
                     .transpose()
             })
             .map_err(VaultRepositoryError::from)
@@ -162,7 +162,9 @@ impl ReadRepository for RedbRepository {
                 let mut files = Vec::new();
                 for id_result in multimap.get(basename)? {
                     if let Some(guard) = file_table.get(&id_result?.value())? {
-                        files.push(FileView::from_bytes(guard.value())?);
+                        files.push(
+                            guard.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -192,7 +194,9 @@ impl ReadRepository for RedbRepository {
                 let mut files = Vec::new();
                 for id_result in multimap.get(&parent_id)? {
                     if let Some(guard) = file_table.get(&id_result?.value())? {
-                        files.push(FileView::from_bytes(guard.value())?);
+                        files.push(
+                            guard.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -223,7 +227,9 @@ impl ReadRepository for RedbRepository {
                 let mut files = Vec::new();
                 for id_result in multimap.get(format_key)? {
                     if let Some(guard) = file_table.get(&id_result?.value())? {
-                        files.push(FileView::from_bytes(guard.value())?);
+                        files.push(
+                            guard.value().decode().map_err(DbError::from)?,
+                        );
                     }
                 }
 
@@ -251,7 +257,7 @@ impl ReadRepository for RedbRepository {
                 let mut files = Vec::new();
                 for result in table.iter()? {
                     let (_, guard) = result?;
-                    files.push(FileView::from_bytes(guard.value())?);
+                    files.push(guard.value().decode().map_err(DbError::from)?);
                 }
 
                 Ok(files)
@@ -292,7 +298,7 @@ impl ReadRepository for RedbRepository {
                 let mut dirs = Vec::new();
                 for result in table.iter()? {
                     let (_, guard) = result?;
-                    dirs.push(DirView::from_bytes(guard.value())?);
+                    dirs.push(guard.value().decode().map_err(DbError::from)?);
                 }
 
                 Ok(dirs)
@@ -335,7 +341,7 @@ mod tests {
     //! organised by capability following the Structure A convention.
     use std::sync::Arc;
 
-    use traces_db::{ArchivedEntity, Store};
+    use traces_db::{RkyvBytes, Store};
     use traces_fs::{
         DirMetadata, DirName, FileFormat, FileMetadata, FileName, FsTimes,
         PathKey,
@@ -357,12 +363,12 @@ mod tests {
 
     /// Seeds a [`FileView`] into the `FILE_VIEWS` table.
     fn seed_file(repo: &RedbRepository, file: &FileView) {
-        let bytes = file.to_bytes().unwrap();
+        let bytes = RkyvBytes::encode(file).unwrap();
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(super::FILE_VIEWS.definition())?;
-                table.insert(&file.id(), bytes.as_ref())?;
+                table.insert(&file.id(), &bytes)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
@@ -370,12 +376,12 @@ mod tests {
 
     /// Seeds a [`DirView`] into the `DIR_VIEWS` table.
     fn seed_dir(repo: &RedbRepository, dir: &DirView) {
-        let bytes = dir.to_bytes().unwrap();
+        let bytes = RkyvBytes::encode(dir).unwrap();
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.try_open_table(super::DIR_VIEWS.definition())?;
-                table.insert(&dir.id(), bytes.as_ref())?;
+                table.insert(&dir.id(), &bytes)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
@@ -469,14 +475,14 @@ mod tests {
                 [1u8; 32],
             );
             let path = PathKey::try_new("notes/test.md").unwrap();
-            let file_bytes = file.to_bytes().unwrap();
+            let file_bytes = RkyvBytes::encode(&file).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
                         tx.try_open_table(super::FILE_VIEWS.definition())?;
                     let mut path_table =
                         tx.try_open_table(super::FILE_ID_BY_PATH.definition())?;
-                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    file_table.insert(&file.id(), &file_bytes)?;
                     path_table.insert(
                         traces_db::DbPathKey::from(&path),
                         &file.id(),
@@ -502,14 +508,14 @@ mod tests {
                 DirMetadata::new(FsTimes::new(None, None), false),
             );
             let path = PathKey::try_new("notes").unwrap();
-            let dir_bytes = dir.to_bytes().unwrap();
+            let dir_bytes = RkyvBytes::encode(&dir).unwrap();
             repo.store
                 .write(|tx| {
                     let mut dir_table =
                         tx.try_open_table(super::DIR_VIEWS.definition())?;
                     let mut path_table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
-                    dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
+                    dir_table.insert(&dir.id(), &dir_bytes)?;
                     path_table
                         .insert(traces_db::DbPathKey::from(&path), &dir.id())?;
                     Ok::<_, traces_db::DbError>(())
@@ -541,8 +547,8 @@ mod tests {
                 DirMetadata::new(FsTimes::new(None, None), false),
             );
             let path = PathKey::try_new("test").unwrap();
-            let file_bytes = file.to_bytes().unwrap();
-            let dir_bytes = dir.to_bytes().unwrap();
+            let file_bytes = RkyvBytes::encode(&file).unwrap();
+            let dir_bytes = RkyvBytes::encode(&dir).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
@@ -553,12 +559,12 @@ mod tests {
                         tx.try_open_table(super::DIR_VIEWS.definition())?;
                     let mut dir_path_table =
                         tx.try_open_table(super::DIR_ID_BY_PATH.definition())?;
-                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    file_table.insert(&file.id(), &file_bytes)?;
                     file_path_table.insert(
                         traces_db::DbPathKey::from(&path),
                         &file.id(),
                     )?;
-                    dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
+                    dir_table.insert(&dir.id(), &dir_bytes)?;
                     dir_path_table
                         .insert(traces_db::DbPathKey::from(&path), &dir.id())?;
                     Ok::<_, traces_db::DbError>(())
@@ -605,16 +611,16 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 256, false),
                 [4u8; 32],
             );
-            let f1_bytes = file1.to_bytes().unwrap();
-            let f2_bytes = file2.to_bytes().unwrap();
+            let f1_bytes = RkyvBytes::encode(&file1).unwrap();
+            let f2_bytes = RkyvBytes::encode(&file2).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
                         tx.try_open_table(super::FILE_VIEWS.definition())?;
                     let mut basename_map =
                         tx.try_open_multimap(super::FILE_IDS_BY_BASENAME)?;
-                    file_table.insert(&file1.id(), f1_bytes.as_ref())?;
-                    file_table.insert(&file2.id(), f2_bytes.as_ref())?;
+                    file_table.insert(&file1.id(), &f1_bytes)?;
+                    file_table.insert(&file2.id(), &f2_bytes)?;
                     basename_map.insert("shared", &file1.id())?;
                     basename_map.insert("shared", &file2.id())?;
                     Ok::<_, traces_db::DbError>(())
@@ -646,7 +652,7 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 128, false),
                 [0u8; 32],
             );
-            let file_bytes = file.to_bytes().unwrap();
+            let file_bytes = RkyvBytes::encode(&file).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
@@ -654,7 +660,7 @@ mod tests {
                     let mut parent_map = tx.try_open_multimap(
                         super::FILE_IDS_BY_PARENT.definition(),
                     )?;
-                    file_table.insert(&file.id(), file_bytes.as_ref())?;
+                    file_table.insert(&file.id(), &file_bytes)?;
                     parent_map.insert(&parent_id, &file.id())?;
                     Ok::<_, traces_db::DbError>(())
                 })
@@ -691,16 +697,16 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 64, false),
                 [6u8; 32],
             );
-            let md_bytes = md_file.to_bytes().unwrap();
-            let json_bytes = json_file.to_bytes().unwrap();
+            let md_bytes = RkyvBytes::encode(&md_file).unwrap();
+            let json_bytes = RkyvBytes::encode(&json_file).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
                         tx.try_open_table(super::FILE_VIEWS.definition())?;
                     let mut format_map =
                         tx.try_open_multimap(super::FILE_IDS_BY_FORMAT)?;
-                    file_table.insert(&md_file.id(), md_bytes.as_ref())?;
-                    file_table.insert(&json_file.id(), json_bytes.as_ref())?;
+                    file_table.insert(&md_file.id(), &md_bytes)?;
+                    file_table.insert(&json_file.id(), &json_bytes)?;
                     format_map.insert("markdown", &md_file.id())?;
                     format_map.insert("json", &json_file.id())?;
                     Ok::<_, traces_db::DbError>(())
@@ -734,16 +740,16 @@ mod tests {
                 FileMetadata::new(FsTimes::new(None, None), 64, false),
                 [0u8; 32],
             );
-            let md_bytes = md_file.to_bytes().unwrap();
-            let json_bytes = json_file.to_bytes().unwrap();
+            let md_bytes = RkyvBytes::encode(&md_file).unwrap();
+            let json_bytes = RkyvBytes::encode(&json_file).unwrap();
             repo.store
                 .write(|tx| {
                     let mut file_table =
                         tx.try_open_table(super::FILE_VIEWS.definition())?;
                     let mut format_map =
                         tx.try_open_multimap(super::FILE_IDS_BY_FORMAT)?;
-                    file_table.insert(&md_file.id(), md_bytes.as_ref())?;
-                    file_table.insert(&json_file.id(), json_bytes.as_ref())?;
+                    file_table.insert(&md_file.id(), &md_bytes)?;
+                    file_table.insert(&json_file.id(), &json_bytes)?;
                     format_map.insert("markdown", &md_file.id())?;
                     format_map.insert("json", &json_file.id())?;
                     Ok::<_, traces_db::DbError>(())

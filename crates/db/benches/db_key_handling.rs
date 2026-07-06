@@ -168,7 +168,7 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use redb::TableDefinition;
 use tempfile::TempDir;
-use traces_db::{ArchivedEntity, Store};
+use traces_db::{RkyvBytes, Store};
 use uuid::Uuid;
 
 const TEMPLATES_TABLE_UUID: TableDefinition<[u8; 16], &[u8]> =
@@ -242,12 +242,12 @@ fn bench_uuid_handling(c: &mut Criterion) {
     store
         .write(|tx| -> Result<(), traces_db::DbError> {
             let uuid_bytes = *test_uuid.as_bytes();
-            let value_bytes = "test_value".to_owned().to_bytes()?;
+            let value_bytes = RkyvBytes::encode(&"test_value".to_owned())?;
             let mut table_uuid = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
-            table_uuid.insert(uuid_bytes, value_bytes.as_ref())?;
+            table_uuid.insert(uuid_bytes, value_bytes.as_bytes())?;
 
             let mut table_str = tx.try_open_table(TEMPLATES_TABLE_STR)?;
-            table_str.insert(test_key.as_str(), value_bytes.as_ref())?;
+            table_str.insert(test_key.as_str(), value_bytes.as_bytes())?;
             Ok(())
         })
         .expect("setup");
@@ -265,9 +265,10 @@ fn bench_uuid_handling(c: &mut Criterion) {
                         tx.try_open_table(TEMPLATES_TABLE_STR)?
                         && let Some(guard) = table.get(id_str)?
                     {
-                        String::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<String>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -285,9 +286,10 @@ fn bench_uuid_handling(c: &mut Criterion) {
                         tx.try_open_table(TEMPLATES_TABLE_STR)?
                         && let Some(guard) = table.get(id_str.as_str())?
                     {
-                        String::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<String>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -303,9 +305,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let uuid_bytes = *uuid.as_bytes();
                     let value_bytes =
-                        "benchmark_value".to_owned().to_bytes()?;
+                        RkyvBytes::encode(&"benchmark_value".to_owned())?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
-                    table.insert(uuid_bytes, value_bytes.as_ref())?;
+                    table.insert(uuid_bytes, value_bytes.as_bytes())?;
                     Ok(())
                 })
                 .expect("put_by_uuid");
@@ -320,9 +322,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
             store
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let value_bytes =
-                        "benchmark_value".to_owned().to_bytes()?;
+                        RkyvBytes::encode(&"benchmark_value".to_owned())?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
-                    table.insert(id_str.as_str(), value_bytes.as_ref())?;
+                    table.insert(id_str.as_str(), value_bytes.as_bytes())?;
                     Ok(())
                 })
                 .expect("put");
@@ -336,9 +338,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
             store
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let uuid_bytes = *uuid.as_bytes();
-                    let value_bytes = "temp".to_owned().to_bytes()?;
+                    let value_bytes = RkyvBytes::encode(&"temp".to_owned())?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_UUID)?;
-                    table.insert(uuid_bytes, value_bytes.as_ref())?;
+                    table.insert(uuid_bytes, value_bytes.as_bytes())?;
                     Ok(())
                 })
                 .expect("setup");
@@ -362,9 +364,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
             let id_str = uuid.to_string();
             store
                 .write(|tx| -> Result<(), traces_db::DbError> {
-                    let value_bytes = "temp".to_owned().to_bytes()?;
+                    let value_bytes = RkyvBytes::encode(&"temp".to_owned())?;
                     let mut table = tx.try_open_table(TEMPLATES_TABLE_STR)?;
-                    table.insert(id_str.as_str(), value_bytes.as_ref())?;
+                    table.insert(id_str.as_str(), value_bytes.as_bytes())?;
                     Ok(())
                 })
                 .expect("setup");
@@ -433,8 +435,8 @@ fn bench_key_formatting(c: &mut Criterion) {
             let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
             for i in 0..100u32 {
                 let key = format!("key-{i:04}");
-                let value_bytes = format!("value-{i}").to_bytes()?;
-                table.insert(key.as_str(), value_bytes.as_ref())?;
+                let value_bytes = RkyvBytes::encode(&format!("value-{i}"))?;
+                table.insert(key.as_str(), value_bytes.as_bytes())?;
             }
             Ok(())
         })
@@ -451,9 +453,10 @@ fn bench_key_formatting(c: &mut Criterion) {
                     if let Some(table) = tx.try_open_table(BENCHMARK_TABLE)?
                         && let Some(guard) = table.get(black_box("key-0050"))?
                     {
-                        String::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<String>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -469,11 +472,12 @@ fn bench_key_formatting(c: &mut Criterion) {
             counter += 1;
             store
                 .write(|tx| -> Result<(), traces_db::DbError> {
-                    let value_bytes = "test_value".to_owned().to_bytes()?;
+                    let value_bytes =
+                        RkyvBytes::encode(&"test_value".to_owned())?;
                     let mut table = tx.try_open_table(BENCHMARK_TABLE)?;
                     table.insert(
                         key.as_str(),
-                        black_box(value_bytes.as_ref()),
+                        black_box(value_bytes.as_bytes()),
                     )?;
                     Ok(())
                 })

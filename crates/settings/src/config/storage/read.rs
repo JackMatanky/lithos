@@ -8,7 +8,6 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable as _;
-use traces_db::ArchivedEntity;
 
 use super::{
     RedbRepository,
@@ -52,7 +51,9 @@ impl ReadRepository for RedbRepository {
 
                 table
                     .get(max.to_string().as_str())?
-                    .map(|g| GlobalConfig::from_bytes(g.value()))
+                    .map(|g| {
+                        g.value().decode().map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -95,7 +96,9 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{prefix}{max}");
                 table
                     .get(key.as_str())?
-                    .map(|g| LocalConfig::from_bytes(g.value()))
+                    .map(|g| {
+                        g.value().decode().map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -118,7 +121,9 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{}:{}", vault_id, version.value());
                 table
                     .get(key.as_str())?
-                    .map(|g| AppConfig::from_bytes(g.value()))
+                    .map(|g| {
+                        g.value().decode().map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -156,9 +161,9 @@ impl ReadRepository for RedbRepository {
                     return Ok(None);
                 };
 
-                Version::try_from(max).map(Some).map_err(|e| {
-                    traces_db::DbError::Deserialization(e.to_string())
-                })
+                Version::try_from(max)
+                    .map(Some)
+                    .map_err(|e| traces_db::DbError::Corruption(e.to_string()))
             })
             .map_err(ConfigRepositoryError::from)
     }
@@ -184,7 +189,11 @@ impl ReadRepository for RedbRepository {
                 let key = format!("{}:{}", vault_id, version.value());
                 table
                     .get(key.as_str())?
-                    .map(|g| AppConfig::with_archived(g.value(), f))
+                    .map(|g| {
+                        g.value()
+                            .with_archived(f)
+                            .map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -205,7 +214,7 @@ impl ReadRepository for RedbRepository {
 
                 table
                     .get(vault_root.as_key().as_str())?
-                    .map(|g| VaultId::from_bytes(g.value()))
+                    .map(|g| Ok(g.value()))
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -225,7 +234,9 @@ impl ReadRepository for RedbRepository {
 
                 table
                     .get("global")?
-                    .map(|g| RawGlobalConfigView::from_bytes(g.value()))
+                    .map(|g| {
+                        g.value().decode().map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -246,7 +257,9 @@ impl ReadRepository for RedbRepository {
 
                 table
                     .get(&vault_id)?
-                    .map(|g| RawVaultConfigView::from_bytes(g.value()))
+                    .map(|g| {
+                        g.value().decode().map_err(traces_db::DbError::from)
+                    })
                     .transpose()
             })
             .map_err(ConfigRepositoryError::from)
@@ -261,7 +274,7 @@ impl ReadRepository for RedbRepository {
 mod tests {
     use std::sync::Arc;
 
-    use traces_db::{ArchivedEntity, Store};
+    use traces_db::Store;
 
     use super::*;
     use crate::config::aggregate::fixtures as config_fixtures;
@@ -293,15 +306,15 @@ mod tests {
             global1.task().cloned(),
         );
 
-        let bytes1 = global1.to_bytes().unwrap();
-        let bytes2 = global2.to_bytes().unwrap();
+        let bytes1 = traces_db::RkyvBytes::encode(&global1).unwrap();
+        let bytes2 = traces_db::RkyvBytes::encode(&global2).unwrap();
 
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.inner.open_table(GLOBAL_CONFIG.definition())?;
-                table.insert("1", bytes1.as_slice())?;
-                table.insert("2", bytes2.as_slice())?;
+                table.insert("1", &bytes1)?;
+                table.insert("2", &bytes2)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
@@ -315,14 +328,14 @@ mod tests {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
         let vault = LocalConfig::default();
-        let bytes = vault.to_bytes().unwrap();
+        let bytes = traces_db::RkyvBytes::encode(&vault).unwrap();
 
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.inner.open_table(VAULT_CONFIG.definition())?;
                 let key = format!("{vault_id}:1");
-                table.insert(key.as_str(), bytes.as_slice())?;
+                table.insert(key.as_str(), &bytes)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
@@ -336,7 +349,7 @@ mod tests {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
         let config = config_fixtures::test_config();
-        let bytes = config.to_bytes().unwrap();
+        let bytes = traces_db::RkyvBytes::encode(&config).unwrap();
         let version = config.version();
 
         repo.store
@@ -344,7 +357,7 @@ mod tests {
                 let mut table =
                     tx.inner.open_table(CONFIG_VERSIONS.definition())?;
                 let key = format!("{vault_id}:{}", version.value());
-                table.insert(key.as_str(), bytes.as_slice())?;
+                table.insert(key.as_str(), &bytes)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();
@@ -358,13 +371,13 @@ mod tests {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
         let root = config_fixtures::vault_root("/test");
-        let id_bytes = vault_id.to_bytes().unwrap();
+        let id_bytes = vault_id;
 
         repo.store
             .write(|tx| {
                 let mut table =
                     tx.inner.open_table(VAULT_ID_BY_PATH.definition())?;
-                table.insert(root.as_key().as_str(), id_bytes.as_slice())?;
+                table.insert(root.as_key().as_str(), id_bytes)?;
                 Ok::<_, traces_db::DbError>(())
             })
             .unwrap();

@@ -497,9 +497,9 @@ impl ReadRepository for RedbRepository {
 
         crate::index::SchemaIndex::from_pairs(name_pairs, path_pairs).map_err(
             |e| {
-                SchemaRepositoryError::from(
-                    traces_db::DbError::Deserialization(e.to_string()),
-                )
+                SchemaRepositoryError::from(traces_db::DbError::Corruption(
+                    e.to_string(),
+                ))
             },
         )
     }
@@ -581,8 +581,8 @@ impl ReadRepository for RedbRepository {
 #[inline]
 fn parse_schema_name_key(key: &str) -> Result<SchemaName, traces_db::DbError> {
     SchemaName::try_from(key).map_err(|error| {
-        traces_db::DbError::Deserialization(format!(
-            "invalid schema-name index key '{key}': {error}"
+        traces_db::DbError::Corruption(format!(
+            "invalid schema-name index key '{key}': {error}",
         ))
     })
 }
@@ -610,7 +610,7 @@ fn parse_schema_name_key(key: &str) -> Result<SchemaName, traces_db::DbError> {
 #[inline]
 fn parse_path_key(key: &str) -> Result<PathKey, traces_db::DbError> {
     PathKey::try_new(key).map_err(|error| {
-        traces_db::DbError::Deserialization(format!(
+        traces_db::DbError::Corruption(format!(
             "invalid schema-path index key '{key}': {error}"
         ))
     })

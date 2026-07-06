@@ -213,7 +213,7 @@ use criterion::{
 };
 use redb::{ReadableTable, TableDefinition};
 use tempfile::TempDir;
-use traces_db::{ArchivedEntity, Store};
+use traces_db::{RkyvBytes, Store};
 use traces_fs::metadata::{FileMetadata, FsTimes};
 use traces_note::{
     aggregate::{Note, NoteId},
@@ -252,8 +252,8 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Store, Vec<NoteId>) {
                 let note = create_test_note(i);
                 let id_str = Uuid::from(note.id()).to_string();
                 note_ids.push(note.id());
-                let bytes = note.to_bytes()?;
-                table.insert(id_str.as_str(), bytes.as_ref())?;
+                let bytes = RkyvBytes::encode(&note)?;
+                table.insert(id_str.as_str(), bytes.as_bytes())?;
             }
             Ok(())
         })
@@ -326,9 +326,10 @@ fn bench_zero_copy_read(c: &mut Criterion) {
                     if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
                         && let Some(guard) = table.get(test_key.as_str())?
                     {
-                        Note::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<Note>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -404,7 +405,11 @@ fn bench_full_deserialize(c: &mut Criterion) {
                     if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
                         && let Some(guard) = table.get(test_key.as_str())?
                     {
-                        return Ok(Some(Note::from_bytes(guard.value())?));
+                        return Ok(Some(
+                            RkyvBytes::<Note>::borrowed(guard.value())
+                                .decode()
+                                .map_err(traces_db::DbError::from)?,
+                        ));
                     }
                     Ok(None)
                 })
@@ -455,8 +460,8 @@ fn bench_single_write(c: &mut Criterion) {
             store
                 .write(|tx| -> Result<(), traces_db::DbError> {
                     let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
-                    let bytes = note.to_bytes()?;
-                    table.insert(id_str.as_str(), bytes.as_ref())?;
+                    let bytes = RkyvBytes::encode(&note)?;
+                    table.insert(id_str.as_str(), bytes.as_bytes())?;
                     Ok(())
                 })
                 .expect("put note");
@@ -521,9 +526,11 @@ fn bench_batch_write(c: &mut Criterion) {
                             for i in 0..size {
                                 let note = create_test_note(i as usize);
                                 let id_str = Uuid::from(note.id()).to_string();
-                                let bytes = note.to_bytes()?;
-                                table
-                                    .insert(id_str.as_str(), bytes.as_ref())?;
+                                let bytes = RkyvBytes::encode(&note)?;
+                                table.insert(
+                                    id_str.as_str(),
+                                    bytes.as_bytes(),
+                                )?;
                             }
                             Ok(())
                         })
@@ -622,9 +629,10 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
                     if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
                         && let Some(guard) = table.get(hot_key.as_str())?
                     {
-                        Note::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<Note>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -643,9 +651,10 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
                     if let Some(table) = tx.try_open_table(NOTES_BY_ID_TABLE)?
                         && let Some(guard) = table.get(cold_id)?
                     {
-                        Note::with_archived(guard.value(), |archived| {
-                            black_box(archived);
-                        })?;
+                        RkyvBytes::<Note>::borrowed(guard.value())
+                            .with_archived(|archived| {
+                                black_box(archived);
+                            })?;
                     }
                     Ok(())
                 })
@@ -708,8 +717,8 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                 store
                     .write(|tx| -> Result<(), traces_db::DbError> {
                         let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
-                        let bytes = note.to_bytes()?;
-                        table.insert(id_str.as_str(), bytes.as_ref())?;
+                        let bytes = RkyvBytes::encode(&note)?;
+                        table.insert(id_str.as_str(), bytes.as_bytes())?;
                         Ok(())
                     })
                     .expect("put note");
@@ -732,8 +741,8 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                     for i in 0..batch_size {
                         let note = create_test_note(i as usize);
                         let id_str = Uuid::from(note.id()).to_string();
-                        let bytes = note.to_bytes()?;
-                        table.insert(id_str.as_str(), bytes.as_ref())?;
+                        let bytes = RkyvBytes::encode(&note)?;
+                        table.insert(id_str.as_str(), bytes.as_bytes())?;
                     }
                     Ok(())
                 })
@@ -798,8 +807,8 @@ fn bench_scan_range(c: &mut Criterion) {
             let mut table = tx.try_open_table(NOTES_BY_ID_TABLE)?;
             for (i, note) in notes.iter().enumerate() {
                 let key = format!("notes/test-{i:04}");
-                let bytes = note.to_bytes()?;
-                table.insert(key.as_str(), bytes.as_ref())?;
+                let bytes = RkyvBytes::encode(note)?;
+                table.insert(key.as_str(), bytes.as_bytes())?;
             }
             Ok(())
         })
@@ -819,9 +828,10 @@ fn bench_scan_range(c: &mut Criterion) {
                         let end_bound = next_prefix(prefix);
                         for result in table.range(prefix..end_bound.as_str())? {
                             let (_key, guard) = result.expect("range result");
-                            Note::with_archived(guard.value(), |archived| {
-                                black_box(archived);
-                            })?;
+                            RkyvBytes::<Note>::borrowed(guard.value())
+                                .with_archived(|archived| {
+                                    black_box(archived);
+                                })?;
                             count += 1;
                         }
                     }
@@ -844,12 +854,12 @@ fn bench_scan_range(c: &mut Criterion) {
                             let (key_guard, value_guard) =
                                 result.expect("iter result");
                             if key_guard.value().starts_with(prefix) {
-                                Note::with_archived(
+                                RkyvBytes::<Note>::borrowed(
                                     value_guard.value(),
-                                    |archived| {
-                                        black_box(archived);
-                                    },
-                                )?;
+                                )
+                                .with_archived(|archived| {
+                                    black_box(archived);
+                                })?;
                                 count += 1;
                             }
                         }

@@ -58,8 +58,6 @@ mod write;
 
 pub use core::Store;
 
-#[allow(deprecated, reason = "temporary compatibility export")]
-pub use codec::ArchivedEntity;
 pub use codec::{
     CodecError, CodecErrorKind, DbRkyvType, RkyvBytes, RkyvDecode, RkyvEncode,
 };

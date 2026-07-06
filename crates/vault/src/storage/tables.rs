@@ -27,9 +27,11 @@
 //! [`RedbRepository`]: super::RedbRepository
 
 use redb::MultimapTableDefinition;
-use traces_db::{PathUuidTable, UuidMultimap, UuidPathTable, UuidTable};
+use traces_db::{
+    DbRkyvType, PathUuidTable, UuidMultimap, UuidPathTable, UuidTable,
+};
 
-use super::super::model::{DirId, FileId};
+use super::super::model::{DirId, DirView, FileId, FileView};
 
 /// File views with bincode serialization.
 ///
@@ -42,7 +44,7 @@ use super::super::model::{DirId, FileId};
 ///
 /// Key: `FileId`
 /// Value: bincode-serialized `FileView`
-pub(crate) const FILE_VIEWS: UuidTable<FileId, &[u8]> =
+pub(crate) const FILE_VIEWS: UuidTable<FileId, DbRkyvType<FileView>> =
     UuidTable::new("file_views");
 
 /// Directory views with bincode serialization.
@@ -52,7 +54,7 @@ pub(crate) const FILE_VIEWS: UuidTable<FileId, &[u8]> =
 ///
 /// Key: `DirId`
 /// Value: bincode-serialized `DirView`
-pub(crate) const DIR_VIEWS: UuidTable<DirId, &[u8]> =
+pub(crate) const DIR_VIEWS: UuidTable<DirId, DbRkyvType<DirView>> =
     UuidTable::new("dir_views");
 
 /// Path-to-file-id index for path-based file lookup.

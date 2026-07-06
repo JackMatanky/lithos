@@ -1308,15 +1308,15 @@ mod tests {
 
         #[test]
         fn db_error_converts_into_schema_repository_error() {
-            let db_error = DbError::Serialization("test".into());
+            let db_error = DbError::Corruption("test".into());
             let repo_error: SchemaRepositoryError = db_error.into();
 
             assert!(
                 matches!(
                     repo_error,
-                    SchemaRepositoryError::Storage(DbError::Serialization(_))
+                    SchemaRepositoryError::Storage(DbError::Corruption(_))
                 ),
-                "Expected DbError::Serialization to convert into \
+                "Expected DbError::Corruption to convert into \
                  SchemaRepositoryError::Storage(_)"
             );
         }

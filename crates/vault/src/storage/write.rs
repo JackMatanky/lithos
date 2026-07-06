@@ -34,7 +34,7 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable as _;
-use traces_db::{ArchivedEntity, DbError, WriteTx, path::DbPathKey};
+use traces_db::{DbError, WriteTx, path::DbPathKey};
 use traces_fs::{BaseName, PathKey};
 
 use super::{
@@ -58,10 +58,11 @@ impl WriteRepository for RedbRepository {
         path: &PathKey,
         file: &FileView,
     ) -> Result<(), VaultRepositoryError> {
-        let file_bytes = file.to_bytes()?;
+        let file_bytes =
+            traces_db::RkyvBytes::encode(file).map_err(DbError::from)?;
         let basename =
             BaseName::try_from(file.name().clone()).map_err(|e| {
-                VaultRepositoryError::Storage(DbError::Deserialization(
+                VaultRepositoryError::Storage(DbError::Corruption(
                     e.to_string(),
                 ))
             })?;
@@ -82,7 +83,7 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_multimap(FILE_IDS_BY_PARENT.definition())?;
                 let mut by_format = tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
-                file_table.insert(&file.id(), file_bytes.as_ref())?;
+                file_table.insert(&file.id(), &file_bytes)?;
                 path_table.insert(DbPathKey::from(path), &file.id())?;
                 reverse_path_table.insert(&file.id(), DbPathKey::from(path))?;
                 by_basename.insert(basename.as_str(), &file.id())?;
@@ -101,7 +102,8 @@ impl WriteRepository for RedbRepository {
         path: &PathKey,
         dir: &DirView,
     ) -> Result<(), VaultRepositoryError> {
-        let dir_bytes = dir.to_bytes()?;
+        let dir_bytes =
+            traces_db::RkyvBytes::encode(dir).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), DbError> {
@@ -113,7 +115,7 @@ impl WriteRepository for RedbRepository {
                     tx.try_open_table(DIR_ID_BY_PATH.definition())?;
                 let mut reverse_path_table =
                     tx.try_open_table(PATH_BY_DIR_ID.definition())?;
-                dir_table.insert(&dir.id(), dir_bytes.as_ref())?;
+                dir_table.insert(&dir.id(), &dir_bytes)?;
                 path_table.insert(DbPathKey::from(path), &dir.id())?;
                 reverse_path_table.insert(&dir.id(), DbPathKey::from(path))?;
                 Ok(())
@@ -145,11 +147,13 @@ impl WriteRepository for RedbRepository {
             .map(|(path, file)| {
                 let basename = BaseName::try_from(file.name().clone())
                     .map_err(|e| {
-                        VaultRepositoryError::Storage(DbError::Deserialization(
+                        VaultRepositoryError::Storage(DbError::Corruption(
                             e.to_string(),
                         ))
                     })?;
-                Ok((path.clone(), file.clone(), file.to_bytes()?, basename))
+                let bytes = traces_db::RkyvBytes::encode(file)
+                    .map_err(DbError::from)?;
+                Ok((path.clone(), file.clone(), bytes, basename))
             })
             .collect();
         let prepared = prepared?;
@@ -170,7 +174,7 @@ impl WriteRepository for RedbRepository {
                     let mut by_format =
                         tx.try_open_multimap(FILE_IDS_BY_FORMAT)?;
 
-                    file_table.insert(&file.id(), bytes.as_ref())?;
+                    file_table.insert(&file.id(), bytes)?;
                     path_table.insert(DbPathKey::from(path), &file.id())?;
                     by_basename.insert(basename.as_str(), &file.id())?;
                     if let Some(parent_id) = file.parent_id() {
@@ -190,7 +194,11 @@ impl WriteRepository for RedbRepository {
     ) -> Result<(), VaultRepositoryError> {
         let prepared: Result<Vec<_>, VaultRepositoryError> = entries
             .iter()
-            .map(|(path, dir)| Ok((path.clone(), dir.clone(), dir.to_bytes()?)))
+            .map(|(path, dir)| {
+                let bytes =
+                    traces_db::RkyvBytes::encode(dir).map_err(DbError::from)?;
+                Ok((path.clone(), dir.clone(), bytes))
+            })
             .collect();
         let prepared = prepared?;
 
@@ -203,7 +211,7 @@ impl WriteRepository for RedbRepository {
                         tx.try_open_table(DIR_VIEWS.definition())?;
                     let mut path_table =
                         tx.try_open_table(DIR_ID_BY_PATH.definition())?;
-                    dir_table.insert(&dir.id(), bytes.as_ref())?;
+                    dir_table.insert(&dir.id(), bytes)?;
                     path_table.insert(DbPathKey::from(path), &dir.id())?;
                 }
                 Ok(())
@@ -393,13 +401,13 @@ impl FileDeleteContext {
 
         let (basename, parent_id, format) = if let Some(file) = file_table
             .get(&file_id)?
-            .map(|g| FileView::from_bytes(g.value()))
+            .map(|g| g.value().decode().map_err(DbError::from))
             .transpose()?
         {
             (
                 Some(
                     BaseName::try_from(file.name().clone())
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                        .map_err(|e| DbError::Corruption(e.to_string()))?,
                 ),
                 file.parent_id(),
                 Some(file.format()),

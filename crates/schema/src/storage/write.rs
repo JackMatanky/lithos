@@ -473,9 +473,7 @@ mod tests {
                 let bytes = traces_db::RkyvBytes::encode(&schema2)
                     .map_err(traces_db::DbError::from)?;
                 table.insert(*schema2.id(), &bytes)?;
-                Err(traces_db::DbError::Serialization(
-                    "forced failure".to_owned(),
-                ))
+                Err(traces_db::DbError::Corruption("forced failure".into()))
             });
 
             assert!(result.is_err());

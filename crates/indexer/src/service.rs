@@ -547,7 +547,7 @@ mod tests {
             _record: &FileRecord,
         ) -> Result<(), IndexerRepositoryError> {
             Err(IndexerRepositoryError::Storage(
-                traces_db::DbError::Serialization("write failed".into()),
+                traces_db::DbError::Corruption("write failed".into()),
             ))
         }
 
@@ -556,7 +556,7 @@ mod tests {
             _record: &DirRecord,
         ) -> Result<(), IndexerRepositoryError> {
             Err(IndexerRepositoryError::Storage(
-                traces_db::DbError::Serialization("write failed".into()),
+                traces_db::DbError::Corruption("write failed".into()),
             ))
         }
 
@@ -984,9 +984,7 @@ mod tests {
             ) -> Result<Option<FileRecord>, IndexerRepositoryError>
             {
                 Err(IndexerRepositoryError::Storage(
-                    traces_db::DbError::Deserialization(
-                        "corrupt record".into(),
-                    ),
+                    traces_db::DbError::Corruption("corrupt record".into()),
                 ))
             }
 
@@ -995,9 +993,7 @@ mod tests {
                 _path: &PathKey,
             ) -> Result<Option<DirRecord>, IndexerRepositoryError> {
                 Err(IndexerRepositoryError::Storage(
-                    traces_db::DbError::Deserialization(
-                        "corrupt record".into(),
-                    ),
+                    traces_db::DbError::Corruption("corrupt record".into()),
                 ))
             }
 

@@ -7,7 +7,7 @@
 #![allow(deprecated, reason = "storage adapter migration pending")]
 
 use redb::ReadableTable as _;
-use traces_db::ArchivedEntity;
+use traces_db::DbError;
 
 use super::{
     RedbRepository,
@@ -33,13 +33,14 @@ impl WriteRepository for RedbRepository {
         config: &GlobalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         let version_key = config.version().value().to_string();
-        let bytes = config.to_bytes()?;
+        let bytes =
+            traces_db::RkyvBytes::encode(config).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(GLOBAL_CONFIG.definition())?;
-                table.insert(version_key.as_str(), bytes.as_slice())?;
+                table.insert(version_key.as_str(), &bytes)?;
                 Ok(())
             })
             .map_err(ConfigRepositoryError::from)
@@ -52,12 +53,13 @@ impl WriteRepository for RedbRepository {
         config: &LocalConfig,
     ) -> Result<(), ConfigRepositoryError> {
         let version_key = format!("{}:{}", vault_id, config.version().value());
-        let bytes = config.to_bytes()?;
+        let bytes =
+            traces_db::RkyvBytes::encode(config).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table = tx.try_open_table(VAULT_CONFIG.definition())?;
-                table.insert(version_key.as_str(), bytes.as_slice())?;
+                table.insert(version_key.as_str(), &bytes)?;
                 Ok(())
             })
             .map_err(ConfigRepositoryError::from)
@@ -95,21 +97,22 @@ impl WriteRepository for RedbRepository {
                 let next = if let Some(max) = max_version {
                     Version::try_from(max)
                         .map_err(|e| {
-                            traces_db::DbError::Deserialization(e.to_string())
+                            traces_db::DbError::Corruption(e.to_string())
                         })?
                         .next()
                         .map_err(|e| {
-                            traces_db::DbError::Serialization(e.to_string())
+                            traces_db::DbError::Corruption(e.to_string())
                         })?
                 } else {
                     Version::initial()
                 };
 
                 let versioned_config = config.clone().with_version(next);
-                let bytes = versioned_config.to_bytes()?;
+                let bytes = traces_db::RkyvBytes::encode(&versioned_config)
+                    .map_err(DbError::from)?;
                 let key = format!("{vault_id}:{}", next.value());
 
-                table.insert(key.as_str(), bytes.as_slice())?;
+                table.insert(key.as_str(), &bytes)?;
 
                 Ok(next)
             })
@@ -123,8 +126,8 @@ impl WriteRepository for RedbRepository {
         vault_root: &VaultRoot,
     ) -> Result<(), ConfigRepositoryError> {
         let path_key = vault_root.as_key();
-        let id_bytes = vault_id.to_bytes()?;
-        let root_bytes = vault_root.to_bytes()?;
+        let root_bytes =
+            traces_db::RkyvBytes::encode(vault_root).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
@@ -133,8 +136,8 @@ impl WriteRepository for RedbRepository {
                 let mut path_by_id =
                     tx.try_open_table(VAULT_PATH_BY_ID.definition())?;
 
-                id_by_path.insert(path_key.as_str(), id_bytes.as_slice())?;
-                path_by_id.insert(&vault_id, root_bytes.as_slice())?;
+                id_by_path.insert(path_key.as_str(), vault_id)?;
+                path_by_id.insert(&vault_id, &root_bytes)?;
                 Ok(())
             })
             .map_err(ConfigRepositoryError::from)
@@ -145,13 +148,14 @@ impl WriteRepository for RedbRepository {
         &self,
         view: &RawGlobalConfigView,
     ) -> Result<(), ConfigRepositoryError> {
-        let bytes = view.to_bytes()?;
+        let bytes =
+            traces_db::RkyvBytes::encode(view).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_GLOBAL_CONFIG_VIEW.definition())?;
-                table.insert("global", bytes.as_slice())?;
+                table.insert("global", &bytes)?;
                 Ok(())
             })
             .map_err(ConfigRepositoryError::from)
@@ -163,13 +167,14 @@ impl WriteRepository for RedbRepository {
         vault_id: VaultId,
         view: &RawVaultConfigView,
     ) -> Result<(), ConfigRepositoryError> {
-        let bytes = view.to_bytes()?;
+        let bytes =
+            traces_db::RkyvBytes::encode(view).map_err(DbError::from)?;
 
         self.store
             .write(|tx| -> Result<(), traces_db::DbError> {
                 let mut table =
                     tx.try_open_table(RAW_VAULT_CONFIG_VIEW.definition())?;
-                table.insert(&vault_id, bytes.as_slice())?;
+                table.insert(&vault_id, &bytes)?;
                 Ok(())
             })
             .map_err(ConfigRepositoryError::from)
@@ -255,7 +260,7 @@ mod tests {
                     tx.try_open_table(VAULT_PATH_BY_ID.definition())?.unwrap();
                 Ok(table
                     .get(&vault_id)?
-                    .map(|g| VaultRoot::from_bytes(g.value()))
+                    .map(|g| g.value().decode().map_err(DbError::from))
                     .transpose())
             })
             .unwrap()

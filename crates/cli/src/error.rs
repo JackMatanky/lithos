@@ -376,7 +376,7 @@ mod tests {
     }
 
     mod index_command_error {
-        use traces_db::DbError;
+
         use traces_fs::error::RootScopeError;
         use traces_indexer::{
             IndexerError, IndexerRepositoryError, ScannerError,
@@ -499,7 +499,7 @@ mod tests {
 
         #[test]
         fn maps_storage_error_from_repository() {
-            let db_err = DbError::Serialization("corrupt data".into());
+            let db_err = traces_db::DbError::Corruption("corrupt data".into());
             let repo_err: IndexerRepositoryError = db_err.into();
             let indexer_err: IndexerError = repo_err.into();
             let cmd_err: IndexCommandError = indexer_err.into();
