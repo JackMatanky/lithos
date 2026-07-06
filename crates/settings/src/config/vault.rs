@@ -777,6 +777,15 @@ mod tests {
                 "vault-schemas",
                 "schema override should be preserved from raw"
             );
+            assert_eq!(
+                local
+                    .schema()
+                    .expect("schema override preserved")
+                    .property_bank_file()
+                    .as_str(),
+                "vault-bank.json",
+                "property_bank override should be preserved from raw"
+            );
         }
 
         #[test]
