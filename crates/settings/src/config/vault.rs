@@ -1,4 +1,4 @@
-//! Vault-specific overrides and metadata.
+//! Vault-specific overrides.
 //!
 //! This module defines the [`LocalConfig`] configuration, which contains
 //! vault-specific settings and overrides for global defaults. It also
@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use rkyv::{Archive, Deserialize, Serialize};
-use traces_fs::DirPath;
+use traces_fs::{DirPath, FilePath};
 use traces_utils::UuidV7;
 
 use super::{
@@ -15,6 +15,7 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
+    raw::RawConfig,
     schema::{PropertyBankFile, SchemaConfig, SchemaDir},
     task::Task,
     template::{TemplateConfig, TemplateDir},
@@ -161,23 +162,24 @@ impl Default for VaultRoot {
 /// Vault-specific configuration overrides.
 ///
 /// `LocalConfig` contains settings that are specific to a single vault and
-/// override the global defaults. It covers paths, frontmatter, and
-/// logging settings.
+/// override the global defaults. It covers paths, frontmatter, and logging
+/// settings, and carries the vault-root [`DirPath`], the config-file
+/// [`FilePath`], and a derived vault `name`.
 ///
-/// # Examples
-///
-/// ```rust
-/// use traces_settings::config::vault::LocalConfig;
-///
-/// let vault = LocalConfig::default();
-/// assert!(vault.logging().is_none());
-/// ```
+/// Construct one from a [`RawConfig`] and its backing paths via
+/// [`TryFrom<(RawConfig, DirPath, FilePath)>`].
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct LocalConfig {
     /// Version number for this vault config.
     version: VaultVersion,
+    /// Vault root directory this config applies to.
+    base: DirPath,
+    /// Path to the config file this config was built from.
+    path: FilePath,
+    /// Human-readable vault name derived from the base directory basename.
+    name: Box<str>,
     /// Overridden logging settings.
     logging: Option<Logging>,
     /// Overridden cache settings.
@@ -192,21 +194,6 @@ pub struct LocalConfig {
     task: Option<Task>,
 }
 
-impl Default for LocalConfig {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            version: VaultVersion::initial(),
-            logging: None,
-            cache: None,
-            template: None,
-            schema: None,
-            frontmatter: None,
-            task: None,
-        }
-    }
-}
-
 impl LocalConfig {
     /// Create vault-specific configuration.
     #[inline]
@@ -215,8 +202,11 @@ impl LocalConfig {
         clippy::too_many_arguments,
         reason = "Domain constructor with all optional override groups"
     )]
-    pub const fn new(
+    pub fn new(
         version: VaultVersion,
+        base: DirPath,
+        path: FilePath,
+        name: Box<str>,
         logging: Option<Logging>,
         cache: Option<CacheConfig>,
         template: Option<TemplateConfig>,
@@ -226,6 +216,9 @@ impl LocalConfig {
     ) -> Self {
         Self {
             version,
+            base,
+            path,
+            name,
             logging,
             cache,
             template,
@@ -235,30 +228,32 @@ impl LocalConfig {
         }
     }
 
-    /// Creates vault-specific configuration from raw path overrides.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
-    /// invalid.
-    #[inline]
-    pub fn try_from_components(
-        cache: Option<&super::raw::RawCacheConfig>,
-        template: Option<&super::raw::RawTemplateConfig>,
-        schema: Option<&super::raw::RawSchemaConfig>,
-    ) -> Result<Self, ConfigError> {
-        Ok(Self {
-            cache: cache.map(parse_cache).transpose()?.flatten(),
-            template: template.map(parse_template).transpose()?.flatten(),
-            schema: schema.map(parse_schema).transpose()?.flatten(),
-            ..Self::default()
-        })
-    }
-
     /// Return the version of this vault config.
     #[inline]
     #[must_use]
     pub const fn version(&self) -> VaultVersion {
         self.version
+    }
+
+    /// Return the vault root directory this config applies to.
+    #[inline]
+    #[must_use]
+    pub const fn base(&self) -> &DirPath {
+        &self.base
+    }
+
+    /// Return the path of the config file this config was built from.
+    #[inline]
+    #[must_use]
+    pub const fn path(&self) -> &FilePath {
+        &self.path
+    }
+
+    /// Return the vault name derived from the base directory basename.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Return the overridden cache settings, if set.
@@ -302,6 +297,76 @@ impl LocalConfig {
     pub fn logging(&self) -> Option<&Logging> {
         self.logging.as_ref()
     }
+}
+
+impl TryFrom<(RawConfig, DirPath, FilePath)> for LocalConfig {
+    type Error = ConfigError;
+
+    /// Builds a validated [`LocalConfig`] from a raw config, its vault-root
+    /// base directory, and its config-file path.
+    ///
+    /// The tuple carries the already-validated [`DirPath`] (vault root) and
+    /// [`FilePath`] (config file); filesystem I/O happens at the caller, not
+    /// here. The vault `name` is derived from the base directory basename,
+    /// falling back to `"unnamed"` when the base has no final component.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] with `field: "trusted_vaults"`
+    /// when the forbidden `trusted_vaults` field is present (it is
+    /// global-scoped), or when any contained field fails validation.
+    #[inline]
+    fn try_from(
+        (raw, base, path): (RawConfig, DirPath, FilePath),
+    ) -> Result<Self, Self::Error> {
+        if raw.trusted_vaults.is_some() {
+            return Err(ConfigError::ValidationFailed {
+                field: "trusted_vaults".into(),
+                message: format!(
+                    "trusted_vaults is forbidden in local config ({}); it is \
+                     global-scoped",
+                    path.as_path().display()
+                )
+                .into(),
+            });
+        }
+
+        let name = name_from_base(&base);
+        let logging = raw.logging.map(Logging::try_from).transpose()?;
+        let cache = raw.cache.as_ref().map(parse_cache).transpose()?.flatten();
+        let template =
+            raw.template.as_ref().map(parse_template).transpose()?.flatten();
+        let schema =
+            raw.schema.as_ref().map(parse_schema).transpose()?.flatten();
+        let frontmatter =
+            raw.frontmatter.map(Frontmatter::try_from).transpose()?;
+        let task = raw.task.map(Task::try_from).transpose()?;
+
+        Ok(Self {
+            version: VaultVersion::initial(),
+            base,
+            path,
+            name,
+            logging,
+            cache,
+            template,
+            schema,
+            frontmatter,
+            task,
+        })
+    }
+}
+
+/// Derives a vault name from the last component of the vault root path.
+///
+/// Falls back to `"unnamed"` when the path has no final component.
+fn name_from_base(base: &DirPath) -> Box<str> {
+    base.as_path()
+        .file_name()
+        .map_or_else(
+            || "unnamed".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        )
+        .into_boxed_str()
 }
 
 fn parse_cache(
@@ -353,110 +418,6 @@ fn parse_schema(
     )))
 }
 
-/// Metadata for a specific vault.
-///
-/// This struct holds the identity, root path, and versioning information
-/// for a vault. It is stored as part of the `Config` aggregate.
-///
-/// # Invariants
-///
-/// - **Vault Identity**: Every vault must have a unique UUID v7 identifier.
-/// - **Vault Root**: The root path of a vault must be a non-empty directory
-///   path.
-/// - **Schema Version**: Every vault is associated with a specific schema
-///   version.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// # use traces_settings::config::vault::{Metadata, VaultId, VaultRoot};
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let metadata = Metadata::new(
-///     VaultId::new(),
-///     VaultRoot::try_new("/vaults/work".into())?,
-///     Some("Work".into()),
-///     None,
-/// )?;
-///
-/// assert_eq!(metadata.name(), "Work");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Metadata {
-    /// Unique identity of the vault.
-    id: VaultId,
-    /// Absolute path to the vault root on disk.
-    root: VaultRoot,
-    /// Human-readable name of the vault.
-    name: VaultName,
-    /// Version of the vault schema/Traces that created it.
-    version: AppVersion,
-}
-
-impl Metadata {
-    /// Creates vault metadata.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if the vault root validation fails or if the
-    /// default schema version cannot be constructed.
-    #[inline]
-    pub fn new(
-        id: VaultId,
-        root: VaultRoot,
-        name: Option<VaultName>,
-        version: Option<AppVersion>,
-    ) -> Result<Self, ConfigError> {
-        let name = name.unwrap_or_else(|| VaultName::from_root(&root));
-        let version =
-            match version {
-                Some(v) => v,
-                None => AppVersion::try_new(env!("CARGO_PKG_VERSION"))
-                    .map_err(|e| ConfigError::ValidationFailed {
-                        field: "version".into(),
-                        message: format!("default version invalid: {e}").into(),
-                    })?,
-            };
-
-        Ok(Self {
-            id,
-            root,
-            name,
-            version,
-        })
-    }
-
-    /// Return the vault identity.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> VaultId {
-        self.id
-    }
-
-    /// Return the vault root path.
-    #[inline]
-    #[must_use]
-    pub const fn root(&self) -> &VaultRoot {
-        &self.root
-    }
-
-    /// Return the vault name.
-    #[inline]
-    #[must_use]
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    /// Return the vault version.
-    #[inline]
-    #[must_use]
-    pub fn version(&self) -> &AppVersion {
-        &self.version
-    }
-}
-
 // ----------------------------------------------------------- //
 //                     Supporting Types                       //
 // ----------------------------------------------------------- //
@@ -470,7 +431,7 @@ impl Metadata {
 ///
 /// - Starts at 1 (not 0)
 /// - Increments on each vault config file change
-/// - Independent of `GlobalVersion` and `Config::Version`
+/// - Independent of `GlobalVersion` and `Version`
 #[derive(
     Debug,
     Clone,
@@ -564,147 +525,36 @@ impl TryFrom<u64> for VaultVersion {
         Ok(Self(value))
     }
 }
-/// Version identifier for the Traces application.
-///
-/// This type ensures that version strings are not empty and represent
-/// a valid application version.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct AppVersion(Box<str>);
+/// Test-only fixtures for constructing [`LocalConfig`] values.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    use tempfile::{NamedTempFile, TempDir};
+    use traces_fs::{DirPath, FilePath};
 
-impl AppVersion {
-    /// Creates a new application version.
+    use super::LocalConfig;
+
+    /// Builds a default [`LocalConfig`] backed by fresh temp paths.
     ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the version string is
-    /// empty.
-    #[inline]
-    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        if value.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "version".into(),
-                message: "version cannot be empty".into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
-    /// Return the version as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    /// Returns the [`TempDir`] and [`NamedTempFile`] guards so the backing
+    /// base directory and config file outlive the returned config for the
+    /// duration of the test.
+    pub(crate) fn local_config() -> (TempDir, NamedTempFile, LocalConfig) {
+        let base_dir = TempDir::new().expect("temp dir created");
+        let base = DirPath::try_new(base_dir.path().to_path_buf())
+            .expect("temp dir is a valid DirPath");
+        let file = NamedTempFile::new().expect("temp file created");
+        let path = FilePath::try_new(file.path().to_path_buf())
+            .expect("temp file is a valid FilePath");
+        let config = LocalConfig::try_from((
+            crate::config::raw::RawConfig::default(),
+            base,
+            path,
+        ))
+        .expect("default raw config converts");
+        (base_dir, file, config)
     }
 }
 
-impl TryFrom<String> for AppVersion {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<AppVersion> for String {
-    #[inline]
-    fn from(version: AppVersion) -> Self {
-        version.0.into_string()
-    }
-}
-
-impl std::fmt::Display for AppVersion {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-/// A validated vault name.
-///
-/// This type ensures that vault names are not empty and are user-friendly.
-/// The name can be explicitly provided or derived from the vault root path.
-///
-/// # Invariants
-///
-/// - Must not be empty.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct VaultName(Box<str>);
-
-impl VaultName {
-    /// Creates a validated vault name from explicit user input.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the name is empty.
-    #[inline]
-    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        if value.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "name".into(),
-                message: "vault name cannot be empty".into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
-    /// Derives a vault name from the last component of the vault root path.
-    #[inline]
-    #[must_use]
-    pub fn from_root(root: &VaultRoot) -> Self {
-        let name = root.as_path().file_name().map_or_else(
-            || "unnamed".to_owned(),
-            |n| n.to_string_lossy().into_owned(),
-        );
-        Self(name.into_boxed_str())
-    }
-
-    /// Return the name as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for VaultName {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<&str> for VaultName {
-    #[inline]
-    fn from(value: &str) -> Self {
-        // Safe because &str is always non-empty when converted from string
-        // literal
-        Self(value.to_owned().into_boxed_str())
-    }
-}
-
-impl From<VaultName> for String {
-    #[inline]
-    fn from(name: VaultName) -> Self {
-        name.0.into_string()
-    }
-}
-
-impl std::fmt::Display for VaultName {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -721,6 +571,8 @@ mod tests {
     use crate::config::logging::{LogLevel, Logging};
 
     mod version {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -754,30 +606,31 @@ mod tests {
         }
     }
 
-    mod fixtures {
-        use super::super::*;
-
-        pub fn vault_root(path: std::path::PathBuf) -> VaultRoot {
-            VaultRoot::try_new(path).expect("valid vault root")
-        }
-
-        pub fn vault_id() -> VaultId {
-            VaultId::new()
-        }
-    }
-
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
         fn vault_new_constructs_with_given_values() {
             let version = VaultVersion::initial();
+            let base_dir = tempfile::tempdir().expect("temp dir should exist");
+            let base =
+                traces_fs::DirPath::try_new(base_dir.path().to_path_buf())
+                    .expect("valid base dir");
+            let file =
+                tempfile::NamedTempFile::new().expect("temp file created");
+            let path = traces_fs::FilePath::try_new(file.path().to_path_buf())
+                .expect("valid config path");
             let cache = CacheConfig::default();
             let template = TemplateConfig::default();
             let schema = SchemaConfig::default();
             let logging = Logging::new(LogLevel::Debug);
             let vault = LocalConfig::new(
                 version,
+                base.clone(),
+                path.clone(),
+                "vault".into(),
                 Some(logging.clone()),
                 Some(cache.clone()),
                 Some(template.clone()),
@@ -787,43 +640,13 @@ mod tests {
             );
 
             assert_eq!(vault.version(), version);
+            assert_eq!(vault.base().as_path(), base.as_path());
+            assert_eq!(vault.path().as_path(), path.as_path());
+            assert_eq!(vault.name(), "vault");
             assert_eq!(vault.cache(), Some(&cache));
             assert_eq!(vault.template(), Some(&template));
             assert_eq!(vault.schema(), Some(&schema));
             assert_eq!(vault.logging(), Some(&logging));
-        }
-
-        #[test]
-        fn metadata_new_derives_from_vault_path() {
-            // GIVEN: a vault path
-            let temp_root = tempfile::tempdir().expect("temp dir should exist");
-            let work_dir = temp_root.path().join("work");
-            std::fs::create_dir_all(&work_dir)
-                .expect("work dir should be created");
-            let vault_root = fixtures::vault_root(work_dir);
-            let vault_id = fixtures::vault_id();
-
-            // WHEN: building metadata from the path
-            let metadata =
-                Metadata::new(vault_id, vault_root.clone(), None, None)
-                    .unwrap();
-
-            // THEN: version and name defaults are applied
-            assert_eq!(
-                metadata.version().as_str(),
-                env!("CARGO_PKG_VERSION"),
-                "Expected version default to be set"
-            );
-            assert_eq!(
-                metadata.name(),
-                "work",
-                "Expected vault name to default to directory basename"
-            );
-            assert_eq!(
-                metadata.root().as_path(),
-                vault_root.as_path(),
-                "Expected path to match input"
-            );
         }
 
         #[test]
@@ -855,63 +678,6 @@ mod tests {
         }
     }
 
-    mod path_overrides {
-        use super::*;
-
-        #[test]
-        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
-        fn returns_cache_template_and_schema_overrides_from_raw_paths() {
-            let raw_cache = crate::config::raw::RawCacheConfig {
-                directory: Some(".vault-cache".to_owned()),
-            };
-            let raw_template = crate::config::raw::RawTemplateConfig {
-                directory: Some("vault-templates".to_owned()),
-            };
-            let raw_schema = crate::config::raw::RawSchemaConfig {
-                directory: Some("vault-schemas".to_owned()),
-                property_bank_file: Some("vault-bank.json".to_owned()),
-            };
-
-            let vault = LocalConfig::try_from_components(
-                Some(&raw_cache),
-                Some(&raw_template),
-                Some(&raw_schema),
-            )
-            .expect("vault path overrides should validate");
-
-            assert_eq!(
-                vault
-                    .cache()
-                    .expect("cache override should exist")
-                    .cache_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                ".vault-cache",
-                "vault cache override should be retained"
-            );
-            assert_eq!(
-                vault
-                    .template()
-                    .expect("template override should exist")
-                    .template_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "vault-templates",
-                "vault template override should be retained"
-            );
-            assert_eq!(
-                vault
-                    .schema()
-                    .expect("schema override should exist")
-                    .schema_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "vault-schemas",
-                "vault schema override should be retained"
-            );
-        }
-    }
-
     mod validation {
         #[test]
         fn templates_dir_rejects_absolute() {
@@ -923,6 +689,177 @@ mod tests {
             assert!(
                 result.is_err(),
                 "RelativeDirPath should reject absolute paths"
+            );
+        }
+    }
+
+    mod try_from_raw {
+        use pretty_assertions::assert_eq;
+        use tempfile::{NamedTempFile, TempDir};
+        use traces_fs::{DirPath, FilePath};
+
+        use super::*;
+        use crate::config::raw::{
+            RawCacheConfig, RawConfig, RawLogging, RawSchemaConfig,
+            RawTemplateConfig, RawTrustedVaults,
+        };
+
+        /// A base dir and config file backed by fresh temp paths.
+        ///
+        /// Returns the guards so the backing paths outlive the returned
+        /// [`DirPath`]/[`FilePath`] for the test's duration.
+        fn base_and_path() -> (TempDir, NamedTempFile, DirPath, FilePath) {
+            let base_dir = TempDir::new().expect("temp dir created");
+            let base = DirPath::try_new(base_dir.path().to_path_buf())
+                .expect("temp dir is a valid DirPath");
+            let file = NamedTempFile::new().expect("temp file created");
+            let path = FilePath::try_new(file.path().to_path_buf())
+                .expect("temp file is a valid FilePath");
+            (base_dir, file, base, path)
+        }
+
+        #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
+        fn accepts_valid_raw_and_preserves_overrides() {
+            let (_base_guard, _file_guard, base, path) = base_and_path();
+            let raw = RawConfig {
+                logging: Some(RawLogging {
+                    log_level: Some("debug".to_owned()),
+                }),
+                cache: Some(RawCacheConfig {
+                    directory: Some(".vault-cache".to_owned()),
+                }),
+                template: Some(RawTemplateConfig {
+                    directory: Some("vault-templates".to_owned()),
+                }),
+                schema: Some(RawSchemaConfig {
+                    directory: Some("vault-schemas".to_owned()),
+                    property_bank_file: Some("vault-bank.json".to_owned()),
+                }),
+                ..RawConfig::default()
+            };
+
+            let local = LocalConfig::try_from((raw, base, path))
+                .expect("valid raw config should convert");
+
+            assert_eq!(
+                local.logging().expect("logging override preserved").level(),
+                LogLevel::Debug,
+                "logging override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .cache()
+                    .expect("cache override preserved")
+                    .cache_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                ".vault-cache",
+                "cache override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .template()
+                    .expect("template override preserved")
+                    .template_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-templates",
+                "template override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .schema()
+                    .expect("schema override preserved")
+                    .schema_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-schemas",
+                "schema override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .schema()
+                    .expect("schema override preserved")
+                    .property_bank_file()
+                    .as_str(),
+                "vault-bank.json",
+                "property_bank override should be preserved from raw"
+            );
+        }
+
+        #[test]
+        fn rejects_trusted_vaults_as_forbidden_field() {
+            let (_base_guard, _file_guard, base, path) = base_and_path();
+            let raw = RawConfig {
+                trusted_vaults: Some(RawTrustedVaults::List(vec![
+                    "/vaults/alpha".to_owned(),
+                ])),
+                ..RawConfig::default()
+            };
+
+            let expected_path = path.as_path().display().to_string();
+            let error = LocalConfig::try_from((raw, base, path))
+                .expect_err("trusted_vaults must be rejected in local config");
+
+            assert!(
+                matches!(
+                    &error,
+                    ConfigError::ValidationFailed { field, message }
+                        if &**field == "trusted_vaults"
+                            && message.contains(&expected_path)
+                ),
+                "expected ValidationFailed on 'trusted_vaults' including \
+                 source path {expected_path:?}, got {error:?}"
+            );
+        }
+
+        #[test]
+        fn derives_name_from_base_basename() {
+            let temp_root = TempDir::new().expect("temp dir created");
+            let vault_dir = temp_root.path().join("my-vault");
+            std::fs::create_dir_all(&vault_dir)
+                .expect("vault dir should be created");
+            let base = DirPath::try_new(vault_dir).expect("valid base DirPath");
+            let file = NamedTempFile::new().expect("temp file created");
+            let path = FilePath::try_new(file.path().to_path_buf())
+                .expect("valid config FilePath");
+
+            let local =
+                LocalConfig::try_from((RawConfig::default(), base, path))
+                    .expect("raw config should convert");
+
+            assert_eq!(
+                local.name(),
+                "my-vault",
+                "name should be derived from the base directory basename"
+            );
+        }
+
+        #[test]
+        fn carries_base_path_and_name() {
+            let (_base_guard, _file_guard, base, path) = base_and_path();
+
+            let local = LocalConfig::try_from((
+                RawConfig::default(),
+                base.clone(),
+                path.clone(),
+            ))
+            .expect("raw config should convert");
+
+            assert_eq!(
+                local.base().as_path(),
+                base.as_path(),
+                "base should be carried onto the config"
+            );
+            assert_eq!(
+                local.path().as_path(),
+                path.as_path(),
+                "path should be carried onto the config"
+            );
+            assert!(
+                !local.name().is_empty(),
+                "derived name should be non-empty"
             );
         }
     }

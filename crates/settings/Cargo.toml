@@ -19,6 +19,7 @@ rkyv.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
+serde_yaml = { workspace = true, optional = true }
 toml.workspace = true
 base64.workspace = true
 dirs.workspace = true
@@ -31,6 +32,11 @@ traces-utils = { path = "../utils" }
 
 [features]
 testing = ["traces-db/testing"]
+# `serde_json` is already a non-optional dependency (used unconditionally in
+# `config/value.rs` and `config/processor.rs`), so the `json` feature only gates
+# the deserialization arm rather than pulling in the dependency.
+json = []
+yaml = ["dep:serde_yaml"]
 
 [lints]
 workspace = true

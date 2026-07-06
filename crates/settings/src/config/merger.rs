@@ -179,8 +179,6 @@ mod tests {
 
     fn create_test_vault_config() -> RawConfig {
         RawConfig {
-            name: None,
-            version: None,
             logging: None,
             cache: Some(crate::config::raw::RawCacheConfig {
                 directory: Some(".cache".into()),

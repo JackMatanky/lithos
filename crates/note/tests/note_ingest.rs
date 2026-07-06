@@ -2,18 +2,17 @@
 
 use std::sync::Arc;
 
-use traces_fs::metadata::{FileMetadata, FsTimes};
+use traces_fs::{
+    DirPath,
+    metadata::{FileMetadata, FsTimes},
+};
 use traces_note::{
     paths::NotePath,
     processor::{NoteFileInfo, NoteProcessAction, NoteProcessor},
     repository::ReadRepository,
     storage::RedbRepository,
 };
-use traces_settings::{
-    aggregate::Version,
-    builder,
-    vault::{VaultId, VaultRoot},
-};
+use traces_settings::builder;
 
 #[cfg(test)]
 mod tests {
@@ -29,9 +28,7 @@ mod tests {
         let config = builder::build_from_layers(
             None,
             None,
-            VaultId::new(),
-            VaultRoot::try_new(root.clone()).expect("vault root"),
-            Version::initial(),
+            DirPath::try_new(root.clone()).expect("vault root"),
         )
         .expect("config build");
         let markdown = concat!(

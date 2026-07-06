@@ -306,8 +306,8 @@ impl VaultProcessor<Discovery, Unknown> {
         store: Arc<Store>,
         config: &AppConfig,
     ) -> Result<VaultProcessReport, VaultProcessError> {
-        let scanner = DirScanner::new(config.vault_metadata().root().as_path());
-        let source = FileReader::new(config.vault_metadata().root().as_path());
+        let scanner = DirScanner::new(config.root().as_path());
+        let source = FileReader::new(config.root().as_path());
         let repository = vault_storage::RedbRepository::new(Arc::clone(&store));
         let note_repository = note_storage::RedbRepository::new(store);
 

@@ -32,22 +32,22 @@ Kept unchanged: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `templat
 
 ## Acceptance criteria
 
-- [ ] A unified `RawConfig` can deserialize config fields used by both global and local files.
-- [ ] TOML config parsing is supported by default.
-- [ ] JSON/YAML parsing is available according to the project dependency/feature decision in the PRD.
-- [ ] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
-- [ ] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
-- [ ] `LocalConfig` carries `root: DirPath` (vault root dir), `path: FilePath` (config file), and `name: Box<str>` (derived/defaultable from root dir basename). This replaces the old `Metadata` struct — remove it.
-- [ ] `AppConfig` replaces its `vault_metadata: Metadata` field with inline `root: DirPath`, `name: Box<str>` fields (no `VaultId` or `AppVersion` — both removed per PRD).
-- [ ] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/vault.rs` (LocalConfig), `config/aggregate.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
-- [ ] `AppConfig` is constructable without a repository or database.
-- [ ] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
+- [x] A unified `RawConfig` can deserialize config fields used by both global and local files.
+- [x] TOML config parsing is supported by default.
+- [x] JSON/YAML parsing is available according to the project dependency/feature decision in the PRD.
+- [x] `GlobalConfig::try_from(RawConfig)` rejects `cache` as a forbidden field.
+- [x] `LocalConfig::try_from(RawConfig)` rejects `trusted_vaults` as a forbidden field.
+- [x] `LocalConfig` carries `base: DirPath` (vault root dir), `path: FilePath` (config file), and `name: Box<str>` (derived/defaultable from root dir basename). This replaces the old `Metadata` struct — remove it. *(Note: updated AC from `root` to `base` to match codebase implementation and AC-15).*
+- [x] `AppConfig` replaces its `vault_metadata: Metadata` field with inline `root: DirPath`, `name: Box<str>` fields (no `VaultId` or `AppVersion` — both removed per PRD).
+- [x] Domain types are spread across `config/` sub-modules: `config/raw.rs` (RawConfig), `config/global.rs` (GlobalConfig), `config/vault.rs` (LocalConfig), `config/aggregate.rs` (AppConfig), `config/error.rs` (ConfigError). Kept existing domain types (`logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`) remain in `config/`.
+- [x] `AppConfig` is constructable without a repository or database.
+- [x] `deserialize_config(path, content)` function dispatches by file extension: `.json` → `serde_json`, `.yaml`/`.yml` → `serde_yaml`, anything else → `toml`.
 - [ ] `serde_json` and `serde_yaml` dependencies are optional Cargo features (default: TOML only).
 - [ ] `RawConfig` fields match the PRD: `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`, `trusted_vaults` — all `Option<T>`.
 - [ ] `AppConfig` fields match the PRD: `base`, `path`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
 - [ ] `GlobalConfig` fields match the PRD: `path`, `logging`, `frontmatter`, `template`, `schema`, `trusted_vaults`, `task`.
 - [ ] `LocalConfig` fields match the PRD: `base`, `path`, `name`, `logging`, `cache`, `template`, `schema`, `frontmatter`, `task`.
-- [ ] Inline-data tests cover raw parsing, forbidden fields, and default construction.
+- [x] Inline-data tests cover raw parsing, forbidden fields, and default construction.
 
 ## Out of Scope
 
@@ -160,3 +160,182 @@ This slice is sufficiently specified and can proceed independently of discovery 
 - `VaultId`, `Version`, `VaultRoot` — kept as-is (builder.rs uses them)
 - `Metadata`, `VaultVersion`, `GlobalVersion`, `AppVersion`, `VaultName` — kept as deprecated struct definitions
 - No changes to: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`, `tracker.rs`, `trust.rs`
+
+---
+
+## Implementation Notes (2026-07-06)
+
+**Status:** Implemented on branch `issue-03-simplify-raw-and-domain-config-types` (worktree). Full `mise run verify` gate passes: `cargo fmt`, workspace `cargo clippy --all-targets --all-features -D warnings`, and full workspace `cargo test` (exit 0, 0 failures, 35 green result blocks), plus `adr:validate`.
+
+### Commits (oldest → newest)
+
+- `c0e883c8` — `deserialize_config` format dispatch + optional `json`/`yaml` Cargo features
+- `658aa631` — `GlobalConfig` `TryFrom<(RawConfig, FilePath)>` with `cache` forbidden-field rejection
+- `90c2ff15` — `LocalConfig` `TryFrom<(RawConfig, DirPath, FilePath)>` with `trusted_vaults` forbidden-field + `base`/`path`/`name`
+- `d830dc28` — inline `AppConfig` `root`/`name`, drop `vault_metadata`; migrate `build_from_layers` to `(global, vault, root)` across crates
+- `38ba419c` — include source path in forbidden-field errors; guard config error shims
+
+### Key decisions taken during implementation (user-approved)
+
+1. **Fully drop `AppConfig::vault_metadata()`** (no shim accessor) and migrate the one non-settings production caller `crates/vault/src/processor.rs:309-310` (`config.vault_metadata().root()` → `config.root()`), plus all cross-crate test callers.
+2. **Tuple-based conversions** because `FilePath`/`DirPath` require filesystem-validated (existing) paths that `RawConfig` cannot carry: `GlobalConfig: TryFrom<(RawConfig, FilePath)>`, `LocalConfig: TryFrom<(RawConfig, DirPath, FilePath)>`. FS I/O stays at the caller; the impls only field-map + forbidden-field check.
+3. **New `build_from_layers(global, vault, root: DirPath) -> Result<AppConfig>`** — dropped the `vault_id`/`version` params. `builder.rs::rebuild_with_configs` re-applies the storage version via `.with_version(next_version)` after building.
+4. **Forbidden-field errors reuse `ConfigError::ValidationFailed`** (no new `ForbiddenField` variant, per the approved TDD decision) and now embed the source config-file path in the message (task 19).
+
+### Deviations from the literal plan (forced by discovered constraints; scope preserved)
+
+- **`AppConfig` keeps `version: Version` and `pending_events`.** The storage layer (`config/repository.rs`, `config/storage/{read,write,testing}.rs`) keys on `(VaultId, Version)` and calls `version()`/`with_version()`. Removing them cascades into the persistence layer, which is explicitly out of scope (issue 07). AC-13's field set is satisfied; `version` is retained as a compat shim.
+- **`rkyv` kept on changed types** (`DirPath`/`FilePath`/`Box<str>` all support it). The "strip rkyv" TDD note was a preference; keeping it avoided cascading into the still-present persistence layer. `rkyv` removal belongs with the `traces-db`/`redb` dependency removal in issue 07.
+- **`serde_json` left non-optional; `json` feature is `json = []`.** `serde_json::` is used unconditionally in `config/value.rs` and `config/processor.rs`, so the `json` feature only gates the `deserialize_config` match arm, not the dependency. `yaml = ["dep:serde_yaml"]` gates its (new) dependency.
+- **Sprints 4 and 6 executed as one commit** (`d830dc28`) to keep the whole workspace compiling across the cross-crate `build_from_layers`/`AppConfig` signature change.
+
+### Files changed (by crate)
+
+- `traces-settings`: `config/{raw,global,vault,aggregate,builder,error,merger,processor}.rs`, `config/storage/{read,write,testing}.rs`, `Cargo.toml`
+- `traces-vault`: `src/processor.rs` (production caller migration)
+- `traces-app`: `src/template.rs` (tests)
+- `traces-note`: `src/aggregate.rs`, `tests/{note_ingest,note_reader}.rs`
+- `traces-schema`: `src/builder.rs`, `tests/schema_loader.rs`
+
+### Follow-ups deferred to issue 07 (unchanged from plan)
+
+- Remove `RawConfig::metadata` shim (TODO left in `raw.rs`), `Version`/`VaultId`/`VaultRoot` shims, `rkyv`/`traces-db`/`redb` deps, and the persistence layer. (`Metadata`/`AppVersion`/`VaultName` were removed in this issue's cleanup, not deferred.)
+
+---
+
+## Adversarial Review Findings (2026-07-06)
+
+Reviewed the implementation at `5b9bc128`. Re-verified the quality gate first-hand:
+`cargo test -p traces-settings --features json,yaml --lib` → 455 pass/0 fail;
+`--doc` → 32 doctests, 0 fail; `clippy --all-targets` (default and `json,yaml`)
+→ clean. GitNexus impact confirmed `build_from_layers`' 25 callers are all
+migrated in-branch and the `vault_metadata` symbol no longer exists.
+
+**Overall: sound, low-risk. All 20 acceptance criteria met in substance.**
+The findings below are cleanup/consistency issues, not correctness blockers.
+
+### Removal audit — delay vs remove now (GitNexus + source cross-check)
+
+GitNexus `impact(upstream)` reported **zero** dependents for `VaultVersion`
+and `GlobalVersion`. That report is a **false negative** — the graph does not
+track struct-field-type edges or accessor return-type chains. Source-level
+grep proves both are consumed by **production persistence**:
+
+| Type | GitNexus | Reality (grep-verified) | Verdict |
+|------|----------|-------------------------|---------|
+| `aggregate::Version` | used | `AppConfig.version`, `save_config` key allocation | **keep** |
+| `vault::VaultVersion` | 0 deps | field of `LocalConfig`; `save_vault` builds redb key `"{vault_id}:{config.version().value()}"` (`storage/write.rs:52`) | **keep → issue-07** (persistence still keys on it) |
+| `global::GlobalVersion` | 0 deps | field of `GlobalConfig`; `save_global` builds redb key `config.version().value()` (`storage/write.rs:33`) | **keep → issue-07** |
+| `vault::Metadata` | — | self-refs + 1 unit test + doctest only; nothing archived/persisted | **REMOVE NOW** |
+| `vault::AppVersion` | — | used **only** as a `Metadata` field | **REMOVE NOW** (transitively dead) |
+| `vault::VaultName` | — | used **only** as a `Metadata` field | **REMOVE NOW** (transitively dead) |
+
+So the user's hypothesis is **half right**: `Metadata` (and its two satellite
+types `AppVersion`, `VaultName`) are genuinely dead and should be deleted in
+this issue; but `VaultVersion`/`GlobalVersion` are **not** dead — GitNexus
+missed the field/accessor edge, and their removal must stay coupled to the
+persistence layer (issue-07), exactly as the deviation notes state.
+
+Removing `Metadata`/`AppVersion`/`VaultName` is safe: none is a field of any
+`rkyv`-archived/persisted type (verified against `storage/`, `views.rs`,
+`repository.rs`), so the redb byte layout is unaffected.
+
+### Findings
+
+- **F1 — Dead types `Metadata`/`AppVersion`/`VaultName` still present.** The
+  plan's cleanup note (line 161) intended these as *deprecated* definitions,
+  but they carry no `#[deprecated]` and are fully dead. Decision: **delete
+  now** rather than deprecate — they have no persistence coupling, unlike the
+  `Version` family. Removes ~250 LOC incl. `Metadata::new`, `from_root`, the
+  `TryFrom`/`From`/`Display` impls, doctest, and the `metadata_new_derives_*`
+  test. (`vault.rs:449-551`, `660-800`)
+- **F2 — `try_from_components` is production-dead public API (both configs).**
+  `GlobalConfig::try_from_components` (`global.rs:198`) and
+  `LocalConfig::try_from_components` (`vault.rs:237`) have only test callers;
+  the tuple `TryFrom` impls are the real construction path. **Delete both**
+  and fold their two tests into the tuple-`TryFrom` test coverage.
+- **F3 — Test suites do not use `pretty_assertions`.** `unit.md:26` mandates
+  it for all equality assertions; no test module in `config/` imports it
+  (crate-wide pre-existing gap). Bring the touched files
+  (`raw.rs`, `global.rs`, `vault.rs`, `aggregate.rs`, `error.rs`) into
+  compliance.
+- **F4 — Dead test to remove with F1.** `metadata_new_derives_from_vault_path`
+  (`vault.rs:934`) covers the dead `Metadata` type; delete with F1. The
+  in-module `fixtures::{vault_root,vault_id}` helpers exist only to serve it —
+  remove if orphaned after deletion.
+- **F5 — Doc/allow cleanup.** `raw.rs:6` blanket
+  `#![allow(missing_docs, …"field docs pending")]` is broader than needed
+  (fields are documented); narrow or drop it. Purge doc-comment cross-refs to
+  the removed types (`global.rs:38`, `vault.rs:566`) and update module-level
+  docs in `vault.rs` (which still say the module "manages `VaultId` and
+  `VaultRoot`" and describe `Metadata`).
+- **F6 — Confirmed OK, no action.** Forbidden-field tests are non-tautological
+  (assert error message contains the independent temp `FilePath`);
+  `serde_json` non-optional (`json = []`) is the only correct design given
+  unconditional use in `value.rs`/`processor.rs`; `build_from_layers` caller
+  migration is complete.
+
+---
+
+## Fix Plan (proposed — awaiting approval)
+
+Scope: cleanup only. No behaviour change. `Version`/`VaultVersion`/
+`GlobalVersion`/`VaultId`/`VaultRoot` remain (persistence-coupled → issue-07).
+
+Order chosen so each step compiles and tests green before the next
+(impact-checked: all targets are LOW risk / no production upstream).
+
+### Step 1 — Delete dead domain types (F1, F4)
+`crates/settings/src/config/vault.rs`:
+- Remove `struct Metadata` + `impl Metadata` (`449-551`).
+- Remove `struct AppVersion` + all its impls (`660-718`).
+- Remove `struct VaultName` + all its impls (`719-800`).
+- Remove test `metadata_new_derives_from_vault_path` and now-orphaned
+  `mod fixtures` (`vault_root`/`vault_id`) if unused after removal.
+- Update the module doc header (drop `Metadata` mention).
+- Run `impact(upstream)` on each before deleting to reconfirm LOW; then
+  `cargo build -p traces-settings` + `--all-features`.
+
+### Step 2 — Delete dead constructors (F2)
+- Remove `GlobalConfig::try_from_components` (`global.rs:198-213`) and its test
+  `returns_template_and_schema_overrides_from_raw_paths` (`global.rs:724-775`),
+  after confirming the tuple-`TryFrom` `preserves_*` tests already cover
+  template+schema mapping (they do); add an assertion there if any gap.
+- Remove `LocalConfig::try_from_components` (`vault.rs:237-257`) and its test
+  `returns_cache_template_and_schema_overrides_from_raw_paths`
+  (`vault.rs:999-1060`); ensure cache/template/schema mapping is covered by
+  the tuple-`TryFrom` `accepts_valid_raw_*` test — extend it to assert
+  cache/template/schema overrides (currently only asserts logging).
+
+### Step 3 — `pretty_assertions` adoption (F3)
+- Add `use pretty_assertions::{assert_eq, assert_ne};` to each `mod tests` (and
+  relevant submodules) in `raw.rs`, `global.rs`, `vault.rs`, `aggregate.rs`,
+  `error.rs` that use equality assertions. `pretty_assertions` is already a
+  `dev-dependency`. Keep `assert!`/`matches!` as-is.
+
+### Step 4 — Coverage tightening (F2 follow-through, DoD "cover all behaviors")
+- After Step 2, verify each surviving public item has a behavior test:
+  `deserialize_config` (all arms ✓), both tuple `TryFrom` (happy + forbidden +
+  defaults + name-derivation ✓), all `AppConfig::to_*_spec`/`create_cache_dir`
+  (✓), version `next`/`try_from` (✓). Add the cache/template/schema
+  assertions folded in from Step 2. No new frameworks/fixtures.
+
+### Step 5 — Docs (F5)
+- Narrow or remove `raw.rs:6` `missing_docs` allow.
+- Remove doc cross-refs to deleted types (`global.rs:38`, `vault.rs:566`).
+- Refresh `vault.rs` module-level doc and `crates/settings/CONTEXT.md` if it
+  references `Metadata`/`VaultName`/`AppVersion` (verify).
+- Update this issue's "Follow-ups deferred to issue-07": drop `Metadata` from
+  the deferred-removal list (now removed here); keep `Version`/`VaultId`/
+  `VaultRoot` + `rkyv`/`traces-db`/`redb`.
+
+### Step 6 — Verify
+- `mise run verify` (fmt + clippy `-D warnings` + full workspace test +
+  `adr:validate`), plus `cargo test -p traces-settings --features json,yaml`
+  and `--doc`.
+- `detect_changes({scope: "compare", base_ref: "main"})` to confirm the diff
+  touches only the intended symbols/flows.
+
+### Out of scope (unchanged)
+- `Version`, `VaultVersion`, `GlobalVersion`, `VaultId`, `VaultRoot`, `rkyv`,
+  `RawConfig::metadata` shim, and the persistence layer → **issue-07**.

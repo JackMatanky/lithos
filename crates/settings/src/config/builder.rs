@@ -19,7 +19,7 @@
 
 // ...
 use traces_fs::{
-    FileReader,
+    DirPath, FileReader,
     metadata::{FileMetadata, FsMetadata},
 };
 use tracing::instrument;
@@ -62,12 +62,9 @@ use crate::{candidate::CandidatePath, discovery::service::DiscoveryResult};
 pub fn build_from_layers(
     global: Option<&RawConfig>,
     vault: Option<&RawConfig>,
-    vault_id: VaultId,
-    vault_root: VaultRoot,
-    version: Version,
+    root: DirPath,
 ) -> Result<AppConfig, ConfigError> {
-    let vault_metadata =
-        super::vault::Metadata::new(vault_id, vault_root, None, None)?;
+    let name = name_from_root(&root);
 
     let logging = vault.and_then(|v| v.logging.clone()).or_else(|| {
         let g = global?;
@@ -170,8 +167,9 @@ pub fn build_from_layers(
         super::schema::SchemaConfig::new(schema_dir, property_bank_file);
 
     Ok(AppConfig::new(
-        version,
-        vault_metadata,
+        Version::initial(),
+        root,
+        name,
         logging,
         cache,
         template,
@@ -179,6 +177,19 @@ pub fn build_from_layers(
         frontmatter,
         task,
     ))
+}
+
+/// Derives a vault name from the last component of the vault root path.
+///
+/// Falls back to `"unnamed"` when the path has no final component.
+fn name_from_root(root: &DirPath) -> Box<str> {
+    root.as_path()
+        .file_name()
+        .map_or_else(
+            || "unnamed".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        )
+        .into_boxed_str()
 }
 
 /// Configuration builder with hybrid staleness detection.
@@ -516,13 +527,9 @@ where
             .transpose()?
             .unwrap_or_else(Version::initial);
 
-        let config = build_from_layers(
-            global,
-            vault,
-            vault_id,
-            vault_root.clone(),
-            next_version,
-        )?;
+        let config =
+            build_from_layers(global, vault, vault_root.as_dir_path().clone())?
+                .with_version(next_version);
 
         self.repository
             .save_config(vault_id, &config)
@@ -1049,10 +1056,9 @@ mod tests {
     /// the merge seam directly to detect any accidental behavioural changes.
     mod build_from_layers_regression {
         use super::*;
-        use crate::config::aggregate::Version;
 
-        fn test_vault_root(dir: &TempDir) -> VaultRoot {
-            VaultRoot::try_new(dir.path().to_path_buf())
+        fn test_vault_root(dir: &TempDir) -> DirPath {
+            DirPath::try_new(dir.path().to_path_buf())
                 .expect("valid vault root")
         }
 
@@ -1060,7 +1066,6 @@ mod tests {
         fn preserves_existing_merge_behavior_vault_overrides_global() {
             let dir = TempDir::new().expect("dir");
             let vault_root = test_vault_root(&dir);
-            let vault_id = VaultId::new();
 
             let global = RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
@@ -1075,14 +1080,9 @@ mod tests {
                 ..Default::default()
             };
 
-            let config = build_from_layers(
-                Some(&global),
-                Some(&vault),
-                vault_id,
-                vault_root,
-                Version::initial(),
-            )
-            .expect("build_from_layers");
+            let config =
+                build_from_layers(Some(&global), Some(&vault), vault_root)
+                    .expect("build_from_layers");
 
             assert_eq!(
                 config.template().template_dir().as_relative_dir().as_str(),
@@ -1095,7 +1095,6 @@ mod tests {
         fn preserves_existing_merge_behavior_global_used_when_no_vault() {
             let dir = TempDir::new().expect("dir");
             let vault_root = test_vault_root(&dir);
-            let vault_id = VaultId::new();
 
             let global = RawConfig {
                 template: Some(crate::config::raw::RawTemplateConfig {
@@ -1104,14 +1103,8 @@ mod tests {
                 ..Default::default()
             };
 
-            let config = build_from_layers(
-                Some(&global),
-                None,
-                vault_id,
-                vault_root,
-                Version::initial(),
-            )
-            .expect("build_from_layers");
+            let config = build_from_layers(Some(&global), None, vault_root)
+                .expect("build_from_layers");
 
             assert_eq!(
                 config.template().template_dir().as_relative_dir().as_str(),
@@ -1124,16 +1117,9 @@ mod tests {
         fn preserves_existing_merge_behavior_defaults_used_when_no_sources() {
             let dir = TempDir::new().expect("dir");
             let vault_root = test_vault_root(&dir);
-            let vault_id = VaultId::new();
 
-            let config = build_from_layers(
-                None,
-                None,
-                vault_id,
-                vault_root,
-                Version::initial(),
-            )
-            .expect("build_from_layers");
+            let config = build_from_layers(None, None, vault_root)
+                .expect("build_from_layers");
 
             // Defaults: the documented default template dir is "templates"
             assert_eq!(

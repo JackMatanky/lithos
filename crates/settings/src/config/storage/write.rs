@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn save_global_persists_config() {
         let (_temp, repo) = temp_repo();
-        let global = GlobalConfig::default();
+        let (_guard, global) = crate::config::global::fixtures::global_config();
 
         repo.save_global(&global).unwrap();
 
@@ -217,7 +217,8 @@ mod tests {
     fn save_vault_persists_config() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = LocalConfig::default();
+        let (_base, _file, vault) =
+            crate::config::vault::fixtures::local_config();
 
         repo.save_vault(vault_id, &vault).unwrap();
 
@@ -245,7 +246,8 @@ mod tests {
     fn save_vault_path_mapping_is_bidirectional() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let root = config_fixtures::vault_root("/test");
+        let root =
+            VaultRoot::from_dir_path(config_fixtures::vault_root("/test"));
 
         repo.save_vault_path_mapping(vault_id, &root).unwrap();
 

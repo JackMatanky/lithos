@@ -14,13 +14,13 @@ use std::{
 };
 
 use rkyv::{Archive, Deserialize, Serialize};
-use traces_fs::DirPath;
+use traces_fs::{DirPath, FilePath};
 
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    raw::RawTrustedVaults,
+    raw::{RawConfig, RawTrustedVaults},
     schema::{PropertyBankFile, SchemaConfig, SchemaDir},
     task::Task,
     template::{TemplateConfig, TemplateDir},
@@ -35,7 +35,7 @@ use super::{
 ///
 /// - Starts at 1 (not 0)
 /// - Increments on each global config file change
-/// - Independent of `VaultVersion` and `Config::Version`
+/// - Independent of `VaultVersion` and `Version`
 #[derive(
     Debug,
     Clone,
@@ -133,21 +133,15 @@ impl TryFrom<u64> for GlobalVersion {
 /// System-wide configuration settings.
 ///
 /// `GlobalConfig` contains settings that are defined at the system level and
-/// shared across all vaults, such as the list of trusted vault paths.
-///
-/// # Examples
-///
-/// ```rust
-/// use traces_settings::config::global::GlobalConfig;
-///
-/// let global = GlobalConfig::default();
-/// assert!(global.trusted_vaults().is_none());
-/// ```
+/// shared across all vaults, such as the list of trusted vault paths. It
+/// carries the [`FilePath`] of the config file it was built from.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct GlobalConfig {
     /// Version number for this global config.
     version: GlobalVersion,
+    /// Path to the config file this config was built from.
+    path: FilePath,
     /// Logging configuration for global defaults.
     logging: Logging,
     /// Template configuration override.
@@ -162,21 +156,6 @@ pub struct GlobalConfig {
     task: Option<Task>,
 }
 
-impl Default for GlobalConfig {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            version: GlobalVersion::initial(),
-            logging: Logging::default(),
-            template: None,
-            schema: None,
-            trusted_vaults: None,
-            frontmatter: Frontmatter::default(),
-            task: None,
-        }
-    }
-}
-
 impl GlobalConfig {
     #[inline]
     #[must_use]
@@ -188,6 +167,7 @@ impl GlobalConfig {
     /// Create a global configuration.
     pub fn new(
         version: GlobalVersion,
+        path: FilePath,
         logging: Logging,
         template: Option<TemplateConfig>,
         schema: Option<SchemaConfig>,
@@ -197,6 +177,7 @@ impl GlobalConfig {
     ) -> Self {
         Self {
             version,
+            path,
             logging,
             template,
             schema,
@@ -206,30 +187,18 @@ impl GlobalConfig {
         }
     }
 
-    /// Creates a global configuration from raw path overrides.
-    ///
-    /// Global path overrides ignore `cache_dir`; cache is vault-scoped.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
-    /// invalid.
-    #[inline]
-    pub fn try_from_components(
-        template: Option<&super::raw::RawTemplateConfig>,
-        schema: Option<&super::raw::RawSchemaConfig>,
-    ) -> Result<Self, ConfigError> {
-        Ok(Self {
-            template: template.map(parse_template).transpose()?.flatten(),
-            schema: schema.map(parse_schema).transpose()?.flatten(),
-            ..Self::default()
-        })
-    }
-
     #[inline]
     #[must_use]
     /// Return the version of this global config.
     pub const fn version(&self) -> GlobalVersion {
         self.version
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the path of the config file this config was built from.
+    pub const fn path(&self) -> &FilePath {
+        &self.path
     }
 
     #[inline]
@@ -272,6 +241,65 @@ impl GlobalConfig {
     /// Return global logging settings.
     pub fn logging(&self) -> &Logging {
         &self.logging
+    }
+}
+
+impl TryFrom<(RawConfig, FilePath)> for GlobalConfig {
+    type Error = ConfigError;
+
+    /// Builds a validated [`GlobalConfig`] from a raw config and its file path.
+    ///
+    /// The tuple carries the already-validated config-file [`FilePath`];
+    /// filesystem I/O happens at the caller, not here.
+    ///
+    /// Omitted fields fall back to defaults ([`Logging::default`],
+    /// [`Frontmatter::default`]).
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] with `field: "cache"` when the
+    /// forbidden `cache` field is present (cache is vault-scoped), or when any
+    /// contained field fails validation.
+    #[inline]
+    fn try_from(
+        (raw, path): (RawConfig, FilePath),
+    ) -> Result<Self, Self::Error> {
+        if raw.cache.is_some() {
+            return Err(ConfigError::ValidationFailed {
+                field: "cache".into(),
+                message: format!(
+                    "cache is forbidden in global config ({}); it is \
+                     vault-scoped",
+                    path.as_path().display()
+                )
+                .into(),
+            });
+        }
+
+        let logging = raw
+            .logging
+            .map_or_else(|| Ok(Logging::default()), Logging::try_from)?;
+        let frontmatter = raw.frontmatter.map_or_else(
+            || Ok(Frontmatter::default()),
+            Frontmatter::try_from,
+        )?;
+        let trusted_vaults =
+            raw.trusted_vaults.map(TrustedVaults::try_from).transpose()?;
+        let template =
+            raw.template.as_ref().map(parse_template).transpose()?.flatten();
+        let schema =
+            raw.schema.as_ref().map(parse_schema).transpose()?.flatten();
+        let task = raw.task.map(Task::try_from).transpose()?;
+
+        Ok(Self {
+            version: GlobalVersion::initial(),
+            path,
+            logging,
+            template,
+            schema,
+            trusted_vaults,
+            frontmatter,
+            task,
+        })
     }
 }
 
@@ -538,6 +566,31 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
     }
 }
 
+/// Test-only fixtures for constructing [`GlobalConfig`] values.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    use tempfile::NamedTempFile;
+    use traces_fs::FilePath;
+
+    use super::GlobalConfig;
+
+    /// Builds a default [`GlobalConfig`] backed by a fresh temp file.
+    ///
+    /// Returns the [`NamedTempFile`] guard so the backing file outlives the
+    /// returned config for the duration of the test.
+    pub(crate) fn global_config() -> (NamedTempFile, GlobalConfig) {
+        let file = NamedTempFile::new().expect("temp file created");
+        let path = FilePath::try_new(file.path().to_path_buf())
+            .expect("temp file is a valid FilePath");
+        let config = GlobalConfig::try_from((
+            crate::config::raw::RawConfig::default(),
+            path,
+        ))
+        .expect("default raw config converts");
+        (file, config)
+    }
+}
+
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -553,6 +606,8 @@ mod tests {
     use super::*;
 
     mod version {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -587,6 +642,8 @@ mod tests {
     }
 
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -637,90 +694,152 @@ mod tests {
         }
     }
 
-    mod defaults {
-        use super::super::*;
+    mod try_from_raw {
+        use pretty_assertions::assert_eq;
+        use tempfile::NamedTempFile;
+        use traces_fs::FilePath;
+
+        use super::*;
+        use crate::config::raw::{
+            RawConfig, RawFrontmatter, RawLogging, RawSchemaConfig,
+            RawTaskConfig, RawTemplateConfig, RawTrustedVaults,
+        };
+
+        fn temp_file_path() -> (NamedTempFile, FilePath) {
+            let file = NamedTempFile::new().expect("temp file created");
+            let path = FilePath::try_new(file.path().to_path_buf())
+                .expect("temp file is a valid FilePath");
+            (file, path)
+        }
 
         #[test]
-        fn global_defaults_have_no_trusted_vaults() {
-            let global = GlobalConfig::default();
+        fn accepts_valid_raw_with_all_fields_and_stores_path() {
+            let (_guard, path) = temp_file_path();
+            let raw = RawConfig {
+                logging: Some(RawLogging {
+                    log_level: Some("debug".to_owned()),
+                }),
+                template: Some(RawTemplateConfig {
+                    directory: Some("templates".to_owned()),
+                }),
+                schema: Some(RawSchemaConfig {
+                    directory: Some("schemas".to_owned()),
+                    property_bank_file: Some("bank.json".to_owned()),
+                }),
+                trusted_vaults: Some(RawTrustedVaults::List(vec![
+                    "/vaults/alpha".to_owned(),
+                ])),
+                frontmatter: Some(RawFrontmatter::default()),
+                task: Some(RawTaskConfig::default()),
+                cache: None,
+                metadata: None,
+            };
+
+            let global = GlobalConfig::try_from((raw, path.clone()))
+                .expect("valid raw config should convert");
+
+            assert_eq!(global.path(), &path);
+        }
+
+        #[test]
+        fn rejects_cache_as_forbidden_field() {
+            let (_guard, path) = temp_file_path();
+            let raw = RawConfig {
+                cache: Some(crate::config::raw::RawCacheConfig {
+                    directory: Some(".cache".to_owned()),
+                }),
+                ..RawConfig::default()
+            };
+
+            let expected_path = path.as_path().display().to_string();
+            let error = GlobalConfig::try_from((raw, path))
+                .expect_err("cache must be rejected in global config");
 
             assert!(
-                global.trusted_vaults().is_none(),
-                "Default trusted_vaults should be None"
+                matches!(
+                    &error,
+                    ConfigError::ValidationFailed { field, message }
+                        if &**field == "cache"
+                            && message.contains(&expected_path)
+                ),
+                "expected ValidationFailed on 'cache' including source path \
+                 {expected_path:?}, got {error:?}"
             );
         }
 
         #[test]
-        fn global_defaults_have_no_task_config() {
-            let global = GlobalConfig::default();
+        fn applies_defaults_for_omitted_fields() {
+            let (_guard, path) = temp_file_path();
+            let raw = RawConfig::default();
 
-            assert!(
-                global.task().is_none(),
-                "Default task config should be None"
-            );
-        }
-
-        #[test]
-        fn global_defaults_use_info_log_level() {
-            let global = GlobalConfig::default();
+            let global = GlobalConfig::try_from((raw, path))
+                .expect("empty raw config should convert with defaults");
 
             assert_eq!(
                 global.logging().level_str(),
                 "info",
-                "Default log level should be 'info'"
+                "omitted logging should default to info"
+            );
+            assert_eq!(
+                global.frontmatter(),
+                &Frontmatter::default(),
+                "omitted frontmatter should default"
             );
         }
-    }
-
-    mod path_overrides {
-        use super::*;
 
         #[test]
-        fn returns_template_and_schema_overrides_from_raw_paths() {
-            let raw_template = crate::config::raw::RawTemplateConfig {
-                directory: Some("global-templates".to_owned()),
-            };
-            let raw_schema = crate::config::raw::RawSchemaConfig {
-                directory: Some("global-schemas".to_owned()),
-                property_bank_file: Some("global-bank.json".to_owned()),
+        fn preserves_trusted_vaults_template_schema_and_task() {
+            let (_guard, path) = temp_file_path();
+            let raw = RawConfig {
+                trusted_vaults: Some(RawTrustedVaults::List(vec![
+                    "/vaults/alpha".to_owned(),
+                ])),
+                template: Some(RawTemplateConfig {
+                    directory: Some("templates".to_owned()),
+                }),
+                schema: Some(RawSchemaConfig {
+                    directory: Some("schemas".to_owned()),
+                    property_bank_file: Some("global-bank.json".to_owned()),
+                }),
+                task: Some(RawTaskConfig::default()),
+                ..RawConfig::default()
             };
 
-            let global = GlobalConfig::try_from_components(
-                Some(&raw_template),
-                Some(&raw_schema),
-            )
-            .expect("global path overrides should validate");
+            let global = GlobalConfig::try_from((raw, path))
+                .expect("raw config should convert");
 
+            assert!(
+                global.trusted_vaults().is_some(),
+                "trusted_vaults should be preserved"
+            );
             assert_eq!(
                 global
                     .template()
-                    .expect("template override should exist")
+                    .expect("template preserved")
                     .template_dir()
                     .as_relative_dir()
                     .as_str(),
-                "global-templates",
-                "global template override should be retained"
+                "templates",
             );
             assert_eq!(
                 global
                     .schema()
-                    .expect("schema override should exist")
+                    .expect("schema preserved")
                     .schema_dir()
                     .as_relative_dir()
                     .as_str(),
-                "global-schemas",
-                "global schema override should be retained"
+                "schemas",
             );
             assert_eq!(
                 global
                     .schema()
-                    .expect("schema override should exist")
+                    .expect("schema preserved")
                     .property_bank_file()
                     .as_str(),
                 "global-bank.json",
-                "global property bank override should be retained under \
-                 schema config"
+                "property_bank override should be preserved from raw",
             );
+            assert!(global.task().is_some(), "task should be preserved");
         }
     }
 

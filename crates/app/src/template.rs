@@ -25,26 +25,14 @@ mod tests {
     use std::collections::HashMap;
 
     use traces_fs::DirPath;
-    use traces_settings::{
-        builder::build_from_layers,
-        config::{
-            aggregate::Version,
-            vault::{VaultId, VaultRoot},
-        },
-    };
+    use traces_settings::builder::build_from_layers;
     use traces_template::TemplateName;
 
     use super::*;
 
     fn config(root: &DirPath) -> traces_settings::AppConfig {
-        build_from_layers(
-            None,
-            None,
-            VaultId::new(),
-            VaultRoot::from_dir_path(root.clone()),
-            Version::initial(),
-        )
-        .expect("expected test config to build")
+        build_from_layers(None, None, root.clone())
+            .expect("expected test config to build")
     }
 
     fn input(name: &str, dry_run: bool) -> CreateTemplateInput {

@@ -295,9 +295,11 @@ mod tests {
     #[test]
     fn get_global_returns_latest_version() {
         let (_temp, repo) = temp_repo();
-        let global1 = GlobalConfig::default();
+        let (_guard, global1) =
+            crate::config::global::fixtures::global_config();
         let global2 = GlobalConfig::new(
             global1.version().next().unwrap(),
+            global1.path().clone(),
             global1.logging().clone(),
             global1.template().cloned(),
             global1.schema().cloned(),
@@ -327,7 +329,8 @@ mod tests {
     fn get_vault_returns_latest_for_id() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let vault = LocalConfig::default();
+        let (_base, _file, vault) =
+            crate::config::vault::fixtures::local_config();
         let bytes = traces_db::RkyvBytes::encode(&vault).unwrap();
 
         repo.store
@@ -370,7 +373,8 @@ mod tests {
     fn find_vault_id_by_path_works() {
         let (_temp, repo) = temp_repo();
         let vault_id = VaultId::new();
-        let root = config_fixtures::vault_root("/test");
+        let root =
+            VaultRoot::from_dir_path(config_fixtures::vault_root("/test"));
         let id_bytes = vault_id;
 
         repo.store

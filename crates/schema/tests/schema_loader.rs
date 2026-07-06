@@ -55,11 +55,7 @@ use traces_fs::{DirPath, FileReader};
 use traces_schema::{
     builder::Builder, property::PropertyName, repository::ReadRepository as _,
 };
-use traces_settings::{
-    aggregate::{AppConfig, Version},
-    builder,
-    vault::{VaultId, VaultRoot},
-};
+use traces_settings::{aggregate::AppConfig, builder};
 
 /// Write a file to the test directory.
 fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
@@ -73,14 +69,8 @@ fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
 
 /// Create a test config for a vault root.
 fn test_config(root: &Path) -> TestResult<AppConfig> {
-    let root = VaultRoot::try_new(root.to_path_buf())?;
-    let config = builder::build_from_layers(
-        None,
-        None,
-        VaultId::new(),
-        root,
-        Version::initial(),
-    )?;
+    let root = DirPath::try_new(root.to_path_buf())?;
+    let config = builder::build_from_layers(None, None, root)?;
     Ok(config)
 }
 

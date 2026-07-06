@@ -745,11 +745,9 @@ impl<'source>
 )]
 mod tests {
     use chrono::NaiveDate;
+    use traces_fs::DirPath;
     use traces_settings::{
-        aggregate::AppConfig,
-        raw::RawConfig,
-        task::TaskConfigSpec,
-        vault::{VaultId, VaultRoot},
+        aggregate::AppConfig, raw::RawConfig, task::TaskConfigSpec,
     };
 
     use super::*;
@@ -762,7 +760,7 @@ mod tests {
         raw::{RawListItem, RawListItemText, RawListKind},
     };
 
-    fn test_vault_root() -> VaultRoot {
+    fn test_vault_root() -> DirPath {
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock should be monotonic")
@@ -770,7 +768,7 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("traces-note-test-{millis}"));
         std::fs::create_dir_all(&dir).expect("test vault dir should exist");
-        VaultRoot::try_new(dir).expect("vault root")
+        DirPath::try_new(dir).expect("vault root")
     }
 
     #[test]
@@ -988,9 +986,7 @@ mod tests {
         traces_settings::builder::build_from_layers(
             None,
             Some(&raw),
-            VaultId::new(),
             test_vault_root(),
-            traces_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }
@@ -1014,9 +1010,7 @@ mod tests {
         traces_settings::builder::build_from_layers(
             None,
             Some(&raw),
-            VaultId::new(),
             test_vault_root(),
-            traces_settings::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }

@@ -25,7 +25,9 @@ If any component still imports the old repository, storage, version, view, event
 
 - [ ] No production caller imports settings repository/storage APIs before deletion.
 - [ ] Old config repository traits and storage modules are removed from settings.
-- [ ] Old config snapshot views, version counters, events, stale-analysis processor, and resolver plan are removed or made unreachable only in tests if temporarily necessary.
+- [ ] Old config snapshot views, version counters (`aggregate::Version`, `GlobalVersion`, `VaultVersion`), events (`AppConfig::pending_events`), stale-analysis processor, and resolver plan are removed or made unreachable only in tests if temporarily necessary.
+- [ ] Explicitly remove `RawConfig::metadata`, `AppConfig::version`, `GlobalConfig::version`, and `LocalConfig::version` which were temporarily retained as compatibility shims in Issue 03.
+- [ ] Explicitly remove the `VaultId` and `VaultRoot` types from `crates/settings/src/config/vault.rs` once persistence no longer relies on them.
 - [ ] Settings crate no longer depends on `traces-db`, `redb`, or `rkyv` for config persistence.
 - [ ] Public exports no longer expose old `Config`, `Vault`, `Global`, repository, storage, or discovery-port names.
 - [ ] Remaining crate structure matches the PRD layout: `candidate.rs` at `src/`, tracker/trust under `config/`, `location.rs`/`env.rs`/`os_dirs.rs` flat at `src/`.

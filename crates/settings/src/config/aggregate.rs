@@ -7,6 +7,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use rkyv::with::Skip;
+use traces_fs::DirPath;
 
 use super::{
     cache::{CacheConfig, CacheConfigSpec},
@@ -17,7 +18,6 @@ use super::{
     schema::{SchemaConfig, SchemaConfigSpec},
     task::{Task, TaskConfigSpec, TemporalSlot},
     template::{TemplateConfig, TemplateConfigSpec},
-    vault::Metadata,
 };
 
 /// Fully-resolved and validated configuration for a vault.
@@ -29,8 +29,10 @@ use super::{
 pub struct AppConfig {
     /// Version number for this merged config snapshot.
     version: Version,
-    /// Vault metadata with versioning and naming.
-    vault_metadata: Metadata,
+    /// Vault root directory this configuration applies to.
+    root: DirPath,
+    /// Human-readable vault name derived from the root directory basename.
+    name: Box<str>,
     /// Merged logging configuration.
     logging: Logging,
     /// Merged cache configuration.
@@ -58,7 +60,8 @@ impl AppConfig {
     #[must_use]
     pub(crate) fn new(
         version: Version,
-        vault_metadata: Metadata,
+        root: DirPath,
+        name: Box<str>,
         logging: Logging,
         cache: CacheConfig,
         template: TemplateConfig,
@@ -68,7 +71,8 @@ impl AppConfig {
     ) -> Self {
         let mut config = Self {
             version,
-            vault_metadata,
+            root,
+            name,
             logging,
             cache,
             template,
@@ -86,11 +90,18 @@ impl AppConfig {
         config
     }
 
-    /// Return the vault metadata.
+    /// Return the vault root directory this configuration applies to.
     #[inline]
     #[must_use]
-    pub const fn vault_metadata(&self) -> &Metadata {
-        &self.vault_metadata
+    pub const fn root(&self) -> &DirPath {
+        &self.root
+    }
+
+    /// Return the vault name derived from the root directory basename.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Return the version of this configuration.
@@ -250,7 +261,7 @@ impl AppConfig {
     pub fn to_schema_spec(&self) -> Result<SchemaConfigSpec, ConfigError> {
         use traces_fs::path::RelativeFilePath;
 
-        let root = self.vault_metadata.root().as_dir_path().clone();
+        let root = self.root.clone();
 
         let schema_directory =
             self.schema.schema_dir().as_relative_dir().clone();
@@ -275,7 +286,7 @@ impl AppConfig {
     /// declaration cannot be projected into config-spec types.
     #[inline]
     pub fn to_template_spec(&self) -> Result<TemplateConfigSpec, ConfigError> {
-        let root = self.vault_metadata.root().as_dir_path().clone();
+        let root = self.root.clone();
         let directory = self.template.template_dir().as_relative_dir().clone();
 
         Ok(TemplateConfigSpec::new(root, directory))
@@ -302,7 +313,7 @@ impl AppConfig {
     )]
     #[inline]
     pub fn to_cache_spec(&self) -> Result<CacheConfigSpec, ConfigError> {
-        let root = self.vault_metadata.root().as_dir_path().clone();
+        let root = self.root.clone();
         let directory = self.cache.cache_dir().as_relative_dir().clone();
         Ok(CacheConfigSpec::new(root, directory))
     }
@@ -315,8 +326,7 @@ impl AppConfig {
     #[inline]
     pub fn create_cache_dir(&self) -> Result<(), ConfigError> {
         std::fs::create_dir_all(
-            self.vault_metadata
-                .root()
+            self.root
                 .as_path()
                 .join(self.cache.directory().as_relative_dir().as_str()),
         )
@@ -360,7 +370,7 @@ impl From<&AppConfig> for TemplateConfigSpec {
     #[inline]
     fn from(config: &AppConfig) -> Self {
         Self::new(
-            config.vault_metadata.root().as_dir_path().clone(),
+            config.root.clone(),
             config.template.template_dir().as_relative_dir().clone(),
         )
     }
@@ -449,17 +459,13 @@ pub(crate) mod fixtures {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    use traces_fs::DirPath;
+
     use super::*;
-    use crate::config::{
-        raw::{RawFrontmatter, RawLogging},
-        vault::{AppVersion, VaultId, VaultName, VaultRoot},
-    };
+    use crate::config::raw::{RawFrontmatter, RawLogging};
 
-    pub fn vault_id() -> VaultId {
-        VaultId::new()
-    }
-
-    pub fn vault_root(path: &str) -> VaultRoot {
+    /// Build a validated test vault root directory as a [`DirPath`].
+    pub fn vault_root(path: &str) -> DirPath {
         let basename = std::path::Path::new(path)
             .file_name()
             .filter(|name| !name.is_empty())
@@ -472,25 +478,29 @@ pub(crate) mod fixtures {
             .join(format!("traces-test-{millis}"))
             .join(basename);
         std::fs::create_dir_all(&dir).expect("test vault dir should exist");
-        VaultRoot::try_new(dir).expect("vault_root")
+        DirPath::try_new(dir).expect("vault_root")
+    }
+
+    /// Derive a vault name from the last component of a root directory path.
+    fn name_from_root(root: &DirPath) -> Box<str> {
+        root.as_path()
+            .file_name()
+            .map_or_else(
+                || "unnamed".to_owned(),
+                |n| n.to_string_lossy().into_owned(),
+            )
+            .into_boxed_str()
     }
 
     /// Create an `AppConfig` with test values. Only available in tests.
     pub fn test_config() -> AppConfig {
         let test_root = vault_root("/test-vault");
-        let test_name = VaultName::from_root(&test_root);
-        let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
-            .expect("package version is non-empty");
+        let test_name = name_from_root(&test_root);
 
         AppConfig {
             version: Version::initial(),
-            vault_metadata: Metadata::new(
-                VaultId::new(),
-                test_root,
-                Some(test_name),
-                Some(test_version),
-            )
-            .expect("test metadata must be valid"),
+            root: test_root,
+            name: test_name,
             logging: Logging::default(),
             cache: crate::config::cache::CacheConfig::default(),
             template: crate::config::template::TemplateConfig::default(),
@@ -529,9 +539,7 @@ pub(crate) mod fixtures {
         crate::config::builder::build_from_layers(
             None,
             Some(&vault),
-            vault_id(),
             vault_root("/vault"),
-            Version::initial(),
         )
         .expect("AppConfig build should succeed with sample data")
     }
@@ -540,9 +548,7 @@ pub(crate) mod fixtures {
         crate::config::builder::build_from_layers(
             None,
             None,
-            vault_id(),
             vault_root("/vault"),
-            Version::initial(),
         )
         .expect("Merge with empty values should succeed")
     }
@@ -563,6 +569,8 @@ mod tests {
     use super::*;
 
     mod integrity {
+
+        use pretty_assertions::assert_eq;
 
         use super::*;
 
@@ -596,15 +604,10 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 None,
-                fixtures::vault_id(),
                 vault_root.clone(),
-                Version::initial(),
             )
             .unwrap();
-            assert_eq!(
-                config.vault_metadata().root().as_path(),
-                vault_root.as_path()
-            );
+            assert_eq!(config.root().as_path(), vault_root.as_path());
         }
 
         #[test]
@@ -616,14 +619,12 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
                 vault_root.clone(),
-                Version::initial(),
             )
             .expect("should build config without vault_path");
 
             assert_eq!(
-                config.vault_metadata().root().as_path(),
+                config.root().as_path(),
                 vault_root.as_path(),
                 "Vault root should come from the explicit param, not config \
                  struct"
@@ -635,9 +636,7 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 None,
-                fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -667,6 +666,8 @@ mod tests {
     }
 
     mod merge {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -699,6 +700,8 @@ mod tests {
     }
 
     mod build_tests {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -727,9 +730,7 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 None,
-                fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -761,9 +762,7 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -778,7 +777,7 @@ mod tests {
     }
 
     mod schema_spec {
-        use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn to_schema_spec_constructs_correct_paths() {
@@ -796,12 +795,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -857,12 +852,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .unwrap();
 
@@ -900,12 +891,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -918,6 +905,8 @@ mod tests {
     }
 
     mod resolved_path_config {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -926,9 +915,7 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 None,
-                fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                Version::initial(),
             )
             .expect("empty raw layers should build default config");
 
@@ -973,9 +960,7 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                Version::initial(),
             )
             .expect("raw vault paths should build resolved config");
 
@@ -1003,7 +988,7 @@ mod tests {
     }
 
     mod config_specs {
-        use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn create_cache_dir_creates_configured_cache_directory() {
@@ -1018,12 +1003,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -1059,12 +1040,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -1104,12 +1081,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -1146,12 +1119,8 @@ mod tests {
             let config = crate::config::builder::build_from_layers(
                 None,
                 Some(&vault),
-                fixtures::vault_id(),
-                crate::config::vault::VaultRoot::try_new(
-                    root.path().to_path_buf(),
-                )
-                .expect("vault root should be valid"),
-                Version::initial(),
+                traces_fs::DirPath::try_new(root.path().to_path_buf())
+                    .expect("vault root should be valid"),
             )
             .expect("config should build");
 
@@ -1173,6 +1142,8 @@ mod tests {
         use super::*;
 
         mod conversions {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -1182,10 +1153,7 @@ mod tests {
                 let spec =
                     crate::config::template::TemplateConfigSpec::from(&config);
 
-                assert_eq!(
-                    spec.root().as_path(),
-                    config.vault_metadata().root().as_path()
-                );
+                assert_eq!(spec.root().as_path(), config.root().as_path());
             }
 
             #[test]
@@ -1200,6 +1168,8 @@ mod tests {
         }
 
         mod create {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -1210,10 +1180,7 @@ mod tests {
                     .to_template_spec()
                     .expect("template spec should build");
 
-                assert_eq!(
-                    spec.root().as_path(),
-                    config.vault_metadata().root().as_path()
-                );
+                assert_eq!(spec.root().as_path(), config.root().as_path());
             }
 
             #[test]
