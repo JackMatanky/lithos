@@ -1,74 +1,35 @@
-/// Error classification for codec failures.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodecErrorKind {
-    /// Serialization to bytes failed.
-    Encode,
-    /// Archived byte validation failed.
-    Access,
-    /// Deserialization from archived bytes failed.
-    Decode,
-}
-
-/// Errors from rkyv codec operations.
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum CodecError {
-    /// Serialization to rkyv bytes failed.
-    #[error("failed to serialize {type_name} with rkyv")]
-    RkyvSerialize {
-        /// Rust type being serialized.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    /// Archived byte validation failed.
-    #[error("failed to validate archived {type_name}")]
-    RkyvAccess {
-        /// Rust type being validated.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    /// Deserialization from archived bytes failed.
-    #[error("failed to deserialize archived {type_name}")]
-    RkyvDeserialize {
-        /// Rust type being deserialized.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-}
-
-impl CodecError {
-    /// Classify codec error for stable branching.
-    #[inline]
-    #[must_use]
-    pub const fn kind(&self) -> CodecErrorKind {
-        match self {
-            Self::RkyvSerialize {
-                ..
-            } => CodecErrorKind::Encode,
-            Self::RkyvAccess {
-                ..
-            } => CodecErrorKind::Access,
-            Self::RkyvDeserialize {
-                ..
-            } => CodecErrorKind::Decode,
-        }
-    }
-}
+//! Database, codec, and storage error types.
+//!
+//! The primary entry points are [`DbError`] (full error context with source
+//! chain) and [`DbErrorKind`] (stable classification for branching). Codec
+//! operations have a dedicated sub-type: [`CodecError`] with classification
+//! [`CodecErrorKind`].
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! use traces_db::{DbError, DbErrorKind};
+//!
+//! let err = DbError::Corruption("data corrupted".into());
+//! assert_eq!(err.kind(), DbErrorKind::Storage);
+//! assert!(!err.is_transient());
+//! ```
 
 /// Error classification for stable branching without backend-specific matching.
+///
 /// Provides a stable API for error handling that doesn't depend on
 /// backend-specific error types. Use [`DbError::kind`] to classify errors.
+///
+/// # Examples
+///
+/// ```
+/// use traces_db::{DbError, DbErrorKind};
+///
+/// let err = DbError::Corruption("corrupt data".into());
+/// assert_eq!(err.kind(), DbErrorKind::Storage);
+/// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DbErrorKind {
     /// Database-level operation failed (open, create, etc.).
     Database,
@@ -84,7 +45,29 @@ pub enum DbErrorKind {
     Codec,
 }
 
-/// Database error types.
+/// Database error type with full source chain.
+///
+/// Each variant preserves the underlying error source. Use
+/// [`kind`](DbError::kind) for classification without backend-specific matching
+/// and [`is_transient`](DbError::is_transient) for retry decisions.
+///
+/// # Variants
+///
+/// | Category | Variants | Backend |
+/// |---|---|---|
+/// | Backend errors | `Database`, `Commit`, `Transaction`, `Table`, `Storage` | [`redb`] |
+/// | Codec errors | `Codec` | rkyv |
+/// | Compatibility | `Open`, `Corruption` | — |
+///
+/// # Examples
+///
+/// ```
+/// use traces_db::{DbError, DbErrorKind};
+///
+/// let err = DbError::Corruption("data corrupted".into());
+/// assert_eq!(err.kind(), DbErrorKind::Storage);
+/// assert!(!err.is_transient());
+/// ```
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -243,6 +226,118 @@ impl DbError {
             }
             // All other errors are permanent (not retryable)
             Self::Corruption(_) | Self::Codec(_) | Self::Open(_) => false,
+        }
+    }
+}
+
+/// Error classification for codec failures.
+///
+/// A sub-type of the error hierarchy — use [`CodecError::kind`] for
+/// codec-specific branching, or [`DbError::kind`] for general classification
+/// (returns [`DbErrorKind::Codec`]).
+///
+/// # Examples
+///
+/// ```
+/// use traces_db::{CodecError, CodecErrorKind};
+/// # use rkyv::rancor::Source;
+///
+/// let err = CodecError::RkyvSerialize {
+///     type_name: "String",
+///     source: rkyv::rancor::Error::new(std::io::Error::other("test")),
+/// };
+/// assert_eq!(err.kind(), CodecErrorKind::Encode);
+/// ```
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CodecErrorKind {
+    /// Serialization to bytes failed.
+    Encode,
+    /// Archived byte validation failed.
+    Access,
+    /// Deserialization from archived bytes failed.
+    Decode,
+}
+
+/// Errors from rkyv codec operations.
+///
+/// A sub-type of the error hierarchy — wrap in [`DbError::Codec`] to
+/// integrate with the general [`DbError`] system.
+///
+/// # Examples
+///
+/// ```
+/// use traces_db::{CodecError, CodecErrorKind};
+/// # use rkyv::rancor::Source;
+///
+/// let err = CodecError::RkyvSerialize {
+///     type_name: "String",
+///     source: rkyv::rancor::Error::new(std::io::Error::other("test")),
+/// };
+/// assert_eq!(err.kind(), CodecErrorKind::Encode);
+/// ```
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum CodecError {
+    /// Serialization to rkyv bytes failed.
+    #[error("failed to serialize {type_name} with rkyv")]
+    RkyvSerialize {
+        /// Rust type being serialized.
+        type_name: &'static str,
+        /// Underlying rkyv error.
+        #[source]
+        source: rkyv::rancor::Error,
+    },
+
+    /// Archived byte validation failed.
+    #[error("failed to validate archived {type_name}")]
+    RkyvAccess {
+        /// Rust type being validated.
+        type_name: &'static str,
+        /// Underlying rkyv error.
+        #[source]
+        source: rkyv::rancor::Error,
+    },
+
+    /// Deserialization from archived bytes failed.
+    #[error("failed to deserialize archived {type_name}")]
+    RkyvDeserialize {
+        /// Rust type being deserialized.
+        type_name: &'static str,
+        /// Underlying rkyv error.
+        #[source]
+        source: rkyv::rancor::Error,
+    },
+}
+
+impl CodecError {
+    /// Classify codec error for stable branching.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use traces_db::{CodecError, CodecErrorKind};
+    /// # use rkyv::rancor::Source;
+    ///
+    /// let err = CodecError::RkyvSerialize {
+    ///     type_name: "String",
+    ///     source: rkyv::rancor::Error::new(std::io::Error::other("test")),
+    /// };
+    /// assert_eq!(err.kind(), CodecErrorKind::Encode);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn kind(&self) -> CodecErrorKind {
+        match self {
+            Self::RkyvSerialize {
+                ..
+            } => CodecErrorKind::Encode,
+            Self::RkyvAccess {
+                ..
+            } => CodecErrorKind::Access,
+            Self::RkyvDeserialize {
+                ..
+            } => CodecErrorKind::Decode,
         }
     }
 }
