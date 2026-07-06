@@ -1,5 +1,12 @@
 ---
-labels: [ready-for-agent]
+title: 05-wire-property-bank-processor
+category: enhancement
+label: ready-for-agent
+status: pending
+branch: issue-05-wire-property-bank-processor
+merge_commit:
+date_created: 2026-06-20
+date_completed:
 ---
 
 ## What to build

@@ -1,5 +1,12 @@
 ---
-labels: [ready-for-agent]
+title: 02-implement-property-differ
+category: enhancement
+label: ready-for-agent
+status: pending
+branch: issue-02-implement-property-differ
+merge_commit:
+date_created: 2026-06-20
+date_completed:
 ---
 
 ## What to build

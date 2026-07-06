@@ -1,5 +1,12 @@
 ---
-labels: [ready-for-agent]
+title: 04-wire-base-schema-processor
+category: enhancement
+label: ready-for-agent
+status: pending
+branch: issue-04-wire-base-schema-processor
+merge_commit:
+date_created: 2026-06-20
+date_completed:
 ---
 
 ## What to build

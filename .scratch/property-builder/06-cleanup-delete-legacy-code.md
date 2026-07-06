@@ -1,5 +1,12 @@
 ---
-labels: [ready-for-agent]
+title: 06-cleanup-delete-legacy-code
+category: enhancement
+label: ready-for-agent
+status: pending
+branch: issue-06-cleanup-delete-legacy-code
+merge_commit:
+date_created: 2026-06-20
+date_completed:
 ---
 
 ## What to build
