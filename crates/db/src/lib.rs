@@ -60,21 +60,12 @@ pub use core::Store;
 
 pub use codec::{DbRkyvType, RkyvAccess, RkyvBytes, RkyvDecode, RkyvEncode};
 pub use error::{CodecError, CodecErrorKind, DbError, DbErrorKind};
-#[expect(
-    unused_imports,
-    reason = "Re-exported for internal consumers landing in subsequent slices"
-)]
-pub(crate) use events::{EventId, EventIdAllocator, EventIdError, EventStore};
+pub use events::{EventId, EventIdAllocator, EventIdError, EventStore};
 pub use path::DbPathKey;
 pub use read::ReadTx;
-#[expect(
-    unused_imports,
-    reason = "Re-exported for internal consumers landing in subsequent slices"
-)]
-pub(crate) use table::EventTable;
 pub use table::{
-    PathTable, PathUuidTable, RkyvMultimap, RkyvTable, Table, UuidMultimap,
-    UuidPathTable, UuidTable,
+    EventTable, PathTable, PathUuidTable, RkyvMultimap, RkyvTable, Table,
+    UuidMultimap, UuidPathTable, UuidTable,
 };
 pub use uuid::{
     UuidMultimapReadExt, UuidMultimapWriteExt, UuidTableReadExt,

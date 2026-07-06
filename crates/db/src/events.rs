@@ -6,33 +6,30 @@ use thiserror::Error;
 
 use crate::{DbError, RkyvDecode, RkyvEncode};
 
-#[allow(dead_code, reason = "Foundation type used in upcoming slices")]
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// Canonical event-log identifier.
 ///
 /// `EventId` is a strictly monotonic, positive sequence value within a single
 /// context event stream. Gaps are allowed.
-pub(crate) struct EventId(NonZeroU64);
+pub struct EventId(NonZeroU64);
 
-#[allow(dead_code, reason = "Foundation API used in upcoming slices")]
 impl EventId {
     /// Minimum possible event identifier.
-    pub(crate) const MIN: Self = Self(NonZeroU64::MIN);
+    pub const MIN: Self = Self(NonZeroU64::MIN);
 
     #[inline]
     #[must_use]
     /// Returns the numeric event identifier.
-    pub(crate) fn get(self) -> u64 {
+    pub fn get(self) -> u64 {
         self.0.get()
     }
 
     /// Returns the next strictly monotonic [`EventId`].
     ///
     /// # Errors
-    /// Returns [`EventIdError::Overflow`] if the sequence exceeds `u64::MAX`.
-    pub(crate) fn next_after(
-        current_max: Option<Self>,
-    ) -> Result<Self, EventIdError> {
+    /// Returns [`EventIdError`] if the resulting ID would overflow `u64::MAX`.
+    #[inline]
+    pub fn next_after(current_max: Option<Self>) -> Result<Self, EventIdError> {
         let next_value = match current_max {
             None => 1,
             Some(id) => {
@@ -47,7 +44,8 @@ impl EventId {
     ///
     /// # Errors
     /// Returns [`EventIdError::Zero`] if the value is zero.
-    pub(crate) fn try_from_raw(raw: u64) -> Result<Self, EventIdError> {
+    #[inline]
+    pub fn try_from_raw(raw: u64) -> Result<Self, EventIdError> {
         NonZeroU64::new(raw).map(Self).ok_or(EventIdError::Zero)
     }
 
@@ -57,7 +55,8 @@ impl EventId {
     /// - [`EventIdError::Zero`] if raw is zero.
     /// - [`EventIdError::NotStrictlyMonotonic`] if candidate is not after
     ///   previous.
-    pub(crate) fn try_after(
+    #[inline]
+    pub fn try_after(
         previous: Option<Self>,
         raw: u64,
     ) -> Result<Self, EventIdError> {
@@ -175,10 +174,9 @@ impl redb::Key for EventId {
     }
 }
 
-#[allow(dead_code, reason = "Foundation error type used in upcoming slices")]
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
 /// Parse and conversion errors for [`EventId`].
-pub(crate) enum EventIdError {
+pub enum EventIdError {
     /// Input byte slice is empty.
     #[error("event id bytes cannot be empty")]
     EmptyBytes,
@@ -208,18 +206,24 @@ pub(crate) enum EventIdError {
     Overflow,
 }
 
-#[allow(dead_code, reason = "Foundation allocator used in upcoming slices")]
 #[derive(Clone, Debug)]
 /// In-memory monotonic allocator for [`EventId`].
-pub(crate) struct EventIdAllocator {
+pub struct EventIdAllocator {
     last_issued: Option<EventId>,
 }
 
-#[allow(dead_code, reason = "Foundation allocator API used in upcoming slices")]
+impl Default for EventIdAllocator {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventIdAllocator {
     /// Creates a new allocator with no issued identifiers.
     #[must_use]
-    pub(crate) const fn new() -> Self {
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             last_issued: None,
         }
@@ -229,31 +233,41 @@ impl EventIdAllocator {
     ///
     /// # Errors
     /// Returns [`EventIdError::Overflow`] if the sequence exceeds `u64::MAX`.
-    pub(crate) fn next(&mut self) -> Result<EventId, EventIdError> {
+    #[inline]
+    pub fn next_id(&mut self) -> Result<EventId, EventIdError> {
         let id = EventId::next_after(self.last_issued)?;
         self.last_issued = Some(id);
         Ok(id)
     }
 
     /// Sets allocator cursor to the maximum persisted event id.
-    pub(crate) fn reserve_after(&mut self, persisted_max: Option<EventId>) {
+    #[inline]
+    pub fn reserve_after(&mut self, persisted_max: Option<EventId>) {
         self.last_issued = persisted_max;
     }
 }
 
-#[allow(dead_code, reason = "Contract consumed by upcoming repository slices")]
 /// Infrastructure contract for append/load/compact event-log behavior.
-pub(crate) trait EventStore<E>
+pub trait EventStore<E>
 where
     E: RkyvEncode + RkyvDecode,
 {
     /// Append an event atomically and return the allocated event id.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] if the database transaction fails.
     fn append(&self, event: &E) -> Result<EventId, DbError>;
 
     /// Load all events in deterministic ascending [`EventId`] order.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] if the database transaction fails.
     fn load_all_events(&self) -> Result<Vec<(EventId, E)>, DbError>;
 
-    /// Compact all events with id strictly less than `cutoff`.
+    /// Erase all events with an id strictly less than `cutoff`.
+    ///
+    /// # Errors
+    /// Returns [`DbError`] if the database transaction fails.
     fn compact_before(&self, cutoff: EventId) -> Result<u64, DbError>;
 }
 
@@ -407,7 +421,7 @@ mod tests {
                 let mut allocator = EventIdAllocator::new();
 
                 let first =
-                    allocator.next().expect("first allocation succeeds");
+                    allocator.next_id().expect("first allocation succeeds");
 
                 assert_eq!(first.get(), 1);
             }
@@ -415,10 +429,10 @@ mod tests {
             #[test]
             fn returns_next_id_after_previous() {
                 let mut allocator = EventIdAllocator::new();
-                let _ = allocator.next().expect("first allocation succeeds");
+                let _ = allocator.next_id().expect("first allocation succeeds");
 
                 let second =
-                    allocator.next().expect("second allocation succeeds");
+                    allocator.next_id().expect("second allocation succeeds");
 
                 assert_eq!(second.get(), 2);
             }
@@ -430,7 +444,7 @@ mod tests {
                     EventId::try_from_raw(10_u64).expect("valid id");
                 allocator.reserve_after(Some(persisted));
 
-                let next = allocator.next().expect("allocation succeeds");
+                let next = allocator.next_id().expect("allocation succeeds");
 
                 assert_eq!(next.get(), 11);
             }
@@ -446,7 +460,7 @@ mod tests {
                     EventId::try_from_raw(u64::MAX).expect("max id valid");
                 allocator.reserve_after(Some(max_id));
 
-                let result = allocator.next();
+                let result = allocator.next_id();
 
                 assert!(matches!(result, Err(EventIdError::Overflow)));
             }

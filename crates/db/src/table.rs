@@ -309,7 +309,7 @@ impl<K: crate::RkyvDecode + Ord + 'static, V: crate::RkyvDecode + Ord + 'static>
     dead_code,
     reason = "Infrastructure wrapper consumed in upcoming slices"
 )]
-pub(crate) struct EventTable<V: 'static> {
+pub struct EventTable<V: 'static> {
     definition: TableDefinition<'static, EventId, DbRkyvType<V>>,
 }
 
@@ -321,7 +321,7 @@ impl<V: 'static> EventTable<V> {
     /// Create a new event-id keyed table definition.
     #[inline]
     #[must_use]
-    pub(crate) const fn new(name: &'static str) -> Self {
+    pub const fn new(name: &'static str) -> Self {
         Self {
             definition: TableDefinition::new(name),
         }
@@ -330,7 +330,7 @@ impl<V: 'static> EventTable<V> {
     /// Get the underlying redb table definition.
     #[inline]
     #[must_use]
-    pub(crate) const fn definition(
+    pub const fn definition(
         &self,
     ) -> TableDefinition<'static, EventId, DbRkyvType<V>> {
         self.definition

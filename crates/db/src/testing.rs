@@ -21,11 +21,6 @@
 //! These non-goals protect DB context locality and prevent creating a shallow
 //! cross-context fake storage module.
 
-#![allow(
-    dead_code,
-    reason = "Testing utilities may be unused in non-test builds"
-)]
-
 use std::sync::{
     Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
     atomic::{AtomicUsize, Ordering},
@@ -59,7 +54,6 @@ pub enum InMemoryDbError {
 
     /// Test invariant was violated.
     #[error("Invariant violation: {message}")]
-    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     InvariantViolation {
         /// Description of the invariant that was violated.
         message: Box<str>,
@@ -190,14 +184,12 @@ impl OpCounters {
 
     /// Increments the delete operation counter.
     #[inline]
-    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     pub fn inc_delete(&self) {
         self.deletes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the injected failure counter.
     #[inline]
-    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     pub fn inc_injected_failure(&self) {
         self.injected_failures.fetch_add(1, Ordering::Relaxed);
     }
@@ -260,10 +252,8 @@ pub enum FailurePoint {
     /// Before a write operation.
     BeforeWrite,
     /// After serialization but before commit.
-    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     AfterSerialize,
     /// Before committing a transaction.
-    #[allow(dead_code, reason = "Reserved for future test scenarios")]
     BeforeCommit,
 }
 
