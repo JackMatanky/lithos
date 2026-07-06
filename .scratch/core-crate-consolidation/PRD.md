@@ -57,7 +57,6 @@ enum FsEntryType {
     Dir,
     SymFile,
     SymDir,
-    Skipped,
 }
 ```
 
@@ -181,7 +180,7 @@ The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
 
 1. As a maintainer, I want `traces-core` to provide a single dependency for foundational types (settings, indexer, domain types), so that downstream crates import one crate instead of three.
 2. As a developer, I want a single `FsNode` type to replace both `FileRecord`/`DirRecord` and `FileNode`/`DirNode`, so that there is one canonical representation of a scanned filesystem item.
-3. As a developer, I want `FsEntry` as the scanner output type with `Utf8UnixPathBuf` and `std::fs::Metadata`, so that the scan layer has zero custom path or metadata types.
+3. As a developer, I want `EntryOutcome { Included(FsEntry), Skipped(SkippedEntry) }` as the scanner output type, so that the scan layer cleanly separates valid entries from skipped ones without relying on custom path or metadata newtypes.
 4. As a developer, I want `FsSize` as the only extracted metadata type, so that file/dir size semantics are preserved without a wrapping `FsMetadata` struct.
 5. As a developer, I want `FsTimes`, `FsMetadata`, `FileMetadata`, and `DirMetadata` all eliminated with their fields inlined on `FsNode`, so that there are no intermediate grouping types without behavior.
 6. As a developer, I want path anti-traversal validation via `typed_path::join_checked()`, so that security invariants come from a maintained upstream crate.
@@ -205,7 +204,7 @@ The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
 9. **Normalization happens at `FsEntry → FsNode` boundary**: Backslash→forward slash, `normalize()`, separator dedup — all applied once when the scan artifact becomes a domain node.
 10. **rkyv archive for `Utf8UnixPathBuf`**: A newtype wrapper `ArchiveUtf8Path(Utf8UnixPathBuf)` with rkyv derives, or an orphan impl. Minimal surface — just enough for DB storage.
 11. **`From<(FsEntry, FsParentId)> for FsNode` is infallible**: Because `FsEntryType` only contains `{ File, Dir, SymFile, SymDir }` (with `Skipped` handled by `EntryOutcome`), every `FsEntry` represents a valid scannable node. `FsNodeType` maps directly from `FsEntryType::File → FsNodeType::File(FileFormat)`, `FsEntryType::Dir → FsNodeType::Dir`, `SymFile/SymDir → respective FsNodeType` with `is_symlink: true`. This is the single enforcement boundary for name extraction, normalization, and field mapping.
-12. **`SkippedEntry` and `SkipReason` move to `traces-core`**: Currently in `crates/indexer/src/report.rs`, but the types are scanner-level, not indexer-level. `SkippedEntry { path: Utf8UnixPathBuf, reason: SkipReason }` belongs alongside `FsEntry` in `types/entry.rs`. `SkipReason` variants remain `PermissionDenied` | `UnsupportedEntryType`. `IndexReport` stays in `traces-indexer` (aggregation is an indexer concern); it references `SkippedEntry` from core. This separates skipped items from scannable ones at the `EntryOutcome` layer instead of polluting `FsEntryType`.
+12. **`SkippedEntry` and `SkipReason` move to `types/entry.rs`**: Currently in `crates/indexer/src/report.rs`, but the types are scanner-level, not indexer-level. `SkippedEntry { path: Utf8UnixPathBuf, reason: SkipReason }` belongs alongside `FsEntry` in `types/entry.rs`. `SkipReason` variants remain `PermissionDenied` | `UnsupportedEntryType`. `IndexReport` stays in the indexer module (aggregation is an indexer concern); it references `SkippedEntry`. This separates skipped items from scannable ones at the `EntryOutcome` layer instead of polluting `FsEntryType`.
 
 ## Testing Decisions
 
