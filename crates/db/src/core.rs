@@ -156,56 +156,48 @@ mod tests {
 
         /// Tracer bullet: `Store::write()` auto-commits on Ok.
         #[test]
-        #[expect(
-            clippy::unwrap_in_result,
-            clippy::panic_in_result_fn,
-            reason = "Test code intentionally uses unwrap/assert for setup \
-                      verification"
-        )]
-        fn write_commits_on_ok() -> Result<(), DbError> {
+        fn write_commits_on_ok() {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
 
-            let mut store = Store::open(&db_path)?;
-            store.write(|tx| -> Result<(), DbError> {
-                let mut table = tx.inner.open_table(TEST_TABLE)?;
-                table.insert("key", "value")?;
-                Ok(())
-            })?;
+            let mut store = Store::open(&db_path).unwrap();
+            store
+                .write(|tx| -> Result<(), DbError> {
+                    let mut table = tx.inner.open_table(TEST_TABLE)?;
+                    table.insert("key", "value")?;
+                    Ok(())
+                })
+                .unwrap();
             drop(store);
 
-            store = Store::open(&db_path)?;
-            store.read(|tx| {
-                let table = tx.inner.open_table(TEST_TABLE)?;
-                let value = table.get("key")?.expect("value should exist");
-                assert_eq!(value.value(), "value");
-                Ok(())
-            })?;
-
-            Ok(())
+            store = Store::open(&db_path).unwrap();
+            store
+                .read(|tx| -> Result<(), DbError> {
+                    let table = tx.inner.open_table(TEST_TABLE)?;
+                    let value = table.get("key")?.expect("value should exist");
+                    assert_eq!(value.value(), "value");
+                    Ok(())
+                })
+                .unwrap();
         }
 
         /// `Store::write()` rolls back on Err.
         #[test]
-        #[expect(
-            clippy::unwrap_in_result,
-            clippy::panic_in_result_fn,
-            reason = "Test code intentionally uses unwrap/assert for setup \
-                      verification"
-        )]
-        fn write_rolls_back_on_err() -> Result<(), DbError> {
+        fn write_rolls_back_on_err() {
             let temp_dir = tempfile::TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
 
-            let mut store = Store::open(&db_path)?;
-            store.write(|tx| -> Result<(), DbError> {
-                let mut table = tx.inner.open_table(TEST_TABLE)?;
-                table.insert("initial", "data")?;
-                Ok(())
-            })?;
+            let mut store = Store::open(&db_path).unwrap();
+            store
+                .write(|tx| -> Result<(), DbError> {
+                    let mut table = tx.inner.open_table(TEST_TABLE)?;
+                    table.insert("initial", "data")?;
+                    Ok(())
+                })
+                .unwrap();
             drop(store);
 
-            store = Store::open(&db_path)?;
+            store = Store::open(&db_path).unwrap();
             let result: Result<(), DbError> = store.write(|tx| {
                 let mut table = tx.inner.open_table(TEST_TABLE)?;
                 table.insert("new_key", "new_value")?;
@@ -214,18 +206,19 @@ mod tests {
             assert!(result.is_err());
             drop(store);
 
-            store = Store::open(&db_path)?;
-            store.read(|tx| {
-                let table = tx.inner.open_table(TEST_TABLE)?;
-                let initial =
-                    table.get("initial")?.expect("initial data should exist");
-                assert_eq!(initial.value(), "data");
-                let new_value = table.get("new_key")?;
-                assert!(new_value.is_none());
-                Ok(())
-            })?;
-
-            Ok(())
+            store = Store::open(&db_path).unwrap();
+            store
+                .read(|tx| -> Result<(), DbError> {
+                    let table = tx.inner.open_table(TEST_TABLE)?;
+                    let initial = table
+                        .get("initial")?
+                        .expect("initial data should exist");
+                    assert_eq!(initial.value(), "data");
+                    let new_value = table.get("new_key")?;
+                    assert!(new_value.is_none());
+                    Ok(())
+                })
+                .unwrap();
         }
 
         #[test]
