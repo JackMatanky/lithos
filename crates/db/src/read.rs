@@ -1,7 +1,5 @@
 //! Read transaction wrapper.
 
-#![allow(dead_code, reason = "dead code until issue-02")]
-
 use redb::{
     Key, MultimapTableDefinition, ReadOnlyMultimapTable, ReadOnlyTable,
     TableDefinition, Value,
