@@ -699,7 +699,7 @@ Status: complete
 
 ### Phase 7: Broader Cleanup
 
-Status: partial
+Status: complete
 
 - Migrate remaining storage adapters gradually.
 - Remove per-domain redb trait impls replaced by generic adapters.
