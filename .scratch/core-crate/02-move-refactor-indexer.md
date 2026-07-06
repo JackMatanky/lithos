@@ -1,34 +1,28 @@
----
-labels: ["ready-for-agent"]
----
+## Agent Brief
 
-# Move and refactor Indexer in traces-core
+**Category:** enhancement
+**Summary:** Move traces-indexer into traces-core and refactor to use unified FsNode
 
-## Parent
+**Current behavior:**
+The `traces-indexer` crate has a bifurcated pipeline for files and directories. Its `ScannerPort` returns a `ScanEntry` enum that mixes skipped items with file/dir nodes. Its `EntryBuilder` state machine uses 10 typestates (`Init`, `FileComparison`, `DirComparison`, `FilePersistence`, `DirPersistence`, `FileIndexed`, `DirIndexed`, `Completion`, etc.) to handle the split. The Redb storage schema uses 8 separate tables to store files and directories independently, and its `Repository` trait has roughly 20 methods.
 
-PRD: `.scratch/core-crate/PRD.md`
+**Desired behavior:**
+The indexer should be moved into `traces-core` as a module. It should use the new `FsNode` and `EntryOutcome` types defined in `traces-core::types`. The bifurcated pipelines should be merged into a single path. The storage schema must collapse into 5 unified tables.
 
-## What to build
+**Key interfaces:**
+- `traces-indexer` crate should be moved to `traces-core::indexer`.
+- `ScannerPort` and `WalkdirAdapter`: Must return `EntryOutcome` instead of `ScanEntry`.
+- `EntryBuilder`: Collapse the 10 builder states into 5 unified states (`Init`, `Comparison`, `Persistence`, `Indexed`, `Completion`) using a single `FsNode` payload instead of separate `FileRecord`/`DirRecord` branches.
+- `DeletedNodes`: Simplify to a struct with just a list of `ids: Box<[FsNodeId]>` (representing `{ id: FsNodeId, path: Utf8UnixPathBuf }` structurally or just passing IDs around).
+- `Repository` and Redb Storage: Collapse the 8 split tables into 5 unified tables: `FS_NODES`, `FS_ID_BY_PATH`, `FS_IDS_BY_PARENT`, `FS_IDS_BY_FORMAT`, `FS_IDS_BY_NAME`. Halve the `Repository` trait methods to a unified set (`find`, `find_by_path`, `list_by_parent`, `save`, `delete`).
 
-Migrate the indexer context into `traces-core` and refactor it to use the new domain types.
+**Acceptance criteria:**
+- [ ] The `traces-indexer` crate no longer exists; its contents are in `traces-core::indexer`.
+- [ ] `ScannerPort` and `WalkdirAdapter` successfully yield `EntryOutcome`.
+- [ ] The database schema is consolidated to the 5 specified tables.
+- [ ] The builder pipeline uses a single `FsNode` path.
+- [ ] All indexer tests are updated to assert against `FsNode` and all tests pass.
 
-1. Move the `traces-indexer` crate contents into `traces-core::indexer`.
-2. Refactor `ScannerPort` and `WalkdirAdapter` to yield `EntryOutcome` instead of the old `ScanEntry` enum.
-3. Replace the split `FileRecord`/`DirRecord` builder pipeline with a single `FsNode` pipeline. This should reduce the indexer builder's typestates from 10 states to 5.
-4. Update `DeletedNode` to the minimal `{ id, path }` shape.
-5. Consolidate the Redb storage schema in the indexer:
-   - Collapse the 8 split tables into the 5 unified tables defined in the PRD (`FS_NODES`, `FS_ID_BY_PATH`, `FS_IDS_BY_PARENT`, `FS_IDS_BY_FORMAT`, `FS_IDS_BY_NAME`).
-   - Collapse the `Repository` trait methods from ~20 to ~10.
-6. Update all indexer tests to assert against the new `FsNode` domain type rather than the old separate file/dir records.
-
-## Acceptance criteria
-
-- [ ] Indexer module exists entirely within `traces-core`.
-- [ ] `ScannerPort` and `WalkdirAdapter` yield `EntryOutcome`.
-- [ ] Storage schema is consolidated to 5 tables and the Repository trait is halved in size.
-- [ ] Builder pipeline uses a single `FsNode` path (5 typestates).
-- [ ] All tests pass.
-
-## Blocked by
-
-- 01-scaffold-traces-core.md
+**Out of scope:**
+- Modifying other workspace crates (`traces-note`, `traces-schema`, etc.) beyond what's needed to make them compile (if they import anything from the indexer).
+- Deleting the old types from `traces-fs`.
