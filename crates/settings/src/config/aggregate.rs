@@ -570,6 +570,8 @@ mod tests {
 
     mod integrity {
 
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -664,6 +666,8 @@ mod tests {
     }
 
     mod merge {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -696,6 +700,8 @@ mod tests {
     }
 
     mod build_tests {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -771,6 +777,7 @@ mod tests {
     }
 
     mod schema_spec {
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn to_schema_spec_constructs_correct_paths() {
@@ -898,6 +905,8 @@ mod tests {
     }
 
     mod resolved_path_config {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -979,6 +988,7 @@ mod tests {
     }
 
     mod config_specs {
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn create_cache_dir_creates_configured_cache_directory() {
@@ -1132,6 +1142,8 @@ mod tests {
         use super::*;
 
         mod conversions {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]
@@ -1156,6 +1168,8 @@ mod tests {
         }
 
         mod create {
+            use pretty_assertions::assert_eq;
+
             use super::*;
 
             #[test]

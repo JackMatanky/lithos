@@ -606,6 +606,8 @@ mod tests {
     use super::*;
 
     mod version {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -640,6 +642,8 @@ mod tests {
     }
 
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -691,6 +695,7 @@ mod tests {
     }
 
     mod try_from_raw {
+        use pretty_assertions::assert_eq;
         use tempfile::NamedTempFile;
         use traces_fs::FilePath;
 

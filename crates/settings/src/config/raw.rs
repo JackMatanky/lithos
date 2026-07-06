@@ -300,6 +300,8 @@ mod tests {
     mod deserialize_dispatch {
         use std::path::Path;
 
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -408,6 +410,8 @@ mod tests {
     }
 
     mod raw_config_files {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]

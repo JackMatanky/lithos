@@ -571,6 +571,8 @@ mod tests {
     use crate::config::logging::{LogLevel, Logging};
 
     mod version {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -605,6 +607,8 @@ mod tests {
     }
 
     mod constructor {
+        use pretty_assertions::assert_eq;
+
         use super::*;
 
         #[test]
@@ -690,6 +694,7 @@ mod tests {
     }
 
     mod try_from_raw {
+        use pretty_assertions::assert_eq;
         use tempfile::{NamedTempFile, TempDir};
         use traces_fs::{DirPath, FilePath};
 
