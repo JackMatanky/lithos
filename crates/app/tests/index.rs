@@ -25,7 +25,7 @@ fn setup_test_vault(vault_tmp: &tempfile::TempDir) {
 
 #[test]
 fn run_index_with_temp_vault_returns_correct_counts() {
-    let test_db = traces_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestStore::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -54,7 +54,7 @@ fn run_index_with_temp_vault_returns_correct_counts() {
 
 #[test]
 fn run_index_handles_empty_vault() {
-    let test_db = traces_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestStore::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
 
@@ -78,7 +78,7 @@ fn run_index_handles_empty_vault() {
 
 #[test]
 fn rebuild_option_creates_all_new_nodes() {
-    let test_db = traces_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestStore::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -107,7 +107,7 @@ fn rebuild_option_creates_all_new_nodes() {
 
 #[test]
 fn partial_scope_restricts_scan() {
-    let test_db = traces_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestStore::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);
@@ -131,7 +131,7 @@ fn partial_scope_restricts_scan() {
 
 #[test]
 fn dry_run_performs_no_writes() {
-    let test_db = traces_db::testing::TestDb::new().unwrap();
+    let test_db = traces_db::testing::TestStore::new().unwrap();
     let cache_tmp = test_db.dir_path();
     let vault_tmp = tempdir().unwrap();
     setup_test_vault(&vault_tmp);

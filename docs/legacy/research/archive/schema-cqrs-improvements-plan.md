@@ -537,7 +537,7 @@ impl EventHandler for LspNotificationHandler {
 // 1. Schema metadata cleanup on delete
 #[test]
 fn delete_removes_schema_metadata() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
     let (command, query) = setup_cqrs(test_db.db());
 
     // Save schema with metadata
@@ -566,7 +566,7 @@ fn delete_removes_schema_metadata() -> TestResult {
 // 2. PropertyBank version accumulation with retention
 #[test]
 fn property_bank_respects_version_retention_limit() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
     let (command, _query) = setup_cqrs(test_db.db());
 
     // Save property bank 5 times
@@ -606,7 +606,7 @@ fn property_bank_respects_version_retention_limit() -> TestResult {
 // 3. Batch save with duplicate names
 #[test]
 fn batch_save_duplicate_names_in_batch_fails() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
     let (command, _query) = setup_cqrs(test_db.db());
 
     let name = SchemaName::new("duplicate")?;
@@ -624,7 +624,7 @@ fn batch_save_duplicate_names_in_batch_fails() -> TestResult {
 // 4. Created-at timestamp asymmetry
 #[test]
 fn is_schema_stale_with_asymmetric_created_at() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
     let (command, query) = setup_cqrs(test_db.db());
 
     let schema = make_test_schema();
@@ -654,7 +654,7 @@ fn is_schema_stale_with_asymmetric_created_at() -> TestResult {
 // 5. Missing schema metadata record
 #[test]
 fn is_schema_stale_with_missing_metadata() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
     let (command, query) = setup_cqrs(test_db.db());
 
     let schema = make_test_schema();
@@ -706,7 +706,7 @@ let metadata = self.source.metadata(&path).inspect_err(|e| {
 // Test: Corrupted database data detection
 #[test]
 fn query_detects_corrupted_schema_data() -> TestResult {
-    let test_db = TestDb::new()?;
+    let test_db = TestStore::new()?;
 
     // Manually write invalid rkyv bytes to SCHEMA_BY_ID
     test_db.db().batch_write(|batch| {

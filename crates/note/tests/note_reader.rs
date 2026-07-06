@@ -29,7 +29,7 @@ mod tests {
         sync::Arc,
     };
 
-    use traces_db::testing::TestDb;
+    use traces_db::testing::TestStore;
     use traces_note::{
         aggregate::Note, repository::ReadRepository as _,
         storage::RedbRepository, tag::Tag as NoteTag, task::Task,
@@ -45,7 +45,7 @@ mod tests {
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
     struct Fixture {
-        db: TestDb,
+        db: TestStore,
         note: Note,
         config: AppConfig,
     }
@@ -62,7 +62,7 @@ mod tests {
     }
 
     fn build_fixture(markdown: &str) -> TestResult<Fixture> {
-        let db = TestDb::new()?;
+        let db = TestStore::new()?;
         let note_path = Path::new("notes/note.md");
         let absolute_path = db.dir_path().join(note_path);
 
@@ -96,8 +96,8 @@ mod tests {
         })
     }
 
-    fn build_environment(markdown: &str) -> TestResult<(TestDb, AppConfig)> {
-        let db = TestDb::new()?;
+    fn build_environment(markdown: &str) -> TestResult<(TestStore, AppConfig)> {
+        let db = TestStore::new()?;
         let note_path = Path::new("notes/note.md");
         let absolute_path = db.dir_path().join(note_path);
 

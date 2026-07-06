@@ -17,13 +17,13 @@ use traces_settings::{
 
 #[cfg(test)]
 mod tests {
-    use traces_db::testing::TestDb;
+    use traces_db::testing::TestStore;
 
     use super::*;
 
     #[test]
     fn ingest_markdown_promotes_tasks_and_tracks_lists() {
-        let db = TestDb::new().expect("test db");
+        let db = TestStore::new().expect("test db");
         let root = db.dir_path().to_path_buf();
         std::fs::create_dir_all(root.join("notes")).expect("create notes dir");
         let config = builder::build_from_layers(

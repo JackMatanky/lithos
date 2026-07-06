@@ -12,7 +12,7 @@
 //!
 //! # Setup
 //! - Uses `TempDir` for isolated filesystem fixtures per test.
-//! - `TestDb` provides fresh redb instances for each test.
+//! - `TestStore` provides fresh redb instances for each test.
 //! - `FileReader` abstracts filesystem operations for testability.
 //! - Helper functions: `write_file()`, `test_config()`.
 //!
@@ -125,7 +125,7 @@ mod initial_loading {
     #[test]
     fn resolves_property_bank_references() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         write_file(
             vault_dir.path(),
@@ -188,7 +188,7 @@ mod initial_loading {
     #[test]
     fn resolves_inline_properties() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         // Property bank is required (can be empty)
         write_file(
@@ -250,7 +250,7 @@ mod initial_loading {
     #[test]
     fn resolves_multiple_schemas() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         write_file(
             vault_dir.path(),
@@ -319,7 +319,7 @@ mod initial_loading {
     #[test]
     fn loads_and_persists_property_bank() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         write_file(
             vault_dir.path(),
@@ -403,7 +403,7 @@ mod inheritance {
     #[test]
     fn resolves_schema_inheritance() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         // Property bank is required (can be empty)
         write_file(
@@ -491,7 +491,7 @@ mod incremental_loading {
     #[test]
     fn detects_file_changes() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         // SETUP: Write initial files
         write_file(
@@ -587,7 +587,7 @@ mod incremental_loading {
     #[test]
     fn staleness_persists_across_reopens() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let mut test_db = TestDb::new()?;
+        let mut test_db = TestStore::new()?;
 
         // SETUP: Write files
         write_file(
@@ -678,7 +678,7 @@ mod incremental_loading {
     #[test]
     fn property_bank_update_triggers_re_resolution() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         // SETUP: Initial files
         write_file(
@@ -798,7 +798,7 @@ mod error_handling {
     #[test]
     fn detects_missing_property_bank_reference() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         write_file(
             vault_dir.path(),
@@ -854,7 +854,7 @@ mod error_handling {
     #[test]
     fn detects_circular_inheritance() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
 
         write_file(
             vault_dir.path(),

@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use traces_db::Store;
-pub use traces_db::testing::TestDb;
+pub use traces_db::testing::TestStore;
 use traces_schema::{
     aggregate::Schema,
     identifier::SchemaName,

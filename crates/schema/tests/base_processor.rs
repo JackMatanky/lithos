@@ -51,7 +51,7 @@ mod resolution {
     #[test]
     fn returns_stale_resolution_when_property_bank_changes() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let source = FileReader::new(vault_dir.path());
         let root = DirPath::try_new(vault_dir.path().to_path_buf())?;
@@ -163,7 +163,7 @@ mod resolution {
     fn returns_multiple_stale_resolutions_when_shared_bank_changes()
     -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let source = FileReader::new(vault_dir.path());
         let root = DirPath::try_new(vault_dir.path().to_path_buf())?;
@@ -296,7 +296,7 @@ mod resolution {
     #[test]
     fn constructs_deleted_resolution_when_base_schema_removed() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let source = FileReader::new(vault_dir.path());
         let root = DirPath::try_new(vault_dir.path().to_path_buf())?;
@@ -351,7 +351,7 @@ mod resolution {
     )]
     fn returns_mixed_resolutions_when_inputs_vary() -> TestResult {
         let vault_dir = TempDir::new()?;
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let source = FileReader::new(vault_dir.path());
         let root = DirPath::try_new(vault_dir.path().to_path_buf())?;

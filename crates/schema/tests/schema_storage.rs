@@ -9,7 +9,8 @@
 //!   loader), CQRS patterns (migrated to Repository).
 //!
 //! # Setup
-//! - Uses `TestDb` fixture for isolated database instances (tempfile-backed).
+//! - Uses `TestStore` fixture for isolated database instances
+//!   (tempfile-backed).
 //! - Uses `PropertyBuilder` and `SchemaBuilder` from `common` module.
 //! - Each test creates fresh database to ensure isolation.
 //!
@@ -105,7 +106,7 @@ mod create {
     /// Asserts `PropertyBank` exists after retrieval.
     #[test]
     fn persists_property_bank_when_saved() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create and save property bank
@@ -143,7 +144,7 @@ mod create {
     /// Asserts Schema exists after retrieval by ID.
     #[test]
     fn persists_schema_when_saved() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create schema
@@ -176,7 +177,7 @@ mod base_schema {
 
     #[test]
     fn persists_base_schema_when_saved() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let base_schema = base_schema_with_property("task", "title")?;
         let schema_id = *base_schema.id();
@@ -210,7 +211,7 @@ mod base_schema {
 
     #[test]
     fn returns_none_when_base_schema_deleted() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let base_schema = base_schema_with_property("task", "title")?;
         let schema_id = *base_schema.id();
@@ -226,7 +227,7 @@ mod base_schema {
 
     #[test]
     fn returns_base_schemas_when_restarted() -> TestResult {
-        let mut test_db = TestDb::new()?;
+        let mut test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
         let task = base_schema_with_property("task", "title")?;
         let project = base_schema_with_property("project", "summary")?;
@@ -293,7 +294,7 @@ mod lookup {
     /// Asserts found ID matches original schema ID.
     #[test]
     fn returns_schema_id_when_name_exists() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create and save
@@ -344,7 +345,7 @@ mod lookup {
     /// `list_owned` vs `list_key_value_pairs`). Kept as regression test.
     #[test]
     fn returns_all_schemas_when_listed() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Save multiple schemas
@@ -409,7 +410,7 @@ mod persistence {
     /// Asserts property count=1 and property ID matches original.
     #[test]
     fn returns_property_bank_when_restarted() -> TestResult {
-        let mut test_db = TestDb::new()?;
+        let mut test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create and save property bank
@@ -470,7 +471,7 @@ mod persistence {
     /// restart.
     #[test]
     fn returns_schema_when_restarted() -> TestResult {
-        let mut test_db = TestDb::new()?;
+        let mut test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create schema with properties
@@ -563,7 +564,7 @@ mod transactions {
     /// on error) would require database mocking or intentional corruption.
     #[test]
     fn persists_all_schemas_when_batch_saved() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Prepare batch with 3 valid schemas
@@ -659,7 +660,7 @@ mod regression {
     /// `list_key_value_pairs`). This edge case exposed the issue most clearly.
     #[test]
     fn returns_empty_schemas_when_batch_saved() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create 2 schemas with NO properties (edge case)
@@ -723,7 +724,7 @@ mod regression {
     /// ensuring the fix works for incremental saves too.
     #[test]
     fn returns_all_schemas_when_saved_separately() -> TestResult {
-        let test_db = TestDb::new()?;
+        let test_db = TestStore::new()?;
         let repository = setup_repository(test_db.store());
 
         // Create and save schema 1

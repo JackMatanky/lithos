@@ -345,26 +345,26 @@ pub fn mutex_lock<'a, T>(
 ///
 /// Creates an isolated database backed by a `tempfile::TempDir`. The
 /// temporary directory and all its contents are automatically removed when
-/// `TestDb` is dropped.
+/// `TestStore` is dropped.
 ///
 /// Useful when tests need both a filesystem root and a database co-located in
 /// the same temporary directory:
 ///
 /// ```rust,no_run
-/// use traces_db::testing::TestDb;
+/// use traces_db::testing::TestStore;
 ///
-/// let db = TestDb::new().unwrap();
+/// let db = TestStore::new().unwrap();
 /// let vault_root = db.dir_path().to_path_buf();
 /// let store = db.store();
 /// ```
-pub struct TestDb {
+pub struct TestStore {
     tempdir: tempfile::TempDir,
     db_path: std::path::PathBuf,
     store: Option<Arc<crate::Store>>,
 }
 
-impl TestDb {
-    /// Creates a new `TestDb` with a fresh temporary directory and an open
+impl TestStore {
+    /// Creates a new `TestStore` with a fresh temporary directory and an open
     /// [`Store`](crate::Store).
     ///
     /// # Errors
@@ -403,7 +403,7 @@ impl TestDb {
     #[must_use]
     #[expect(
         clippy::expect_used,
-        reason = "TestDb always holds a store between reopen calls"
+        reason = "TestStore always holds a store between reopen calls"
     )]
     pub fn store(&self) -> &Arc<crate::Store> {
         self.store.as_ref().expect("test database store is open")
