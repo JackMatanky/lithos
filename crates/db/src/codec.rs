@@ -25,71 +25,7 @@ mod private {
     pub trait Sealed {}
 }
 
-/// Error classification for codec failures.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CodecErrorKind {
-    /// Serialization to bytes failed.
-    Encode,
-    /// Archived byte validation failed.
-    Access,
-    /// Deserialization from archived bytes failed.
-    Decode,
-}
-
-/// Errors from rkyv codec operations.
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum CodecError {
-    /// Serialization to rkyv bytes failed.
-    #[error("failed to serialize {type_name} with rkyv")]
-    RkyvSerialize {
-        /// Rust type being serialized.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    /// Archived byte validation failed.
-    #[error("failed to validate archived {type_name}")]
-    RkyvAccess {
-        /// Rust type being validated.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-
-    /// Deserialization from archived bytes failed.
-    #[error("failed to deserialize archived {type_name}")]
-    RkyvDeserialize {
-        /// Rust type being deserialized.
-        type_name: &'static str,
-        /// Underlying rkyv error.
-        #[source]
-        source: rkyv::rancor::Error,
-    },
-}
-
-impl CodecError {
-    /// Classify codec error for stable branching.
-    #[inline]
-    #[must_use]
-    pub const fn kind(&self) -> CodecErrorKind {
-        match self {
-            Self::RkyvSerialize {
-                ..
-            } => CodecErrorKind::Encode,
-            Self::RkyvAccess {
-                ..
-            } => CodecErrorKind::Access,
-            Self::RkyvDeserialize {
-                ..
-            } => CodecErrorKind::Decode,
-        }
-    }
-}
+use crate::error::CodecError;
 
 /// Types that can be encoded to rkyv bytes.
 pub trait RkyvEncode:
@@ -419,7 +355,7 @@ mod tests {
 
     mod codec_error {
         use super::*;
-        use crate::DbError;
+        use crate::{CodecErrorKind, DbError};
 
         #[test]
         fn kind_classifies_codec_error_variants() {
@@ -454,6 +390,7 @@ mod tests {
 
     mod to_bytes {
         use super::*;
+        use crate::CodecErrorKind;
 
         fn accepts_decode<T: RkyvDecode>() {}
 

@@ -58,10 +58,8 @@ mod write;
 
 pub use core::Store;
 
-pub use codec::{
-    CodecError, CodecErrorKind, DbRkyvType, RkyvBytes, RkyvDecode, RkyvEncode,
-};
-pub use error::{DbError, DbErrorKind};
+pub use codec::{DbRkyvType, RkyvBytes, RkyvDecode, RkyvEncode};
+pub use error::{CodecError, CodecErrorKind, DbError, DbErrorKind};
 #[expect(
     unused_imports,
     reason = "Re-exported for internal consumers landing in subsequent slices"
