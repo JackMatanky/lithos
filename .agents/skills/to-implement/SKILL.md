@@ -46,7 +46,7 @@ Present: (1) handoff path, (2) opening prompt with path substituted.
 
 ```
 Read handoff at <handoff-doc-path>.
-Invoke `using-git-worktrees`, `subagent-driven-development`, `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`, `gitnexus-refactoring`, `gitnexus-debugging`.
+Invoke `using-git-worktrees`, `subagent-driven-development`, `rust-skills`, `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`, `gitnexus-refactoring`, `gitnexus-debugging`.
 Follow handoff instructions. No deviation from approved plan. Work only in worktree.
 ```
 
@@ -57,7 +57,7 @@ Copy into handoff doc (substitute paths).
 **Objectives:**
 1. Implement the approved plan for `<scratch-issue-path>` in a dedicated worktree.
 2. Fulfill all acceptance criteria.
-3. Validate approach against the codebase via GitNexus + `rust-best-practices` + `tdd`.
+3. Validate approach against the codebase via GitNexus + `rust-skills` + `rust-best-practices` + `tdd`.
 
 **Process:**
 1. Use `using-git-worktrees` to create a dedicated worktree.

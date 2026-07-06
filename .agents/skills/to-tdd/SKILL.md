@@ -42,7 +42,7 @@ Present: (1) handoff path, (2) opening prompt with path substituted.
 
 ```
 Read handoff at <handoff-doc-path>.
-Invoke `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`.
+Invoke `rust-skills`, `rust-best-practices`, `tdd`, `gitnexus-impact-analysis`, `gitnexus-exploring`.
 Follow handoff instructions. No issue edits. No code. Present findings + plan.
 ```
 
@@ -53,7 +53,7 @@ Copy into handoff doc (substitute paths).
 **Objectives:**
 1. Review `<issue-file-path>` in context of `<scratch-folder-path>`.
 2. Find gaps, risks, side effects. Found? Present for review; no planning until resolved.
-3. Produce TDD plan via GitNexus + `rust-best-practices` + `tdd`.
+3. Produce TDD plan via GitNexus + `rust-skills` + `rust-best-practices` + `tdd`.
 
 **Plan must:** specify all changes + impact, tests + coverage, follow `docs/engineering/testing/unit.md` and `docs/engineering/testing/unit-naming.md`.
 
