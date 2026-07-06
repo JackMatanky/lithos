@@ -70,7 +70,7 @@ def split_frontmatter(text: str) -> tuple[str | None, str]:
 def check_concept(path: Path, rel: str, report: Report) -> None:
     report.concepts += 1
     text = path.read_text(encoding="utf-8").lstrip("﻿")
-    raw, body = split_frontmatter(text)
+    raw, _ = split_frontmatter(text)
     if raw is None:
         report.err(rel, "§9.1 no parseable YAML frontmatter block")
         return
@@ -88,7 +88,6 @@ def check_concept(path: Path, rel: str, report: Report) -> None:
     for key in RECOMMENDED:
         if key not in meta:
             report.warn(rel, f"recommended field `{key}` is absent (§4.1)")
-    return body  # type: ignore[return-value]
 
 
 def check_index(path: Path, rel: str, is_root: bool, report: Report) -> None:
