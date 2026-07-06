@@ -228,34 +228,6 @@ impl LocalConfig {
         }
     }
 
-    /// Creates vault-specific configuration from raw path overrides.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
-    /// invalid.
-    #[inline]
-    pub fn try_from_components(
-        base: DirPath,
-        path: FilePath,
-        cache: Option<&super::raw::RawCacheConfig>,
-        template: Option<&super::raw::RawTemplateConfig>,
-        schema: Option<&super::raw::RawSchemaConfig>,
-    ) -> Result<Self, ConfigError> {
-        let name = name_from_base(&base);
-        Ok(Self {
-            version: VaultVersion::initial(),
-            base,
-            path,
-            name,
-            logging: None,
-            cache: cache.map(parse_cache).transpose()?.flatten(),
-            template: template.map(parse_template).transpose()?.flatten(),
-            schema: schema.map(parse_schema).transpose()?.flatten(),
-            frontmatter: None,
-            task: None,
-        })
-    }
-
     /// Return the version of this vault config.
     #[inline]
     #[must_use]
@@ -702,73 +674,6 @@ mod tests {
         }
     }
 
-    mod path_overrides {
-        use super::*;
-
-        #[test]
-        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
-        fn returns_cache_template_and_schema_overrides_from_raw_paths() {
-            let base_dir = tempfile::tempdir().expect("temp dir should exist");
-            let base =
-                traces_fs::DirPath::try_new(base_dir.path().to_path_buf())
-                    .expect("valid base dir");
-            let file =
-                tempfile::NamedTempFile::new().expect("temp file created");
-            let path = traces_fs::FilePath::try_new(file.path().to_path_buf())
-                .expect("valid config path");
-            let raw_cache = crate::config::raw::RawCacheConfig {
-                directory: Some(".vault-cache".to_owned()),
-            };
-            let raw_template = crate::config::raw::RawTemplateConfig {
-                directory: Some("vault-templates".to_owned()),
-            };
-            let raw_schema = crate::config::raw::RawSchemaConfig {
-                directory: Some("vault-schemas".to_owned()),
-                property_bank_file: Some("vault-bank.json".to_owned()),
-            };
-
-            let vault = LocalConfig::try_from_components(
-                base,
-                path,
-                Some(&raw_cache),
-                Some(&raw_template),
-                Some(&raw_schema),
-            )
-            .expect("vault path overrides should validate");
-
-            assert_eq!(
-                vault
-                    .cache()
-                    .expect("cache override should exist")
-                    .cache_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                ".vault-cache",
-                "vault cache override should be retained"
-            );
-            assert_eq!(
-                vault
-                    .template()
-                    .expect("template override should exist")
-                    .template_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "vault-templates",
-                "vault template override should be retained"
-            );
-            assert_eq!(
-                vault
-                    .schema()
-                    .expect("schema override should exist")
-                    .schema_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "vault-schemas",
-                "vault schema override should be retained"
-            );
-        }
-    }
-
     mod validation {
         #[test]
         fn templates_dir_rejects_absolute() {
@@ -789,7 +694,10 @@ mod tests {
         use traces_fs::{DirPath, FilePath};
 
         use super::*;
-        use crate::config::raw::{RawConfig, RawLogging, RawTrustedVaults};
+        use crate::config::raw::{
+            RawCacheConfig, RawConfig, RawLogging, RawSchemaConfig,
+            RawTemplateConfig, RawTrustedVaults,
+        };
 
         /// A base dir and config file backed by fresh temp paths.
         ///
@@ -806,11 +714,22 @@ mod tests {
         }
 
         #[test]
+        #[expect(deprecated, reason = "testing deprecated accessor behavior")]
         fn accepts_valid_raw_and_preserves_overrides() {
             let (_base_guard, _file_guard, base, path) = base_and_path();
             let raw = RawConfig {
                 logging: Some(RawLogging {
                     log_level: Some("debug".to_owned()),
+                }),
+                cache: Some(RawCacheConfig {
+                    directory: Some(".vault-cache".to_owned()),
+                }),
+                template: Some(RawTemplateConfig {
+                    directory: Some("vault-templates".to_owned()),
+                }),
+                schema: Some(RawSchemaConfig {
+                    directory: Some("vault-schemas".to_owned()),
+                    property_bank_file: Some("vault-bank.json".to_owned()),
                 }),
                 ..RawConfig::default()
             };
@@ -822,6 +741,36 @@ mod tests {
                 local.logging().expect("logging override preserved").level(),
                 LogLevel::Debug,
                 "logging override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .cache()
+                    .expect("cache override preserved")
+                    .cache_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                ".vault-cache",
+                "cache override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .template()
+                    .expect("template override preserved")
+                    .template_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-templates",
+                "template override should be preserved from raw"
+            );
+            assert_eq!(
+                local
+                    .schema()
+                    .expect("schema override preserved")
+                    .schema_dir()
+                    .as_relative_dir()
+                    .as_str(),
+                "vault-schemas",
+                "schema override should be preserved from raw"
             );
         }
 

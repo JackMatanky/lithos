@@ -187,31 +187,6 @@ impl GlobalConfig {
         }
     }
 
-    /// Creates a global configuration from raw path overrides.
-    ///
-    /// Global path overrides ignore `cache_dir`; cache is vault-scoped.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if any configured path is
-    /// invalid.
-    #[inline]
-    pub fn try_from_components(
-        path: FilePath,
-        template: Option<&super::raw::RawTemplateConfig>,
-        schema: Option<&super::raw::RawSchemaConfig>,
-    ) -> Result<Self, ConfigError> {
-        Ok(Self {
-            version: GlobalVersion::initial(),
-            path,
-            logging: Logging::default(),
-            template: template.map(parse_template).transpose()?.flatten(),
-            schema: schema.map(parse_schema).transpose()?.flatten(),
-            trusted_vaults: None,
-            frontmatter: Frontmatter::default(),
-            task: None,
-        })
-    }
-
     #[inline]
     #[must_use]
     /// Return the version of this global config.
@@ -711,65 +686,6 @@ mod tests {
             assert!(
                 result.is_err(),
                 "to_dir_path should fail for nonexistent dir"
-            );
-        }
-    }
-
-    mod path_overrides {
-        use tempfile::NamedTempFile;
-        use traces_fs::FilePath;
-
-        use super::*;
-
-        #[test]
-        fn returns_template_and_schema_overrides_from_raw_paths() {
-            let file = NamedTempFile::new().expect("temp file created");
-            let path = FilePath::try_new(file.path().to_path_buf())
-                .expect("temp file is a valid FilePath");
-            let raw_template = crate::config::raw::RawTemplateConfig {
-                directory: Some("global-templates".to_owned()),
-            };
-            let raw_schema = crate::config::raw::RawSchemaConfig {
-                directory: Some("global-schemas".to_owned()),
-                property_bank_file: Some("global-bank.json".to_owned()),
-            };
-
-            let global = GlobalConfig::try_from_components(
-                path,
-                Some(&raw_template),
-                Some(&raw_schema),
-            )
-            .expect("global path overrides should validate");
-
-            assert_eq!(
-                global
-                    .template()
-                    .expect("template override should exist")
-                    .template_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "global-templates",
-                "global template override should be retained"
-            );
-            assert_eq!(
-                global
-                    .schema()
-                    .expect("schema override should exist")
-                    .schema_dir()
-                    .as_relative_dir()
-                    .as_str(),
-                "global-schemas",
-                "global schema override should be retained"
-            );
-            assert_eq!(
-                global
-                    .schema()
-                    .expect("schema override should exist")
-                    .property_bank_file()
-                    .as_str(),
-                "global-bank.json",
-                "global property bank override should be retained under \
-                 schema config"
             );
         }
     }
