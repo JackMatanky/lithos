@@ -199,7 +199,7 @@ This slice is sufficiently specified and can proceed independently of discovery 
 
 ### Follow-ups deferred to issue 07 (unchanged from plan)
 
-- Remove `RawConfig::metadata` shim (TODO left in `raw.rs`), `Version`/`VaultId`/`VaultRoot`/`Metadata` shims, `rkyv`/`traces-db`/`redb` deps, and the persistence layer.
+- Remove `RawConfig::metadata` shim (TODO left in `raw.rs`), `Version`/`VaultId`/`VaultRoot` shims, `rkyv`/`traces-db`/`redb` deps, and the persistence layer. (`Metadata`/`AppVersion`/`VaultName` were removed in this issue's cleanup, not deferred.)
 
 ---
 

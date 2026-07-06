@@ -35,7 +35,7 @@ use super::{
 ///
 /// - Starts at 1 (not 0)
 /// - Increments on each global config file change
-/// - Independent of `VaultVersion` and `Config::Version`
+/// - Independent of `VaultVersion` and `Version`
 #[derive(
     Debug,
     Clone,

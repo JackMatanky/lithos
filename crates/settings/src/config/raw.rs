@@ -3,11 +3,6 @@
 //! This module defines raw config DTOs and supporting types used for
 //! deserialization from TOML/YAML/JSON files before validation.
 
-#![allow(
-    missing_docs,
-    reason = "Raw config DTOs mirror file schema; field docs pending."
-)]
-
 use std::{collections::HashMap, path::Path};
 
 use traces_fs::metadata::FileMetadata;

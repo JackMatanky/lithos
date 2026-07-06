@@ -431,7 +431,7 @@ fn parse_schema(
 ///
 /// - Starts at 1 (not 0)
 /// - Increments on each vault config file change
-/// - Independent of `GlobalVersion` and `Config::Version`
+/// - Independent of `GlobalVersion` and `Version`
 #[derive(
     Debug,
     Clone,
