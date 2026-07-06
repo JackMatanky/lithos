@@ -78,3 +78,29 @@ The new domain types must be implemented as outlined in the PRD, effectively rep
 **Out of scope:**
 - Modifying `traces-indexer` or `traces-settings` to actually use these types (that will happen in subsequent issues).
 - Deleting the old types from `traces-fs` or `traces-indexer`.
+
+## TDD Plan
+
+### 1. Workspace & Crate Scaffold
+- Add `crates/core` to workspace `Cargo.toml`.
+- Setup `traces-core/Cargo.toml` with `rkyv`, `typed-path`, `traces-utils`, `thiserror`.
+
+### 2. Slice 1: Identity (`src/types/id.rs`)
+- **RED**: `fs_parent_id::conversions::returns_zero_storage_key_when_root()`, `returns_inner_id_storage_key_when_id()`
+- **GREEN**: Port `FsRecordId` (renamed to `FsNodeId`) using `traces_utils::UuidV7` and implement `FsParentId` dual representation.
+
+### 3. Slice 2: Formats (`src/types/ext.rs`)
+- **RED**: `file_format::lookup::returns_expected_format_when_extension_is_known()`, `returns_unknown_when_unrecognized()`
+- **GREEN**: Port `FileFormat` from `traces-fs` into the new module.
+
+### 4. Slice 3: Scanner Entries (`src/types/entry.rs`)
+- **RED**: `entry_outcome::conversions::returns_skipped_when_skip_reason_provided()`
+- **GREEN**: Define `FsEntry`, `FsEntryType` (strictly `{ File, Dir, SymFile, SymDir }`), `EntryOutcome`, `SkippedEntry`, and `SkipReason`.
+
+### 5. Slice 4: Path Security (`src/types/path.rs`)
+- **RED**: `fs_path::validation::rejects_absolute_paths()`, `rejects_parent_traversal()`, `rejects_hidden_files()`, `fs_path::serialization::serializes_with_rkyv()`
+- **GREEN**: Define `FsPath` wrapping `typed_path::Utf8UnixPathBuf` with `#[derive(Archive, Serialize, Deserialize)]`. Implement safe join wrapping `typed_path::join_checked()` to explicitly block `.` and `..`.
+
+### 6. Slice 5: Core Node (`src/types/node.rs`)
+- **RED**: `fs_node::conversions::extracts_file_stem_from_entry()`, `extracts_dir_name_from_entry()`, `normalizes_backslashes_to_forward_slashes()`
+- **GREEN**: Define `FsNode`, `FsNodeType`, `FsSize`. Implement infallible `From<(FsEntry, FsParentId)> for FsNode`.
