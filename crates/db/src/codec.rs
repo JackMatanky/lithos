@@ -94,10 +94,10 @@ impl<T> RkyvEncode for T where
 /// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. It provides two
 /// decoding strategies:
 ///
-/// | Method | Allocation | When to use |
-/// |---|---|---|
-/// | [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes) | Owned value | Short-lived reads, mutation, or returning across a borrow boundary |
-/// | [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) | Zero-copy | Read-only field access on a hot path |
+/// | Method                                                             | Allocation  | When to use                                                        |
+/// | ------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------ |
+/// | [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes)     | Owned value | Short-lived reads, mutation, or returning across a borrow boundary |
+/// | [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) | Zero-copy   | Read-only field access on a hot path                               |
 ///
 /// See [`RkyvBytes`] for the type-safe wrapper that is the recommended API.
 pub trait RkyvDecode: private::Sealed + Archive + Sized {

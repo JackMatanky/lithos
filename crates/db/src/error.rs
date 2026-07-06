@@ -53,11 +53,11 @@ pub enum DbErrorKind {
 ///
 /// # Variants
 ///
-/// | Category | Variants | Backend |
-/// |---|---|---|
+/// | Category       | Variants                                                | Backend  |
+/// | -------------- | ------------------------------------------------------- | -------- |
 /// | Backend errors | `Database`, `Commit`, `Transaction`, `Table`, `Storage` | [`redb`] |
-/// | Codec errors | `Codec` | rkyv |
-/// | Compatibility | `Corruption` | — |
+/// | Codec errors   | `Codec`                                                 | rkyv     |
+/// | Compatibility  | `Corruption`                                            | —        |
 ///
 /// # Examples
 ///
