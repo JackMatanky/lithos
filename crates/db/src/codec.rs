@@ -35,8 +35,7 @@
 //!   invokes bytecheck). `access_unchecked` is explicitly forbidden to prevent
 //!   undefined behavior from corrupt database pages.
 //! - **Alignment**: `rkyv` 0.8 requires 16-byte alignment. These helpers
-//!   abstract the complexity of [`AlignedVec`] and pointer arithmetic away from
-//!   domain code.
+//!   delegate to `rkyv::access` which handles misaligned input internally.
 
 use std::{borrow::Cow, fmt, marker::PhantomData};
 
@@ -87,71 +86,55 @@ impl<T> RkyvEncode for T where
 {
 }
 
-/// Marker trait for types that can be decoded from validated rkyv bytes.
+/// Marker trait for types that can be accessed as validated archived rkyv data.
 ///
 /// This trait is **automatically implemented** for any type that derives
-/// [`Archive`] plus [`Deserialize`](rkyv::Deserialize) and satisfies the
+/// [`Archive`] and whose archived form satisfies the
 /// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. You never need to
-/// implement it manually. It provides two decoding strategies:
+/// implement it manually.
 ///
-/// * **Owned** — [`from_bytes`](RkyvDecode::from_bytes) returns an allocated
-///   `Self`. Use this for short-lived reads, mutation, or returning across a
-///   borrow boundary.
-/// * **Zero-copy** — [`with_archived`](RkyvDecode::with_archived) passes a
-///   validated reference to a closure. No allocation occurs; prefer this for
-///   read-only field access on hot paths.
-///
-/// See [`RkyvBytes`] for usage examples.
-pub trait RkyvDecode: private::Sealed + Archive + Sized {
-    /// Decode bytes into an owned value.
-    ///
-    /// Allocates a new `Self`. Prefer
-    /// [`with_archived`](RkyvDecode::with_archived)
-    /// for read-only access.
-    ///
-    /// # Errors
-    /// Returns [`CodecError`] if validation or deserialization fails.
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError>;
-
-    /// Access an archived value without materializing it.
-    ///
-    /// The closure receives a validated reference to the archived
-    /// representation. No allocation occurs.
-    ///
-    /// # Errors
-    /// Returns [`CodecError`] if archived byte validation fails.
-    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
-    where
-        F: FnOnce(&Self::Archived) -> R;
+/// It gates zero-copy access through [`RkyvBytes::with_archived`]. See
+/// [`RkyvBytes`] for usage examples.
+pub trait RkyvAccess:
+    private::Sealed
+    + Archive<
+        Archived: Portable
+                      + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        >,
+    >
+{
 }
 
-impl<T> RkyvDecode for T
+impl<T> RkyvAccess for T
 where
     T: Archive,
     T::Archived: Portable
         + for<'archived> rkyv::bytecheck::CheckBytes<
             rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
-        > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
+        >,
 {
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
-        with_archived_rkyv::<T, _, _>(bytes, |archived| {
-            rkyv::deserialize::<T, rkyv::rancor::Error>(archived).map_err(
-                |source| CodecError::RkyvDeserialize {
-                    type_name: std::any::type_name::<T>(),
-                    source,
-                },
-            )
-        })?
-    }
+}
 
-    #[inline]
-    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
-    where
-        F: FnOnce(&Self::Archived) -> R,
-    {
-        with_archived_rkyv::<T, R, F>(bytes, f)
-    }
+/// Marker trait for types that can be decoded from validated rkyv bytes.
+///
+/// This trait is **automatically implemented** for any type that satisfies
+/// [`RkyvAccess`] plus [`Deserialize`](rkyv::Deserialize). You never need to
+/// implement it manually.
+///
+/// It gates owned decoding through [`RkyvBytes::decode`]. See [`RkyvBytes`] for
+/// usage examples.
+pub trait RkyvDecode: RkyvAccess
+    + Archive<Archived: Deserialize<Self, HighDeserializer<rkyv::rancor::Error>>>
+    + Sized
+{
+}
+
+impl<T> RkyvDecode for T
+where
+    T: RkyvAccess,
+    T::Archived: Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
+{
 }
 
 /// Typed rkyv byte storage for borrowed database reads and owned insert values.
@@ -222,27 +205,6 @@ impl<'a, T> RkyvBytes<'a, T> {
         }
     }
 
-    /// Wrap an owned byte vector as typed rkyv bytes.
-    ///
-    /// The returned value has a `'static` lifetime, making it suitable for
-    /// insertion into a database table or long-lived cache.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use traces_db::RkyvBytes;
-    /// let raw = vec![0u8; 16];
-    /// let bytes: RkyvBytes<'static, ()> = RkyvBytes::owned(raw);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn owned(bytes: Vec<u8>) -> RkyvBytes<'static, T> {
-        RkyvBytes {
-            bytes: Cow::Owned(bytes),
-            _marker: PhantomData,
-        }
-    }
-
     /// Borrow the raw stored bytes.
     ///
     /// The returned slice is the underlying rkyv archive. It is *not*
@@ -281,7 +243,12 @@ impl<'a, T> RkyvBytes<'a, T> {
     where
         T: RkyvDecode,
     {
-        T::from_bytes(self.as_bytes())
+        rkyv::from_bytes::<T, rkyv::rancor::Error>(self.as_bytes()).map_err(
+            |source| CodecError::RkyvDeserialize {
+                type_name: std::any::type_name::<T>(),
+                source,
+            },
+        )
     }
 
     /// Access the archived value without materializing it.
@@ -295,14 +262,46 @@ impl<'a, T> RkyvBytes<'a, T> {
     #[inline]
     pub fn with_archived<R, F>(&self, f: F) -> Result<R, CodecError>
     where
-        T: RkyvDecode,
+        T: RkyvAccess,
         F: FnOnce(&T::Archived) -> R,
     {
-        T::with_archived(self.as_bytes(), f)
+        let archived = match rkyv::access::<T::Archived, rkyv::rancor::Error>(
+            self.as_bytes(),
+        ) {
+            Ok(archived) => archived,
+            Err(source) => {
+                return Err(CodecError::RkyvAccess {
+                    type_name: std::any::type_name::<T>(),
+                    source,
+                });
+            }
+        };
+        Ok(f(archived))
     }
 }
 
 impl<T> RkyvBytes<'static, T> {
+    /// Wrap an owned byte vector as typed rkyv bytes.
+    ///
+    /// The returned value has a `'static` lifetime, making it suitable for
+    /// insertion into a database table or long-lived cache.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use traces_db::RkyvBytes;
+    /// let raw = vec![0u8; 16];
+    /// let bytes: RkyvBytes<'static, ()> = RkyvBytes::owned(raw);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn owned(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes: Cow::Owned(bytes),
+            _marker: PhantomData,
+        }
+    }
+
     /// Serialize a value to owned rkyv bytes.
     ///
     /// The returned [`RkyvBytes`] has a `'static` lifetime and can be
@@ -424,41 +423,6 @@ where
     }
 }
 
-fn with_archived_rkyv<T, R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
-where
-    T: Archive,
-    T::Archived: Portable
-        + for<'archived> rkyv::bytecheck::CheckBytes<
-            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
-        > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
-    F: FnOnce(&T::Archived) -> R,
-{
-    #[expect(
-        clippy::as_conversions,
-        reason = "Pointer to usize conversion required for alignment check"
-    )]
-    let ptr_usize = bytes.as_ptr() as usize;
-
-    if ptr_usize.is_multiple_of(16) {
-        let archived = rkyv::access::<T::Archived, rkyv::rancor::Error>(bytes)
-            .map_err(|source| CodecError::RkyvAccess {
-                type_name: std::any::type_name::<T>(),
-                source,
-            })?;
-        Ok(f(archived))
-    } else {
-        let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
-        let archived =
-            rkyv::access::<T::Archived, rkyv::rancor::Error>(&aligned)
-                .map_err(|source| CodecError::RkyvAccess {
-                    type_name: std::any::type_name::<T>(),
-                    source,
-                })?;
-        Ok(f(archived))
-    }
-}
-
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -569,13 +533,13 @@ mod tests {
         }
 
         #[test]
-        fn rkyv_bytes_decode_returns_access_error_for_invalid_bytes() {
+        fn rkyv_bytes_decode_returns_decode_error_for_invalid_bytes() {
             let err = RkyvBytes::<TestData>::borrowed(&[0, 1, 2, 3])
                 .decode()
                 .unwrap_err();
 
-            assert!(matches!(err, CodecError::RkyvAccess { .. }));
-            assert_eq!(err.kind(), CodecErrorKind::Access);
+            assert!(matches!(err, CodecError::RkyvDeserialize { .. }));
+            assert_eq!(err.kind(), CodecErrorKind::Decode);
         }
 
         #[test]

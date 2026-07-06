@@ -58,7 +58,7 @@ mod write;
 
 pub use core::Store;
 
-pub use codec::{DbRkyvType, RkyvBytes, RkyvDecode, RkyvEncode};
+pub use codec::{DbRkyvType, RkyvAccess, RkyvBytes, RkyvDecode, RkyvEncode};
 pub use error::{CodecError, CodecErrorKind, DbError, DbErrorKind};
 #[expect(
     unused_imports,
