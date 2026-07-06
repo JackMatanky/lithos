@@ -72,11 +72,7 @@ impl Default for RetryConfig {
     clippy::disallowed_methods,
     reason = "std::thread::sleep is appropriate for sync retry logic"
 )]
-#[expect(
-    clippy::missing_inline_in_public_items,
-    reason = "Retry function is complex and not a hotpath candidate for \
-              inlining"
-)]
+#[inline(never)]
 pub fn retry_on_transient<F, T>(
     config: RetryConfig,
     mut operation: F,
@@ -120,17 +116,9 @@ where
                 std::thread::sleep(delay);
 
                 // Exponential backoff with cap
-                #[expect(
-                    clippy::float_arithmetic,
-                    reason = "Floating-point multiplication for backoff is \
-                              safe and appropriate"
-                )]
-                {
-                    delay = Duration::from_secs_f64(
-                        (delay.as_secs_f64() * config.backoff_multiplier)
-                            .min(config.max_delay.as_secs_f64()),
-                    );
-                }
+                delay = delay
+                    .mul_f64(config.backoff_multiplier)
+                    .min(config.max_delay);
             }
         }
     }

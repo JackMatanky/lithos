@@ -84,50 +84,42 @@ mod tests {
         TableDefinition::new("test");
 
     #[test]
-    #[allow(
-        clippy::panic_in_result_fn,
-        reason = "Test assertions are expected to panic"
-    )]
-    fn try_open_table_returns_some_when_exists()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let temp = tempdir()?;
+    fn try_open_table_returns_some_when_exists() {
+        let temp = tempdir().unwrap();
         let db_path = temp.path().join("test.db");
-        let store = Store::open(&db_path)?;
+        let store = Store::open(&db_path).unwrap();
 
         // Create table
-        store.write(|tx| -> Result<(), DbError> {
-            let _ = tx.inner.open_table(TEST_TABLE)?;
-            Ok(())
-        })?;
+        store
+            .write(|tx| -> Result<(), DbError> {
+                let _ = tx.inner.open_table(TEST_TABLE)?;
+                Ok(())
+            })
+            .unwrap();
 
         // Read table
-        store.read(|tx| {
-            let table = tx.try_open_table(TEST_TABLE)?;
-            assert!(table.is_some());
-            Ok(())
-        })?;
-
-        Ok(())
+        store
+            .read(|tx| {
+                let table = tx.try_open_table(TEST_TABLE)?;
+                assert!(table.is_some());
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[test]
-    #[allow(
-        clippy::panic_in_result_fn,
-        reason = "Test assertions are expected to panic"
-    )]
-    fn try_open_table_returns_none_when_missing()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let temp = tempdir()?;
+    fn try_open_table_returns_none_when_missing() {
+        let temp = tempdir().unwrap();
         let db_path = temp.path().join("test.db");
-        let store = Store::open(&db_path)?;
+        let store = Store::open(&db_path).unwrap();
 
         // Read table without creating it
-        store.read(|tx| {
-            let table = tx.try_open_table(TEST_TABLE)?;
-            assert!(table.is_none());
-            Ok(())
-        })?;
-
-        Ok(())
+        store
+            .read(|tx| {
+                let table = tx.try_open_table(TEST_TABLE)?;
+                assert!(table.is_none());
+                Ok(())
+            })
+            .unwrap();
     }
 }
