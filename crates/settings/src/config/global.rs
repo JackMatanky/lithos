@@ -799,7 +799,7 @@ mod tests {
                 }),
                 schema: Some(RawSchemaConfig {
                     directory: Some("schemas".to_owned()),
-                    property_bank_file: None,
+                    property_bank_file: Some("global-bank.json".to_owned()),
                 }),
                 task: Some(RawTaskConfig::default()),
                 ..RawConfig::default()
@@ -829,6 +829,15 @@ mod tests {
                     .as_relative_dir()
                     .as_str(),
                 "schemas",
+            );
+            assert_eq!(
+                global
+                    .schema()
+                    .expect("schema preserved")
+                    .property_bank_file()
+                    .as_str(),
+                "global-bank.json",
+                "property_bank override should be preserved from raw",
             );
             assert!(global.task().is_some(), "task should be preserved");
         }
