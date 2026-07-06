@@ -94,12 +94,11 @@ impl<T> RkyvEncode for T where
 /// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. You never need to
 /// implement it manually. It provides two decoding strategies:
 ///
-/// * **Owned** — [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes)
-///   returns an allocated `Self`. Use this for short-lived reads, mutation, or
-///   returning across a borrow boundary.
-/// * **Zero-copy** —
-///   [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) passes
-///   a validated reference to a closure. No allocation occurs; prefer this for
+/// * **Owned** — [`from_bytes`](RkyvDecode::from_bytes) returns an allocated
+///   `Self`. Use this for short-lived reads, mutation, or returning across a
+///   borrow boundary.
+/// * **Zero-copy** — [`with_archived`](RkyvDecode::with_archived) passes a
+///   validated reference to a closure. No allocation occurs; prefer this for
 ///   read-only field access on hot paths.
 ///
 /// See [`RkyvBytes`] for usage examples.
@@ -107,12 +106,12 @@ pub trait RkyvDecode: private::Sealed + Archive + Sized {
     /// Decode bytes into an owned value.
     ///
     /// Allocates a new `Self`. Prefer
-    /// [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes)
+    /// [`with_archived`](RkyvDecode::with_archived)
     /// for read-only access.
     ///
     /// # Errors
     /// Returns [`CodecError`] if validation or deserialization fails.
-    fn decode_from_rkyv_bytes(bytes: &[u8]) -> Result<Self, CodecError>;
+    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError>;
 
     /// Access an archived value without materializing it.
     ///
@@ -121,10 +120,7 @@ pub trait RkyvDecode: private::Sealed + Archive + Sized {
     ///
     /// # Errors
     /// Returns [`CodecError`] if archived byte validation fails.
-    fn with_archived_rkyv_bytes<R, F>(
-        bytes: &[u8],
-        f: F,
-    ) -> Result<R, CodecError>
+    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
     where
         F: FnOnce(&Self::Archived) -> R;
 }
@@ -138,7 +134,7 @@ where
         > + Deserialize<T, HighDeserializer<rkyv::rancor::Error>>,
 {
     #[inline]
-    fn decode_from_rkyv_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
         with_archived_rkyv::<T, _, _>(bytes, |archived| {
             rkyv::deserialize::<T, rkyv::rancor::Error>(archived).map_err(
                 |source| CodecError::RkyvDeserialize {
@@ -150,10 +146,7 @@ where
     }
 
     #[inline]
-    fn with_archived_rkyv_bytes<R, F>(
-        bytes: &[u8],
-        f: F,
-    ) -> Result<R, CodecError>
+    fn with_archived<R, F>(bytes: &[u8], f: F) -> Result<R, CodecError>
     where
         F: FnOnce(&Self::Archived) -> R,
     {
@@ -163,7 +156,7 @@ where
 
 /// Typed rkyv byte storage for borrowed database reads and owned insert values.
 ///
-/// `RkyvBytes` wraps an rkyv-archived byte slice with a static type tag.
+/// `RkyvBytes` wraps an rkyv-archived byte slice with a type-level marker.
 /// The type parameter `T` ensures that encode and decode are type-safe:
 /// you cannot decode bytes tagged as one type into another.
 ///
@@ -198,8 +191,9 @@ pub struct RkyvBytes<'a, T> {
     /// The underlying byte storage — borrowed when read from a table, owned
     /// when constructed for insertion.
     bytes: Cow<'a, [u8]>,
-    /// Static type tag; never constructed at runtime.
-    _ty: PhantomData<T>,
+    /// Zero-size marker that ties the type parameter `T` to the stored bytes
+    /// without storing any `T` data at runtime.
+    _marker: PhantomData<T>,
 }
 
 impl<'a, T> RkyvBytes<'a, T> {
@@ -224,7 +218,7 @@ impl<'a, T> RkyvBytes<'a, T> {
     pub const fn borrowed(bytes: &'a [u8]) -> Self {
         Self {
             bytes: Cow::Borrowed(bytes),
-            _ty: PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -245,7 +239,7 @@ impl<'a, T> RkyvBytes<'a, T> {
     pub fn owned(bytes: Vec<u8>) -> RkyvBytes<'static, T> {
         RkyvBytes {
             bytes: Cow::Owned(bytes),
-            _ty: PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -287,7 +281,7 @@ impl<'a, T> RkyvBytes<'a, T> {
     where
         T: RkyvDecode,
     {
-        T::decode_from_rkyv_bytes(self.as_bytes())
+        T::from_bytes(self.as_bytes())
     }
 
     /// Access the archived value without materializing it.
@@ -304,7 +298,7 @@ impl<'a, T> RkyvBytes<'a, T> {
         T: RkyvDecode,
         F: FnOnce(&T::Archived) -> R,
     {
-        T::with_archived_rkyv_bytes(self.as_bytes(), f)
+        T::with_archived(self.as_bytes(), f)
     }
 }
 
