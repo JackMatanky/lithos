@@ -26,7 +26,18 @@ Introduce a `traces-core` crate that consolidates foundational domain types and 
 
 - **settings** (moved from `traces-settings`): `SettingsService`, `AppConfig`, config types, discovery, trust/track, `Builder`
 - **indexer** (moved from `traces-indexer`): `IndexerService`, scan pipeline, event sink, `IndexEvent`, `IndexStatus`
-- **domain types**: `FsNode`, `FsEntry`, `FsNodeType`, `FsSize`, `FsNodeId`, `FsParentId`, `FileFormat`, `FsEntryType`
+- **domain types**: `FsNode`, `FsEntry`, `FsNodeType`, `FsSize`, `FsNodeId`, `FsParentId`, `FileFormat`, `FsEntryType`, `EntryOutcome`, `SkippedEntry`, `SkipReason`
+
+Domain types live in `crates/core/src/types/` with one file per concern:
+
+| File | Types |
+|---|---|
+| `types/node.rs` | `FsNode`, `FsNodeType`, `FsSize` |
+| `types/id.rs` | `FsNodeId`, `FsParentId` |
+| `types/ext.rs` | `FileFormat` |
+| `types/entry.rs` | `FsEntry`, `FsEntryType`, `EntryOutcome`, `SkippedEntry`, `SkipReason` |
+
+`mod.rs` re-exports. Path types (`Utf8UnixPathBuf`) come from the `typed-path` crate directly; the rkyv archive wrapper for DB storage lives in `crates/core/src/db/path.rs`.
 
 Infrastructure crates (`traces-db`, `traces-fs`) remain separate — core depends on them normally.
 
@@ -187,12 +198,14 @@ The `FsNode` shape mirrors Obsidian Dataview's `file.*` implicit fields:
 2. **`traces-settings` moves into `traces-core`**: The SettingsService, AppConfig, config types, discovery pipeline all move. No API changes.
 3. **`traces-indexer` moves into `traces-core`**: The IndexerService, scan pipeline, `IndexEvent`, `IndexStatus` all move. No API changes. `FsRecordId` → `FsNodeId`.
 4. **`traces-fs` loses its domain types but keeps infrastructure**: `FileReader`, `DirScanner`, `PathValidator`, `Writer` remain. The `*Node` and `*Metadata` types move to core (or are eliminated, in the case of `*Metadata`).
-5. **ScannerPort returns `FsEntry`**: Replaces the current `ScanEntry { File(FileNode), Dir(DirNode), Skipped }` enum. The WalkdirAdapter converts `walkdir::DirEntry` directly into `FsEntry` with `Utf8UnixPathBuf` and `std::fs::Metadata` — no intermediate `FileNode`/`DirNode` construction.
+5. **ScannerPort returns `EntryOutcome`**: Replaces the current `ScanEntry { File(FileNode), Dir(DirNode), Skipped }` enum with `EntryOutcome { Included(FsEntry), Skipped(SkippedEntry) }`. The WalkdirAdapter converts `walkdir::DirEntry` directly into `EntryOutcome` with `Utf8UnixPathBuf` and `std::fs::Metadata` — no intermediate `FileNode`/`DirNode` construction.
 6. **`FsParentId { Root, Id(FsNodeId) }`**: Dual representation — in-memory enum for compiler safety, DB stores flat `FsNodeId` (ZERO for root) with conversion at the repository boundary.
 7. **`DeletedNode` is `{ id: FsNodeId, path: Utf8UnixPathBuf }`**: Deliberately minimal — no metadata, no status.
 8. **`FileFormat` moves to `traces-core`**: Part of `FsNodeType::File(FileFormat)` — core already depends on `traces-fs` for infrastructure, but `FileFormat` is a domain enum, not I/O, and belongs alongside its consumer.
 9. **Normalization happens at `FsEntry → FsNode` boundary**: Backslash→forward slash, `normalize()`, separator dedup — all applied once when the scan artifact becomes a domain node.
 10. **rkyv archive for `Utf8UnixPathBuf`**: A newtype wrapper `ArchiveUtf8Path(Utf8UnixPathBuf)` with rkyv derives, or an orphan impl. Minimal surface — just enough for DB storage.
+11. **`From<(FsEntry, FsParentId)> for FsNode` is infallible**: Because `FsEntryType` only contains `{ File, Dir, SymFile, SymDir }` (with `Skipped` handled by `EntryOutcome`), every `FsEntry` represents a valid scannable node. `FsNodeType` maps directly from `FsEntryType::File → FsNodeType::File(FileFormat)`, `FsEntryType::Dir → FsNodeType::Dir`, `SymFile/SymDir → respective FsNodeType` with `is_symlink: true`. This is the single enforcement boundary for name extraction, normalization, and field mapping.
+12. **`SkippedEntry` and `SkipReason` move to `traces-core`**: Currently in `crates/indexer/src/report.rs`, but the types are scanner-level, not indexer-level. `SkippedEntry { path: Utf8UnixPathBuf, reason: SkipReason }` belongs alongside `FsEntry` in `types/entry.rs`. `SkipReason` variants remain `PermissionDenied` | `UnsupportedEntryType`. `IndexReport` stays in `traces-indexer` (aggregation is an indexer concern); it references `SkippedEntry` from core. This separates skipped items from scannable ones at the `EntryOutcome` layer instead of polluting `FsEntryType`.
 
 ## Testing Decisions
 
