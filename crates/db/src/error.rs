@@ -168,14 +168,6 @@ impl DbError {
     /// ```
     #[inline]
     #[must_use]
-    #[allow(
-        deprecated,
-        reason = "legacy variants remain permanent during migration"
-    )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match pattern ergonomics preferred for readability"
-    )]
     pub fn is_transient(&self) -> bool {
         match self {
             // Database errors might be transient (locked, I/O)
