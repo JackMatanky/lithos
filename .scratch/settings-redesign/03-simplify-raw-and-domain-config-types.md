@@ -160,3 +160,43 @@ This slice is sufficiently specified and can proceed independently of discovery 
 - `VaultId`, `Version`, `VaultRoot` — kept as-is (builder.rs uses them)
 - `Metadata`, `VaultVersion`, `GlobalVersion`, `AppVersion`, `VaultName` — kept as deprecated struct definitions
 - No changes to: `logging.rs`, `frontmatter.rs`, `schema.rs`, `task.rs`, `template.rs`, `cache.rs`, `value.rs`, `tracker.rs`, `trust.rs`
+
+---
+
+## Implementation Notes (2026-07-06)
+
+**Status:** Implemented on branch `issue-03-simplify-raw-and-domain-config-types` (worktree). Full `mise run verify` gate passes: `cargo fmt`, workspace `cargo clippy --all-targets --all-features -D warnings`, and full workspace `cargo test` (exit 0, 0 failures, 35 green result blocks), plus `adr:validate`.
+
+### Commits (oldest → newest)
+
+- `c0e883c8` — `deserialize_config` format dispatch + optional `json`/`yaml` Cargo features
+- `658aa631` — `GlobalConfig` `TryFrom<(RawConfig, FilePath)>` with `cache` forbidden-field rejection
+- `90c2ff15` — `LocalConfig` `TryFrom<(RawConfig, DirPath, FilePath)>` with `trusted_vaults` forbidden-field + `base`/`path`/`name`
+- `d830dc28` — inline `AppConfig` `root`/`name`, drop `vault_metadata`; migrate `build_from_layers` to `(global, vault, root)` across crates
+- `38ba419c` — include source path in forbidden-field errors; guard config error shims
+
+### Key decisions taken during implementation (user-approved)
+
+1. **Fully drop `AppConfig::vault_metadata()`** (no shim accessor) and migrate the one non-settings production caller `crates/vault/src/processor.rs:309-310` (`config.vault_metadata().root()` → `config.root()`), plus all cross-crate test callers.
+2. **Tuple-based conversions** because `FilePath`/`DirPath` require filesystem-validated (existing) paths that `RawConfig` cannot carry: `GlobalConfig: TryFrom<(RawConfig, FilePath)>`, `LocalConfig: TryFrom<(RawConfig, DirPath, FilePath)>`. FS I/O stays at the caller; the impls only field-map + forbidden-field check.
+3. **New `build_from_layers(global, vault, root: DirPath) -> Result<AppConfig>`** — dropped the `vault_id`/`version` params. `builder.rs::rebuild_with_configs` re-applies the storage version via `.with_version(next_version)` after building.
+4. **Forbidden-field errors reuse `ConfigError::ValidationFailed`** (no new `ForbiddenField` variant, per the approved TDD decision) and now embed the source config-file path in the message (task 19).
+
+### Deviations from the literal plan (forced by discovered constraints; scope preserved)
+
+- **`AppConfig` keeps `version: Version` and `pending_events`.** The storage layer (`config/repository.rs`, `config/storage/{read,write,testing}.rs`) keys on `(VaultId, Version)` and calls `version()`/`with_version()`. Removing them cascades into the persistence layer, which is explicitly out of scope (issue 07). AC-13's field set is satisfied; `version` is retained as a compat shim.
+- **`rkyv` kept on changed types** (`DirPath`/`FilePath`/`Box<str>` all support it). The "strip rkyv" TDD note was a preference; keeping it avoided cascading into the still-present persistence layer. `rkyv` removal belongs with the `traces-db`/`redb` dependency removal in issue 07.
+- **`serde_json` left non-optional; `json` feature is `json = []`.** `serde_json::` is used unconditionally in `config/value.rs` and `config/processor.rs`, so the `json` feature only gates the `deserialize_config` match arm, not the dependency. `yaml = ["dep:serde_yaml"]` gates its (new) dependency.
+- **Sprints 4 and 6 executed as one commit** (`d830dc28`) to keep the whole workspace compiling across the cross-crate `build_from_layers`/`AppConfig` signature change.
+
+### Files changed (by crate)
+
+- `traces-settings`: `config/{raw,global,vault,aggregate,builder,error,merger,processor}.rs`, `config/storage/{read,write,testing}.rs`, `Cargo.toml`
+- `traces-vault`: `src/processor.rs` (production caller migration)
+- `traces-app`: `src/template.rs` (tests)
+- `traces-note`: `src/aggregate.rs`, `tests/{note_ingest,note_reader}.rs`
+- `traces-schema`: `src/builder.rs`, `tests/schema_loader.rs`
+
+### Follow-ups deferred to issue 07 (unchanged from plan)
+
+- Remove `RawConfig::metadata` shim (TODO left in `raw.rs`), `Version`/`VaultId`/`VaultRoot`/`Metadata` shims, `rkyv`/`traces-db`/`redb` deps, and the persistence layer.
