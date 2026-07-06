@@ -87,19 +87,22 @@ impl<T> RkyvEncode for T where
 {
 }
 
-/// Types that can be decoded from validated rkyv bytes.
+/// Marker trait for types that can be decoded from validated rkyv bytes.
 ///
 /// This trait is **automatically implemented** for any type that derives
 /// [`Archive`] plus [`Deserialize`](rkyv::Deserialize) and satisfies the
-/// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. It provides two
-/// decoding strategies:
+/// [`CheckBytes`](rkyv::bytecheck::CheckBytes) bound. You never need to
+/// implement it manually. It provides two decoding strategies:
 ///
-/// | Method                                                             | Allocation  | When to use                                                        |
-/// | ------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------ |
-/// | [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes)     | Owned value | Short-lived reads, mutation, or returning across a borrow boundary |
-/// | [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) | Zero-copy   | Read-only field access on a hot path                               |
+/// * **Owned** — [`decode_from_rkyv_bytes`](RkyvDecode::decode_from_rkyv_bytes)
+///   returns an allocated `Self`. Use this for short-lived reads, mutation, or
+///   returning across a borrow boundary.
+/// * **Zero-copy** —
+///   [`with_archived_rkyv_bytes`](RkyvDecode::with_archived_rkyv_bytes) passes
+///   a validated reference to a closure. No allocation occurs; prefer this for
+///   read-only field access on hot paths.
 ///
-/// See [`RkyvBytes`] for the type-safe wrapper that is the recommended API.
+/// See [`RkyvBytes`] for usage examples.
 pub trait RkyvDecode: private::Sealed + Archive + Sized {
     /// Decode bytes into an owned value.
     ///
