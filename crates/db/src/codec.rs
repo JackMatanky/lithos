@@ -41,7 +41,8 @@ use std::{borrow::Cow, fmt, marker::PhantomData};
 
 use redb::{Key, Value};
 use rkyv::{
-    Archive, Deserialize, Portable, Serialize, api::high::HighDeserializer,
+    Archive, Deserialize, Portable, Serialize,
+    api::high::{HighDeserializer, HighSerializer, HighValidator},
     util::AlignedVec,
 };
 
@@ -63,7 +64,7 @@ pub trait RkyvEncode:
     private::Sealed
     + Archive
     + for<'ser> Serialize<
-        rkyv::api::high::HighSerializer<
+        HighSerializer<
             AlignedVec,
             rkyv::ser::allocator::ArenaHandle<'ser>,
             rkyv::rancor::Error,
@@ -77,7 +78,7 @@ impl<T> private::Sealed for T where T: Archive {}
 impl<T> RkyvEncode for T where
     T: Archive
         + for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
+            HighSerializer<
                 AlignedVec,
                 rkyv::ser::allocator::ArenaHandle<'ser>,
                 rkyv::rancor::Error,
@@ -100,7 +101,7 @@ pub trait RkyvAccess:
     + Archive<
         Archived: Portable
                       + for<'archived> rkyv::bytecheck::CheckBytes<
-            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            HighValidator<'archived, rkyv::rancor::Error>,
         >,
     >
 {
@@ -111,7 +112,7 @@ where
     T: Archive,
     T::Archived: Portable
         + for<'archived> rkyv::bytecheck::CheckBytes<
-            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            HighValidator<'archived, rkyv::rancor::Error>,
         >,
 {
 }
