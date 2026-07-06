@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn config_repository_error_converts_from_db_error() {
-        let db_err = DbError::Open("db fail".into());
+        let db_err = DbError::Corruption("db fail".into());
         let err: ConfigRepositoryError = db_err.into();
         assert!(matches!(err, ConfigRepositoryError::Storage(_)));
     }

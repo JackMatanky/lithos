@@ -63,7 +63,9 @@ pub enum VaultRepositoryError {
 impl From<traces_db::testing::InMemoryDbError> for VaultRepositoryError {
     #[inline]
     fn from(value: traces_db::testing::InMemoryDbError) -> Self {
-        Self::Storage(DbError::Open(value.to_string()))
+        Self::Storage(DbError::Database(redb::DatabaseError::from(
+            std::io::Error::other(value.to_string()),
+        )))
     }
 }
 

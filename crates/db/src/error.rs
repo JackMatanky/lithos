@@ -57,7 +57,7 @@ pub enum DbErrorKind {
 /// |---|---|---|
 /// | Backend errors | `Database`, `Commit`, `Transaction`, `Table`, `Storage` | [`redb`] |
 /// | Codec errors | `Codec` | rkyv |
-/// | Compatibility | `Open`, `Corruption` | — |
+/// | Compatibility | `Corruption` | — |
 ///
 /// # Examples
 ///
@@ -71,7 +71,7 @@ pub enum DbErrorKind {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
-    /// Failed to open or create database.
+    /// Database-level error (open, create, I/O).
     #[error(transparent)]
     Database(#[from] redb::DatabaseError),
 
@@ -94,17 +94,6 @@ pub enum DbError {
     /// Codec operation failed.
     #[error(transparent)]
     Codec(#[from] CodecError),
-
-    /// TECHNICAL DEBT: Compatibility variant for mock testing and setup
-    /// failures.
-    ///
-    /// # Note
-    ///
-    /// This variant is reserved for internal testing infrastructure (e.g.,
-    /// tempdir failures, lock poisoning) and is slated for removal in favor
-    /// of specialized test error types.
-    #[error("database open failed: {0}")]
-    Open(String),
 
     /// TECHNICAL DEBT: Data corruption or domain validation failure.
     ///
@@ -138,7 +127,7 @@ impl DbError {
     #[must_use]
     pub fn kind(&self) -> DbErrorKind {
         match self {
-            Self::Database(_) | Self::Open(_) => DbErrorKind::Database,
+            Self::Database(_) => DbErrorKind::Database,
             Self::Storage(_) | Self::Corruption(_) => DbErrorKind::Storage,
             Self::Commit(_) => DbErrorKind::Commit,
             Self::Transaction(_) => DbErrorKind::Transaction,
@@ -225,7 +214,7 @@ impl DbError {
                     || msg.contains("i/o error")
             }
             // All other errors are permanent (not retryable)
-            Self::Corruption(_) | Self::Codec(_) | Self::Open(_) => false,
+            Self::Corruption(_) | Self::Codec(_) => false,
         }
     }
 }

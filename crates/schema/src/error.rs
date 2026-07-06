@@ -516,9 +516,9 @@ impl SchemaRepositoryError {
         // we convert it to a generic Storage error with the same message.
         // This is sufficient for events and logging.
         match self {
-            Self::Storage(e) => {
-                Self::Storage(traces_db::DbError::Open(e.to_string()))
-            }
+            Self::Storage(e) => Self::Storage(traces_db::DbError::Database(
+                redb::DatabaseError::from(std::io::Error::other(e.to_string())),
+            )),
             Self::NotFoundById(id) => Self::NotFoundById(*id),
             Self::NotFoundByName(name) => Self::NotFoundByName(name.clone()),
             Self::NotFoundByPath(path) => Self::NotFoundByPath(path.clone()),

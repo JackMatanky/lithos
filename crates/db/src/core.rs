@@ -115,7 +115,9 @@ impl Store {
     #[inline]
     pub fn open_temp() -> Result<(tempfile::TempDir, Self), DbError> {
         let tempdir = tempfile::tempdir().map_err(|e| {
-            DbError::Open(format!("Failed to create tempdir: {e}"))
+            DbError::Database(redb::DatabaseError::from(std::io::Error::other(
+                format!("Failed to create tempdir: {e}"),
+            )))
         })?;
         let store = Self::open(&tempdir.path().join("test.redb"))?;
         Ok((tempdir, store))
